@@ -4822,3 +4822,5891 @@ so no real browser switch is claimed for this new policy. The login helper
 remains responsible for browser-triggered launch. Actual Low Power Mode toggling
 is retained as a manual check; selection/lifecycle are verified with injected
 native state. No new lab switch or PR.
+
+## The slot: the browser's own window sized to the page, in place of the page box (2026-11-15)
+
+Asked by Tirth on 2026-11-15, after two days of tests outside the repo: build the slot into Margin itself and do the rest of the testing here.
+
+**What it is.** Every full-screen Space lays its window out in a tile and can reserve room at its edges (`SLSSpaceSetEdgeReservation`, `docs/PRIVATE-APIS.md` rows 21-22). With the layout's insets reserved, macOS lays the tile out again and the browser sizes its own full-screen window to what's left. The page is then the whole window: nothing is added to it, where the page box sizes the page inside a full-size window (its cost per page is in "What the box costs, measured").
+
+**Off by default.** `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on. Off, no keeper is made and every window keeps the page box exactly as before. It stays off until it has been checked in real Safari (`TESTING.md`, "The slot").
+
+**How it's built (branch `feat/native-slot`).**
+- *One seam.* `Shell.layoutChanged` is where a window's layout goes to its copy. For a full-screen window drawn over whole, the layout's insets are reserved in its Space, and its copy is sent a layout with no insets: the extension's existing "no box" path, first paint included. The extension is not changed. Anything else gets the layout as before.
+- *The keeper* (`Slot.swift`). One slot per browser window: its Space, its full frame, the edges, whether it landed. Every reservation is verified against the window's own bounds within 1.5 s, sent once more, then given back; that window keeps the page box for the session, and two windows failing in a row turn the slot off for the session.
+- *The model.* The rest of the shell works on windows that fill their display (overlay frames, the planner and placer, the handoff's readiness, the covers). Rewriting all of that for a smaller window was the risky way. Instead every read of the window server goes through `SlotWindows`, which gives a slotted window at the bounds it would have with nothing reserved; the copy's own bounds for that window and the model-geometry read are put in the same terms. With no slot set, it is the identity.
+- *A steady full frame.* While a window is resizing into its slot, the model gives its recorded full frame, not one worked out from bounds in motion: the overlay must not be sized, and its layout measured, against a moving window.
+- *Giving it back.* A reservation outlives the process that set it, unlike everything else Margin sets through private calls. So: zeros when the window leaves full screen, when its page takes the screen (a video in full screen should fill the display), when it's parked, when no linked window is bound to it for longer than a dropped link is kept, when the displays change, and at quit; a marker (`slots.json`: Space numbers and a pid) read at the next launch after a crash, whether or not the setting is still on; and a Space found already reserved is given back before it's used.
+- *macOS only.* The Rust core (Windows) isn't touched.
+
+**Verified.** The launch check and wrappers against fake functions, the keeper against a stand-in for the Spaces, and the whole seam through the real shell and overlay with a stand-in that plays the window manager (`tools/app-tests/e2e-slot.swift`): the layout reserved, no insets sent, the overlay kept over the whole display, the copy's smaller bounds still bound, out of full screen and back, a window that won't take the slot given the page box, quit. The existing unit and end-to-end checks pass unchanged with the setting off.
+
+**Not verified: anything in real Safari, Chrome or Edge.** The private call itself was only run from test code outside the repo (macOS 27.2.1, 26B131: Safari, Chrome for Testing, Maps and others), not from this code.
+
+**Known gaps, for the Safari check to judge.**
+- The page's corners are square (the browser's window is), where the page box rounds them.
+- When the slot is first taken, the copy is told to drop the box at the same moment the window starts to shrink: the page may be seen to reflow once.
+- Safari's own full-screen title strip still slides over the top of the page when the menu bar is revealed, as in plain full-screen Safari today.
+- (Fixed 2026-11-15, found in Tirth's own Safari the first time the slot was on.) The full-screen toolbar is a window of Safari's own, laid out with the tile: with a slot it has the slot's left edge and width and sits the top's reservation lower (hidden at y −11 with 8 reserved, not −19). Left at its real bounds beside its window's model frame, it wasn't found as the toolbar and, hidden, overlapped the frame's top by 8 pt, so the exact stacking check read it as a foreign window between Margin's layout and the page: the profile switch's live cover never reached R4, timed out after 7 s and backed the switch out (`live cover stack blocked`, 10:54). The keeper's model now puts a slotted window's toolbar where it would be with nothing reserved, by the same rule the shell knows a toolbar by; `slot-tests.swift` has the window list of that session, failing first.
+- A window that loses its binding while slotted is bound again only after its slot is given back (about 6 s).
+- The edge stop keeps its fence at the display's left edge, not the window's.
+- Other apps as tabs, Margin in a window, and the Mission Control and outside-open questions from the tests are later stages, not started here.
+
+## Opening Margin: its browser's window comes up inside it (2026-11-15)
+
+Asked by Tirth on 2026-11-15, on trying the slot's build: Margin should be what is opened, with the browser coming up inside it, as the test kit did with its apps, and not Margin waiting for Safari to be opened and put in full screen by hand.
+
+**What it is.** Opened by hand, or opened again while it runs (Spotlight, Finder, a kept Dock icon), Margin.app asks its shell to `enter` (`ShellEnter.swift`) in place of showing the set-up window. The shell picks the window the person last used among the linked copies' windows (`EnterPick`: the focused one, then the one focused last, then the one made last; a minimized one only when there's no other; never a parked one), asks its copy for it in full screen and in front with the request the profile switch already sends (`focusWindow`), and brings its browser to the front. From there nothing is new: the overlay over the full-screen window, its page in the slot or the page box.
+
+**No window to open into.** The browser is opened once through `NSWorkspace` (started if it isn't running; one running with no window makes one): a linked one, else one that's running, else the one Margin was last linked with (`MarginLastBrowser`, written at each link; Safari the first time). Its copy's link and its window are then waited for, 15 s at most. Nothing by then, the app is told why and shows its set-up window, which is where a missing extension is seen.
+
+**The set-up window** is still there: when the opening fails, when Margin is opened holding Option, and when it's already open.
+
+**The setting.** On with the slot (`MarginNativeSlot`), since the two together are the Margin Tirth asked for; `MarginOpensBrowser` turns it on or off by itself. Off, opening Margin shows the set-up window exactly as before.
+
+**Mine, not asked:** which window (the last used), the Option key for the set-up window, the 15 s, and that the browser keeps its own Dock icon and its name in Mission Control for now. Hiding those needs the browser started by Margin without a Dock icon, which the test kit did for other apps and nobody has tried with a browser (an AppKit app started that way could not go into full screen in the kit: `multi-app` notes); it is its own step.
+
+**Verified.** `enter-tests.swift` (18 checks: the window and the browser chosen) and `e2e-enter.swift` (15 checks through the real link and shell against the fake extension, with a recorder in place of `NSWorkspace`): one browser opened once and waited for, the window asked for once in full screen, two asks at once one request, a failure only after the wait, quitting ends one under way.
+
+**Not verified.** Anything with a real browser (`TESTING.md`, "Opening Margin"): that `focusWindow` with full screen brings a Desktop window of a browser that isn't in front into full screen and forward, how long a cold Safari takes to link, and what the first seconds look like (the helper's launch card, the window's own full-screen animation).
+
+**What Tirth's first try showed (2026-11-15, 10:51 to 10:54, the log).** The slot lands in real Safari: 25 ms for the first reservation, 12 to 28 ms for each sidebar hide and show, 67 ms for a new full-screen window. A switch to a space in another profile failed (the toolbar, above, since fixed and not yet tried again). And the build they were trying still opened the set-up window when Margin was opened, which is what this section answers.
+
+**Not done yet (the rest of what was asked).** Other apps as items in the sidebar that open in the page's place; Margin's own name on the Dock, the menu bar and Mission Control in place of the browser's; the page box removed once the slot has held up.
+
+## Margin.app owns the spaces: the library (2026-11-15)
+
+Phase 1 of `docs/MARGIN-APP.md`: with `MarginHosted` on (`defaults write com.unibox.margin MarginHosted -bool YES`, read in `Shell.forApp` into `Shell.Options.hosted`), the app keeps the person's spaces, pins, folders and Margin tabs ("items") itself, in one data set of its own, instead of each profile's copy keeping its own. Off (the default), nothing of it runs: no file is read or made, and every profile's copy keeps its spaces exactly as before.
+
+**Where.** `data/app/set.json` and `data/app/items/<collection>.json` beside the profiles' sets (`DataStore` with `flat: true`: the same files, backups, atomic writes and merge rules, one set). Collections: `spaces` (`name`, `emoji`, `color`, `order`, `browser`, `profile`: the Safari profile its new web items open in, null for the default), `pins`, `folders`, `tabs` (the items), `archive`, `windows` (each Margin window's space), `imports` (the import's marker).
+
+**Items have a target.** `{ kind: 'web', browser: 'safari', profile }` or `{ kind: 'app', bundleId, name }`, on every item, pin and archive entry, so a space can mix pages of several Safari profiles and Mac apps. An app item's address is `app://<bundleId>`: the model matches by address, and only `http(s)` pages are ever archived, so closing an app forgets it.
+
+**The library's rules are margin-core's** (since 2026-11-24, docs/CORE-REFACTOR.md step 4; this replaces 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore, not a Swift port"). One copy still: the rules are app/shared/core/src/library, a function-by-function port of `app/shared/library/library.ts` over `extension/state/model.ts` (with pinned-rules.ts, air-traffic.ts, front-item.ts), which Margin.app runs through margin-ffi and the Windows shell runs as it is, with no JavaScript engine (Tirth, 2026-11-22: the rules go into the core once the hosted design is the only one coming; no WebAssembly). The TS stays only as the shared vectors' reference (tests/fixtures/library: the TS tests' calls, generated sequences, the edges as JavaScriptCore answers them, every step checked against the core) and as the extension's own rules while the browsers' copies own their spaces; it's built into nothing. The merge, the files and the times are the core's store's (data/library.rs, data/store.rs), as they are for the profiles. Until step 4: `scripts/build.ts` bundled library.ts as `dist/app/library.js` and `LibraryRules.swift` ran it in a `JSContext`, JSON in and out (the reasons then: one copy of the subtle rules, already tested; JavaScriptCore a system framework). What the move decided (Tirth's answers): ICU collation exact through the system's sorter, ties by the ids' order, a cut through an emoji drops the broken half, addresses parsed as the browsers do, the no-rules fallback gone.
+
+**Times.** The rules give untimed values; the store stamps each (`Library.apply` until step 4, data/library.rs since) at now, or just after the item's own time when the clock went back, and merges them like any change.
+
+**The import (decided by Tirth).** The first time the library opens with `MarginHosted` on, every profile's set the app keeps (every browser's) is imported once (`Library.importOnce`): spaces with the profile as their own, pins, folders, every Margin tab (open or kept) as a web item in that profile, and the archive. Ids are namespaced, `<browser>:<profile>:<id>` (an item: `t-` and a hash of the same, since the model and UI take only `t-` ids for tabs), so two profiles' `personal` stay two spaces. The order is `browser.json`'s through `BrowserProfiles.resolve` (the slots rule), read only; a forgotten profile's spaces are imported too, after the others. The marker (`imports.done`: when, which sets, counts) is saved with what it brought, and `set.json` is written last, so a crash before it reruns the import, which gives the same ids. Nothing in the profiles' files is written or deleted (checked file by file). Settings, theme settings and site icons are not imported: they stay each profile's for now.
+
+**The read API and actions** (`Library.swift`): `snapshot()` (the UI's stored-values shape: `spaces`, `pins`, `folders`, `archive`, `openTabs.keptTabs` with each item's target, `library: { v, imported }`, for `ui/host-app.ts` with minimal change), `spaces()`, `items(space:)`, `target(ofItem:)`, `space(ofWindow:)`, `observe(_:)`. `perform(action, payload)` takes the UI's names and payloads: setSpace, createSpace, renameSpace, deleteSpace, orderSpaces, moveTabToSpace, moveTab, pinTab, unpin, openPin, movePin, createFolder, renameFolder, setFolderOpen, deleteFolder, moveFolder, activateTab, newTab, closeTab, clearToday, restoreArchive; and the hosting's own: addItem, updateItem, itemClosed, removeItem, setSpaceProfile, forgetWindow. Anything else is refused (`unsupported`: updateSettings, the theme and history actions stay the copy's).
+
+**What needs a browser or an app is a request, not done here.** activateTab, newTab, closeTab, setSpace, openPin, unpin, clearToday and restoreArchive change the library's own data (the item made, used, archived; the window's space) and return a request with the item, its address and its target resolved: recorded (`Library.requests`, the last 100) and given to `Library.delegate` (`LibraryDelegate`), which the hosting phase implements. Mine, not asked: the library makes the item for newTab and archives it for closeTab itself (it's the source of truth for Margin tabs now), so a page Safari fails to open is the hosting's to remove (`removeItem`); a pinned item becomes the pin, as a kept tab does in the extension.
+
+**Not done here:** any window, hosting or palette; settings in the library; profiles that appear after the import; an empty library (no profile sets) stays empty, for the create-spaces step of the window phase.
+
+**Verified.** `tests/library.test.ts` (9 tests: every action, the cascade, the requests, the snapshot drawn by `shared/view.ts sidebar`, the import's namespacing, order and rerun) and `library-tests.swift` in `tools/app-tests/run.sh unit` (the bundle in JavaScriptCore, the flat files read back, times after a clock that went back, the delegate, observers, the import from stand-in profile sets and `browser.json` in a temporary folder with the profiles' files unchanged, and the shell: off makes nothing, on opens and imports).
+
+## The host engine: other apps' windows in Margin's page area (2026-11-15)
+
+Phase 3 of `docs/MARGIN-APP.md`, built on `feat/hosted-engine` (`app/platforms/macos/shell/Host*.swift`, `ShellHost.swift`, `private/HostCalls.swift`).
+
+**Off by default.** `defaults write com.unibox.margin MarginHosted -bool YES` (`Shell.Options.hosted`). Off, nothing of it runs except a crashed run's marker being cleaned up. The shell still has to wire it to Margin's own window (phase 2): `open(app:in:marginWindow:marginSpace:)` with the page area in top-left (window-server) coordinates, `requestSafariWindow` / `closeSafariWindow` to the extension's window requests, `poll()` on the shell's poll.
+
+**How it's built.** A state machine (`HostEngine`) over one seam (`HostSystem`: the real one in `HostSystem.swift`, a stand-in window manager in `tests/host-tests.swift`), every operation one at a time. Showing a host, under the freeze and each step verified and timed in the log: launch with no Dock icon (an app already running that Margin didn't start is refused; a running Safari gets a window of Margin's own from its extension, never a restart) → its first window → AXFullScreen, macOS's jump to the new Space undone → Safari's sidebar hidden (a window Margin may touch) → the one shown before parked and taken out of full screen in its private Space (only two tiles in Margin's Space) → the tile moved into Margin's Space → the emptied Space destroyed by the bridge, Margin's Space made current first → the page area's edges and tile spacing reserved until the window's bounds are the page area within 1 pt.
+
+**Fallbacks.** A failed step backs the window out of full screen (its Space goes), destroys an emptied Space or keeps it to try again (`leftSpaces`, marker, `poll`, quit, recovery), quits an app started for that open, and shows the previous host again when it had already been parked. Placement that can't be reached is said and the window stays shown.
+
+**Decided here, for the on-screen check to judge.** The page area's top and bottom reservations apply to the whole Space, so Margin's own tile is as tall as the page area; the left edge stays Margin's (its tile flush left), the gap after its tile is the tile spacing. A Safari sidebar whose state doesn't read (another language, its closed title not learned) is pressed once only when the window doesn't fit, and pressed back if it still doesn't. An app that doesn't quit when asked (unsaved work) is left running with its window on the Desktop, and stays in the marker.
+
+**Verified.** Unit checks against the stand-in (launch to shown, a failure at every step leaving nothing, switching and parking, quit order, recovery, outside opens, Safari's paths) and the private calls' check against a fake resolver. **Not verified: anything on the real screen.**
+
+**Safari's window without Accessibility (2026-11-15, after the on-screen run).** Hosting an app Margin starts (TestPane) worked end to end on the real Mac; a web item in the person's running Safari failed at the window step: the window its copy made (`newWindow`) opened on the Desktop (a normal window can't open in Margin's full-screen Space), and Accessibility lists only the current Space's windows (0 of Safari's 7 listed while another Space was current), so it was never found, and the failure left that window open, in no Space. Now, for a window a copy made (the engine keeps the copy's id for it): it's found by the window server (`HostSystem.serverWindows`, CGWindowListCopyWindowInfo on every Space: a layer-0 window of Safari's pid, at least 200×200, not there before the ask; of several, the one at the bounds the copy answered; still none or several told apart by nothing: the step fails). Full screen and back go through its copy (`safariFullScreen` → `setWindowState { fullscreen, focused, notAfter }` / `normal`), asked beside the wait so macOS's jump is undone as soon as the window server shows the new type-4 Space; done is read by the window server (`spaces`, `spaceType`), not AXFullScreen. Its sidebar: Safari's main window (Accessibility) is read before the tile and, unread there, again once its tile is in Margin's Space; still unread or another window, the sidebar is left and said, never pressed blindly. Every failure after the ask closes that window by its copy (`closeSafariWindow(profile, id)`, before a Safari Margin started is quit); a close the window server doesn't confirm puts it in the marker (`leftSafariWindows`, with Safari's pid and launch time), closed by its copy from the poll, at quit or at the next launch's recovery (a window of another Safari launch is forgotten, never closed). Apps' windows: Accessibility, as before. The engine's existing `windows`/`setFullScreen` through Accessibility (`HostAX`) and the shell's window binder (off while hosted) aren't used for it. **Not verified on the real screen yet.**
+
+## Margin as the app: the parts joined (2026-11-15)
+
+Asked by Tirth on 2026-11-15: open Margin as an app; the first time it asks for spaces (existing ones imported); ⌘T and a search opens Safari inside Margin's page area with no Safari toolbar, Dock icon or Mission Control entry; the palette finds any installed app and opens it the same way. The four parts (the library, Margin's window, installed apps, the host engine) are joined on `feat/hosted-glue`, all behind `MarginHosted`; off, nothing changes.
+
+**How it's joined** (`HostedSession.swift`, `ShellHostedGlue.swift`).
+- *The windows draw the library* (`LibraryWindowSource`): its snapshot, with the items that have a page (hosted, or a tab of a hosted Safari window) as open tabs of the Margin window hosting them, numbered for the UI (it takes only numbers for open tabs; the session maps them back), the one shown active, so the sidebar highlights it. Settings, theme settings and site icons are still a profile's, read only, kept in memory (the earlier stand-in, `DataSetWindowSource`, which is also the fallback when the library's rules don't load). A search typed in the palette becomes a web item at the engine Safari searches with (as the copy learned it, else Google's).
+- *The library's requests are the session's*, one at a time: an app item opened by the engine (`.app(bundleId)`) the first time, shown after, closed by it; a web item in Safari: one hosted window per Safari profile in use, made by that profile's copy (`newWindow`, asked by the engine only once the copy has linked: `HostEngine.safariLinked`, so windows a Safari just started restores are never taken for Margin's), shown by the engine, the item a tab of it (`hostShow`); two web items of one profile are a tab switch only. Closed: `hostClose`, the engine's close. The engine's events (an app quit, a window gone) take the items' pages away.
+- *A palette pick* (`app.open`): the window's space's item for that app, else a new one (`addItem`), then shown. Safari picked: a new web item (a blank page) in the space's profile. Chrome or Edge picked: logged, nothing done. A web item's profile: its own, else the default profile's copy (`s-default`), else the first Safari copy linked.
+- *Margin's window while hosting* (v1 rule, mine): taken to full screen first (the tiles need its own Space; windowed hosting is a later phase), its page told `pageOutside` (the UI then keeps the sidebar docked: there's no page to give room to) and nothing passes through it (`setHosting`), and it becomes the sidebar's tile only as the hosted window's tile comes into its Space (`HostEngine.willTile`: alone in its Space a narrow window would stand in its middle while Safari starts): its content's max width is then the page's left inset (the theme's sidebar with its margins). The engine's placing reads Margin's tile again for a moment while it's laid out at that width. The page area, given to the engine, is worked out from the tiles: the display's full-screen area (below the camera housing) less Margin's tile, less the theme's top, bottom and right insets (the right one as last measured with room for a page; in the tile there's none to measure), which the engine reserves at the Space's edges. A change (the sidebar's width, another theme) goes to `pageRectChanged`. Nothing hosted any more: the whole width again.
+- *The overlay path is off* with `MarginHosted`: the shell's read of the window server makes no binding, overlay, `drawn` or layout for any browser window (`hostedTrack`: the host's poll instead); the slot and opening the browser (ShellEnter) are off too. The copies stay linked as the tabs' drivers.
+- *The first run* with nothing to import: one space made (Personal) and opened in the UI's own space editor once the window's page is drawn (`edit-space`), for the person to name; the UI has no create-spaces flow of its own, so this is the minimal one. Imported spaces come as before (the library's import).
+
+**Mine, not asked:** full screen first; the sidebar always docked while hosting (Toggle Sidebar changes only the setting until hosting ends); one Margin window hosts at a time (the engine has one page area); Safari picked = a blank web item; the search engine as learned; a blank-page item is kept like any.
+
+**Not done yet.** Keys while the hosted app has the keyboard are its own (Safari's ⌘T makes a Safari tab, not Margin's palette); the palette is drawn in the sidebar's tile, so it's that narrow while hosting; tabs Safari opens itself (a link to a new tab) aren't items yet (`addItem` is there for it); Chrome and Edge; a hosted app opened from outside; windowed hosting; Safari's restored windows when Margin starts it with no Dock icon show on the Desktop.
+
+**Verified.** `tests/hosted-tabs.test.ts` (the copy's `hostShow`/`hostClose`), `tests/ui-host-app.test.ts` (`pageOutside`), `hosted-tests.swift` in `tools/app-tests/run.sh unit` (the real engine on the stand-in window manager: a pick opens its app with the page area from the tiles, a web item launches Safari and asks its copy, a tab switch only for a second one, parking, closing, Safari and Chrome picked, the page area moving, the shell's overlay path, slot and opening off), and `e2e-glue.swift` (34 checks: the real shell, link, page and Margin's window off every display, the fake copy, the engine on a stand-in window manager). **Not verified: anything on the real screen** (`TESTING.md`, "Margin as the app, joined").
+
+## Margin as the app: what Tirth's first try found, fixed (2026-11-15)
+
+His first try (16:13 to 16:15: a Safari web item, Maps from the palette, switches, a sidebar drag, quit) and his words: "too many inconsistencies", the app "not staying there", "opening in full screen", and at the first open "just the edges of our app and the bg was transparent". Each from the log, its cause and the fix:
+
+- **The reservation grew at every place** (0/7/8/8, 0/14/16/16, 0/21/24/24). `HostLayout.plan` worked the area out from the windows' bounds now, and right after a tile move the hosted window still had its full-screen frame while a reservation was set: counted twice. Now the plan comes only from the placement Margin's window gives (`HostPlacement`: the page area, the display's full-screen area, Margin's tile width): top, bottom and right are the page's distances from the area's edges, left 0, the spacing the gap after Margin's tile. Verified on the window's bounds as before; a reservation already right isn't sent again.
+- **A sidebar drag took Margin's window out of full screen**, leaving the app alone (and Maps then promoted itself to a Dock app). Changing a full-screen tile's size constraints does that. Decided: Margin's window's constraints change only in `tile()`, which the engine calls while Margin's window is alone in its Space just before the hosted tile comes in, never while a hosted tile is beside it; and while hosting the sidebar's width is locked (the resize behaviour refuses, the handle is hidden: `m-sidebar-fixed`). Why not a fixed widest tile with the page following through the spacing: tiles can't overlap, so the page could only start after the widest tile, leaving a band of frame between a narrower sidebar and the page in every theme. A width that changes anyway (another theme) is a new placement: the engine parks the one shown and brings it in again beside the new width (one switch's cost, under the freeze). Negative insets measured mid-drag are clamped (`hostedPageRect`).
+- **Margin leaving full screen stranded the hosted app** in a full-screen Space of its own. Now `windowWillExitFullScreen` parks the one shown at once (`HostEngine.parkShown`: private Space, out of full screen there, the reservation given back), and the poll parks a shown window found outside Margin's Space, or a parked one found in a user Space, twice in a row (any other way it got there). Picking its item again takes Margin's window to full screen and hosts it again (`open` always passes Margin's current Space). Margin's window is the sidebar's tile only while the engine shows something in it; nothing shown, it's its whole width again.
+- **Every switch waited 2.1 s** for Margin's window to narrow when it was already narrow. The wait now runs only when its width isn't the tile's, polls every 50 ms until it's there and steady, 600 ms at most; the fixed 0.25 s before the page area counted is a condition too (a layout measured with the sidebar alone).
+- **The first open was a see-through hole.** The window is filled (`windowBackgroundColor`, corners still AppKit's) and passes nothing through; with nothing hosted its page area is the theme's launcher (`launcher` in `ui/host-app.ts` for Margin's own window), opaque in all three themes (`tests/theme`). As on Margin's new-tab page, the sidebar stays beside it then.
+- **Quit left Margin's Safari window open.** Before its copy closes it, a parked one is moved onto the Desktop and a shown one out of full screen by its copy, waited for until the window server has it on a Desktop (in no Space at all it's still leaving full screen); then closed and confirmed; Safari quit only after, if Margin started it. A quit with only unclosed windows left runs it too.
+- **Also:** the page's full-screen layout was dropped by `host-app.ts`'s dedupe (same insets, only its mode new), so every open waited 1.5 s and used the windowed one; the mode and `pageOutside` now count, and the page measures again after either changes. Each switch logged "back on a tab it had passed": the library answered at once while the show took seconds; the item asked for is now drawn in front at once (`requested`), and a show overtaken by a newer one before it started is skipped. A field of Margin's taking the keys (the palette) makes Margin active and its window key, so the palette opened over a hosted app gets the typing.
+
+**Left:** the reserved strips around the page show the Space's backdrop, not the theme's frame; keys while the hosted app has them are still its own (Safari's ⌘T); the palette is still drawn in the sidebar's narrow tile while hosting; an app opened from outside while hosted (Maps' promotion) is only logged. **Verified:** `host-tests.swift`, `hosted-tests.swift`, `e2e-glue.swift`, `e2e-hosted.swift`, `tests/ui-host-app.test.ts`, the three theme tests. Not on the real screen (`TESTING.md`, "Margin as the app, joined", step 3).
+
+## A Safari Margin started: the windows it restored are closed (2026-11-15)
+
+Decided by Tirth on 2026-11-15, after a Safari Margin started (no Dock icon) restored his last session's windows and a
+full-screen one stood as its own Space in Mission Control: close them, so they don't come back the next time.
+
+`HostedSession.sweepRestoredSafariWindows`, from the shell's poll while hosted: only while a Safari Margin started is
+running (`HostEngine.launchedPid`); for each linked Safari profile, once per link (its epoch), the windows its copy lists
+that were there before the copy started (`createdAt` unknown: Safari restored them) and aren't Margin's own, closed by
+that copy (`closeWindow`), so they leave Safari's saved session. A Safari the person opened is never touched. Their tabs
+and unsent text go with them (his choice). `Options.closesRestoredSafariWindows` turns it off. Unit-tested
+(`hosted-tests.swift`, "hosted sweep"); not yet seen on screen.
+
+## Almost every app in Margin: window mode, and apps the person already opened (2026-11-15)
+
+Asked by Tirth on 2026-11-15: "some apps that can't be on full screen don't open up at all like phone, facetime. we need to find a way to be able to open almost all apps". Two causes, found on the real Mac (macOS 27.2.1): Phone was already running (opened from its Dock icon) and the engine refused apps it didn't start; FaceTime and Calculator, started with no Dock icon, have no settable AXFullScreen (FaceTime resizable, Calculator a fixed 230×408), like many AppKit apps in the kit (Dictionary, Console, Activity Monitor, Music, Reminders…). Built behind `MarginHosted`, as everything else (`HostEngine.swift`, `HostSystem.swift`, `HostedSession.swift`, `MarginWindowController.swift`).
+
+**Window mode.** Chosen when the window's AXFullScreen isn't settable, or when its full screen fails (backed out of whatever it reached first; Safari's windows never: they're Margin's own and fail as before). Its normal window is brought into Margin's full-screen Space as a window (the bridge, options 7, as the kit's `winhost.swift` proved: it stays there, on screen, no Dock icon) and placed in the page area by Accessibility: a resizable one gets the page area (an app's own minimum or maximum kept: the size it took, centred in what's left, its top left in the page area when it's bigger); a fixed one is centred. Checked by the window server's bounds and Spaces. Margin's window stays its whole width: no tile, no narrowing, nothing reserved at its Space's edges (a reservation left by a tiled host is given back), its page area from its own layout (the engine asks `willWindow`: the window is told `setWindowed`, so no `pageOutside`, and `untile`, its constraints back to its whole width, only once no hosted tile is beside it). Its own title bar stays (it can't be hidden outside full screen: accepted). A page-area change (resize, sidebar toggle, theme) places it again by Accessibility, never parked for it.
+
+**Ordering.** The hosted window must stay above Margin's. The engine says which window that is (`keepAbove`, from every change of what's shown); the session passes it to Margin's window (`keepBelow`), which orders itself right below it (`order(.below, relativeTo:)`, as the overlay orders its panels against other apps' windows) at once and again whenever it comes to the front: becoming key or main (a sidebar click), Margin activated (`didBecomeActive`), shown. Not while a field of Margin's has the keys: the palette is drawn in Margin's window, so it's in front then and ordered below again when the field lets go. A press in the page area around the hosted window (Margin's window under it would take it) gives that app the keyboard: activated and its window raised and made main (`AXRaise`, `AXMain`), never a click; only while Margin's window is on screen in the current Space (the pointer monitor hears every app's presses).
+
+**Parking and switching.** A window-mode host is parked by giving its frame back first, while it's still in Margin's Space (the current one: Accessibility sees only the current Space's windows, so this is the moment it can), then moving it into a private Space; no full-screen exit. Shown again: back into Margin's Space, placed again. Mine, not asked: the frame is given back at every park, not only at the end, so a parked window always has its own frame (a crash while parked leaves nothing to fix, and giving it back later needs no Accessibility). Its cost is one more Accessibility resize per switch, under the freeze. Switching full screen → window: the tiled one parked and out of full screen first, then Margin's window untiled, then the window brought in; window → full screen: the window parked, then the tile flow as before (Margin's window narrowed alone in its Space). The session prepares Margin's window for the mode it knows (a host already known to be a window, with nothing tiled beside it: its own layout at once; anything else, a new app too, the sidebar alone, and `willWindow` switches it if the app turns out to be a window), so a new window-mode app opened while another window is shown flips its layout twice (said here, not worth more state).
+
+**Apps the person opened (Phone).** Hosted as they are, the rule Tirth set for Safari applied to every app: never started again, never quit, their Dock icon left (a running app's can't be changed from outside anyway); their main window, from Accessibility when it lists it, else the front one by the window server (on another Space, where Accessibility can't see it: then brought into Margin's Space, where it's read; still not listed, or minimized: not hosted, given back). Full-screen mode when its AXFullScreen is settable, else window mode. Given back when Margin stops hosting it (its row closed, Margin quits, the next launch after a crash): out of full screen, its frame as it was, back in the Space it was in (that Desktop if it's still there, else its display's), and it keeps running. **Decided here:** a window of the person's that's already full screen in a Space of its own is left alone, and the open fails saying so ("already in full screen in a Space of its own"): moving someone's full-screen window by its tile is possible, but its Space, its place in Mission Control and what macOS restores at its exit are the person's, and nothing of it is recorded; nothing of it is touched (not even backed out).
+
+**Frames: recorded first, given back before any quit.** Every window's frame and Space are recorded before anything moves it (`take`), the marker has them (mode, frame, Space, whether its frame is changed, whether it's the person's app, its bundle and launch), and `frameChanged` is saved before Accessibility sets anything. Given back by Accessibility while the window is on the current Space (brought there first if it isn't), checked by the window server; only then is an app Margin started quit, so AppKit saves the frame it had (`NSWindow Frame` unchanged, as in the kit's run). A frame that wouldn't go back is said and kept in the marker; the app is still quit (AppKit had saved the moved frame as it moved anyway, so leaving it running wouldn't keep it). **Recovery** (the next launch after a crash): a window-mode window or the person's is moved back into its Space, its frame set there, or, when that Space isn't current and the current one is a Desktop, set on the current Desktop and moved back; then the apps Margin started are quit. A marker's window of another launch (a pid used again) is never moved or resized.
+
+**Verified (off screen only).** `host-tests.swift` "window mode": FaceTime (resizable) and Calculator (fixed) started by Margin in window mode, a maximum size kept, full screen that fails falling back, the page area moving, the press giving the app the keys, switches window → full screen → window (frames given back on the current Space before parking, the reservation given back, Margin's window kept below and released), Phone already running (found by the window server, never launched or quit, its Dock icon left, back on its Desktop at its frame), the person's full-screen-capable app tiled and given back, the person's full-screen window left alone (no call of any kind), Margin leaving full screen, and the restore before quit on every path (closed shown or parked, Margin quits shown or parked, after Margin left full screen, after a switch that couldn't park it, its own failed show, the next launch after a crash): each app's frame as it was asked to quit, and its saved frame, is its own. `hosted-tests.swift`: the session's window mode (Margin's window untiled and windowed, kept below the hosted window, back to the sidebar's tile and back, the page area moving, closing). `e2e-glue.swift`: Calculator through the real shell, page and Margin's window: window mode, Margin's window its whole width with its own layout, no launcher and no field of Margin's with the keys, Calculator centred in that page area, kept below, its frame back before the quit. `tests/ui-host-app.test.ts`: `pageHosted`. **Not verified on the real screen** (`TESTING.md`, "Window mode and apps already open").
+
+**No launcher under the window.** In window mode Margin's page draws its own layout but not the theme's launcher in the page area (`pageHosted`, `ui/host-app.ts`): the end-to-end run found its search field taking the keys (`focus`), which brings Margin's window in front of the hosted app. Around a window smaller than the page area (Calculator) the window's own fill shows. The sidebar is docked there as beside a tile (changed after the on-screen check below). The same run found the keys' report stuck on: a focused field taken out of the page (the first run's space editor, closed as hosting began) fires no `focusout` in WebKit, so Margin thought a field of its own still had the keys and never ordered its window below the hosted one. The overlay page (`app/shared/host/overlay.ts`) now watches the page's changes while a field has the keys and says they're free once none has them (also true of the overlay over Safari, where keys stuck the same way would have stayed Margin's).
+
+**After the first on-screen check (2026-11-15 19:59: FaceTime, Calculator, the kit's TestPane, Margin quit).** Four bugs, fixed:
+- *The sidebar hid and FaceTime was placed over it.* In full screen with Keep open off the theme hid the sidebar (nothing kept it docked once `pageOutside` was off), so the page area became the whole window (`250/8/8/8` → `8/8/8/8`). Now the app host's `sidebarDocked` (`pageOutside` or `pageHosted`) docks it in the view model, and Margin's window says the flag turning on first, so the page is never drawn between the two with neither. `e2e-glue.swift` fails without it with exactly `8/8/8/8`.
+- *Calculator never hosted.* Started while Margin's Space was current, its window opened on the Desktop; brought into Margin's Space, Accessibility didn't list it within the 1 s look (it lists only the current Space's windows, and only once the window server has moved them). Now `look`: asked every 50 ms for up to 2 s for the element whose `_AXUIElementGetWindow` number is the server's, of any role or subrole (`HostSystem.window(pid:number:)`: its windows, main and focused windows, children); still nothing, once with its Desktop made current under the freeze, then back. The log says which path found it and its role.
+- *FaceTime slow to quit (and promoted).* No call in the give-back or quit path activates an app or opens one: frames are set by Accessibility (position, size), windows moved by the bridge, the quit is `terminate()`. What did activate it was the page-area press: every press on FaceTime itself (it covered the whole page area) called `NSRunningApplication.activate` on a no-Dock app. Now only a press around the hosted window does, never while an operation runs (a switch, a close, the quit) nor once Margin quits. Whether LaunchServices' 561 at quit came from those activations or from FaceTime's own quit isn't known off screen. An app asked to quit by its close is no longer asked and waited for a second time by `quitAll` (it was 5 s more per app), and a quit that takes longer than 5 s says what can be read (its type now, other windows of its own on screen, whether Accessibility still answers).
+- *Place took 1.5 s.* FaceTime at its own maximum size never reached the page area's, so the first set waited out the whole 1.5 s before it was centred. Now a window-mode set waits until the window server reports the target within 1 pt, or its bounds changed and held still for 100 ms, at most 600 ms (`windowPlaceWait`, `placeSettle`); the tiles' reservation keeps its 1.5 s.
+Verified off screen: `host-tests.swift` (Accessibility listing 1.5 s late; an `AXDialog` subrole; listed only with the Desktop current; listed nowhere; a press on and around the window; a press during a switch's and the quit's give-back; an app that doesn't quit; placing at a maximum size in about 100 ms, the window server's bounds 300 ms late), `tests/ui-host-app.test.ts`, `e2e-glue.swift` (docked in window mode). Not on the real screen yet.
+
+**After the second on-screen check (2026-11-15 20:37: FaceTime, Calculator, TestPane, Margin quit).** Two issues, their causes read from Margin's log and the apps' own (`/usr/bin/log`), fixed:
+- *Tile → window took 3.9 s* (TestPane tiled, then Calculator: "Margin's window 3194"). Not a fixed wait: `willWindow` waited (3 s at most) for a layout measured at Margin's window's whole width, and the page measured nothing for 4.8 s. The tile gone, the window was 1512 wide, but its page's last layout was the tile's (`250/8/0/8 in 250×933`, measured as `pageHosted` came, before WebKit had the new size); the page measures on its own only on a resize event or a resize observer, both of which WebKit runs only when it draws a frame, and none came until an unrelated push (the dev hook) made it measure: `1512×949`, 4.8 s late. The switch then used the old page area. Now `willWindow` asks the page to measure at every look (`remeasure` → `{ type: 'measure' }` → overlay.ts `measureNow()`, which reads the web view's size whether or not a frame was drawn), and if no layout at the whole width comes within `windowLayoutWait` (0.4 s), the page area is worked out from the last docked layout (`hostedPlacementWorkedOut`, `MarginWindowGeometry.dockedPageRect`: its left, top and bottom insets, the right one as last measured with room for a page); the page's next layout places the window again if it differs. The log says which (`its page measured there after N asks` / `worked out from its docked layout`) and, when not, the sizes (the layout's, the content's, the web view's), for the next check to tell a late web view from a late frame. `prepare`'s wait asks to measure too.
+- *FaceTime "promoted" and slow to quit.* Both are FaceTime's own, as an iPad (Mac Catalyst) app started with no Dock icon. Its quit (UIKit's `TerminatingHidingMacGUI`) first makes itself a background app (`TransformProcessType` → BackgroundOnly), which LaunchServices announces as a type change, 561, that Margin read as a promotion; the Dock logged "App background type did not change": no Dock icon came of it. Then it waits for AppKit to hide its windows, which fails for this launch (`ShowHideProcess` -600) while a window of its is ordered in, on any Space: it waits out its own 5 s watchdog ("App took too long to enter the background-only state. Exiting immediately!") and was gone 6 ms after Margin's 5 s wait. Seen the same with FaceTime given back to its Desktop (20:00, 20:38), and Maps parked in a private Space (17:51): re-parking before the quit wouldn't help. With no window ordered in (18:18, its window never shown) the same quit took 0.5 s. Giving it back to its Desktop also brought its scene to the foreground just before the quit. Now an app Margin started and quits whose bundle has `UIDeviceFamily` (`HostSystem.isUIKitApp`: FaceTime, Maps, Phone, News, Podcasts, Weather, Clock, Journal, Home, Stocks…) has its window closed first, frame back already: brought to the current Space if it's elsewhere (under the freeze, where Accessibility reads it), its close button pressed (`HostSystem.close`, AXPress, an action, never a click), gone by the window server's reading within `closeWait` (1 s); then quit. Closed, it isn't taken to its Desktop (nothing to take). Not closed (a sheet, Accessibility refusing): taken home and quit as before. A 561 is a promotion only when the app's policy reads regular; otherwise it's said ("its type changed …, now a background app, as it quits: not a Dock app"). The quit wait is 6 s (5 s plus a margin over such an app's own watchdog, a cap, not a sleep). **Mine, not asked:** AppKit apps (Calculator, TextEdit) aren't closed first: their quit doesn't wait on their windows, and closing them would change what they restore (a document's window). Never force-quit; restore before quit stays the rule (closing saves the frame it has).
+Verified off screen: `hosted-tests.swift` (tile → window with the page's layout late: measured after 2 asks, and never measured: worked out; both under 0.5 s of waiting, the window at the page area; failing first: 3.1 s and the old page area), the geometry of the worked-out page area; `host-tests.swift` (FaceTime parked or shown at Margin's quit: closed before its quit, a parked one brought to the current Space first under the freeze and never onto its Desktop, out at once, its saved frame its own, never taken for a Dock app; its close refused: quit with its window open, its 561 not a promotion, out by its own watchdog; Calculator never closed first; failing first: 5 s, "now a normal app with a Dock icon"); `e2e-glue.swift` (the real page measures when asked). The stand-in models the iPad apps' quit as their logs show it. Not on the real screen yet.
+
+**Known gaps.** The hosted window's title bar shows; a click on the sidebar brings Margin's window forward for a moment before it's ordered below again (may be seen); while the palette is open the hosted window is behind Margin's; an app parked by Margin that the person opens from its Dock icon may make a new window of its own (only the poll's stray check covers a parked window macOS puts back on a Desktop).
+
+## Hosted apps as members of Margin's Space: instant switches, the theme's frame kept (2026-11-15)
+
+Asked by Tirth on 2026-11-15: switching between apps and tabs instant once an app has been opened (only the first open shows a loading animation), and the theme's frame (its borders and spacing) visible around the app shown. With the hosted window as Margin's second tile, Margin's window shrank to the sidebar, the reserved strips showed the Space's dark backdrop, and since a full-screen Space holds two tiles every switch left and entered full screen again (1.3-1.5 s under a frozen screen).
+
+**The model (proven the same day on the real Mac, macOS 27.2.1, real apps: `/tmp/margin-toolbar-test/mc/mc8`, `mc10`).** A full-screen window moved into another full-screen Space by the bridged add/remove operation (options 7) is a plain member there: still full screen at its frame, no title bar or toolbar, no Dock icon; its emptied own Space can then be destroyed (bridged destroy, Margin's Space current first) and Mission Control lists Margin's Space only; several apps can be members; activating one keeps the current Space and the windows in place; leaving full screen later (AXFullScreen false with the window in the current Space) works and leaves no Space behind. AXRaise doesn't change which member is on top, so only one is ever in Margin's Space: the others are parked.
+
+**Built (`HostEngine.swift`, `HostedSession.swift`, `MarginWindowController.swift`, behind `MarginHosted` as before).**
+- *Margin's window keeps its whole width:* no tile, no content-size narrowing, nothing reserved on its Space. Its page area is its own layout's (`pageHosted`: the sidebar docked, no launcher there), the theme drawing its frame around it; the hosted window sits above it inside the page area, Margin's window ordered right below it (`keepAbove`/`keepBelow`, as window mode did).
+- *A first open* (`placeFullScreen`): the one shown before parked first; launch (no Dock icon) → its window → full screen in its own Space (under the freeze only from the ask until macOS's jump is undone) → Safari's sidebar (read with its own Space current a moment, under the freeze: Accessibility reads only the current Space) → its own Space's four edges reserved from the placement (`HostLayout.plan`: the page's distances from the display's full-screen area) and verified on its bounds → moved into Margin's Space as a member → its own Space destroyed → its app activated. Margin's page area shows a spinner and "Opening <app>…" meanwhile (`HostLoadingView`, drawn natively over the page area: the engine's `loading`, the session's `setLoading`). Every step is timed in one log line.
+- *A switch* (`switchIn`): the target moved into Margin's Space, then the one shown before moved into a private Space (`SLSSpaceCreate(cid, 1, nil)`, as parking does), the target activated; no full-screen exit or entry, no freeze (only when a window-mode one leaves: its frame is given back, which is seen). The new one comes in before the old one leaves, so Margin's page area isn't seen between them. Web items of one Safari profile stay a tab switch.
+- *The page area changing* (a theme, the display): the shown member placed again (out of full screen on the current Space, under the freeze through its entry again; Safari's parked first and out through its copy, unseen), with the loading animation. A parked one is placed again when it's next shown and the page area it was reserved for isn't the current one. The sidebar's width can't be dragged while hosting (`m-sidebar-fixed` with `pageHosted` too): each width would be a placing again.
+- *Window mode* (apps that can't go full screen) and Safari's copy-driven full screen are kept, on the same switching; a window-mode app is now activated when it's shown too.
+- *Quit, give back, recovery:* a member leaves full screen on the current Space (a parked one brought there first, under the freeze), then its frame and Space as before, then an app Margin started is quit; a Safari window is parked, made normal by its copy there, put on the Desktop and closed by its copy. The marker says `member` and the window's Desktop, so the next launch after a crash brings each to the current Space, takes it out of full screen, quits Margin's apps, and destroys Margin's old Space if nothing owns it; a Safari window left to close is made normal by its copy first.
+- *Mission Control:* after every operation the engine reads the listed full-screen Spaces (`listedFullScreenSpaces`, SLSCopyManagedDisplaySpaces) and says any hosted window's own Space still there (`HostEvent.listed`, retried as `leftSpaces`).
+
+**Always full screen (decided by Tirth, 2026-11-15, during this work).** With `MarginHosted` on, Margin's window is always full screen for now (windowed Margin waits until it's built properly: he uses Stage Manager daily). Opened by hand, again, or ⌘N, the window is made see-through, ordered in and taken to full screen, and drawn only once it's in (3 s at most, then shown as it is, said). No Enter/Exit Full Screen item in the View menu (and `NSFullScreenMenuItemEverywhere` registered off, so AppKit adds none), ⌃⌘F and the page's own ask refused, AppKit's toggle refused once it's in (`MarginWindow.locksFullScreen`); the window stays full-screen capable for the system. If macOS takes it out anyway (the green button, Mission Control), the one shown is parked, the window goes straight back into full screen, and the item it showed is hosted again (`HostedSession.leftFullScreen`/`enteredFullScreen`), logged. The session's "to full screen first" step is only a safety check now (asked once, said). macOS ignores the toggle for a window of an app that isn't active (seen 2026-11-16: Margin opened by a script with `open`, cooperative activation refusing it, so it was shown windowed after the 3 s): while it isn't in full screen it's asked again as soon as Margin becomes active, its window becomes key or main, or it's first on screen, once per activation, logged (`FullScreenRetry`; no timer, no loop), still drawn only once it's in when that comes within the 3 s.
+
+**Mine, not asked.** The tile path is removed, not kept as a fallback: its calls (`SLSSpaceCopyTileSpaces`, `SLSSpaceTileMoveToSpaceAtIndex`, `SLSSpaceSetInterTileSpacing`) are no longer checked at launch (one going away in an update would have turned hosting off for nothing), and a member that can't be placed falls back to window mode (apps) or fails and is closed (Safari), never shown full screen at the wrong size over the sidebar. Parked ones placed again lazily. Margin's old Space destroyed when Margin's window has left it and no hosted window is in it. The loading animation is native (a spinner and the name), not a themed part. Windowed Margin's code is kept (`alwaysFullScreen = false`, still checked by `e2e-hosted.swift`).
+
+**A way to resize a member without leaving full screen:** none known. A member has no tile any more (its own Space, whose reservation sized it, is gone), Accessibility's size is refused for a full-screen window (as the kit found), and a reservation on Margin's Space would shrink Margin's own window. Not tried on screen (no time spent, as asked): the on-screen check below has one AXSize try on a member to settle it.
+
+**Expected times (from the kit's runs, not measured in Margin yet).** First open: the app's launch (0.5-3 s) + full screen (0.7-1.6 s, the freeze only until the jump is undone) + the reservation (under 1 s) + the move and the destroy (tens of ms to ~1 s): about 2-4 s with the loading animation, the screen frozen well under a second. A switch: two bridged moves and an activation, under 100 ms (checked on the stand-in's clock, its moves landing 10 ms late). A placing again: 2-3 s, frozen up to the freezer's 1.7 s watchdog for an app.
+
+**Verified (off screen only).** `host-tests.swift` (the stand-in now plays members, own Spaces with their reservation, the bridge's move landing 10 ms late, and Mission Control's list over its clock): first open step order, one freeze, loading said, Mission Control listing an own Space only during first opens and placings (each under 2 s on the stand-in's clock) over a whole session with the person's own full-screen app left alone, switches under 100 ms with no freeze or full-screen call, the page area moving (shown placed at once, parked lazily), every failure (launch, Accessibility, the move in, the park, the destroy) leaving nothing, quit and the crash marker with members shown and parked, Safari (sidebar through its own Space, parked as it is, placed again through its copy, closed as a normal window), window mode on the same switching. `hosted-tests.swift`: the session with the real engine (loading named, Margin's window kept below, instant switches back, the page area from its own layout, macOS taking Margin's window out of full screen and the item hosted again, the safety check). `e2e-glue.swift`: the real shell, page and window: full screen from the start, leaving refused, no menu item, the loading view up as the app launched, the page docked and its width fixed, the app a member at Margin's own page area, an instant switch back, Calculator in window mode, macOS's exit undone with Calculator back, quit. **Not verified on the real screen** (`TESTING.md`, "Hosted apps as members").
+
+## Hosting: Dictionary, the loading bar, Margin's keys and the page card's corners (2026-11-15)
+
+Asked by Tirth on 2026-11-15, after using hosting as members: Dictionary opened as a separate app on top of Margin; no loading bar on the page card's top edge any more for an app or a search; ⌘⌥↑/↓ no longer moving through the space's tabs and apps; and the page card's rounded corners hidden behind the hosted window ("whatever custom ui we make open page content/app/tabs inside that ui"). Built on `feat/hosted-apps`, behind `MarginHosted` as before.
+
+**Dictionary.** His log: its window found only by the window server ("on another Space"), then neither Margin's Space nor its Desktop made Accessibility list it, the open failed and Dictionary was quit, its window standing over Margin meanwhile. Cause (the kit's own note, "unhide BEFORE adding membership", and a stand-alone test that saw FaceTime's and Calculator's windows at once when started without LaunchServices' hide option): Margin starts apps hidden (`_kLSOpenOptionHideKey`), and a hidden app's windows aren't in Accessibility's list; some apps make or expose theirs only once unhidden. Now, with no per-app code (`HostEngine`, `HostSystem.isHidden`/`unhide`/`setEnhancedUserInterface`):
+- An app Margin started that's still hidden: its window is taken from the window server at once (no 3 s wait for Accessibility); one with no window at all after `unhideWait` (0.5 s) is unhidden then (some make theirs only so).
+- Before a window the server found comes into Margin's Space to be read, its app is unhidden (`NSRunningApplication.unhide`, never activated), and Margin's window is ordered above it meanwhile (`cover`: the engine says the window, the session, Margin's window `order(.above, relativeTo:)`), so it's never seen on its own over Margin; once it's shown, Margin's window is kept below it as before.
+- Still unlisted after the 2 s look in Margin's Space: unhidden again if it hid, then read once more for 1 s with `AXEnhancedUserInterface` on the app's element (what assistive apps set), set back to its value after; then the Desktop look as before. The log says which path found it.
+- Hosting fails anyway: an app Margin started whose window is still in Margin's Space is moved into a private Space before its quit (`its window out of sight before its quit`); one that doesn't quit goes to the Desktop then, as before.
+**Mine, not asked:** an app of the person's that's hidden (⌘H) is unhidden too when it's hosted (showing it is the point), and isn't hidden again when it's given back.
+
+**The loading bar.** The theme's own bar (Arcadia's pill in the frame's top strip, Neubrutalism's and Pixel's stripes above the card) follows the front tab's `loading` (host-app.ts `loading`, from a copy's `push` over a browser). In Margin's window nothing said it. Now the session tells Margin's window which items are loading, by the UI's numbers (`setLoadingTabs` → `{ type: 'push', msg: { type: 'loading', tabIds } }`): the item an app is being opened or placed again for while the engine's slow step runs (`loading`), and every web item whose tab its Safari copy says is loading in the hosted window (the copy's own `loading` push, background/page-loads.ts, now passed by the shell to `HostedSession.copyLoading` while hosted: the copy's tab ids are kept per item from `hostShow`'s answer). A palette pick is in front at once (`requested`), so the bar and the lit row are the new item's while it opens. **Decided here:** the native spinner and "Opening <app>…" are gone (`HostLoadingView` removed); the bar is what he asked for, and both at once was redundant.
+
+**Margin's keys.** In hosted mode the shell's read returns before `updateKeys` (no overlay), so Margin's Carbon hot keys were never held. Now `hostedTrack` holds them while Margin is the active app (a Margin window open) or an app it hosts is (Safari's hosted window too) with a Margin window on the current Space, and lets go otherwise (`ShortcutSet.hostedActive`); the quit guard is never held. A key goes to the Margin window hosting (else the front one): ⌘T its palette, ⌘N a new Margin window, ⌥⌘↑/↓ and ⌥⌘←/→ to its page, which picks the next or previous row by the sidebar's rule (`cycleTab`, saved items too; `cycleSpace`) and does it as a sidebar click (`tab.activate`, `space.switch`): the session shows the app or the web item. Carbon's hot keys reach only Margin, so the hosted app never gets the same press too. **Mine, not asked:** with a hosted app in front the sidebar's key (⌥S by default) isn't held (the sidebar stays docked while hosting, so it would only take the app's typing); ⌘N and ⌘T are Margin's while a hosted app is in front, as they were while a browser was.
+
+**The page card's corners.** The hosted window is above Margin's with square corners, so it covered the card's rounded corners. A theme's border is outside the page area (`<m-page>`'s content box), so only the corner squares need drawing over it. `HostCorners` (MarginWindow.swift): one small borderless panel per rounded corner, the corner's square only (the page's inner radius), at `.floating` (above the hosted window even when its app is active; below menus, the menu bar and the Dock), transparent, non-activating, ignoring the mouse, `[.transient, .fullScreenAuxiliary, .ignoresCycle]` (hidden in Mission Control, never in the window cycle), ordered in only while Margin's window is on the current Space, so it joins Margin's Space and no other; hidden while nothing is shown above Margin's window, while a field of Margin's has the keys (the palette, in front then), and with Margin's window. Two shape layers drawn once per change of the page area, radii or colours (nothing redraws per frame): the card's border in the band between the page area's curve and the card's outer edge (same centre), and the corner's colour outside the card beyond it. The colours are the page's own computed styles (`cornerFill`, host-app.ts, reported with the layout as `fills` and `edge`): for each corner, of the card's sharp box shadows the first painted over that corner point (Arcadia's and Pixel's frame spread, Neubrutalism's offset ink shadow at the bottom right), else the nearest background behind it; its border's width and colour. Checked against each built-in theme's own pixels in WebKit and Chromium (`tests/theme/corners.test.ts`: inside the curve the page, the band the border, beyond it the fill). A blurred shadow is left out: Arcadia's soft card shadow makes its bottom corners up to 10 levels darker on screen than the fill drawn (accepted: a 7 pt square). A square corner (Pixel) draws nothing.
+
+**Verified (off screen only).** `host-tests.swift`: Dictionary started hidden (unhidden before it comes into Margin's Space, covered while read, hosted full screen, taken at once), one that makes its window only once unhidden, one listed only with `AXEnhancedUserInterface` (on, read, back off), one never listed (covered, parked before its quit, nothing over Margin); `hosted-tests.swift`: the bar for an app's first open and Safari's, the copy's loading for the hosted window only; `tests.swift`: the hosted key gate; `margin-window-tests.swift`: the corners' squares, masks, band, colours, drawn once per change; `e2e-glue.swift`: the real page drew Arcadia's `loading` as TextEdit launched and not after, the four corner panels at the page area's corners with Arcadia's grey, following Calculator's page area, gone at quit; the keys let go with another app in front, held with Calculator or Margin in front, ⌥⌘↑ then ⌥⌘↓ through the space and back to Calculator, ⌘T the palette; `tests/ui-host-app.test.ts`: `cornerFill`, the layout carrying it, `loading` in Margin's window; `tests/theme/corners.test.ts`: all three themes, both engines. **Not verified on the real screen** (`TESTING.md`, "Hosting: Dictionary, the loading bar, Margin's keys, the corners").
+
+## Hosting: the app's window chosen, and the corners as the real screen showed them (2026-11-16)
+
+Found on the real screen on 2026-11-15, after the section above: Dictionary still never hosted, and over TestPane in Arcadia the page card's top-left corner was square and its bottom-right a small dark arc. On `feat/hosted-apps`, behind `MarginHosted`.
+
+**Dictionary: the wrong window.** Margin's log: `window 3024 (by the window server: on another Space)`, then never listed by Accessibility in Margin's Space or on its Desktop. A stand-alone probe (`/tmp/margin-toolbar-test/hosted/dictprobe.swift`): Dictionary started with no Dock icon makes three 1292×888 server windows and a 500×500 one, only one on screen; before its activation Accessibility lists the three as `AXWindow/AXDialog`, after it only the on-screen one, as `AXWindow/AXStandardWindow`, which is its main and focused window too. The engine took the window server's front window (a spare, never ordered in), moved it, and waited for Accessibility to list its number. Now, generically (`HostWindowChoice`, Host.swift; `HostEngine.chooseWindow`), in order: Accessibility's main window, else its focused one (`HostSystem.focusedWindow`, new); else the window server's one on screen; else one Accessibility lists as a standard window; else one in a Space (a spare never ordered in is in none); else the front one, said. Never an off-screen window while an on-screen one of its size is there. Rules from the window server alone wait for the old timing (an app Margin started: 3 s, or at once when it's hidden). An unread window is chosen again right before it's first moved, after its app is unhidden (`chooseAgain`: a hidden app's windows may all be ordered out until then). The log says which rule chose it (`its window N chosen as …`, `its window chosen again before it's moved: …`). **Mine, not asked:** rule 4 (in a Space): with Margin's full-screen Space current, Dictionary's windows are on its Desktop and none is on screen, so the on-screen rule can't tell them apart there; the spares' empty Space list can.
+
+**The corners.** The panels' drawing is right (new test: each panel rendered pixel by pixel, the frame's grey at the page's corner, clear inside the curve, Neubrutalism's ink band and bottom-right ink shadow, the layer chain not flipped, the four AppKit frames for the screen's own page area 250,41 1254×933 in a 982 pt display). What the screen showed came from elsewhere:
+- *A point off.* The hosted window's area was the display's frame less its top safe-area inset (0,32 1512×950), while full-screen windows there are laid out at 0,33 1512×949 (Margin's own and TestPane's, in the same log), so TestPane landed at 250,42 1254×932, a point below the page area the corners are drawn at. The area is now Margin's own full-screen frame (`hostedPlacement`).
+- *Panels ordered in while another Space was current* (a first open's jump undone under the freeze) join that Space and go with it, and nothing ordered them in again (only a change of the page area or colours did). Now Margin places the corners again on every Space change and app activation, and a panel not shown or not on the current Space is ordered in again though nothing changed (`HostCorners.reorders`).
+- *Dark slivers.* Margin's page area under the hosted window is its window's own background (dark in dark mode); whatever the hosted window doesn't cover there (its own rounded corners, a point short) showed dark. While a hosted window covers the page area (its bounds within 2 pt), the window's background is the colour most corners have (the theme's frame; `pageGround`); window mode (a smaller window) keeps the window's own. A corner the page said no colour for takes the others' colour, not the window's.
+Which of these made the dark bottom-right arc isn't known off screen (no capture was taken here).
+
+**Verified (off screen only).** `host-tests.swift`: the choice's rules on the probe's own list; the stand-in playing the spares as the probe saw them (dialogs before activation, the real one only after); the engine hosting the real one by Accessibility's main window, by the one in a Space with nothing from Accessibility, and started hidden with all ordered out (the front spare first, chosen again once unhidden), no spare ever moved; each fails on the old engine. `margin-window-tests.swift`: the frames, radii, pixels and the re-order. `e2e-glue.swift`: the placement's area Margin's own frame, the frame's grey under a member, the window's own around Calculator in window mode and after quit. **Not verified on the real screen** (`TESTING.md`, "Hosting: the window chosen, the corners again").
+
+## Hosting: the first open's full screen early, with no freeze (2026-11-16)
+
+Asked on 2026-11-16: the first open of a full-screen-capable app fast and freeze-free. Until now its full-screen step took ~0.6-0.66 s under the freeze: after the ask the engine waited until the window server put the window in its own Space, which happens only with macOS's Space switch (~0.6 s), then reserved that Space's edges, moved the window into Margin's Space, destroyed its Space and undid the jump.
+
+**Measured on the real Mac first** (`/tmp/margin-toolbar-test/fsopen/early2.swift`, its log `early2.log`: the kit's TestPane, a stand-in Margin full-screen Space current, read every 5 ms): the new type-4 Space is listed by `SLSCopyManagedDisplaySpaces` at ~39-42 ms, owned by the app's pid, while the window isn't reported in it yet; its edges reserved at once (~44 ms) give the window the page frame at ~109 ms (window-server bounds); moved into Margin's Space (bridge, options 7) and that Space destroyed (bridged destroy) then, it's in place at ~127 ms, AXFullScreen still true; with Margin's Space kept current, the screen never left it (0 of 82 samples). One run's order mistake: destroyed before the window had the page frame, the window keeps the display's whole size.
+
+**Built** (`HostEngine.enterFullScreen`/`early`, `HostSystem.fullScreenSpaceOwners`; `placeFullScreen` and its placing again; Safari's copy-driven full screen too). After the ask (AXFullScreen, or the copy's `setWindowState`), every 5 ms for at most 1.5 s (`earlyWait`, `earlyEvery`): a type-4 Space not listed before the ask, owned by the app's pid or holding its window, reserved to the page area at once; a Space made current that wasn't listed before (macOS's switch) undone at once, one the person had left alone; once the window's server bounds are the page area within 1 pt: moved into Margin's Space, its Space destroyed (never while it's current), then checked (in Margin's Space only, at the page area, its Space gone from the list, still full screen). Then Safari's sidebar is read in Margin's Space (current), its app activated, Margin's window kept below as before. No freeze on this path; a placing again keeps the freeze only for its exit (seen).
+
+**Fallback** (logged with its reason and ms): no new Space within 1.5 s, two new Spaces of the app, the copy not asking, the window not at the page area within 1 s of the reservation (`earlyFrameWait`; macOS's pace, or Safari's sidebar open keeping it from the frame; the log gives the page rect and the window's bounds), or the bridge refusing the move: nothing undone, the freeze taken, and the slow path goes on from the same ask (its Space the one found, so a failure there still destroys it). Moved and destroyed but not in place: backed out under the freeze (out of full screen, its Space destroyed if it's still there) and asked again on the slow path. Never an orphan Space (the Space is in the marker from the moment it's found) or a window left between Spaces. The log line of an open says `full screen, at the page area and in Margin's Space early (listed N, reserved …, page-sized N, moved in, its Space destroyed N, in place, its Space gone N)`.
+
+**Verified (off screen only).** `host-tests.swift`, the stand-in now able to play the real Mac's pacing (`staged`: the Space listed at 40 ms, the frame 65 ms after the reservation, the window in its Space and the jump at 600 ms, a move before the frame or a destroy before it leaving the display's size): early with no freeze and the screen never off Margin's Space, in place ~0.1 s after the ask on the stand-in's clock, reserve → frame → move → destroy (never a destroy or move before the frame), a second app and a placing again early, the marker, macOS making the new Space current early (undone within one read), a Space the person went to left alone, and each fallback (no Space listed, no frame, not in place after the move, the move refused, Safari with its sidebar open) under one freeze with nothing left. Each early check fails with the path off. The other stand-ins (`e2e-glue.swift`) don't list owners: the slow path, as before. **Not verified on the real screen** (Margin with a real app's first open: the log's early line, no slide, Mission Control).
+
+**Fixed after the real Mac (2026-11-16).** Every first open fell back (`its window was in its own Space before it had the page area (listed 10, reserved … 14)` after ~550 ms): that rule was wrong. macOS adds the window to its new Space while it lays it out, so the window server can report it there before it has the page frame; the measurement never checked membership, it only waited for the frame. Membership is now noted in the log (`in its Space N`) and waited past; Margin's Space is kept current all along (macOS's switch to the new Space undone at once), and the fallback is only the frame not coming within 1 s of the reservation, no Space, or the check after the move. The stand-in's real-Mac pacing reports the window in its Space at 50 ms, before the frame (`stageMember`), and a run with the log's own pacing (in its Space at 0.5 s, the switch at 0.6 s, the frame after it) stays early; 14 checks fail on the old rule. The slow-path checks on the plain stand-in (the window in its Space at once) turn the early path off. **Not verified on the real screen.**
+
+## Hosting: the default browser made ready at launch (2026-11-16)
+
+Decided by Tirth on 2026-11-16: with `MarginHosted` on, Margin prepares the person's default browser for web items in the background at its launch, so the first search is instant. Built on the early full screen above (`HostedSession.prepareBrowser`, `HostEngine.start`/`prepare`, `ShellHostedGlue.prepareBrowserOnce`).
+
+- *The setting:* `MarginDefaultBrowser` (UserDefaults, default `safari`), read through a small table of supported browsers by bundle id (`DefaultBrowser`): Safari only now; Chrome and Edge are rows to add, not a new flow. An unsupported value is Safari, with one log line.
+- *At launch,* once the library and the engine are both up (either may come first), in a task of its own (Margin's window never waits for it): a Margin window in full screen with its page area measured (30 s at most); the browser started with no Dock icon if it isn't running (`start`, as a first open starts it: it counts as Margin's, so the restored-window sweep applies and it's quit at Margin's quit), the person's running one used as it is (its Dock icon stays, never restarted); the copy of the profile web items will use (the front window's space's profile, else the default one) linked, outside the engine's and the session's queues, so a pick meanwhile isn't held up; then, in turn with the person's requests, Margin's window asked of that copy (`newWindow` with `url: about:blank`: nothing loaded; focused, see the fix below) and taken all the way to ready by the engine (`prepare`): the early full screen, page-sized, a member of Margin's Space with Margin's window ordered above it (`cover`, now honoured outside hosting too), then parked at once in a private Space; no loading bar, no activation, `shown` untouched. Logged `browser prepared in N ms (its window M ms)`.
+- *Never seen:* only with the early full screen readable (else `browser not prepared: …`, nothing started) and only with nothing shown in Margin's Space (it would come in over that; its first use opens it as before). If the early path falls back mid-way, the slow path's freeze hides the switch; an app's window mode is never used for it. If Margin wasn't active anymore afterwards (the copy's full screen asks focus), Margin is activated again.
+- *The first web item* is then a switch-in (the engine's `switchIn`, tens of ms) plus its tab's page load (`hostShow`). Its page area is the launcher's layout (`idlePlacement`): the same rect as hosting's while the sidebar is docked in both (Keep open); with the sidebar hidden in the launcher, the first show places it again (the engine says "placed for another page area"), still with no new window. Another profile's window is made on its first use, as before. Quit and recovery are unchanged: the prepared window is parked, made normal, put on the Desktop and closed by its copy; a Safari Margin started is quit.
+
+**Verified (off screen only).** `hosted-tests.swift` "prepared" (the real engine on the stand-in playing the real Mac's pacing): Safari started with no Dock icon and counted as Margin's, its window asked as a blank background page, made ready by the early path and parked (no freeze, the screen never off Margin's Space, Mission Control Margin's only, covered while in Margin's Space, never activated, no loading bar), the log line; the first web item a switch with its tab only (no new window, no full screen, under 100 ms on the stand-in's clock); quit after use and unused (closed by its copy, Safari quit); the person's own Safari used as it is (never launched or quit, their windows untouched); an unsupported setting (Safari, said once); no early full screen (not prepared, nothing started); something already shown (not prepared). `tests/handoff-copy.test.ts`: the copy's `newWindow` with a blank page. **Not verified on the real screen** (whether the cover hides the ~20 ms the member is in Margin's Space, the time to ready on a real launch).
+
+**Fixed after the real Mac (2026-11-16): the window was never found.** The log: Safari started with no Dock icon, `Safari window 139 made for hosting`, then `no new Safari window in the window server's list within 12 s`, closed by its copy, `browser not prepared`; a later web item in the same Safari found its window in 246 ms. The difference was the unfocused ask: every app Margin starts with no Dock icon is started hidden (LaunchServices' hide option), and a hidden Safari asked for an unfocused window answers its id but orders nothing in, so the window server never lists it (no window-server window until it's ordered in, which a hidden app defers to its unhide); a focused ask brings Safari to the front, which unhides it. The 'before' list wasn't the cause (read before the ask). Now: the copy's `newWindow` is always focused (`background` gone); before the ask, a hidden Safari is unhidden (never activated) and its window server's list left to settle (unchanged 150 ms, 1 s at most), so windows it orders in as it's unhidden (restored ones) are in the list the new window is told apart from; while Safari makes it, Margin's Space is kept current (macOS's switch to the Desktop as Safari comes to the front undone at once, logged); then the early path and the park as before, and Margin activated again. **Verified (off screen only):** `hosted-tests.swift` "prepared", the stand-in Safari started hidden, ordering in no unfocused window while hidden, a focused one switching to the Desktop and made 250 ms after the ask: unhidden before the ask, the ask focused with a blank page, the window found and prepared, the switch undone with the screen never off Margin's Space; a restored window ordered in as Safari's unhidden is never taken for the new one (taken with the list read at once after the unhide); these checks fail on the old ask. **Not verified on the real screen** (whether macOS shows the Desktop for a frame as Safari comes to the front, or Safari's restored windows for a moment as it's unhidden).
+
+## Hosting: Margin's quit gives every host back at once, never waits for an app's exit (2026-11-16)
+
+Tirth: "when we quit margin, it takes a while to quit it. why?" Margin's log of the day: test apps and Dictionary 98–171 ms each, Safari 316–810 ms, Maps 5.3–5.6 s, Phone 7.4 s, totals 5.9–7.4 s whenever Maps or Phone were hosted. The causes, from Margin's log and the apps' own (`/usr/bin/log`):
+
+- *One after another, each waited for to exit.* `quitAll` gave each host back and then waited (up to 6 s) for its app to be gone before the next.
+- *Maps' 5 s is its own, not its window.* Maps had its window closed first (`its window closed before its quit in 285 ms`), and its log shows `Running -> RunningNoOpenWindows`, then on the quit `TerminatingHidingMacGUI`, `didBackgroundAppKit`, and nothing until `Watchdog: App took too long to enter the background-only state. Exiting immediately! (5.0s)`. (Maps did match the old `UIDeviceFamily` rule.) Phone closed first the same way quit in 0.75 s (2026-11-15 21:25: `defaultWindowStateReached` at once). So for Maps no order of Margin's steps makes its exit fast; only not waiting for it does.
+- *The 7.4 s Phone was one Margin started* (`launch 66 (no Dock icon)` in that run), not the person's: its frame give-back failed after 1.25 s (two 0.6 s waits: `Accessibility didn't take it`), its close button wasn't pressed after 1.0 s of retries, then 5.06 s for its own watchdog.
+
+**Now** (`HostEngine.quitAll`, `closeNow(atQuit:)`):
+
+- *At once.* Each host is given back in a task of its own (`closeAtOnce`), each one's steps still in order (frame and Space back, out of full screen, closed first or taken home, Safari's window made normal and closed by its copy, then its app asked); the quit takes the slowest host's time. The freeze is counted (`freezeHolds`): one freeze for all of them, revealed when the last lets go. Accessibility acts only on the current Space, which stays Margin's for every give-back, so they don't contend.
+- *Never waiting for an exit.* An app Margin started is asked to quit once (`askQuit`, `terminate()`, never forced) and not waited for; Margin's quit completes once every window is where it belongs. Because Margin won't be there if the app then refuses (unsaved work), its window is never left in a private Space (they go with Margin): one not closed first goes to its Desktop before the ask. A close outside Margin's quit (a row closed, a failed open) still waits as before.
+- *The marker keeps only what isn't done:* an app asked and still running as the quit ends (`quitAsked`: the next launch asks it again only if that same launch still runs, and says "asked to quit at Margin's last quit" instead of "didn't quit cleanly"), a window whose frame didn't go back, whose exit from full screen wasn't confirmed, or left in Margin's or a private Space (`leftWindows`: the next launch finishes it while that app still runs). The next launch's recovery asks every app at once and waits once.
+- *Close before quit, by what the app does (`closesFirst`, `HostSystem.keepsWindowsAtQuit`).* An app Margin started (never the person's, never Safari's windows) has its window closed by its close button (Accessibility's press, after the frame restore) before it's asked, whenever that's harmless for its next launch: when it doesn't keep its windows across a quit (its own `NSQuitAlwaysKeepsWindows`, else the person's "Close windows when quitting an application", on by default), the quit would discard that window anyway, so closing it first changes nothing it reopens. One that keeps them (the person's setting, or the app's) would lose the window it reopens: never closed, taken to its Desktop instead. Not for a window whose frame Accessibility refused (it wouldn't press it either). **Mine, not asked:** this applies to AppKit apps too now (Calculator, TextEdit), where it used to be iPad apps only: with Margin not waiting, a closed window is also one that isn't seen on the Desktop while its app finishes; an unsaved document's close shows its own question exactly as its quit would. **Not chosen:** taking the window out of every Space (in none at all) before the quit: if the app then doesn't quit, its window is stranded with Margin gone, and Maps shows the wait doesn't come from its window.
+- *Faster steps, condition-based, each timed in the close's log line* (`closed (Margin quits) in N ms (frame …, out of full screen …, closed …, home …, asked to quit …)`). A frame given back is asked again only `frameAskWait` (0.3 s) while Accessibility doesn't take it, then given up (kept in the marker), and done once the window is at it or moved and held still elsewhere (no second identical try). Leaving full screen is done once Accessibility reads it out, or, when its AXFullScreen doesn't read, once the window server has it off its member frame and still; Accessibility neither taking nor reading it gives up after `exitUnansweredWait` (0.5 s) instead of the 7 s exit wait. A close is pressed once when the window is already on the current Space (retried 0.3 s only when just brought there), gone within `closeWait` (0.6 s, was 1 s; seen 70–290 ms).
+
+**Measured on the stand-in** (`host-tests.swift`; its sleeps now run on a virtual clock where overlapping waits take the longest one's time, not their sum): six hosts (TextEdit shown, Notes parked, FaceTime and Calculator in window mode, the person's Phone, a Safari window by its copy; each bridge move landing 100 ms late; Notes 3 s and Calculator 5 s to finish quitting) quit in 100 ms, their give-backs 500 ms one after another, the old engine 8.76 s; Notes and Calculator still finishing, said and in the marker as asked. The order and an iPad app's own exit: closed first, out at once; kept (never closed), out after its 5 s watchdog; Margin's quit well under a second either way. The person's Phone given back at quit: parked in window mode 20 ms, its frame refused 320 ms (old: 1.25 s) and kept in the marker, full screen parked 30 ms, full screen with its state unread 149 ms (old: 7.06 s), Accessibility refusing it 530 ms (old: 14 s) and kept in the marker; the next launch finishes what was kept. Failing first on the old engine for each. Not on the real screen yet.
+
+## Hosting: a row's close never waits for its app's exit either (2026-11-16)
+
+After the fast quit, closing a hosted app's row while Margin keeps running (`HostEngine.close`) still waited (up to `quitWait`, 6 s) for the app to exit inside the engine's one-at-a-time queue: Maps held it ~5 s (its own quit watchdog), and every open or switch meanwhile waited too. **Now** (`closeNow(exit: .watched)`, `askQuitWatched`): the window is given back as Margin's quit does it (frame first, closed first by `closesFirst`, else taken to its Desktop before the ask, never left in a private Space), the app Margin started is asked to quit once (never forced) and forgotten at once (out of `launched`), and the queue is released. Its exit is heard in the background by the existing NSWorkspace termination notice (`appQuit` → `exited`), which takes it out of the marker; until then the marker keeps it as asked (`quitAsked`), so a crash or quit meanwhile has the next launch ask again only if that same launch still runs. Margin's quit doesn't ask it twice. One still running `quitWait` after the ask didn't quit (unsaved work): Margin's again (`takeBack`: reused by an open, asked again at Margin's quit), said with `whyNotQuit`. No timer or polling loop for that: it's noticed by the shell's poll, an open of that app, or Margin's quit. **A new open of the same app while its old instance is exiting** (`awaitExits`, also in `start`) waits for that exit (heard, or until `quitWait` after the ask, when it's Margin's again and reused), so the dying instance is never hosted or taken for the person's; the open's log line says how long it waited. A failed open's close still waits as before. **Verified (off screen only):** `host-tests.swift` with Notes taking 5 s to quit: the row's close returns in well under 1 s on the stand-in's clock (old: 5.02 s), closed first or (keeping windows) taken home before the ask, a switch right after not delayed, the exit heard later and out of the marker; a reopen during the exit waits and starts a new instance; a reopen of one that refuses reuses it after 6 s; Margin's quit meanwhile asks once only and the next launch asks again. These fail on the old engine. Not on the real screen yet.
+
+## Hosted only: the overlay over Safari removed (2026-11-16)
+
+Decided by Tirth (2026-11-16): Margin is hosted only. Margin.app is the app: it owns the spaces (the library), draws its UI in its own full-screen window and hosts Safari's windows and any other app in its page area (docs/MARGIN-APP.md, phase 6). The mode that drew Margin over the person's own Safari windows is gone, on Margin.app's side here (`refactor/hosted-only-app`); the extension's page box goes in its own change.
+
+**Why.** Two modes doubled every change and every test run (the window binding's randomized suite alone was 111 s of a 2.8 min unit run), and the overlay's hardest parts (binding windows from evidence, own-Space placement, covers, the handoff's freeze and parking, the slot, the edge stop) exist only because Margin wasn't the app. Hosting replaces each of them: Margin's own window has no window to find, and the host engine sizes and switches the hosted windows itself.
+
+**What went.** The `MarginHosted` option (hosting is always on; `MarginNativeSlot`, `MarginOpensBrowser`, `MarginHandoff`, `MarginOverlayOwnSpace` are no longer read). The overlays (`Overlay.swift`, the planner and placer), the window binding and its map and trace (`WindowMatcher.swift`'s binder, `WindowMap.swift`, `WindowTrace.swift`; `ExtWindow.swift` keeps the copies' window list the session reads), the profile switch and handoff (`ProfileSwitch.swift`, `Handoff.swift`, `ShellHandoff.swift`, `HandoffCover.swift`, `LiveHandoffCover.swift`, the cover's private parts, its page `app/shared/host/handoff-cover*`), parking and its self-test (`Parking.swift`, `BridgeParker.swift`, the `--park-probe` child), the startup covers and splash (`ShellCovers.swift`, the shell's `HelperSplash`, margin-helper's `--splash` child), the edge stop, the slot keeper and its marker (`SlotEdges.swift` keeps the edge reservation the host uses), opening Margin into the browser (`ShellEnter.swift`), Safari's sidebar watch over overlays, the `across` pushes, the key relay, the quit guard's caller, the dev hook's switch/dump/mode/fail/probe/drafts kinds (`host` kept), the `parked` and `parkedActivity` messages and the handoff's probe, drafts, focus and space-window requests, `tools/handoff-lab/`, and their unit and e2e checks (window, handoff, parking, live cover, slot, opening, the e2e overlays, keyboard, windows, profiles, cloud, themes and slot scenarios). The shell (`Shell.swift`) is now the links, the data, the library, the host and Margin's keys.
+
+**Kept on purpose.** Everything hosting uses: the links and the copies (their state, theme packages, keys, `loading` pushes), data sync and the carry-over across signing changes (`BrowserProfiles`, refreshed from the copies as before), Safari's profile names, the freeze (the host's first full screen), the Space reads and bridge, the private calls' launch check as it was (its `liveCover` group is unused now), iCloud Tabs' reads (Margin's window doesn't draw them yet), user themes' store (the import/save/remove asks kept, not yet wired to Margin's window), installed apps, the dev hook's `host` kind, margin-helper (it still starts Margin.app as a browser opens), the set-up window (shown with Option held; its steps still describe the extension's set-up), and `QuitPrompt.swift` with the shortcuts' quit guard (nothing turns the guard on now). `AppMessage.setLayout` and `drawn` stay only for `tools/webkit-host`'s link server until the page box goes; Margin.app never sends them.
+
+**Verified (off screen).** `tools/app-tests/run.sh unit`: 1218 checks in about 30-38 s (was 2.8 min); `run.sh e2e`: 141 checks in 20 s (was 2.2 min); `run.sh all` 44 s. Not on the real screen.
+
+## Margin's web views at the display's rate (2026-11-16)
+
+Asked by Tirth: WebKit holds an app's web view near 60 fps (its `PreferPageRenderingUpdatesNear60FPSEnabled` feature, on by default for every app but Safari, still so on macOS 27.2.1), so Margin's UI drew hovers, menus, the palette and drags at about 60 on his 120 Hz screen. `OverlayFrameRate.uncap` (issue #14) turns the feature off for Margin's own web views only (Margin's window and its pages); it was behind `MarginOverlayFullFrameRate`, off by default, and is now on by default. Safari, hosted apps and other apps keep their own setting. `MarginOverlayFullFrameRate` NO keeps WebKit's 60 fps. WebKit then follows the display the window is on (higher on a faster external display; not measured). Private, listed in docs/PRIVATE-APIS.md: if the feature or its selectors go, the cap stays and the log says why.
+
+## Hosted only: the page box removed (2026-11-16)
+
+Decided by Tirth: Margin is hosted only. Margin.app is the app, and a browser's windows are hosted full screen in its page area, sized by macOS (`docs/MARGIN-APP.md`). The page box (the no-iframe box that fitted every page beside Margin's sidebar: `<html>` as the box, `<body>` scrolling inside it, adopted sheets, the page-world script that answered for the window and rewrote media queries and viewport units, its registered first paint, the kept sheet walks) has nothing left to do, and is removed for every browser.
+
+- **What went:** `extension/content/page/` (the page's world), `content/page-link.ts`, `content/sheet-walk-link.ts`, `content/layout.ts`; `shared/page-box.ts`, `page-css.ts`, `body-fit.ts`, `sheet-walk.ts`, `sheet-copy.ts`; `background/registered.ts` (the first paint's registration and its commit fix-up), `sheet-walks.ts`, `settle.ts`; the handlers `injectPage`, `fetchStyle`, `keepSheetWalk`; the themes' `first-paint.css`; the build's `content/page.bundle.js`, `content/layout/*`, `content/page/fullscreen-only.js` and the legacy empty registration stubs (`LEGACY_FILES`); `tests/box/`, the box's unit and e2e tests (`box-patterns`, `page-box`, `sheet-walk`), the WebKit host's box scenarios and `box-bench`, `tools/fit-check/` (its data branch `data/fit-check` stays on GitHub as it is), `scripts/scroll-bars.mts`, and `npm run test:classic`, `bench:box`, `bench:sites`, `fit-check`.
+- **The link:** the copy no longer reads the app's `setLayout` (left like any unknown kind) and keeps no `layouts` or `lastLayouts` in `appLink`; pages hear only whether the app draws their window (`appDrawn`, was `appLayout`), which still decides where ⌘T and the navigation keys go. The overlay still reports its `<m-page>` slot to the app (`layout`): that's where the app places the hosted window.
+- **Left behind by older builds:** at start the background unregisters the box's content-script registrations (`margin-page`, `margin-docked`: Safari and Chrome keep them across launches) and removes the kept sheet walks (`sheetWalkIndex`, `sheetWalk:<origin>`). A page cut off from an old copy still gets `margin:box` `off` when it's quieted (`background/cut-off.ts`), so an old build's box lets the page go.
+- **Chrome and Edge:** they lose page fitting. Until they're hosted like Safari, a Chrome or Edge window under Margin's sidebar shows its pages at the window's full width, under the sidebar where it overlaps (Tirth accepted this).
+- **Kept on purpose:** where the page's area sits in its window (`viewport`, the docked Web Inspector) and a page's own full screen (`pageFullscreen`), told to the app; page zoom (for that area); `unpinchedSize`. They aren't the box's; whether the app still needs them once the overlay mode goes is the app's call.
+
+## Hosted only: Margin tells each copy which windows it hosts (2026-11-16)
+
+Found merging the two removals: the hosted app sent no `drawn` at all, and a linked copy takes a window it wasn't told of as drawn, so in a Safari (or Chrome) window the person opened themselves ⌘T went to Margin's palette push, which the hosted app no longer reads: ⌘T did nothing there. `Shell.tellDrawn` now tells each linked copy, on its state's arrival and at every poll (0.25 s), `drawn` true for the one Safari window the session hosts for that profile and false for every other window, each only when it changed. Verified: the app e2e's glue check (the person's window told false once, the hosted one true) fails without the change and passes with it; the WebKit host's `undrawn` scenario covers the copy's side.
+
+## Arcadia: the window in the space's colour (2026-11-17)
+
+Tirth: "make the Arcadia theme very close to how Arc's theme is". Arcadia (same id and name, version 3.0.0) is restyled and laid out again as that kind of sidebar window, with Margin's own line icons and the system font; no name, logo, icon or asset of Arc's. Nothing was cut: every binding, behavior and part it had still works (`npm run test:theme` 291, `test:e2e` 115, both unchanged in count).
+
+- **The ground:** one colour for the frame and the sidebar, `--frame`: the space's colour at 30 % mixed into a near-white (`#f1f0f3`), into a near-black (`#1c1c20`) in Dark Mode. So the ground is always light in Light Mode and dark in Dark Mode, and the text is dark or light by the mode alone (CSS can't read a colour's luminance). Flat, no gradient: the frame is the page card's spread shadow, which takes one colour, and a gradient on the sidebar alone would show a seam where it meets the frame.
+- **The corners Margin.app draws** over a hosted window read that colour from the computed shadow, now `color(srgb r g b)` (a mixed colour) instead of `rgb(156, 157, 161)`; `HostCorners.color` already read that form. The app e2e's check (`tools/app-tests/e2e-glue.swift`) now takes the frame's colour from the page instead of the old grey. It was type-checked here, not run (this work was limited to headless browsers): `npm run test:app` has to say it passes before `main`.
+- **The page card:** 8 px in from the top, right and bottom, radius 10 px (was 6.25), a 0.5 px hairline and a very soft shadow. The card's edge no longer animates `left` (the sidebar stays docked in Margin's own window): Arcadia animates no layout now.
+- **The sidebar, top to bottom:** a slim row (the window's buttons' room when windowed, the toggle, then back, forward, reload at the right; it wraps and shows one line, so a narrow sidebar drops the last buttons instead of squeezing); the address pill (the host of the tab in front, opens the command bar); the space's name; pins and folders (a plain folder glyph in the row's colour, was a golden one); the line with Clear (`today.clear`, shown under the pointer); "+ New Tab" and today's tabs; the bottom bar (a plain archive box, the spaces, "+"). The line and Clear come before "+ New Tab", as in Arc itself, not after it.
+- **Rows:** 36 high, 4 apart, radius 10, 13 px medium; the tab shown is a near-white pill with a soft shadow (a lighter one in Dark Mode); a loading tab has a small spinner in its icon's place; × sits over the title's end on the row's own colour, so showing it lays nothing out (the fills are the ground with white mixed in, as one colour, for that).
+- **The command bar** is light or dark with the system (was always dark), 680 wide, radius 16, a 20 px field, rows with a muted detail after the title (`subtitle`), the selected row in the space's colour. Menus: radius 10, the row under the pointer in the system's accent (`AccentColor`, `#0a84ff` where there's none).
+- **No blur anywhere** (Tirth): `backdrop-filter` is gone from the menu, the command bar and the gesture badge (opaque panels instead), and so are the two `filter: grayscale()` (space chips, sleeping tabs: faded only). Neubrutalism and Pixel had none. Also: the arrow cursor everywhere but text fields and the resize handle, nothing selectable but fields, only the tab list rubber-bands, `prefers-contrast: more`, no springy motion (180 ms ease-out).
+- **What the view model doesn't have**, so it isn't drawn (no runtime feature was added): favourites (Arc's grid of tiles above the space's name: Margin has pins and folders only); whether the tab can go back or forward (the two buttons never dim); a stop action while loading (reload stays reload); a hint in words on a command bar row ("Switch to Tab": the row has its place, `badge`, and an arrow); a title that fades at the right (a mask on every row costs paint: ellipsis).
+- **Cost** (the theme tests' harness, 200 rows, medians, before → after; WebKit's clock steps 1 ms): the first drawing to layout 27 → 27 ms in WebKit, 21.6 → 21.8 ms in Chromium; another tab activated 10 → 10 and 11.5 → 11.8 ms; a space switched 9 → 9 and 9.1 → 9.6 ms; loading the package (sanitizing, the template) 6 → 7 and 8.9 → 9.6 ms. `theme.css` 44.9 → 48.2 KB (the iCloud Tabs styles, 83 lines, are still in it, left for their removal).
+
+## Hosted only: Margin's quit prompt on ⌘Q (2026-11-17)
+
+Asked by Tirth: the quit warning box (Margin's own prompt, after Arc's, 2026-11-07) survived the removal of the overlay, but nothing held its keys any more. In hosted mode ⌘Q with a hosted Safari in front quit Safari alone and left Margin with an item that had no page.
+
+- **When.** ⌘Q and ⌥⌘Q are Margin's first (Carbon hot keys, the shortcuts' quit guard) while Margin asks before it quits and Margin or an app it hosts is in front: `ShortcutSet.guardsQuit`, the same rule as Margin's other keys (`hostedActive`: a hosted app's process only with a Margin window on the current Space, so the person's own Safari window on a Desktop keeps its ⌘Q), set at every read (`Shell.updateHostedKeys`). In any other app, with no Margin window open, while Margin quits, or with asking off, the keys aren't held: ⌘Q is the front app's as ever.
+- **What.** `ShellQuit.swift`: the prompt (`QuitPrompt.swift`) centred on the Margin window that hosts, above the hosted window and the page card's corner panels (a panel at the modal level, `fullScreenAuxiliary`, joining the current Space, never activating Margin: the hosted app stays the active app). Quit (Return, or ⌘Q again) asks the app to terminate, which is `Shell.stop` as ever: every hosted app given back at once ("Margin's quit gives every host back at once"). Cancel (Escape, a press anywhere else, another app coming to the front) does nothing; the keys are back where they were. Always quit quits and sets `MarginAskBeforeQuit` NO (the key it always had; back on with `defaults delete com.unibox.margin MarginAskBeforeQuit`, read at the next poll, no relaunch).
+- **Its words.** "Are you sure you want to quit Margin?" and what quitting closes, in numbers and Margin's own words (`QuitSummary`): web items with a page as "open tabs" (they stay in their spaces), apps Margin started as apps it quits, apps the person had open themselves as staying open. Never a title, an address or an app's name. As tall as its lines need.
+- **Its look** follows the Mac's light or dark appearance (dynamic colours, nothing forced; it was always dark).
+- **Never left up:** it's cancelled when it loses the keys, on any press outside it (its own monitors, no permission needed, for the case it never got the keys), when neither Margin nor a hosted app is in front any more, and taken down when Margin quits some other way.
+- **Not asked:** Margin's menu item clicked, the Dock's Quit, a new build replacing the app, logging out. Only the person's key.
+- **To be decided (said to Tirth):** after Always quit the keys aren't held at all, as asked ("with the guard off the key goes to that app"), so ⌘Q in a hosted Safari again quits Safari alone. If Always quit should mean "⌘Q quits Margin without asking" there too, it's one condition: hold the guard for a hosted app in front with asking off and quit at once. And there's no Settings switch yet to ask again (the old development switch rides on the cross-profile data, which is being removed).
+- **Tests.** Unit (`tests.swift`): the guard's decision (hosted app in front, Margin in front, another app, another Space, no window, asking off, quitting), the prompt's words for each count, its level and behaviours, its place, light and dark, one choice once. End to end through the real shell: `e2e-glue.swift` (⌘Q with a hosted app in front: the prompt, numbers only; Escape keeps everything; ⌥⌘Q the same; another app in front takes it down; an app Margin doesn't host: not held; ⌘Q again quits and everything is given back) and `e2e-hosted.swift` (Margin itself in front; Always quit stops asking; asking off: never held; on again: held at the next read). A test's prompt is never ordered in and never takes the keys (it would take them from the person's own front app). With the guard set as before (never held), 14 of these end-to-end checks fail.
+- **Not verified off screen:** that the panel shows above a real hosted full-screen member and window-mode window, takes the keys without activating Margin, and gives them back on Cancel; its look in both appearances. TESTING.md "Hosted: the quit prompt and the sidebar's edge".
+
+## Hosted only: the sidebar's edge dragged while hosting (2026-11-17)
+
+Asked by Tirth. The handle was hidden while hosting (`m-sidebar-fixed`), a leftover from the tile design: a tile couldn't change size, and a drag had taken Margin's window out of full screen (changing a full-screen tile's size constraints does that). Margin's window has had its whole width since the member design; its size and constraints are never touched here either.
+
+- **The limit.** A full-screen member's size comes from its own Space's edge reservation, and that Space is gone once it's a member: placing it again is out of full screen and in (1–1.5 s on the real Mac, with the loading bar). So never a placing per pointer move: one, when the drag ends. A window-mode app could be moved by Accessibility as the pointer moves, but late and in steps, with its pixels over the sidebar whenever the sidebar grows faster than it follows; it's placed once too.
+- **The page's side** (`ui/behaviors/resize.ts`, the same code as for themes over a browser): the handle is there while hosting (`host-app.ts sidebarFixed`: only a tile's is fixed), the sidebar follows the pointer live within the theme's bounds, and the host hears when a change of the width begins and when it's over (`perform('sidebar.resizing', { on })`, once each; over only after the layout at the final width was measured and reported, `View.flushLayout`, so one placing is enough). A double-click's reset is one such change. A layout reported from the runtime's own frame (the box only) keeps the corner colours the page's measure said last, so the corner panels don't lose their colour after a drag.
+- **The app's side** (`HostedSession.sidebarResizing`, `MarginWindowController.setLifted`): from the first change of the width, the page area's changes are held, and Margin's window is ordered in front of the hosted window (as it already is while the palette has the keys). Its own background is clear for that time and a view under the web view (`PageGroundView`) paints the page area's ground everywhere but the hosted window's bounds: the hosted window shows through the theme's see-through page slot where it still is, clipped by the page card (rounded corners and all) as the sidebar grows over it, and the gap a narrower sidebar leaves is the ground, never the Space's backdrop. It's made see-through before it's ordered in front. The corner panels are put away meanwhile (the theme draws the card's corners itself there).
+- **Let go:** one `pageRectChanged` with the placement as it is then. A window-mode app is moved by Accessibility, still seen through until it's there; a full-screen member leaves Margin's Space for it, so the ground alone shows, with the theme's loading bar, until it's back; then Margin's window is right below the hosted window again, opaque, the corners at the new page area. The reservation comes from the placement alone (`HostLayout.plan`), so nothing adds up; nothing is ever reserved on Margin's Space.
+- **Parked ones** aren't touched by a drag. A parked member is placed for the new page area when it's next shown (the engine's rule: its `placedPage` isn't the page area): one placing then, with the loading bar, never shown at its old size first. A parked window-mode app is placed as it comes in. Placing parked ones in the background right after a drag was left out: an app's window leaves full screen only on the current Space (seen), and a full-screen entry that misses the early path freezes the screen for something the person didn't ask for.
+- **Kept across launches:** the width is the theme's `sidebarWidth` setting, saved by `updateThemeSettings` as ever; Margin's window's source kept such changes in memory only, so `ThemeSettingsKeeper` writes the theme settings changed there to the app's defaults (`MarginWindowThemeSettings`) and reads them at launch. Other settings changed in Margin's window are still in memory only (the app's store doesn't have settings yet).
+- **Cost.** At rest nothing runs that didn't (the ground view is hidden, with no content). Through a drag: the page's own work as over a browser, two messages more (begun, over), one window order and one layer drawn at its start; at its end one placing, as one theme change costs. The holding replaces what was a placing per layout report.
+- **Tests.** Unit: the session on the real engine and the stand-in window manager (`hosted-tests.swift sidebarResizeTests`: held while dragged, one exit and one entry at the end, the reservation the new page area's alone, a parked member untouched then placed once when shown, a change queued before the drag, a drag back to where it began, window mode moved once, Margin's window out of full screen mid-drag, nothing hosted), the ground view, the kept theme settings; with the hold and the lift taken out, 11 of them fail. Page: `tests/ui-host-app.test.ts` and, in WebKit and Chromium for Neubrutalism and Pixel, `tests/theme/behaviors.test.ts` (the handle drawn and dragged while hosting, live layouts, begun once, over after the last layout); with the old rule (`m-sidebar-fixed` while hosting) or without the flush they fail. End to end (`e2e-glue.swift`, the page's real handle driven by pointer events): Calculator in window mode and TextEdit as a member, each held while dragged and placed once at the end at Margin's new page area; a member parked through a drag placed when shown; a double-click's reset; Margin still full screen at its whole width throughout, nothing reserved on its Space.
+- **A theme that animates its page slot's place** after the drag (none of the three does: Arcadia animates only the card's shadow edge, Neubrutalism only its box shadow) would report layouts after the drag is over, each placed as any other change of the page area.
+- **Verified (off screen), both features:** `tools/app-tests/run.sh all`: 1266 unit checks (was 1218) and 176 end-to-end (was 142), 42 s; `npm test` 968; `npm run test:theme` 295; `npm run test:e2e` 115. Each of the three commits before the docs passes the app's checks on its own.
+- **Not verified off screen:** everything the eye sees. That ordering Margin's window in front and making its page area see-through shows the hosted window with no flash at the start or the end of a drag; that the hosted window's bounds as the window server reads them line up with what shows through; real timing of the one placing; the handle's reach (the part of it over the page area is under the hosted window). TESTING.md has the steps.
+
+## The quit key after "Always quit": still Margin's in a hosted app (2026-11-17)
+
+Decided joining the quit prompt with the rest: after "Always quit" (asking off) ⌘Q was let go everywhere, so in a hosted Safari it quit Safari alone and left its items dead in Margin. `ShortcutSet.guardsQuit` now holds the key whenever a hosted app is in front, asking or not: with asking off `Shell.quitKey` quits Margin at once (its usual fast quit, everything given back). With Margin itself in front and asking off the key is let go: it's Margin's own Quit menu item. Unit and glue e2e checks updated; the glue's resize checks read the frame's colour from the page (Arcadia's is the space's colour now, not a fixed grey).
+
+## Hosted only: the cleanup (2026-11-17)
+
+Asked by Tirth (2026-11-17), after the two removals of 2026-11-16 (the overlay over Safari, the page box) left things nothing used any more. No change to what hosting does; what went was dead, or decided out.
+
+**iCloud Tabs: removed entirely, for now** (his decision; to be rebuilt later for Margin's own window, git history keeps it). The reads of Safari's `CloudTabs.db` and their watcher (`CloudTabs.swift`, `ShellCloudTabs.swift`), "Show iCloud Tabs" and its two folder settings, `shared/cloud-tabs.ts`, the folder's view model, actions (`cloud.*`), menu, palette section and `copyText`, the `cloud-tabs` part and `<m-cloud-tabs>` in every theme with their styles, their unit, theme and e2e tests. Nothing reads CloudTabs.db; Full Disk Access is only for Safari's profile names now, and the set-up window says so.
+
+**The cross-profile UI and settings: removed.** Margin.app owns the spaces, so the one order across a browser's profiles has no reader left but the library's first import. From `BrowserProfiles`: the resolved order, moving a space, renaming and forgetting a profile, the next space across profiles, `across`, "Close windows to save memory" (`switching.closeWindows` in browser.json), and a profile's emoji and colour (dropped from browser.json at its next save). From the UI: `shared/across.ts`, the other profiles' chips and marks, Edit Profile, `space.move`, `space.newIn`, `profile.*`, the switch's notices, the "switching" cover (`<m-switch-cover>`, its part, Margin's default for it, `ui/switch-cover.ts`), `rekey`, the dev switch for the quit prompt (its only source was `across.dev`; nothing in the app took its `switch.askBeforeQuit`). A user theme that still names one of these loads as before: the sanitizer removes the unknown element, part or action and says so.
+
+- **Kept, for hosting:** browser.json's stored order and `BrowserProfiles.resolve` (`Library.importOnce` reads them), the profiles' names and ids (Safari's, with Full Disk Access; a name typed in an earlier version is still read), first and last seen and `hidden`, the carry-over of a profile's set across a signing change, `profilesSoon()`, `openProfileWindow`, the copies' window lists (`windows(of:)`, `restoredWindowIds`).
+- **Kept, with no source today:** the palette rows' `section` and `sectionStart` (a general part of the view model and the themes; only iCloud Tabs filled them), and the library's `orderSpaces` rule (`app/shared/library`, `state/model.ts`): no menu asks for it now.
+
+**Dead protocol: removed from both ends** (`docs/PROTOCOL.md` lists it).
+
+- **App → copy:** `setLayout`; the requests `openSpaceWindow`, `focusWindow`, `frameProbe`, `windowDrafts`, `orderSpaces`, `paletteDropped`, `devTabMoveProbe`, with their handlers and what only they used (the tabs opened behind a space's window, the frame probe in pages, the drafts-only check, the per-site page zoom, the palette-dropped hold). The copy's `parked` state went with them (the app stopped sending it on 2026-11-16): `parkedActivity`, the parked-window branches of `focusTab`, `openPin`, sleeping and the stand-in page, and `parked-restore`.
+- **Copy → app:** the pushes `keyHeard` and `parkedActivity`; of the windows list `viewport`, `viewportTimes`, `visible`, `visibleAt`, `pageFullscreen` and `wasParked`, and the pages' code that only fed them (where the page's area sits in its window, `unpinchedSize`, the page's zoom, its visibility word, its own full screen). `storage.local`'s `pageZoom` and `parkedWindows` are removed at the background's start.
+- **Kept, because something still uses them:** `drawn` and the `loading` push (the app); `hostShow`, `hostClose`, `newWindow`, `closeWindow`, `setWindowState`, `goBack`/`goForward`/`reload`, `updateSettings`, `userThemes` (the app sends them); `navigate` and `toggleFullscreen` as the app's requests (their handlers serve pages too, and the page not drawn in Margin's own window still asks them through the app: the Windows shell's, and the Playwright e2e's stand-in shell); the windows list's bounds, `focused`, `activeTabId`, `focusedAt` and `blurredAt` (not asked to go; the app reads only `windowId`, `state`, `createdAt`).
+- **Kept, and open:** the pushes `palette`, `notice`, `gesture` and `switching`/`switch-done`/`switch-failed`. Margin.app reads none of them, but each is the only output of something the copy still does: ⌘T's hand-off (Safari's own New Tab in a hosted window is closed and its palette asked of the app), the notices about a page (not responding after an update, the new-tab setting), the gestures' feedback, a key's switch. Removing the push alone would leave the copy deciding for nothing; whether Margin's window should show them or the features go is Tirth's call.
+
+**Private calls.** The launch check's `live cover` part and what else nothing called (`SLSGetActiveSpace`, the bridge's remove operation, the enumerator candidate, unused Space reads and freeze reasons) are gone: 11 functions, 1 class, 2 selectors checked (was 18, 2, 4). `SLSGetActiveSpace` and the remove class were required by the `spaces` and `park` parts though nothing called them: their absence no longer turns hosting off. `docs/PRIVATE-APIS.md` is what's really called.
+
+**Margin never quits itself once it's the app in use.** The rule "no browser open for 60 s: Margin.app quits" (and "no copy linked for 10 minutes") is replaced by one (`IdleQuit.swift`, 10 unit checks): only a Margin.app started in the background (margin-helper's `--background`, a login item, the extension handler's start for a link), that never showed a window of its own, with nothing hosted, no copy linked and no browser running, leaves after 60 s of all that. Mine, not asked: "no browser linked" is taken as no copy linked AND no browser running; with linked alone, the app as its own login item (no helper) would go back to waiting and start again every minute while a browser without Margin's extension runs.
+
+**Not touched** (others' work in parallel): `QuitPrompt.swift` and the shortcuts' quit guard, the sidebar's resize and the page-rect code, the themes' styling beyond the deleted parts, `OverlayWebView.swift`. **Out of scope, now dead there:** the Rust core and the Windows shell still speak the overlay's protocol (`across`, `cloudTabs`, the cross-profile switch and its requests, `setLayout`, `parked`, `keyHeard`, `paletteDropped`, the windows list's `viewport`/`visible`/`wasParked`/`pageFullscreen`, `framed`, `rekey`); the page and the extension no longer answer those.
+
+**Verified (off screen).** `npm test` 896 checks; `tools/app-tests/run.sh all` 1148 unit and 140 end-to-end checks, no compiler warnings; `npm run test:theme` 213; `npm run test:security` 240 and 33; `npm run test:e2e` 106; `tools/webkit-host/run.sh all` 41 scenarios (three went with what they tested: `pinch-native`, `visibility`, `frame-probe`). Not on the real screen; the set-up window's new words and the idle rule in a real launch are unchecked there.
+
+## Liquid Glass: a theme with macOS's real glass (2026-11-17)
+
+Asked by Tirth: a built-in Liquid Glass theme that uses the system's real glass, not CSS blur. Decided by him: no frosted glass or `backdrop-filter` in any theme; real system glass only, and only in this theme.
+
+**The mechanism.** WebKit has a private CSS property, `-apple-visual-effect`, that puts a system material behind an element (`-apple-system-glass-material`, `-subdued`, the `-apple-system-blur-material` family, two vibrancy values). It's only known in a web view with WebKit's *system appearance* on, a private switch. With it on, the page's layer tree gets the real thing: `CAHostingLayer<MaterialHostingView…>` over `CASDFLayer`, `SDFPortalLayer` and `CABackdropLayer` for glass, `MTMaterialLayer` for blur.
+
+**The switch is per theme, not global (measured).** The plan was to turn it on for all of Margin's web views if it changed nothing else. It does:
+- *Compared:* Arcadia, Neubrutalism and Pixel, each in five states (sidebar, palette, menu, editor, Settings), light and dark, drawn by the real runtime in an off-screen WKWebView with the switch off and on, 3024 × 1964 snapshots compared pixel by pixel. 28 of 30 pairs identical (0 pixels). Two differ, both Settings in Dark Mode: Arcadia (867 px) and Neubrutalism (143 px), in the number fields' steppers and Arcadia's switch.
+- *The cause,* found on a page of every native control and system color: with system appearance on, (1) unstyled links and the `LinkText`, `VisitedText`, `ActiveText` colors are AppKit's (`rgb(0, 0, 238)` becomes `rgb(0, 104, 218)`), and (2) `prefers-dark-interface` is true in Dark Mode and **`color-scheme: light` is no longer honoured there**: a light-only subtree's native controls, scroll bars, system colors and `light-dark()` follow the app's dark appearance. Neubrutalism is light-only by design ("one look in light and dark").
+- (2) can't be undone in CSS (no value of `color-scheme` forces light under it), so the runtime's base CSS can't neutralise it.
+- *So:* the switch is on only while the theme drawn asks for it (`"systemMaterials": true` in theme.json; `ui/theme-schema.ts`). No web view is remade: `-[WKWebView _setUseSystemAppearance:]` is per view and live (`CSS.supports` flips at once, both ways). The one condition is order: a style sheet parsed while it was off has already dropped the property. The page therefore asks the app before it makes a theme's sheet (`app/shared/host/overlay.ts` `askSystemMaterials`, the `appearance` message, answered by `OverlaySystemAppearance.set` in `OverlayWebView.swift`); by the time the answer is back the page knows the property (10 of 10 switches, 0 to 1 ms each after the first). Cost of a theme switch: that one message.
+- `defaults write com.unibox.margin MarginSystemAppearance -bool NO` keeps it off for every theme. Selectors missing or changed: off, logged once, the theme draws its plain look. `docs/PRIVATE-APIS.md` has the row.
+
+**The theme language.** `-apple-visual-effect` goes through the sanitizer only as one keyword from a list of ten (`ui/sanitize.ts VISUAL_EFFECTS`: `none` and the nine materials), never `var()`, a second value or a wide keyword. Nothing else is new. A theme writes its plain look first and the material inside `@supports (-apple-visual-effect: -apple-system-glass-material)`; every other engine drops the block (`extension/themes/README.md` "The system's materials").
+
+**What the real glass does (all seen off screen).** A window far outside every display can still be pictured by the window server: `CGWindowListCreateImage` of the process's own window returns the composited pixels, glass included, with no Screen Recording permission (WKWebView's `takeSnapshot` draws the page without its materials). `tools/glass-shots/` does this for the theme and lists each material layer's box. Found with one case per process (`shot.swift`):
+- It refracts and blurs whatever is under it in the window: the page's own content (text, gradients), another glass element, and a native view behind a see-through web view. Other windows behind Margin's weren't tried (its window is opaque).
+- It's light or dark with the *app's* appearance, not with what's under it: a milky light glass over a dark ground in Light Mode. The theme's ground follows `prefers-color-scheme`, so they match.
+- The shape is the element's border box with **one** corner radius (the first corner's, for all four; `50%` gives a capsule). `clip-path` is ignored. A clipping ancestor (the tab list) cuts it to what shows; scrolled fully out, nothing is drawn.
+- **Anything reaching past the box makes the glass grow to cover it:** an outer `box-shadow` (the panel became 51 px larger each way), an `outline` outside it, a child hanging out (the resize handle). So every glass element has `box-shadow: none` and `overflow: hidden`, focus rings are inside, and the handle sits beside the panel. An inset shadow and a `background` over the glass (a tint) are fine. `run.sh` fails if a layer is larger than its element.
+- `transform` (translate, scale, rotate), `opacity`, a changing size, an element added or removed, and transitions from `opacity: 0` all work, running on the compositor. `visibility: hidden` hides it (its layers stay). Children draw over it. Subdued glass inside regular glass works.
+- Under Playwright's WebKit and Chromium, and with the switch off, `@supports` is false and no layer exists.
+
+**The theme** (`extension/themes/liquid-glass/`). A ground in the space's color (a flat sRGB mix as the page card's spread shadow, so Margin.app can read it for the card's corners; three large soft radial gradients behind the panel only, in the color and two hues beside it, faded out before the page). The sidebar is one glass panel 8 px in from the window's edges, radius 24, padding 10, so rows are radius 14 (concentric). Inside it, subdued glass: the address pill, the navigation capsule, the space switcher, and the tab in front. Floating, regular glass: the command bar (radius 24, centred), a menu, the space editor, a notice, a prompt. Five material layers at rest, one more for whatever floats. Other rows are plain text with a faint fill under the pointer. Text is the system font in label, secondary and tertiary strengths; the accent is the system's (`AccentColor`). The plain look everywhere else: translucent fills, hairlines and short soft shadows, popovers nearly solid since nothing blurs behind them. `prefers-contrast: more` keeps the plain look with solid fills and stronger text; `prefers-reduced-motion` stops what loops. The panel's own shadow is short (7 px blur in an 8 px gap) so it never falls on the page.
+
+**Limits known.**
+- WebKit on macOS 27.2.1 doesn't know `prefers-reduced-transparency` (both values false), so the theme can't switch to plain fills for Reduce Transparency there; the rule is written and takes effect when WebKit learns it. macOS is expected to make its own glass solid; not checked.
+- With something hosted, the hosted window is above Margin's, so glass can't refract it: the panel refracts the ground, and the command bar what Margin's window shows in the page area while it's in front.
+- The themes' end-to-end test (`tests/e2e/themes.test.ts`) still expects three iCloud Tabs devices from every theme; this one has no iCloud Tabs part (they're being removed), so that one check fails for it until the removal lands.
+
+**Needs eyes** (nothing was shown on screen): how the glass really reads at 120 Hz while the pointer and lists move; the cost of five to six live layers (GPU, battery), not measurable off screen; the glass with Reduce Transparency and Increase Contrast on; the command bar over a hosted window; the lit tab and the capsules for legibility over each space color in both modes; the panel's edge against a hosted window's.
+
+**Tests.** `tests/theme-sanitize.test.ts` (the ten values, the pattern, what's refused; the manifest field), `tests/theme-liquid-glass.test.ts` (the package: nothing removed, every material inside `@supports`, on three kinds of element, no `backdrop-filter`, motion on transform and opacity), `tests/theme/liquid-glass.test.ts` (WebKit and Chromium: the plain look, the layout, the ground read for the corners and never over the page, light and dark, contrast, motion, the launcher), `tests/theme/behaviors.test.ts` with Liquid Glass added (drag and drop, resize, rename, menus, swipes, peek), the app's `systemAppearance()` unit check, and `tools/app-tests/e2e-hosted.swift`: in Margin's real window off screen, Liquid Glass pushed as a theme turns the web view's system appearance on and its panel computes `-apple-system-glass-material` with no shadow of its own; the same package without `systemMaterials` turns it off and draws the plain look.
+
+## Margin's window in front of what it hosts (2026-11-17)
+
+Decided for Tirth after his night of 2026-11-17 on the real screen (Margin's log of 01:42-01:44): ⌘T showed no palette with Safari hosted, "the border disappears randomly", "the resize is not realtime" and its second drag lost the Safari window, and the launch was flaky (the first page shown, then the launcher again 0.7 s later; Safari's own windows seen as Margin opened). Until now the hosted window sat above Margin's window, so everything of Margin's that reaches the page area had to be worked around it: the palette by lifting Margin's window, the card's corners by four floating panels, the sidebar's drag by a lift with a "ground" view. One change of order removes all of that. On `feat/margin-in-front`.
+
+**The decision.** While Margin's window is in full screen it is in front of what it hosts, always: with the hosted app active, after a click in it, during an opening. The hosted window is under it, seen through the page area.
+
+**The mechanism** (`MarginWindowController.keepFront`, the one place; `FrontMechanism`, MarginWindow.swift).
+- *Its level:* one above normal (`NSWindow.Level` 1; floating is 3, so a hosted app's panels, pop-up menus, tooltips and sheets-as-panels still come above it, and the menu bar, the Dock and Margin's quit prompt as before). The window server keeps a level whatever app is active or clicked: nothing to assert again, no frame where the hosted window is on top. Windowed (not in full screen: the tests' windowed Margin) it stays at the normal level.
+- *Read back:* each time, the window server's own word on the window's level is read (`CGWindowListCopyWindowInfo` of that one window). Not what was set, twice: Margin goes on with the other way and says so once (`its raised level isn't held by the window server … kept in front by its order instead`).
+- *The other way, its order* (the overlay's, v0.1.0: `git show 7d7f62aa:app/platforms/macos/shell/Overlay.swift`): at the normal level, ordered right above the hosted window, and again whenever that window could have come over it: an app activated, the Space changed, Margin's window key or main, and after every press. `defaults write com.unibox.margin MarginFront order` asks for it from the start.
+- *Why the level first:* it's the only one of the two with no moment of the wrong order (the ordering way corrects after the fact, a frame late), and it needs no event at all. What can't be reasoned off screen is whether a full-screen window keeps a raised level through macOS's own handling of full screen: hence the read-back, and check10's step f. Off screen the window server holds level 1 for Margin's (not full-screen) test window.
+- *Another app's window in Margin's Space* (a hosted app's Settings or second document, a menu bar app's window): the engine's poll looks once per read (`HostEngine.lookForOthers`, one on-screen window list, only while Margin's Space is current and something is hosted) for a normal-level, visible window that isn't hosted, isn't Margin's, is on Margin's display and reaches outside the page area. Margin's window lets the front one in front (`yield`: the normal level, ordered right below it) until it's gone. One wholly inside the page area needs nothing: it shows through the hole and takes its own clicks. No per-app rule. One exception, generic: a window of an app Margin hosts that's first seen right after an operation came with that operation (the window of a full-screen window's toolbar, the windows a Safari Margin started restores before they're swept) and is never let in front.
+
+**The page area is a hole** (`updateHole`, `WindowGroundView`).
+- While a hosted window is shown, Margin's window's own background is clear and one shape layer under the web view (`ground`) fills the theme's frame colour everywhere but the hosted window's bounds inside the page area, rounded where the hole's corners are the page card's. The page draws nothing there (`<m-page>` never paints). So the theme's frame and the card's rounded corners are simply drawn over the app, by the theme. Nothing else of the window is ever see-through, and in every other state the window's own background is whole (the 2026-11-15 "transparent first open" can't come back: the hole exists only with a hosted window under it).
+- The hole is the hosted window's real bounds (read when it's shown or placed, kept: never read per layout or pointer move), not the page area: a window-mode app's smaller window has the frame colour around it, and a window kept at a frame it had shows where it is.
+- The pointer (`slot`, PassThrough.swift, the shipped overlay's way): Margin's window ignores the mouse while the pointer is over the hole, decided on pointer moves only, and takes it everywhere else: the sidebar, the frame's strip, outside a rounded corner's curve, the few points of the resize handle that reach over the page area, and whatever the theme draws over the page area (`hits`: the palette, a menu, a notice). A held button keeps who had it: a drag begun in the app stays the app's over the sidebar, one begun on Margin stays Margin's over the app.
+- A field of Margin's that takes the keys (the palette) makes Margin active as before, and is now simply drawn over the app. When it lets go, the app shown is activated again (`onFieldClosed` → `HostedSession.fieldClosed` → `activateShown`): Escape gives the keys back without a click.
+
+**The page card's state: the contract for themes** (`extension/themes/README.md` "The page card's state").
+- The runtime sets `m-page-state` on the theme's root (Margin's own window only), from the app's `pageState` (the hello's, and `{ type: 'pageState', state, label }`):
+  - `shown`: a hosted window is in place at the page area and ready (its tab in front too). The page's place draws nothing; the pointer goes through.
+  - `loading`: an item is being opened, made ready or placed again. The page card is opaque with a loader, the pointer Margin's; everything the engine does meanwhile (an app starting, its window going in and out of full screen) is behind it. Natively the hole closes at once (the window's background whole in the frame's colour), before the page has even heard.
+  - `empty`: nothing to show: the launcher.
+- When each is set (`MarginWindowController.settlePage`): the engine's own slow step (`loading`: a first open, a placing again) is `loading` at once, with the app's name. A show the session has under way that isn't known to be slow (`setShowing`: a switch to a prepared, parked window, tens of ms) keeps what's drawn, hole included, for `loaderGrace` (120 ms); only if it isn't in place by then is it `loading`. So a switch between prepared items goes `shown` → `shown` and says nothing to the page. `shown` comes when the engine's window is in Margin's Space, nothing slow is running and the session's show is over.
+- The loader: a new optional part, `page-loader`, shown in `<m-page-loader>` while `loading` (guarded: only Margin's words, `{{pageLoader.label}}` "Opening <name>…" and `{{pageLoader.name}}`). A theme with none gets Margin's default from the runtime (`m-page-loader[m-default]`: a quiet spinner and the label on a `Canvas` card laid over the page's place with its radii), which fades out over the hosted window in 120 ms as `shown` comes (at once with reduced motion). The four built-in themes use the default; their own loaders are the next piece of work.
+- `m-starting`: on the root from its first frame until the frame after the state's data was first drawn; never when the data is there at the first draw, which it is in Margin.app (the hello carries the library, and the window is shown only once its page is drawn).
+- A web item whose Safari window exists already (made ready at launch, or parked) now gets its tab in front first (`hostShow` only touches tabs) and its window in second: the right page from the first frame.
+
+**What went.** The corner panels (`HostCorners`: four floating panels, their masks, bands and re-ordering, the observers that placed them, the layout's `edge`), the lift for the sidebar's drag and its ground (`setLifted`, `PageGroundView`), "kept below the hosted window" (`keepBelow`, `orderBelowHosted` and every call that ordered Margin's window below), the order-front for the palette, and their checks. `cover` stays only as what the ordering way orders above while nothing is shown.
+
+**The sidebar's drag.** The sidebar slides over the hosted window live (Margin's window is in front; nothing is lifted or ordered); the hole stays at the window's bounds, the frame's colour in the gap a narrower sidebar leaves. The page area's change is held until the drag ends, then one placing behind the loader. A window-mode app is moved once at the end too (following live by Accessibility was left out: it lags the pointer in steps and costs an Accessibility call per move).
+
+**A placing again never loses the window** (the rule; `HostEngine.leaveMember`, `keepAsPlaced`, `HostedSession.placeAgain`).
+- *What the log showed* (01:43:55-01:44:09): the second drag's exit `out of full screen by its copy: landed(… "normal" …)` 64 ms after it was asked; the entry asked ~50 ms later; `the early full screen fell back … no new full-screen Space listed within 1502 ms`; `full screen failed: no full-screen Space of its own within 6 s`; the window parked out of full screen with nothing shown; the retry found `Window not found`. And every entry, even the ones that worked: `to full screen by its copy: timedOut(… "fullscreen")`.
+- *Cause, as far as the log and the code show:* the engine took the copy's answer as proof that the window had left full screen (`if copy { return full == nil && answered }`), and Safari says `normal` as soon as it's asked, not when its window has left. The next ask, into full screen, then reached Safari mid-exit and was dropped. That it worked the first time and not the second is timing (the first came 86 s after the window's last full-screen change, the second 5.9 s after). The `timedOut` lines are a separate fault: Margin moves a hosted window out of its new full-screen Space within ~0.2 s, so Safari never reports `fullscreen` for it; each ask sat out the copy's 3 s, during which the copy answers `busy` to any other call for that window (and a `busy` exit was never asked again).
+- *Now:* (1) Out of full screen is what the window server shows: the window off the frame it had as a member and still, or Accessibility reading it out; never the copy's word. A copy that didn't take the ask is asked again. (2) Not out within `exitWait`: the placing doesn't start. The window is put back in Margin's Space as the full-screen member it still is, shown (`keepAsPlaced`); the hole is at its bounds, the frame's colour in any gap and the sidebar over what it covers, and the next show or change of the page area tries again. *Chosen over setting the sidebar back to its old width:* the person's width is theirs, and a page area can change for other reasons (a theme, a display). (3) Out, and the entry fails: its app is brought in front before it's asked once more (macOS ignores a full-screen ask for an app that isn't active); failing that the window is parked, still hosted, and the session shows it again once, `refitRetryAfter` (1.5 s) later, behind the loader; failing that too, the launcher, with the item kept in the sidebar and its window never asked to close: a click shows it. (4) The copy answers a hosted window's `setWindowState` as soon as Safari took the ask (`land: false` → `asked`): no 3 s wait, no `timedOut` line, never `busy` for the next call.
+- Not known: why the retry's ask met `Window not found`. The "closed" that followed in that log was a ⌘W of his queued behind the retry, not Margin's doing.
+
+**The first show that came undone** (01:42:22.97 shown, 01:42:23.68 `parked, nothing shown (its window left Margin's Space, or Margin's window did)`).
+- *Cause in the engine:* the poll's rule. Two reads in a row (0.25 s apart) of the shown window outside Margin's Space parked it with nothing in its place, whoever moved it, and nothing brought it back but another click. What moved it isn't in the log (the line didn't say what it had read). It happened 5.4-5.9 s after that window's hijacked full-screen entry (asked 01:42:17.78), and the second drag's failure came 5.9 s after the entry before it (01:43:49.63): Safari finishing or giving up its own full-screen change, cut short by the early path, is the likely mover. Not proven.
+- *Now:* with Margin's window still in its Space, the window is moved back into Margin's Space as it is and stays the one shown (`bringBack`): no unshown, no launcher. A full-screen Space of its own it was found in is destroyed (only one its app owns or the engine made). If it's no longer at the frame it was placed at (it left full screen by itself), it's placed again behind the loader. More than 3 times in 30 s: parked as before, said. The log line now says what was read: its Spaces and their types, Margin's Space, its bounds, and the ms since it was last asked into full screen, so the next real run names the mover. Margin's window out of its own Space (macOS took it out of full screen): parked, as before.
+
+**Safari's windows seen as Margin opened.** A Safari started with no Dock icon is an accessory app: its windows open in the current Space, Margin's, at the normal level, in front of Margin's window. With Margin's window a level above and whole (`empty`: the launcher), the restored windows (until they're swept) and the new one being made ready are behind it. The restored-window sweep is unchanged. `defaults write com.unibox.margin MarginPrepareBrowser -bool NO` skips the preparation (for the on-screen checks that use only their own test apps).
+
+**Cost.**
+- At rest: nothing per frame. The poll (0.25 s, unchanged) makes one more window-server read (the on-screen list, ~0.2 ms) while Margin's Space is current and something is hosted. One shape layer for the ground, drawn when the hole changes.
+- Per pointer move anywhere: one comparison against the kept slot and, on a change, one `ignoresMouseEvents` (as the shipped overlay did).
+- A window that isn't opaque, with a clear background over the hole: the window server blends Margin's window over the hosted one instead of skipping what's under it. It was already not opaque (its rounded corners); what's new is that the page area is no longer covered by the hosted window's opaque pixels on top. Not measurable off screen.
+- A switch between prepared items: 30 ms end to end in the glue e2e (the stand-in's moves), nothing sent to the page.
+
+**Known and left.**
+- The pointer's hand-over is decided as it moves: the first event after crossing from the page area onto Margin's UI can, in a race of a few ms, still go to what's under. The overlay had a second window to catch those; not added here. To watch for by hand.
+- With the sidebar hidden in the launcher (Keep open off), a window made ready at launch is placed for the wider page area and placed again at its first show (as before): behind the loader now.
+- The Rust core and the Windows shell don't send `pageState`: over them the root has no `m-page-state`.
+
+**Verified (off screen only).**
+- `tools/app-tests/run.sh all`: 1213 unit checks (was 1203: the corner panels' and the lift's checks out, the new ones in) and 204 end-to-end (was 182), 44 s, no compiler warnings. `npm test` 912; `npm run test:theme` 275 (the old corners file is now `tests/theme/page-state.test.ts`: 16 checks, every built-in theme in WebKit and Chromium); `npm run test:security` 244 and 35; `npm run test:e2e` 107.
+- *The engine* (`host-tests.swift`, the stand-in window manager): a placing whose exit the copy answers but the window server doesn't show (kept shown as it was, never asked into full screen again, placed at the next change); the copy busy at the exit (asked again); the first entry not done (its app in front, asked once more); the shown window found on a Desktop, in a full-screen Space of its own, and out of full screen by itself (brought back, still shown, placed again), and taken out again and again (parked after three); another app's window (let in front only when it's the person's doing). *The session* (`hosted-tests.swift hostedFrontTests`): what Margin's window is told as an item shows, a parked Safari window's tab first, a failed placing shown again after a pause, both tries failing with nothing torn down, the keys given back, another window passed on.
+- *The window, end to end* (`e2e-glue.swift`: the real shell, page and window off every display): the window server holds level 1 for Margin's test window; `loading` as the app launches with nothing see-through, then `shown`; the window server's own picture of Margin's window (as `tools/glass-shots` takes one) see-through across the page area and inside its corners' curves and painted on the sidebar, the frame and outside the corners; the pointer through the hole and Margin's everywhere else, a drag keeping who had it; a switch between prepared items in 30 ms with nothing said to the page and the hole never closed; a slow show's loader after the grace, opaque in the picture; ⌘T with a hosted app in front (the palette painted over the page area, the pointer Margin's, Escape activating the app again); both kinds of drag, held, then one placing behind the loader, twice in a row; another window let in front; the ordering way when the level isn't held.
+- *Each new check fails without its rule* (each rule taken out of the source in turn, the suite run, the source put back): the copy's word believed for the exit 4; a placing that didn't start giving the window up 2; no app in front before the second ask 1; a stray parked, never brought back 3; other windows never looked for 7; one that came during an operation let in front 8; the session's second try, keys and words 6; Margin's window never raised 9 (end to end); no hole 19; the hole left open while loading 2; no grace 3; the keys not given back 1; the page never told 5. The page's side on the code before it: all 16 theme checks and 4 unit ones fail; the copy's immediate answer 1.
+- One thing the off-screen window can't show: the default loader's own pixels on a second `loading`. WebKit doesn't repaint that layer in a window off every display (the picture kept a frame of its first fade), so the loader's opacity there is checked in Playwright only; the card is opaque natively either way.
+
+**Not verified on the real screen** (`TESTING.md` "Margin's window in front of what it hosts"; `/tmp/margin-toolbar-test/hosted/check10.swift`, written, not run): that a full-screen window keeps a raised level through macOS's own full-screen handling, Mission Control and Space switches (if not, the ordering way takes over by itself and says so); that the hole shows the hosted window with no flash as it opens and closes; the pointer's hand-over under a real hand; Safari's own timing in a placing (whether its exit shows on the window server as the stand-in plays it), and what moved the window after the first show; that nothing of Safari is seen as Margin opens.
+
+## Margin in front, after the real screen: the window that was in no Space, full screen from another app's Space, the last item at launch (2026-11-17)
+
+The on-screen check ran four times with the kit's test panes (`/tmp/margin-toolbar-test/hosted/check10a.log` to `check10d.log`). Proven there: the raised level holds on a full-screen window (the window server's layer 1); Margin's window above the hosted one after a show, an activation and a real click; clicks through the hole and on the frame; the palette over the page and Escape giving the keys back; the loading card opaque, then see-through; a prepared switch in 18 ms with no loader. Three things it showed wrong, fixed here. None of the fixes has run on the real screen yet.
+
+**1. A hosted window ended up in no Space** (`check10d.log`).
+- *Seen:* after `placed again in 700 ms (… moved in, its Space destroyed 589, in place, its Space gone 609 …)` and `page shown`, about a second later the window server had the window at the right frame, on no screen, in no Space (`spaces []`), with Margin's Space current: the page area was an empty hole. The next placing was fine. At the third the engine caught it itself (`not in place after its move and destroy: … in []`) and fell back to the slow path (2 s).
+- *Cause in the code:* the early path asked for the window's move into Margin's Space and for its own Space's destroy in the same instant, and took the first read of "in Margin's Space" as final. That read can pass and the window still drop out of every Space a moment later. The poll then needed two reads 0.25 s apart to call it strayed, and counted "in no Space" like "in another Space". Whether the destroy takes the window with it because the move hadn't landed, or macOS's own full-screen change, finishing, puts the window back in a Space that's gone, the log doesn't say. The fix holds for both.
+- *Now* (`HostEngine.early`, `settleMember`, `poll`, `strayed`, `bringBack`):
+  - The early path destroys the window's own Space only once the move shows (`spaces == [Margin's]`) and has held for 50 ms (`destroyAfterMove`). Found out of Margin's Space again before that, it's moved in again (3 times at most). This is the order the slow path always had (move, read, destroy).
+  - Both paths: after the destroy, and once the Space is gone from the list, the window is in place only when it has stayed in Margin's Space alone, at the page area, for 150 ms (`memberSettle`). Read in no Space meanwhile, it's put back (3 times at most) and the 150 ms start again. `page shown` (the hole) comes only after that. Not settled: the early path backs out and takes the slow path as before; the slow path gives up as before.
+  - The poll: the shown window in no Space at all is brought back at the first read (a window gets there only by a Space destroyed under it). In another Space: still two reads. For 1.5 s after every show the shell polls every 0.1 s (`pollAfterShow`). If the move back doesn't take, the window leaves full screen and is placed again behind the loader instead of being parked.
+  - `strayed` reads again when its turn comes: both windows where they should be by then, nothing is done. Before, that case parked the window.
+  - A private Space a window was moved out of (a switch in, a give-back) is destroyed a second later by the poll, or at quit once the last move has settled (0.3 s at most), not in the same breath (`privateRetire`). This is by analogy: the first show of a browser made ready at launch came undone 0.7 s later on his Mac, and that show is a move out of a private Space followed by its destroy. Not proven to be the cause.
+- *Cost:* 0.2 s more per first open and per placing on the early path (50 + 150 ms), 0.15 s on the slow path. Nothing on a switch between prepared items (no destroy any more at that moment). Fifteen extra polls after a show.
+- *Kept from the work this continues, and why:* the 50 ms hold before the destroy wasn't asked for, only the settle after it was. It stays because it removes the race instead of repairing it, and it's the slow path's order, which the real screen has shown working. Its risk is macOS putting the window back in its own Space during those 50 ms, so the second move was added.
+
+**2. Margin's window didn't go full screen when opened from another app's full-screen Space** (`check10b.log`, `check10c.log`; from a Desktop it worked).
+- *Seen:* `into full screen before it's seen` → `macOS didn't take it to full screen (active false, key false, on the current Space false …)` → shown windowed after 3 s → asked again with `active true, key true, on the current Space false`, refused again → nothing more, though the last line had `on the current Space true`.
+- *Cause in the code:* `FullScreenRetry` asked once per activation of Margin and never looked at whether the window was on the current Space. Opened from another app's full-screen Space, the window is on a Desktop macOS hasn't switched to yet, and macOS refuses the toggle there. After two refusals no event was left to ask on.
+- *Now* (`MarginWindowController.tryFullScreen`, `canAskFullScreen`, `lookAgain`): the toggle is sent only when macOS would take it (Margin active, its window visible and on the active Space). It's tried at every event that can make that true (Margin active, its window key, main or on screen, the Space changed) and at a look of its own after 0.3 s, doubling to every 5 s, for as long as the window is open and not in. Once macOS would take it the looks start from 0.3 s again, so a refusal is asked again soon. While it can't be asked, Margin and its window are brought forward (so macOS shows the Space the window is on), a second apart and three times at most: after that it only waits, so a Margin left behind never takes the keys from another app look after look.
+- *What's seen while it waits:* nothing of Margin. Its window is ordered in see-through, as before; macOS slides to the Desktop it's on, then into its full-screen Space, and the window is drawn as it has entered: the first frame is the themed full-screen one. Only if it still isn't in after 10 s (was 3) is it drawn windowed, and it's still asked.
+
+**3. At launch, the item the window showed last** (asked: "open Margin and that's it, show a loader until the data is shown").
+- *Before:* the launcher until a click.
+- *Now* (`HostedSession.resumeLast`, called as the window is made, before its page loads): the item selected in the window's space (the library's `selected`, the newest used if several) is shown by itself. The page's hello already says hosting and `loading` with the item's name, so the first frame is the loader, with its row lit; no grace (`setShowing(…, slow: true)`). The show waits for the window to be in full screen with its page area (30 s), then runs as any pick. A web item whose browser isn't ready is a cold start behind the loader. Only the first window of a run. No selected item, or one that can't be hosted: the launcher. A show that fails: the launcher, the item kept.
+- Another item picked while the window is still coming up ends the wait at once. A window not up in 30 s: the launcher, and the item is shown once the window is in full screen.
+- `defaults write com.unibox.margin MarginResumeLast -bool NO` turns it off. The on-screen check sets it for its first launch, so it never opens anything of the person's. The dev hook's `front` line says what would be shown (`last app:<bundle id>`, `web` or `none`).
+- *A consequence, left:* with an app as the last item, the browser is still started and linked at launch, but its window isn't made ready any more (`browser not prepared: something is shown in Margin's window`: a window made ready comes into Margin's Space, where it would be seen through the hole). The first web item then opens its window behind the loader instead of switching to one made ready.
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1238 unit checks (was 1213) and 214 end-to-end (was 204), no compiler warnings. `npm test` 912; `npm run test:theme` 275; `npm run test:security` 244 and 35; `npm run test:e2e` 107.
+- *Each new check fails without its rule* (one literal change in a copy of the tree, the suite run): no settle 2; settle but no put-back 1; the destroy with no hold 4; no first-read rule 1; `strayed` not reading again 2; a private Space destroyed at once 3; no second move 1; asked whether macOS would take it or not 3 end to end and 1 unit; no look of its own 3; forwards unbounded 1; the back-off not restarted 1; no resume 8 unit and 3 end to end; the loader only after the grace 1; the wait sat out though overtaken 1; not shown once the window is up 1; no polls after a show 2.
+- The stand-in now plays "a destroy drops the window that was moved out of that Space from every Space" (`dropWithin`, `dropNext`, `dropAfter`) and "macOS puts the window back in its own Space" (`rehomeAfter`).
+- Four end-to-end checks of the committed work failed now and then on a busy Mac, on the code before this too (5 of 10 runs): they read the hole, the pointer's hand-over (twice) and the app's activation without waiting for the page's own report. They wait for it now.
+
+**Not verified on the real screen.** That the window stays in Margin's Space after a placing (and which of the three does it: the hold, the put-back or the poll); that a put-back by a plain move takes for a window in no Space; that the 50 ms hold doesn't send the early path to the slow one; the launch from another app's full-screen Space; what is seen while Margin waits there; the last item at launch with real apps and a real Safari. `check10.swift` now asserts the first four and the last with the test pane (TESTING.md).
+
+## Margin in front: what check10's fifth and sixth runs showed (2026-11-17)
+
+The check ran twice more on the real screen with the fixes of the entry above (`/tmp/margin-toolbar-test/hosted/check10e.log`, `check10f.log`, and Margin's whole log of the second run, `check10f-margin.log`). Held: Margin in full screen when opened from another app's full-screen Space (1.8 s, three waits, no refusal, never drawn windowed), the launcher, both openings, both switches, the clicks, the palette, and 4 of 6 placings. Four things didn't hold. None of what follows has run on the real screen yet.
+
+**1. The window in no Space: the cause is the early path's fast shape.**
+- *Proven by the timings.* Every placing that failed moved the window as soon as it had the page frame: `full screen by the early path in 247 ms (listed 10, reserved … 12, page-sized 35, moved in 88, its Space destroyed 89, in place, its Space gone 247)`, and about a second later the window server had the window in no Space and off the screen. Every placing that held moved it after macOS had brought it into its own Space: `(… in its Space 531, page-sized 585, moved in 639, its Space destroyed 640, … 1 Space change undone)`. 4 of 4 against 10 of 10 over the two runs. His real Safari log has the fast shape at the launch's preparation too (`early path in 214 ms (listed 157, … page-sized 202, moved in, its Space destroyed 205 …)`), followed by `to full screen by its copy: timedOut` and the stray.
+- *Cause in the code:* the early path moved on the page frame alone. macOS lays the window out at the reserved frame either at once (~35 ms) or only once the window is in its Space (~585 ms), and whichever it does, it finishes its own full-screen change at ~0.5-0.6 s: it brings the window into its new Space and switches to it, whatever the bridge did meanwhile. With that Space destroyed by then, the window ends in none. The hold (50 ms) and the settle (150 ms) of the entry above were over 0.3 s before that.
+- *Now* (`HostEngine.early`): the reservation as soon as the Space is listed stays (preparation: macOS lays the window out at the page area itself). The move waits for three things: the window at the page area, the window in its own Space by the window server, and macOS's switch to that Space seen (and undone at once); with no switch within 250 ms of the window being in its Space (`earlySwitchWait`), it's moved then. *The signal chosen:* the window server's membership plus macOS's switch, because the switch is the last step of macOS's change that the logs show, and both read without Accessibility (which only acts on the current Space). Then, as before: moved, held 50 ms, its Space destroyed, settled 150 ms. A window macOS doesn't bring into its Space within 1.5 s: nothing moved, the slow path takes it from there.
+- *Always under the freeze,* from the ask on, both paths, a first open too (`enterFullScreen`): a first open said `1 Space change undone … no freeze`, which is a flash of the other Space. What's frozen is Margin's window with its loader. Released when the step returns, whatever it returns; the freezer's own watchdog reveals 1.7 s after the freeze was taken, whatever happens (a placing's freeze starts at its exit, ~0.1 s earlier).
+- *Cost:* a first open's full-screen step and a placing's are ~0.85 s now, every time (the stand-in: 810 ms; the real Mac's held placings were 0.77-0.85 s already). The ~0.25 s ones are gone: they were the broken ones. A placing in all: about 0.95 s. A switch between items already open: unchanged.
+- *A Space the person went to meanwhile* is still left alone, and now also when it's a Desktop (before, only a full-screen Space listed before the ask was). If macOS's switch takes them from it, that Space is the one made current again, not Margin's.
+- *Second line, kept:* the settle and put-back, the poll's first read of "no Space". *Added:* for 3 s after a full-screen ask (`lateWatch`), the poll undoes a switch by macOS to a Space that wasn't listed before the ask (never a Desktop, never one the person had), and says it. The shell's extra polls after a show run for 2 s (were 1.5).
+
+**2. After a bad placing the poll saw nothing.**
+- *Seen:* `Margin put it back or brought it back 0 time(s)`. The check's own process read no Space for the window (`SLSCopySpacesForWindows`, the same call and mask Margin makes) and found neither it nor Margin's own window in the on-screen list, while the active Space was still Margin's. Margin's poll logged no change: its read of the window's Spaces stayed `[Margin's]`.
+- *Not explained:* why two processes get different answers from the same call. What the display was on isn't in the logs either (the check now prints each display's current Space).
+- *Now* (`lookOnScreen`, `screenLook`, `backOnScreen`): the poll also reads the window server's on-screen list (the public one, one read per poll, shared with the look for other windows) and checks that Margin's own window and the shown hosted window are in it. Only when it applies: something shown, Margin's window in its Space, that Space the current one of its display by the displays' list (or the current one a Space that isn't listed at all, which is never the person's doing), the screen not locked or asleep, neither app hidden.
+  - The hosted window missing, Margin's own on screen, within 3 s of its show: acted on at the first read.
+  - Margin's own window missing: at the second read in a row.
+  - The hosted window alone missing later: its app's doing (minimized): said, left alone.
+  - Acting: what the window server has is logged (both windows on or off screen, their Spaces, each display's current Space and whether it's listed), Margin's Space is made current again and the hosted window moved into it again. Not on screen within 0.6 s: out of full screen and placed again behind the loader, which is what brought it back on the real Mac (the placing after each bad one held). Three times in 30 s at most, then left, said once.
+  - *Never fighting the person:* on another Space the look doesn't apply (the displays' list says so). The remaining risk is a read during their own swipe away that still has Margin's Space as current with its windows already off screen, twice 0.25 s apart; the cost would be one switch back.
+- *The read, said:* the poll says what it read of a host whenever that isn't what it should be, and when it changes (`host: poll: …`), and once when an operation held it off for over a second. Nothing while all is well. This replaces the trace added for the sixth run. The dev hook's `front` line carries the engine's read at that moment (`engine: polls N (the last M ms ago), … in [Spaces] and on/off screen, …`): the sixth run couldn't tell a poll that read something else from a poll that didn't run.
+
+**3. The last item at launch didn't show: Margin never became active.**
+- *Seen:* `full screen not asked yet (… active false, key false, on the current Space false …): waiting (its first ask)`, then nothing for 10 s, `shown as it is`, and at 30 s `not shown at launch … shown once it is`.
+- *Cause in the code:* the three forwards did happen, a second apart, but said nothing, and all three were `NSApp.activate()`, which macOS (14 and later) doesn't honour for an app that isn't active. In the first launch of the same run Margin came forward only when the check ran `open` on it again. A Margin opened from the Dock or Spotlight is activated by macOS itself; one opened by a script isn't.
+- *Now* (`bringForward`, `FullScreenRetry.forward`): 0.8 s apart, three at most, each said in the log with the state: first its own activation; then a reopen asked of LaunchServices (`NSWorkspace.openApplication` on its own bundle, what `open` does, and the one way the log shows working); then both. So a Margin that isn't in front about a second after it was opened asks LaunchServices. After the three it waits, as before, and the last item is still shown once the window is in full screen.
+
+**4. Step f** failed only because Margin's window wasn't in the on-screen list (item 2). It stays after the placings, as a tripwire.
+
+**Verified (off screen only).**
+- The stand-in plays macOS's change to its end now (`FakeHostWorld.advance`): the window brought into its new Space 525 ms after the ask wherever the bridge moved it before, into no Space if that Space is gone, the display then showing nothing of Margin's Space; the switch at 600 ms. A check drives the stand-in alone through the old order and gets the real Mac's result.
+- *Each new check fails without its rule* (one literal change in a copy of the tree, the unit suite run): moved on the page frame alone 20; macOS's switch not waited for 4; no freeze from the ask 17; no late watch 1; no on-screen look 4; the look whatever the screen (locked, another Space, hidden) 3; a Desktop the person went to taken back 2; acted on at the first read whatever is missing 3; no bound on the tries 1; the forwards all by activation 1.
+- End to end, through the real shell (`e2e-glue.swift`): nothing of Margin's Space on screen with every Space read right is put right by the shell's own poll (fails with the look taken out); the dev hook's `front` line now carries the engine's own read of the one shown (its Spaces, on screen or not, how many polls have read), so a check's process and Margin can be compared at the same moment.
+- `tools/app-tests/run.sh all`: 1252 unit checks (was 1238) and 215 end-to-end (was 214), no compiler warnings. `npm test` 912; `npm run test:theme` 275; `npm run test:security` 244 and 35; `npm run test:e2e` 107, of which `tests/e2e/themes.test.ts` failed 2 in the full run and passed 7 of 7 alone, twice (nothing it runs was changed here).
+
+**Not verified on the real screen.** That waiting for "in its Space" and the switch ends the windows in no Space (the 10 of 10 that held moved 24-90 ms after "in its Space", before or around the switch; waiting for the switch itself is new). That the freeze hides the switch on a first open. What the display is on in the bad state, and whether making Margin's Space current again and a second move bring the windows back, or only the placing does. Whether a reopen through LaunchServices brings a script-opened Margin forward from inside Margin as `open` did from outside. `check10.swift` asserts the first and the last, and prints the rest.
+
+## A page loader of its own for each built-in theme (2026-11-17)
+
+Tirth: "Show some sort of good loader per each theme until the data is shown; show a loader switching between apps that can't be opened instantly." The contract is the one from "Margin's window in front of what it hosts" (the root's `m-page-state`, the guarded `page-loader` part in `<m-page-loader>`, `m-starting`); nothing in the runtime, the app or the engine changed. Each of the four themes now has its part and its slot, so none of them gets Margin's default loader any more (it stays for a theme with no part: `tests/theme/page-state.test.ts` takes Arcadia's out to check it).
+
+**What each draws while `loading`.**
+- *Arcadia:* a white card (`#1b1b1f` in Dark Mode), in its middle a 56 px rounded tile in the space's colour (24 % in the card's colour) with a thin ring turning in it, the label under it in 13 px, muted.
+- *Neubrutalism:* the cream card with its dots, the label in Archivo Black, upper case (30 px, 20 px in a small window), over a chunky bar in the space's colour (3 px ink border, 6 px hard shadow) with a striped block running back and forth along it.
+- *Pixel:* the night ground, an hourglass (an svg: the words in a guarded part are Margin's), the label in the pixel type and the block cursor (the theme's "Blinking cursor" setting), over a meter of eight cells that fills in `steps()` in the space's colour.
+- *Liquid Glass:* the card as the ground, lit by three soft lights in the space's colour, and one capsule in its middle with a small spinner and the label: the system's glass inside `@supports` (one more material layer, only while an item opens: 5 layers instead of 4 in `tools/glass-shots`), a translucent fill with a hairline elsewhere.
+
+**How they're built** (the same in all four; `extension/themes/README.md` "The page card's state" says it for theme authors).
+- The `<m-page-loader>` itself is the opaque card: exactly over the page's place, the card's inner radius. Outside `loading` it stays in the tree, see-through, `visibility: hidden`, `pointer-events: none`. That is what lets it fade over the window that's shown: the runtime takes the part out at once as the state changes, so the fade is the card's (120 ms; Pixel in two steps; at once with reduced motion). It's drawn at once, with no fade in.
+- Only `transform` and `opacity` move. Nothing of the loader is animated in `shown` or `empty` (the part isn't in the tree). Reduced motion: nothing moves and a still mark stays (the ring's arc, the block in the middle of its bar, the meter half full, the spinner's arc). More contrast: Arcadia and Liquid Glass go flat black on white (white on black) with the mark outlined; Neubrutalism and Pixel have no rule for it anywhere and are ink on cream and white on night as they are. No `backdrop-filter`, no `filter`.
+- Sizes follow the card (`100% - …`), not the window: in the smallest window (640 × 420, a 330 px card in Neubrutalism) the bar narrows, the block runs a share of it (`translateX` in per cent of its own width), and a long name is cut with an ellipsis. *Changed from the first draft*, which bounded the labels by the window (`70vw`) and gave Neubrutalism's bar a fixed 380 px: both ran past the card there.
+
+**Starting (`m-starting`).** With nothing hosted yet (`[m-starting][m-page-state="empty"]`) the same card is drawn with no words, by the slot's own `::before` and `::after` (no part is there then). The sidebar draws a few placeholder rows on what's already in the tree: backgrounds on the space's name and pseudo-elements on the lists, one soft `opacity` pulse on the three rows, no gradient swept across it. No element is added, and nothing is left a frame after the data is drawn. *Changed from the first draft*, where the slot's mark was drawn (hidden, its animation still counted as running) whenever the root said `m-starting`, also under a shown window and in a page's own Margin, where the root has no `m-page-state`. In Margin.app the data is there at the first draw, so this is rarely seen; the tests draw a state with no data first, then with.
+
+**Cost.** Each theme's CSS grew 4.4 to 5.4 kB (11 to 15 %), its template 0.7 to 1.2 kB. At rest (`shown`, `empty`): one hidden element more, nothing animated.
+
+**Verified (off screen only).**
+- `tests/theme/page-card.ts`, run by each theme's own test in WebKit and Chromium: `loading` covers the page's place within half a pixel and is opaque at 65 points of a screenshot (a grid, the edges and inside the corners' curves; 61 in Pixel, whose corners are square), with Margin's words and no others; `shown` paints nothing there and leaves no animation of the loader's; `loading` again is opaque again; `empty` is the launcher; reduced motion, Dark Mode, more contrast; the smallest window; `m-starting` set and removed by the runtime. Two of its checks were added with a change and seen to fail first without it (the mark under a shown window, in Pixel; the label past the card in the smallest window, in Neubrutalism).
+- `npm test` 912; `npm run test:theme` 301 (was 275); `npm run test:security` 244 and 35 with no rule changed; `npm run test:e2e` 107; `tsc -p . && tsc -p tsconfig.tests.json` clean.
+- `tools/app-tests/run.sh all`: 1213 unit checks pass. **4 of its 204 end-to-end checks fail, and are left failing here**: `e2e-glue.swift` looks for Margin's default loader by name (`.arcadia > m-page-loader[m-default]`), which Arcadia no longer has. Its picture check passes with Arcadia's part (`loading`: alpha 255 across the page area). `tools/app-tests` wasn't mine to change in this piece of work (another change was under way there); with the four selectors pointed at the theme's own slot, in a copy of the folder, all 204 passed twice. In one of four runs, "⌘T: the palette's pixels are painted over the page area" and the check after it failed, and not again: not explained.
+- Pictures at 1512 × 982 (headless WebKit; Liquid Glass's real glass with `tools/glass-shots`, which now has a `loading` and a `starting` state): read, each theme in two spaces, light and dark where it has both, starting, reduced motion, more contrast.
+
+**Not verified on the real screen:** the fade over a real hosted window as it's shown; the glass capsule under a real hand.
+
+**What the contract doesn't have** (not added): an icon for what's opening. `pageLoader` gives the label and the name only, so no loader shows the app's icon.
+
+## Margin in front: the person's own Spaces, and a fallback that stayed (2026-11-17)
+
+His session of 06:24-06:36 (Safari, Maps, Phone and WhatsApp hosted; his own Claude app and Arc each in a full-screen Space of its own): "the border disappeared and all our UI is opening behind the hosted app still" (his screenshot: the hosted Safari over Margin's window, the card's rounded corners gone, no palette). Two causes, both in Margin's log; neither is macOS refusing anything.
+
+**1. Margin let windows of his other Spaces in front of it.**
+- *Seen:* `06:28:53.491 Margin's window 1: another window (12315) in its Space: let in front of it`, `06:28:54.532 … (61359) …`, `06:31:41.418 … (65227) …`, `06:32:22.923 … (64924) …`, each followed by `no other window in its Space: in front again` 0.3-1.4 s later; twelve times in all (12315 seven times). On the window server: 12315 his Claude app's full-screen window (0,33 1512×949, its own Space), 61359 Arc's, 65227 WhatsApp's (running as his own app then: Margin's first open of it came at 06:32:26), 64924 most likely one of his Safari windows. Each came as he swiped, used Mission Control or ⌘-Tabbed to his own apps: the yield is logged just before `Margin's keys let go: another app is in front`.
+- *Cause in the code* (`HostEngine.lookForOthers`): the look took every normal window in the on-screen list for a window in Margin's Space as long as the display's current Space read Margin's, and let any app's in front (a non-hosted app's always). During a Space change the window server's on-screen list already has windows of the Space being shown while the display still says Margin's. Nothing read the window's own Space.
+- *Now:* a window is let in front only when all hold: (a) the poll's on-screen list is a picture of Margin's Space at rest: the display's current Space is Margin's both right before the list is read and after it (`steadyScreen`, once per poll); (b) the window server's Space read for that window, in the same poll, is exactly [Margin's Space]; (c) it was seen so at two polls in a row at least 200 ms apart (`otherConfirm`); (d) its app is the one shown, and it wasn't first seen right after an operation (as before). **A window of an app Margin doesn't host is never let in front** (changed from "a menu bar app's window too": an app Margin doesn't host can't put a normal window in another app's full-screen Space; what shows there is a Space change's picture, or a panel at a higher layer, above Margin's level 1 anyway). A hosted app's own extra window that really is a member of Margin's Space (its Settings, a second document, File › New Window) still comes in front. While Margin's Space isn't current or is changing, the look says nothing either way: a yield in effect stays until the next look at rest (no flap).
+- *And Margin's window changes nothing while it isn't on the current Space* (`keepFront`: `onCurrentSpace`, the window's `isOnActiveSpace`): no level set, no order, whatever asks (an app activated on his Claude app's Space, a yield, a cover). Back on its Space, the Space change and the poll put it right.
+
+**2. Then Margin fell back for good to its weaker way.**
+- *Seen:* `06:32:56.268 Margin's window 1: no other window in its Space: in front again`, then 1 ms later `its raised level isn't held by the window server (it says 0): kept in front by its order instead`. From then on every activation of Safari put Safari above Margin's window: the corners gone, ⌘T at 06:33:27, 06:35:16 and 06:36:02 drew the palette behind Safari.
+- *Cause in the code* (`MarginWindowController.keepFront`): after each level set it read the window server's level at once and counted misses across calls with no time between them; the second miss switched to `order` for the rest of the run. 06:32:56.269 was the read taken 1 ms after the yield's end had set level 1 again from 0, during his ⌘-Tab away (`Margin's keys let go` at .279): a read right after Margin's own change, mid-transition. The count had no time in it: a miss left from an earlier read, or two reads in the same breath, were enough. Nothing ever tried the level again.
+- *Now* (`frontRead`, fed by the engine's poll: `HostEngine.lookFront` → `HostedSession.front`): `keepFront` never reads what the window server holds. The poll, at rest only (the same `steadyScreen` rule, nothing running, the screen not away, neither app hidden), passes Margin's window's layer and whether it's above the one shown, from the on-screen list it reads anyway (no extra window-server read). A read counts only if it's at least 0.5 s after Margin last changed its own level or order and after the last Space change, with nothing let in front and Margin's window on the current Space. The raised level not held needs two such reads at least 1 s apart with no held read between (the first sets the level again); then the order's way, said once. In the order's way (fallen back to, not asked for with `MarginFront order`), the raised level is tried again every 5 s; held at the next read at rest, back to it (`its raised level held by the window server again`), said once.
+
+**3. A yield's end** sets the raised level and also orders Margin's window right above the hosted window (before: only the level; in the order's way, only the order).
+
+**4. The poll's check of the order** (the safety net that would have caught the whole session): at each read at rest, the hosted window found above Margin's window in the window server's order is put right at once (the level set again if that's the way, ordered above it), said once (`the hosted window N above it in the window server's order …: in front of it again`) until a read is fine again.
+
+**Cost.** Per poll (0.25 s, only while something is hosted and Margin's Space is current): one more read of the displays' current Space (`SLSCopyManagedDisplaySpaces`, right before the on-screen list), and one Space read per window that's a candidate (a hosted app's normal window outside the page area: usually none). Nothing per frame. A hosted app's own Settings window comes in front after ~0.25-0.5 s instead of at the first poll.
+
+**The Phone in window mode** (`06:25:59.258 its frame wasn't given back (Accessibility didn't take it): kept in the marker`, `06:26:02.615 place … (window mode): wanted 302,148 1151×719 …, it's at 213,145 1151×719` → `failed … "its window didn't take its place in the page area"`, and the same at every later show and park, 1151×719 then 1512×884). Found, not fixed: its first placing (06:25:49, `place 200`) worked; from its first park on, every Accessibility frame set on that window failed (the size too, the window never moved), while the window server moved it between Spaces as asked. Most likely the cached Accessibility element of its window (`HostAX.elements`, kept once found, never dropped) went stale once the window left the current Space (Phone's window is an `AXDialog`), and nothing reads it again on a failure. The fix would be to drop the element and look it up again once when a set fails with an invalid element, and to log the error code; not done here (it can't be checked off screen, and it touches every Accessibility call). The hole follows the window's real bounds meanwhile (`the hole 250,145 1114×719`), so nothing of Margin is see-through where the window isn't.
+
+**Verified (off screen only).**
+- *The engine* (`host-tests.swift`, the stand-in window manager; `onScreenRead` plays a Space change under way, `serverSpaces` the Space read of a window only the list has): a Space swipe's picture (another app's full-screen window, in its own Space by its read, while the display says Margin's) never let in front; an app Margin doesn't host, its window in Margin's Space by every read, poll after poll: never; the shown app's window in another Space too: never; the shown app's window with the display's current Space another one right after each list read: never, then at rest at two polls: let in front, gone: in front again; seen at one poll: not yet; a Space change while one is let in front: nothing said, kept after it; the poll's front read only at rest and only with both windows in the list. *The session* (`hosted-tests.swift`): the read passed to the hosting window.
+- *The window, end to end* (`e2e-glue.swift`, the real shell and window off every display): a yield's end raises the level and orders above the hosted window; through the engine's poll, his Claude app's full-screen window in the list never let in front, the level stays 1; the hosted app's own extra window let in front at the second poll, not the first, and once it's gone level 1 and ordered above the hosted window; the hosted window above Margin's in the list put right at each read, said once; a level read of 0 right after a yield's end or 0.2 s after a Space change: no fallback; misses at rest 0.6 s apart: not yet, 1.2 s: the order's way, said once; tried again 5 s on, not held: the order again; held: back to the level, said once; its window not on the current Space: no level or order change for a yield, an activation or a read.
+- *Each new check fails without its rule* (one literal change in a copy of the tree, the suite run): the old look for others put back whole 9 (his Claude window let in front, among others); non-hosted apps let in front 7; no per-window Space read 6; no two-poll confirmation 1; the current Space read before the list only 2; a look not at rest saying "none" as before 1; no front read 1 (unit); every read taken as at rest 2; misses not 1 s apart 1; the fallback for good 1; a yield's end not ordered above 2; the poll's order check not acted on 1; changes while not on the current Space 1; the engine's read never wired to the window 1 (end to end).
+- `tools/app-tests/run.sh all`: 1263 unit checks (was 1254) and 221 end-to-end, no compiler warnings, 38 s. `npm test` 912; `npm run test:theme` 301; `npm run test:e2e` 107.
+
+**Not verified on the real screen.** That a real swipe, Mission Control and ⌘-Tab to his own full-screen apps never read as "at rest" with another Space's windows in the list (the two reads of the current Space around the list, and the window's own Space read, should each catch it); that the window server reports Margin's layer as 1 at rest in full screen (the session's 06:24-06:32 says it did: `in front by its level (1, held by the window server)`); the hosted app's own Settings coming in front about a quarter second later than before. `/tmp/margin-toolbar-test/hosted/check10.swift` step s swipes for real with its own test panes (written, not run); `TESTING.md` "Swiping Spaces with Margin hosting" has the steps by hand.
+
+## App icons in the sidebar and the loaders (2026-11-17)
+
+Tirth: "Show the icon in the tab for the apps please — currently you're just showing the first letter", and "the loaders show the app's name but not its icon".
+
+**Rows and tiles.** An app item (`target.kind: 'app'`, its address `app://<bundle id>`) takes its icon from the installed apps the app listed (the state's `apps`), by bundle id, matched as macOS does without case (`shared/apps.ts appIcon`, `appOfItem`; `shared/view.ts iconFor`). That one function feeds every place a row shows an icon: the sidebar's tabs, pins and folders, today's list, the tab in front, the launcher's tiles, the palette's open-tab rows. No icon (an app that isn't installed, one with none, the list not read yet): the letter, now of its name ("Pages": P), not of its bundle id (every Apple app was "C"). Web items are as they were. The icon is checked as every row icon (`checkIconUrl`: a base64 `data:` image only).
+
+**The loader.** `pageLoader.icon`: the opening app's icon; for a web item, the hosted browser's (Safari's). *Chosen over the page's own favicon*: it's the browser that's being opened and brought in behind the card, its icon is always there (no fetch, no site icon not learned yet), and sharp, where a site's is often 16 px and blurred at a loader's size. The app says only which app (`bundleId` in `{ type: 'pageState' }` while `loading`, `pageOpeningBundleId` in the hello): never icon bytes; the page looks it up. In the app: `setLoading`/`setShowing` take the bundle id with the label (HostedSession: the app's own; `com.apple.Safari` for a Safari window); MarginWindowController only carries it into the two messages. The sanitizer lets `{{pageLoader.icon}}` bind only as an `<img m-icon>` (or an `m-if`/`m-class:` test) inside the `page-loader` part or its `<m-page-loader>` slot; elsewhere, as text or as another attribute's value, it's removed. The four themes, each `<m-if test="pageLoader.icon">` (no icon: their loader as before):
+- *Arcadia:* the icon (32 px) in its 56 px space-coloured tile, the ring (46 px) turning around it.
+- *Neubrutalism:* the icon in a 48 px bordered square with a hard shadow, beside the heavy label, over the bar.
+- *Pixel:* the icon (32 px, `image-rendering: pixelated`) between the hourglass and the label.
+- *Liquid Glass:* the icon (24 px) in the capsule, between the spinner and the label.
+- Margin's default loader: the icon (32 px) over the spinner.
+
+**Sharpness and size.** Icons are 64 px now (was 32): the largest use is 32 pt, 1:1 at 2x; rows (16-20 pt) are scaled down. 128 px wasn't taken: no use needs it, and the list would be 2.0 MB. The apps JSON on this Mac (89 apps): 251 kB at 32 px, **714 kB at 64 px**. The cache's file names carry the size (`<id>@<stamp>@<pixels>.png`): a 32 px file isn't read, the icon is made again on the catalog's background queue, and the old file removed as the new one is written.
+
+**Safari wasn't in the list.** `/Applications/Safari.app` is a *hidden* link into the system's cryptex (macOS 13 and later): the folder walk skipped hidden items, and Spotlight lists Safari at `/System/Volumes/Preboot/…` only, which is left out. A hidden link to an app is listed now (a hidden app or folder still isn't), and a link's icon is drawn from the app it links to (no alias arrow). So Safari is also in the palette's app rows now.
+
+**Verified (off screen only).**
+- Each new check seen to fail first: the view model's, the host's and the sanitizer's against the old `extension/` (5 failing); each theme's icon check and the smallest-window check in both engines, and the default loader's (18); the Swift ones with the old behaviour put back by hand (64 px, the hidden link, the session's bundle ids, the two message fields: 6 unit and 4 end-to-end checks failed).
+- `tsc -p . && tsc -p tsconfig.tests.json` clean; `npm test` 916 (was 912); `npm run test:theme` 309 (was 301); `npm run test:security` 245 and 35; `tools/app-tests/run.sh all` 1262 unit and 217 end-to-end, no compiler warnings; `npm run test:e2e` 107.
+- Pictures at 1512 × 982 (2x, headless WebKit, real icons rendered by AppCatalog at 64 px): each theme's sidebar with app items, each loader opening an app and a web item, light and dark where the theme has both. Read: the icons sharp in the rows and in the loaders.
+
+**Not verified on the real screen:** the icons in Margin.app itself after a rescan (the cache made again at 64 px); Liquid Glass's capsule with the real glass material.
+
+## Hosting: an app that restored its window in full screen, a refused ask, a fallback tried again (2026-11-17)
+
+His session of 07:52 (`session-2026-11-17-0752.log`): the first open of Maps went `opened … window 1563 (by the window server: on another Space)` → `Accessibility found its window in Margin's Space after 8 ms` → `its window read in Margin's Space: full screen` → 6 s later `full screen failed (no full-screen Space of its own within 6 s): backed out, shown in window mode`, and window mode for the rest of the session. The second open (after its row's close had quit it) was `full screen by the early path in 869 ms`.
+
+**The cause (not macOS refusing full screen in Margin's Space).** Maps' own log at 07:52:27.910: `NSPersistentUIRestorer orderRestoredWindows … windowIsFullScreen=1 appIsHidden=1`, and the Dock added a full-screen Space for it (8054) at 27.901, before Margin found the window at 28.394. So:
+- "(by the window server: on another Space)" means Accessibility didn't list the window (it was in that Space of its own, not the current one, its app hidden) and the window server's list gave it (`HostEngine.open`, `info == nil` → `unseen`).
+- `take` then brought every such window into Margin's Space to be read. A full-screen window moved into another full-screen Space becomes a member there, still full screen: Accessibility read `AXFullScreen` true, so `enterFullScreen` asked nothing ("already full screen") and waited 6 s for a full-screen Space of its own that could never come (its own was empty by then). Backing out, the Dock said `trying to take pid 22912 spid 8054 out of fullscreen but it is not the current space` and removed 8054.
+- The second open was fine because Maps, quit from window mode, restored a normal window, which (an app started with no Dock icon) opens in Margin's Space, the current one, and goes full screen from there, as Mail's and WhatsApp's did in the same session. **Asking from Margin's Space was kept** for a window that opens there: every first open on the real Mac takes that path. Moving it to a Desktop first would ask from a Space that isn't current, which macOS refuses (the Dock's line above; Margin's own window's refusal, "Margin in front, after the real screen" item 2).
+
+**Now** (`HostEngine.take`, `enterFullScreen`, `askAgainProperly`, `fallBack`, `bringIn`):
+- *A window of an app Margin started that came up in full screen in a Space of its own* (owned by its app): placed from there, as the early path's steps 5-7 (that Space reserved to the page area, the window moved in, that Space destroyed), never brought into Margin's Space to be read; said once (`came up in full screen in a Space of its own`). Nothing is asked. A person's own window there is still left alone.
+- *A window that reads full screen with no full-screen Space of its own*: out of full screen where it is first, then asked as a window.
+- *A window in another app's full-screen Space* (it opened while that one was current), or in a full-screen Space it isn't full screen in: onto its display's Desktop first, then asked.
+- *A refused ask is seen at 1.5 s* (`fullScreenRefusal`; macOS lists a taken ask's new Space at ~40 ms): no new full-screen Space of its app and its AXFullScreen not turned on. Then asked once more the proper way: out of a full-screen Space (Margin's or another's) onto its Desktop, its app in front (not while it's made ready out of sight), under a freeze taken anew, said once (`its full screen refused … moved out of Margin's Space onto its Desktop first, its app in front, asked again`). Refused again: failed at ~3 s (was 6 s). If the activation made its Desktop current, Margin's Space is made current again, whether the window was moved there or was there already (one unparked onto it to be tried again: before this, a second refusal left the display on that Desktop).
+- *A fallback to window mode of an app that can go full screen* is said so (`backed out, shown in window mode (it can go full screen: tried again the next time it's shown)`), and its next show from parked places it again behind the loader in full screen; failing again, window mode for the session, said once. A window that can't go full screen is unchanged.
+- *Its frame isn't recorded from a full-screen window's bounds.* "`its frame wasn't given back (Accessibility took it, the window is at 0,33 1512×883): kept in the marker`" meant: `take` recorded Maps' full-screen bounds (the display's whole area) as the frame to give back; at each park the window, a normal window by then, was asked for the whole display and macOS kept it in the visible area (below the menu bar, above the Dock), which is exactly its own saved frame (`0 66 1512 883` from the bottom left is 0,33 1512×883 from the top left). Nothing was wrong on screen; the marker kept a frame that was never its own, so a recovery after a crash would have asked for the display's area again. Now a full-screen window has no recorded frame until window mode records the one it has as a window, before it sets one.
+
+**The Phone's frame after a park** (the 06:24 session: `wanted 302,148 … it's at 213,145`). Done, small: a window-mode frame set that Accessibility refuses has its error code said, and once per placing or give-back the window's element is found again by its number and the set tried once more (`Accessibility refused its frame (error N): its element found again by its number, the frame taken`). A refresh that finds nothing keeps the old element. Nothing else changes in `HostAX`; whether the kept element really was stale is for his next session's log to say (the error code).
+
+**Verified (off screen only).** 26 new checks in `host-tests.swift` (`refusedFullScreenTests`). The stand-in plays: an app that restores its window in full screen in a Space of its own, hidden (`restoredFullScreen`); one restored full screen as a member of the current Space (`restoredAsMember`); a dockless launch's window opening in the current Space (`launchInCurrent`); an app whose ask is refused while its window is in a full-screen Space and taken on a Desktop (`desktopOnlyFullScreen`); every ask refused off the current Space, and an activation that makes the window's Desktop current (`currentOnlyFullScreen`, `activateShowsDesktop`); an element gone stale as its window leaves for a private Space (`staleOnLeave`). Checked: restored Maps ends full screen at the page area, a member of Margin's Space, in under 2 s on the stand-in's clock (was 6 s, then window mode), its own Space reserved before the move and destroyed, nothing asked, the loader from start to end; not laid out by its Space: window mode with its own frame given back, never the display's; refused in Margin's Space: full screen after the ask again from its Desktop with its app in front, under 3.5 s, the loader all along, one log line that it was moved out first; another app's Space: onto the Desktop before the first ask; refused everywhere: window mode under 3.6 s, tried again at the next show and taken, or refused again and window mode for good, said once; the retry from its Desktop with the Desktop made current: taken, or refused and Margin's Space current again; Calculator (can't go full screen) unchanged; the stale element found again and placed.
+- *Each new check against the code before this* (the tree at 1d728d4a with only the new tests): 20 of the 26 fail; the 6 that pass are guards of what didn't change (Calculator, the loader, the quit, the stale-element setup and its give-back) and the Desktop-made-current-again check, which fails with that one rule put back as it was (the Space restored only when the window was moved).
+- `tools/app-tests/run.sh all`: 1297 unit checks (was 1271) and 223 end-to-end, no compiler warnings; `npm test` 916; `npm run test:e2e` 107.
+
+**check10's step w** (`/tmp/margin-toolbar-test/hosted/check10.swift`, written and type-checked, not run): the second test pane quit, then asked of Margin with Margin's Space current, so its first window opens in Margin's Space (TestPane makes its window in code: no saved state). The window server read every 10 ms: where its first window is, then the first moment it's on screen at the page area in Margin's Space only, kept if it holds a second. PASS needs Margin's log to say `shown in … (full screen`, no window mode or `backed out`, no Space of its own left listed, and the page area within 2 s of its first window. Its first window not in Margin's Space and Margin not saying it read it there: SKIP (the case didn't happen). The idle gate, own test apps only and the full restore are as before.
+
+**Not verified on the real screen:** that macOS takes the move of a restored full-screen window out of its own Space into Margin's (the same move as the early path's, from a Space macOS made at launch rather than at an ask); that the ask again from the Desktop with its app in front is taken where the first was refused; the Phone's refresh.
+
+## Margin's UI in a panel that never makes Margin active (2026-11-17)
+
+His screen recording: every click in Margin's sidebar made Margin the active app, so macOS drew the hosted app (Messages) in its inactive look (grey selection, a dim blurred band in its top bar, lower contrast), and a click in the app brought it back: a flicker between the two looks at every use of the sidebar. Asked: using Margin's UI never makes the hosted app inactive, as Spotlight or Raycast take clicks and typing without deactivating the app behind. On `feat/nonactivating-ui`.
+
+**The windows now** (MarginWindow.swift, MarginWindowController.swift).
+- *The base:* Margin's full-screen `MarginWindow`, as before the owner of Margin's full-screen Space (Spaces, Mission Control, the engine's reads and the hosting all rest on its number), kept in front of what it hosts as before (`keepFront`, `FrontMechanism`, the yield, the poll's front read and order check: all on it, unchanged). It now draws nothing: an empty, clear content view, a clear background, no shadow, and in full screen it ignores the mouse (windowed, it takes it only where its own buttons are). *Why nothing and not the frame's ground:* with everything drawn in one window, what's composited is exactly what it was in one window before (the ground, the hole, the web view's own system materials sampling the same window), and the window server's picture of Margin's UI (check10's, the e2e's, tools/glass-shots') is one window's; a ground in the base would need two windows to line up at every hole change.
+- *The panel (`MarginPanel`):* borderless, `.nonactivatingPanel` (set at its making), non-opaque, no shadow, `hidesOnDeactivate` off, never main, collection behaviour `[.fullScreenAuxiliary, .ignoresCycle]` (no `canJoinAllSpaces`, no `moveToActiveSpace`: it's where its parent is). The base's child window (`addChildWindow(_:ordered: .above)`), at the base's frame and level (set with it at every change; AppKit carries a parent's level to its child anyway, see below), ordered right above it after every order of the base. It holds what the base held: the catch fill, the ground with the hole, the web view. Its own press count, drag regions (a drag moves the base; the panel moves with it) and the pointer's hand-over (`ignoresMouseEvents`, `slot`) are the panel's.
+- *Kept together* (`attachPanel`): made the base's child as the base is first ordered in (at alpha 0, before full screen, so the page draws in a window that's on screen), and checked after every full-screen change and Space change: made its child again if it isn't, ordered in again if it's out, taken out and made its child again if the base is on the current Space and it isn't. Each of those is said (`its panel wasn't …`): none is expected. Both windows share one alpha.
+
+**Clicks.** A press in the panel doesn't make Margin active: the hosted app stays the active app with its active look and its menu bar. The web view takes the first click (`acceptsFirstMouse`), hears the pointer and the cursor while Margin isn't active (its `.activeAlways` tracking area, the old overlay's way), and drags and scrolling go to the window under the pointer as ever. A press in a non-activating panel still moves the keyboard to Margin without making it active (seen with the old overlay, 2026-11-08: a key after a click in the sidebar reached Margin with no window to take it). So, as the old overlay did, 80 ms after a press ends (`afterPress`, time for a field it focused to say so), with no field of Margin's wanting the keys and Margin not active: the keys go back to the app shown (`keysBack` → the session's `fieldClosed` → the engine's `activateShown`: that app activated, which it already is, and `NSApp.yieldActivation(to:)` first). Nothing hosted and nothing opening (the launcher): Margin is made active instead, as a press in its window always made it (no app's look to take away).
+
+**Keys.** A field of Margin's that wants the keys (the page's `focus`: the palette, a rename, the space editor, Settings' fields) makes the panel key without making Margin active (`takeKeys`: `allowKey`, the web view its first responder first, then `makeKey`): a non-activating panel can be key while another app is active. The hosted app stays the active app. When the field lets go (Escape, Return, a press outside), the panel lets go (`letGoKeys`: `allowKey` off, `resignKey`) and the keys go back to the app shown (`keysBack`), with no click; nothing asked of that app could deactivate it. While Margin itself is the active app (its Dock icon, ⌘-Tab, its picker) the panel has the keys anyway, its page's own keys as Margin's window always had them (`marginActiveChanged`, and the base handing them over when it's made key). The editing keys in a field while Margin isn't active (⌘A, ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z) can't count on Margin's own menu bar, which isn't the one shown: the web view sends them itself up its own window's responder chain (`OverlayWebView.takesEditKeys`, `editAction`); with Margin active its menu does as before. Margin's other keys are Carbon hot keys and never needed Margin active. Typing, dead keys and input methods are AppKit's own for a key window's first responder; only the real screen can show them (TESTING.md).
+
+**Removed.** The `NSApp.activate()` on a field's focus, and 1d728d4a's Accessibility "make Margin frontmost" right after it: both deactivated the hosted app. The Accessibility call stays only as a last resort, said as a warning, if the panel still isn't key 0.1 s after it asked (`its panel didn't become key for a field of Margin's … as a last resort`). The base's own drag regions and press count (now the panel's).
+
+**What still makes Margin active, on purpose** (each through `activate`, said in the log, counted): its first entry into full screen and a show by hand (macOS takes the toggle only for the active app), being brought forward when opened by a script, its full screen asked again, a press in its launcher with nothing hosted, and Import Theme's file picker (`ShellThemes`). After the picker closes, after a menu item of Margin's ran while it was active (clicked from its Dock icon: `menuItemRan`), and after the quit prompt is cancelled with Margin not active (the prompt was already a non-activating panel), the app shown gets the activation back (`Shell.keysBackToShown`).
+
+**Unchanged and checked:** `keepFront`, the level and its read-back, the order fallback, the yield, the poll's order check (about the base, whose child the panel is); the hole and the pointer's hand-over (now the panel's); the loader card; the sidebar's drag; the quit prompt (`modalPanel`, above both); full screen at launch and from another app's Space (the base); the last item at launch; theme settings; Liquid Glass's system appearance and the 120 Hz uncap (the same web view and configuration). HostEngine, HostSystem, HostedSession and ShellHostedGlue weren't touched.
+
+**The dev hook** (check10): the `front` line keeps its words and adds `panel N (level L, server S, key K, child C), active A, activations N, keys back N`; `window N` is the base, `ignoring` and `presses` the panel's; `picture` pictures the panel. New: `say: field` (whether a field of Margin's has the focus and its length, never its text) and `say: spot` (a point of the sidebar no control is under).
+
+**Cost.** One window more, the size of the display; the base's content is now one empty clear layer, so the backing that held Margin's UI moved to the panel rather than doubling. Not measured off screen (a window off every display isn't composited as on the real screen). Per press in Margin's UI: one look 80 ms later and, with an app shown, one activation of it (an Accessibility raise and `activate`, as a press around a window-mode app's window always did). Nothing per frame or per pointer move beyond what was there.
+
+**Verified (off screen only).**
+- `tools/app-tests/run.sh all`: 1274 unit checks (was 1272) and 232 end-to-end (was 223), no compiler warnings. The existing pointer, ground and picture checks now read the panel. New: the panel's make (non-activating, borderless, kept when Margin isn't active, key only when allowed, never main) and the editing keys' map (unit); its structure end to end (the base's child at level 1 by the window server, right above the base in its order, the base clear and ignoring the mouse, the web view in the panel, Margin not made active by the launch); a real press on an empty spot of the sidebar with Calculator shown (the panel took it, Margin not made active, the panel not asked to be key, Calculator activated once after it); ⌘T with Calculator in front (the panel asked to be key, the web view its first responder, Margin not made active), three real key events typed into the palette's field, ⌘A then a letter replacing them, a real Escape (the panel lets go, Margin never made active, nothing asked of Calculator but its activation); a press in the launcher with nothing hosted making Margin active; windowed, the pointer through the panel to the base's buttons; during a yield, the panel's level the normal one with the base's. `devhooks-tests.swift`: `say: field` and `say: spot`.
+- *Each new check fails without its rule* (one literal change in a copy of the tree, the whole app suite run): the panel not non-activating 4; a field's focus making Margin active again 3; no keys back after a press 1; the keys not let go when the field closes 5; the pointer's hand-over on the base instead of the panel 5; the editing keys through `NSApp.sendAction` (the key window's chain, never the panel's while it isn't key) 1; the UI left in the base 13. Two rules have no check that fails without them, and are kept as said guards: the web view made the panel's first responder (WebKit makes itself first responder as its page focuses a field, even with the panel's first responder taken away first), and the panel's level set with the base's (AppKit carries a parent's level to its child: the yield check holds without it).
+- `npm test` 916; `npm run test:theme` 309; `npm run test:security` 245 and 35; `npm run test:e2e` 107.
+
+**Not verified on the real screen** (`TESTING.md` "Margin's UI never makes the hosted app inactive"; `/tmp/margin-toolbar-test/hosted/check10.swift` steps k1, c1, c1b, c2 and the panel in a, e, f, s, R: written, not run): that the hosted app keeps its active look through a press in the panel and while the panel is key (the real point: the window server's key focus and AppKit's key window in the other app); that the keys come back to it after a press and after Escape with no click (`yieldActivation` and `activate(from:)` asked by an app that isn't active); that the child panel follows the base into and out of full screen and stays in Margin's Space through swipes and Mission Control (and how Mission Control draws it); hover, the cursor and tooltips with Margin inactive; input methods, dead keys and the editing keys in a key panel of an inactive app; the panel's level held by the window server with the base's.
+
+## Margin's UI in a panel: the keys after check10's run (2026-11-17)
+
+check10 ran on the real screen with the panel (`/tmp/margin-toolbar-test/hosted/check10p.log`, Margin's log `check10p-margin.log`). Held: the hosted test pane the frontmost app throughout (NSWorkspace), Margin's panel above it at layer 1 with its base, the clicks, the palette's field getting three plain letters (c1b), every placing, the swipes. Failed: k1, c1, c2, one cause.
+
+**What the log showed.** From the first press in the panel (b2, 13:06:09) to the end, every `front` line said `panel … key true, active true` with the pane the frontmost app; after the palette's Escape `keys back 1` and still `key true`; a plain key after a click in the sidebar, and after Escape, reached Margin, never the pane. And at launch, 13:05:34: `a field of Margin's has the keys` before the panel was on screen, then `its panel didn't become key … as a last resort`.
+
+**Cause in the code.** Margin's "am I the active app" was `NSApp.isActive`. A press in a non-activating panel moves the keyboard to Margin, and AppKit then says Margin is active (and posts `didBecomeActive`) while the hosted app is still the front app, the menu bar's. Two rules read that: the panel took the keys whenever Margin "became active" (`marginActiveChanged`: `allowKey` on, made key), and the keys went back after a press, after Escape, only if Margin "wasn't active" (`afterPress`, `letGoKeys` keeping them "while Margin is active"). So the first press in the panel gave it the keys for good. And a field's keys were asked of a panel not on screen yet (alpha 0, before full screen), so the last resort ran at every launch.
+
+**Now** (as the old overlay's `takeKeyboard`/`handBack`/`pressEnded` and the shell's key relay did, 7d7f62aa):
+- *The panel can be key only while a field of Margin's has the focus* (`allowKey`, nothing else sets it). Margin activated, at launch, by hand, or by AppKit after a press, never gives it the keys; an item shown with no field focused takes them away (`applyPage`).
+- *"Margin is the front app"* is the workspace's word (`MarginWindowController.isFrontApp`: NSWorkspace's frontmost application), never `NSApp.isActive`. The dev hook's `active` is that; `appkit active` is AppKit's, said beside it.
+- *The hand-back* (`keysBack`: a field let go, a press over, a menu item of Margin's run, its picker or the quit prompt closed, an item shown): `allowKey` off and `resignKey` if the panel is key, then `NSApp.yieldActivation(to:)` and `activate(from: NSRunningApplication.current, options: [])` of the app shown (its pid from the window server's owner of its window), then the session's `fieldClosed` as before (the engine raises its window). Each hand-back's pid is kept (`handBacks`) for the tests; a test's never activates anything.
+- *A field focused before the panel is shown* gets the keys once it is (`shownKeys`, at the first entry and a show by hand); the last resort only for a panel on screen.
+- *A key that still reaches Margin* while no window of Margin's should take it (none key, the base, or the panel with no field focused) and the app shown is the front app: sent on to that app (`postToPid`, its press and its release) and the keys handed back (`MarginWindows.relayTarget`, a local monitor, never in a test), said the first time and every 100th (`a key reached Margin while the keyboard is the app shown's …`), which key never. A field of Margin's, the quit prompt, a picker or Margin the front app keep their keys.
+- *Removed:* `marginActiveChanged`, the `didResignActive` observer, the base handing the keys to the panel when it's made key.
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1275 unit checks (was 1274) and 233 end-to-end (was 232), no compiler warnings. New: AppKit saying Margin is active and its window key (the notification posted, the base made key) with the hosted app the front app: the panel can't be key and hasn't the keys; the sidebar press and Escape each hand the keys back to Calculator's pid (yield and activate) with the panel unable to be key after; the relay's rule (unit). *Each fails without its rule* (one literal change in a copy, the suite run): AppKit's activation giving the panel the keys again 1; that and a hand-back that leaves `allowKey` on 2; no yield and activate in the hand-back 2; the relay not taking a key with the panel key and no field 1. The let-go when an item is shown has no check of its own (it fails only together with the activation rule). `npm test` 916; `npm run test:theme` 309; `npm run test:security` 245 and 35; `npm run test:e2e` 107.
+
+**check10** (`/tmp/margin-toolbar-test/hosted/check10.swift`, type-checks, not run here): it hung for good at its end in both of the day's runs: `sh` waited for `log show` to exit before reading its output, and once Margin's log passed the pipe's 64 kB the command waited for the pipe (the first `said` after step w, or after the relaunch's `brought forward`). Now every command is read as it writes and cut off after 45 s (said), a watchdog puts everything back and exits after 5 minutes with no word or 25 minutes in all, SIGTERM, SIGINT and SIGHUP do the same, and every restore makes the Space it started on current again, reads it back and asks again (three times). c1's "Margin not active" is the workspace's word now (the dev hook's `active`), with the pane the frontmost app and the panel key; k1 and c2 still post a plain key and look for it in the pane's own log.
+
+**Not verified on the real screen:** that the hand-back's `yieldActivation` and `activate(from:)`, asked by Margin while AppKit calls it active, give the pane the keys at once (k1, c2); that a fast key right after a press is sent on whole by the relay; that the panel, now never key without a field, still takes first clicks and hover as before (it did in this run).
+
+## Hosting: his session of 14:05 (2026-11-17)
+
+His session of 14:04-14:08 (the installed d2b969c3; `session-2026-11-17-1405.log`): a Safari window over the left half of Maps in the page area ("Margin.app hasn't placed this window yet"); then, opening more apps and at last the Phone and Mail, "a bunch of windows and the sidebar just disappeared randomly". Five causes, each in the code; the fixes are generic (no per-app rule). On `fix/session-1405`.
+
+**A. The Safari window over Maps: a window opened only to wake a profile, never closed.**
+- *Seen:* 14:05:04.231 `a Safari profile with no window: one opened from Safari's menu so its copy links (try 1)` → `asked Safari for a new window of safari:s-f236… (File › New Window)` → 14:05:04.776 `browser not prepared: something is shown in Margin's window`. Maps had been shown at 14:05:03.343.
+- *Cause in the code* (`HostedSession.prepareBrowser`, `safariLinked`, `requestSafariWindow`): the launch's preparation linked the space's profile (waking it through Safari's menu) before it looked whether a preparation could still happen; the woken window was closed only in `requestSafariWindow`, which a preparation given up never reaches. That window opens in the current Space, Margin's, at the normal level: with something shown, it shows through the page area's hole. The restored-window sweep didn't take it either: no sweep line in the log, so the copy didn't list it as restored (it was made after the copy started).
+- *Decided:* the launch wakes a profile only for a preparation that can still happen (nothing shown, nothing on its way at launch, nothing asked for), asked right before each press of the menu (`safariLinked(_:wakeIf:)`); otherwise not woken, said (`not woken (what it was for isn't wanted any more)`). A web item's own first open still wakes its profile as before (behind the loader).
+- *Now:* (1) a woken window is always closed by its copy once the wake is over, whatever happened to what it was for (`closeWoken`: Margin's own window made, the preparation given up at any of its steps, or still open `wokenGrace` (5 s) after its copy linked with nothing asked of it: the poll); one not closed is tried again by the poll. (2) It's never seen: from the press, the first new layer-0 window of Safari's in a user Space (one per press, 10 s at most, never one that was there, never a hosted one) is parked in a private Space of its own as the window server lists it (`HostEngine.hideWoken`, at each poll and at the end of every operation); no more once Margin asks that profile for its own window (`stopHidingWoken`); the Space released once the woken windows are closed (`releaseWoken`), or at quit. A window the person opens in Safari after that budget is theirs.
+
+**B. Maps "quit, not by Margin" while it ran.**
+- *Seen:* 14:05:24.946 `host: app:com.apple.Maps quit, not by Margin` → `quitByUser`; at 14:05:59.404 `app:com.apple.Maps opened (pid 12921, …): window 13, an app the person opened`, the same pid, and `its window reads full screen with no full-screen Space of its own (in [])`. Maps' own log: `isAttemptingTermination (state: Running)` at 14:05:24.795 and 25.796.
+- *Cause in the code* (`HostEngine.appQuit`, `poll`): "quit" was NSWorkspace's termination notice or `NSRunningApplication` reading terminated at a poll, with nothing else read. The log can't say which of the two fired; either takes a UIKit app's termination attempt (parked, no window in any user Space: what automatic termination looks for) for its exit. Margin then forgot the host and that it had started the app (`launched`), retired the private Space its window was in (so the window was in no Space at all, hence `in []`), and at the next open took the same process for the person's.
+- *Now:* quit only once the process itself is gone by a second, independent read (`HostSystem.processRuns`: `kill(pid, 0)`, EPERM counting as running), at the notice and at every poll; still running: nothing changes (still hosted, still Margin's), said once (`its app was said to have quit, its process N still runs: kept, still Margin's`). Every "is it gone" wait (a quit, an exit after a row's close) reads the process the same way. *Prevented too:* every app Margin starts gets `-NSDisableAutomaticTermination YES` (the argument domain only; nothing of the app's own settings is written). A real quit is as before: forgotten, and its next open starts it again as Margin's.
+
+**C. The Phone's "not on screen" loop.**
+- *Seen:* 14:05:49.068 (11 ms after its show) `shown, not on screen (Margin's window on screen, its window 69755 off screen and in [8325], Margin's Space 8325, …, the displays' current Spaces 8325): Margin's Space made current again, its window moved into it again`, `still not on screen after that`, three times in 2 s, then `left as it is`.
+- *Why it read off screen:* the window server's own flag (`kCGWindowIsOnscreen`) said so at every read for 2 s while the window was in Margin's Space, the current one, and its app wasn't hidden: the window wasn't ordered in. The Phone's window was found as an `AXWindow/AXDialog` before its app was activated, the same shape as Dictionary's spare windows (2026-11-15); that it was a spare and the real window another is likely, not proven (no read of the Phone's other windows then).
+- *Cause in the code* (`lookOnScreen`, `backOnScreen`): a missing hosted window within 3 s of its show was acted on at the first read, and the action (make Margin's Space current, move the window into it) ran even with Margin's own window on screen, Margin's Space current and the window already in it: nothing it does can bring such a window, and each try is a Space made current again and a move (seen as jumps).
+- *Now:* acted on only at the second read in a row, whatever is missing; the hosted window alone missing is asked again by its own read (`windowOnScreen`: `CGWindowListCopyWindowInfo(.optionIncludingWindow)`, its on-screen flag and alpha): on screen by that, nothing. With Margin's window on screen, Margin's Space current and the window in it alone: no Space made current, nothing moved, once per show (and `returnsMax` in 30 s): a window-mode window is raised once and the log names any other window of its app that's on screen; a full-screen member is placed again behind the loader. Otherwise (Margin's own window off screen too, the display on a Space that isn't Margin's, the window out of Margin's Space): as before, but Margin's Space is made current only if it isn't (or Margin's window isn't on screen), and the window moved only if it isn't there alone (or Margin's window isn't on screen). In the normal case (both on screen) nothing happens, as before.
+- *Not done:* choosing the Phone's other window when the chosen one stays ordered out. The log line now names them; the next session says whether there is one.
+
+**D. Mail: window mode at the display's size, its toolbar strip let in front, the sidebar covered.**
+- *Seen:* 14:06:04.960 `full screen failed (AXFullScreen couldn't be set): backed out, shown in window mode`, 7 s with nothing logged (`backOut` waiting `exitWait` for an exit that never came), 14:06:12.121 `Accessibility refused its frame (error -25200)…, refused again`, 14:06:13.328 `wanted 260,41 1512×949 …, it's at 0,33 1512×949` → `NOT fitted`; from 14:06:19 `another window (69769) in its Space: let in front of it` / `in front again`, nine times to 14:08:10, and once `the hosted window 69767 above it in the window server's order`. On the window server: 69769 Mail's, 0,33 1512×88 (a full-screen window's toolbar strip), 69767 Mail's main window 0,33 1512×949.
+- *Cause in the code:* (1) `enterFullScreen` gave up at the first refused Accessibility set (Mail was still launching); Mail took the ask anyway a moment later, so the window Margin then handled as a window was in full screen, which is also why its frame was refused (-25200) and why it stayed at the display's size. (2) `backOut` didn't confirm the exit and nothing looked after it. (3) The yield took the strip for a window of the shown app's in Margin's Space (it is one) and let it in front; at the normal level, Margin's window went below Mail's windows, the unfitted one over the sidebar. (4) A window-mode window that couldn't be fitted was shown as it was.
+- *Now:* (1) a refused full-screen ask is asked again every 0.1 s for up to 3 s (`axSettleWait`), done as soon as one is taken or the app shows it took an earlier one (a new full-screen Space of its own listed, its AXFullScreen on); a frame refused with -25200 is asked again the same way (`setFrame`). (2) A backed-out attempt is taken out of full screen again on the current Space if it still reads full screen or is in a full-screen Space (`outForGood`); a full-screen Space its app got for a late ask is destroyed; strips its app made since the ask (`isStrip`: the page area's width at least, at most 150 pt tall) waited for to go, else asked out once more, said. (3) The yield never lets in front a strip, nor a window covering a quarter or more of Margin's sidebar (`coversSidebar`; a sidebar narrower than 40 pt, the sidebar hidden, has none). *Changed from before:* a hosted app's Settings or second window dragged over most of the sidebar no longer comes in front; one reaching a little past its edge still does. (4) A window-mode window that couldn't be fitted and covers the sidebar is never shown so: its frame given back, parked out of sight, still hosted; the show fails (the launcher, the item kept; the one shown before shown again if it was a switch) and its next show tries again.
+
+**E. The rest of the log after 14:06.**
+- 14:05:59 Maps hosted as the person's, its window in no Space: B's consequence (its private Space retired by the false quit). Fixed by B.
+- 14:06:04.96-14:06:12.10: 7 s with nothing logged under the loader (backOut's wait for an exit that never came): D (1) and (2).
+- 14:06:05-14:08:09: `Margin's keys let go: another app is in front` / `held` again and again: the log couldn't say which app took the front. The line now names its bundle id (`ShellHostedGlue.updateHostedKeys`). Whether it was the strip's activation, the woken Safari window, or his own clicks: the next log says.
+- 14:06:21.593 `the hosted window 69767 above it in the window server's order …: in front of it again`: the order check repairing what the yield's end left (Mail's unfitted window above Margin's): D (3) and (4) remove the case.
+- Nothing else misbehaved: WhatsApp's restored full screen (`came up in full screen in a Space of its own`), Messages' and Maps' early paths, the switches (9-42 ms) and parks were as they should be.
+
+**Cost.** Per poll: one more look at a woken app's windows only during a wake (10 s at most); one window's own read only when the on-screen list misses the hosted window. A refused full-screen ask or frame: up to 3 s more before giving up (it was at once). Nothing per frame.
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1323 unit checks (was 1301) and 233 end-to-end, no compiler warnings. `npm test` 916; `npm run test:e2e` 107 (one run had `themes.test.ts`'s "liquid-glass: its notice measured" fail under concurrency; the whole suite again: 107 of 107).
+- *The stand-in now plays:* an app NSWorkspace says has quit while its process runs (`lsGone`, `attemptTermination`); the on-screen list leaving a window out that its own read has on screen (`listDrops`, `windowOnScreen`); an app refusing every Accessibility set for a while after its launch with -25200 (`axBusyFor`), taking its first refused full-screen ask late (`takesLate`); a full-screen window's toolbar strip, one that stays after the first exit (`stripOnFullScreen`, `stripLingers`); Safari's menu opening a window in the current Space (`FakeHostedLinks.onMenuOpen`).
+- *New checks* (`host-tests.swift session1405Tests`, `hosted-tests.swift` "wake"): terminating while parked (not quit, still Margin's, its next show a switch, quit at Margin's quit), really quit (started again as Margin's); a window-mode window off the list but on screen by its own read (nothing done); ordered out in Margin's Space (no Space made current, nothing moved, raised once per show); refusing Accessibility for 1 s (full screen, taken at a later try), taking the ask late with a strip (followed, never window mode), a frame refused while launching (placed); a backed-out attempt's strip (asked out again, gone); the yield (never a strip or a window over the sidebar, a Settings window past its edge still); an unfitted window over the sidebar (not shown, still hosted, placed at its next show); a woken window (parked, the person's next window not); at launch: something shown (never woken), woken then an app shown (the woken window parked and closed), woken and prepared (closed, Margin's own window prepared). Changed: the arguments' two checks, the on-screen look's "right after a show" check (second read, no Space made current, placed again 1-3 times), the glue's Settings window (now reaching past the sidebar's edge).
+- *Each fails on the code before* (a copy of the tree with these tests and d2b969c3's HostEngine, HostSystem, HostedSession and ShellHostedGlue, plus a two-line stub for the engine's new calls): 20 checks fail, 17 of them new (the other 5 new ones guard what didn't change: a real quit, the unfitted window's next show and quit, a woken profile prepared, nothing left at quit). The stand-in's Mail case reproduces his log's line: `wanted 276,41 1512×949 in 276,41 1228×933, it's at 0,33 1512×949`.
+
+**check10's step x** (`/tmp/margin-toolbar-test/hosted/check10.swift`, type-checked, not run): the second test pane, fresh, with research options of its own (`kit/testpane.swift`, its defaults only, off by default, put back at the end): its main thread blocked 2.5 s as its window first shows (Accessibility then answers kAXErrorCannotComplete), then a full-width strip 88 pt tall and a window over the sidebar for 5 s. x1: full screen at the page area, never window mode, with whether the refusal was hit; x2: neither extra window let in front, Margin's panel above both. Needs the two TestPane copies rebuilt from `kit/testpane.swift` (SKIP otherwise). A, B and C need his real apps (Safari's menu, a UIKit app's termination attempt, an app ordering its window out).
+
+**Not verified on the real screen.** That Safari's woken window is listed by the window server in time to be parked before it's seen (the poll's 0.25 s), and that its copy closes it from a private Space; that `-NSDisableAutomaticTermination` stops Maps' attempt (UIKit's); whether the Phone has another window on screen when its chosen one isn't; that Mail takes a full-screen ask asked again while it launches, and that its strip goes once it's out; the yield's new limits under a real hand (`TESTING.md` "His session of 14:05").
+
+## The hosting core, stage 2: the observed model and the window kinds, logging only (2026-11-17)
+
+Stage 2 of `docs/HOSTING-CORE.md`: Margin now keeps a model of every window of every app it hosts or started and gives each window a kind by generic rules, and logs it. Nothing in `HostEngine` reads the model to decide anything (stage 3's reconciler will). On `feat/hosting-core`.
+
+**What the model holds** (`HostModel.swift`, value types). Per app (`HostModelApp`): pid, bundle id, whether Margin started it, its process running (`kill(pid, 0)`), activation policy, hidden, the windows Margin hosts (and their host), the windows Margin opened only to wake it, Accessibility's main and focused windows, when it was first followed. Per window (`HostModelWindow`): number, layer, bounds, alpha, on screen (by the poll's on-screen list only), its user Spaces (mask 7), the private Space Margin parked it in (Margin's own record: mask 7 never lists a private Space, so a parked window reads as in no user Space), its place (`margin`, `desktop`, `fullScreen`, `several`, `parked`, `nowhere`, `unread`), whether it was ever in a Space, Accessibility's role, subrole, identifier (an app's own name for a kind of window, never logged), full screen, can go full screen, resizable, minimized, main and focused, first seen, last changed, its kind and why. Never a title.
+
+**How it's kept current** (`HostObserver.swift`).
+- *The window server, with no list of its own.* The design said "one window-server list per poll, reused"; the poll's list is the on-screen one, which has nothing of a parked window, one on another Space or one in no Space (Messages'), and the list of every window (`.optionAll`) costs about 6 ms on this Mac (577 windows) against 0.2 ms for the on-screen one (measured here, a read only), too much at 4 polls a second. So: the poll's on-screen list when it read one (it reads one every poll while something is hosted: the look for other windows); the lists of an app's windows on every Space the engine itself read since the last poll (its window choice, Safari's new window, the woken windows: routed through `serverList`, which keeps them), so a window that came up off screen before its app was hosted (Safari's restored full-screen windows) is known; windows Accessibility says were created. Then per window followed (layer 0 and at least 100 pt a side, or hosted): its bounds and its Spaces, one SkyLight call each (14 µs and 18 µs a window here). A menu, a tooltip or another layer's window is followed by the on-screen list alone. Gone at the second poll in a row its bounds don't read.
+- *Accessibility, its own.* A watch per app (an `AXObserver`, its run loop source on the main run loop), as window managers do it (yabai): the app's element for window created, moved, resized, focused window and main window changed; each window's element for destroyed and (de)miniaturized. Started when an app is first followed (the end of the operation that hosted it, or the next poll), stopped when it's given back. Read (role, subrole, full screen and whether it can, minimized, the app's main and focused windows) only when a window first appears, when a notification names it, or when it comes to Margin's Space or a Desktop (Accessibility lists only the current Space's windows); coalesced per app (0.1 s), on a queue of its own. *Never through the engine's Accessibility* (`HostAX`): that one keeps every element it finds and later lists those windows as the app's (`read` appends kept elements), so reads through it would have changed what the engine sees. No notification exists for full screen: the resize that comes with it makes AXFullScreen read again.
+- *Logged* (`host: model: <bundle> (pid N): …`): one line per change of a hosted app's window kinds, main windows, places or on-screen state (transients aren't followed in the log); a window's first sight, its kind and why, its Spaces, and its going. The dev hook's `front` line adds `; model: N apps, M windows, X µs a poll; <bundle> main <n> in [<space>] (…) on screen (auxiliary 1, strip 1, …)`.
+
+**The kinds' rules** (`WindowKinds.classify`, pure; no bundle id anywhere), the first that applies:
+
+| # | Rule | Kind | Why |
+|---|---|---|---|
+| 1 | above layer 0 | transient | menus (101), tooltips, the system's panels |
+| 2 | role AXMenu, AXHelpTag, AXPopover | transient | the same at layer 0 |
+| 3 | the page area's width at least (`min(0.9 × area, page − 2)`, the engine's own rule), at most 150 pt tall | strip | Mail's 1512×88 toolbar strip (14:06) |
+| 4 | under 100 pt on a side | transient | the engine's own size floor (`HostWindowChoice.candidates`, the woken windows) |
+| 5 | opened by Margin only to wake its app | leftover | Safari's woken window (14:05) |
+| 6 | never ordered in (no Space, off screen, never seen in one) while another of its app's windows is, not hosted | transient | Dictionary's spares (2026-11-15) |
+| 7 | role AXSheet → dialog; subrole AXFloatingWindow → auxiliary; subrole AXDialog → dialog unless its app has no other window that could be main and it's hosted or at least 400×300 (then a main candidate); anything else (standard, unknown, unread) → a main candidate | | the Phone's only window is AXDialog 1024×768 (15:21) |
+| 8 | a candidate made before the window Margin hosts (a lower window number: the window server numbers windows in the order they're made, as every log shows), in an app Margin started, not hosted | leftover | Safari's restored windows: two in full-screen Spaces of their own and one on the Desktop (15:19) |
+| 9 | a candidate that can't go full screen while another can, not hosted | auxiliary | Mail's Settings window |
+| 10 | each hosted candidate its app didn't replace (replaced: it's in no Space and another window at its frame, within 4 pt, is in one; or another at its frame is Accessibility's main window and it isn't); none: the best by, in order, in a Space, Accessibility's main, on screen, main before, focused, not minimized, a standard window, the bigger, the newer | main | "observe, don't assume": Margin's choice is kept until the app shows it moved on |
+| 11 | the other candidates: at a main window's frame a twin, else another window | transient, auxiliary | Messages' second window at its window's frame (15:20) |
+
+**The real sessions' cases** (one table row each in `tests/host-model-tests.swift`): Safari Margin started: its restored full-screen and Desktop windows `leftover`, its asked-for window `main`; the person's Safari: their windows `auxiliary`, never leftovers. Maps restored in full screen in a Space of its own: `main` (hosted, or at the first look before it's hosted). The Phone's AXDialog 1024×768 window, in Margin's Space and off screen: `main` (its off-screen state is a fact in the model, not a kind). Messages: both windows in Margin's Space at the same frame: the hosted one `main`, the other a `transient` twin; the hosted one in no Space with the other in Margin's Space at its frame: the other `main` (its app replaced it), the hosted one `transient`; the other Accessibility's main: the other `main`. Which of the two Messages really drew isn't in the logs; the model's lines in his next session will say. Mail's strip `strip`, its Settings `auxiliary`; a sheet and an alert `dialog`; tooltips, menus, popovers, tiny windows `transient`; Maps running windowless (15:19): nothing (and it wasn't a host: see below).
+
+**What turned out wrong or underspecified in the design** (it's a draft):
+- *One list per poll* can't be the all-windows list (6 ms); the model is the on-screen list plus per-window reads plus the engine's own lists. An off-screen window an app makes after it's hosted is known only through Accessibility's `created` (or once it's on screen): without the Accessibility permission, not until then.
+- *Whether a window is in a private Space* can't be read (mask 7 lists none): it's Margin's own record, confirmed only by "in no user Space".
+- *No kind for a spare, a twin or a replaced window.* They're `transient` with their reason, which is what the reconciler should do with them (nothing); `leftover` would be wrong (closing a twin can close the app's real window). A `spare` kind may be worth adding when stage 3 needs to tell them apart.
+- *"Restored → leftover"* needs a definition: for an app Margin started every window at launch is restored, its main one too. Here: made before the window Margin hosts and not hosted. That also makes a restored document window (a draft) a leftover; stage 3 must not just close those (an app asks about unsaved work), or should close only the ones in a full-screen Space of their own or on a Desktop.
+- *"No main window, app running"* needs the app followed before it has a host: the model follows hosts and the apps Margin started. Maps running windowless at 15:19 was the person's app, its open failed, so it never was a host and the model has nothing of it.
+- *Full-screen changes* have no Accessibility notification; a resize stands in.
+
+**Cost.** Per poll: no window-server list of its own; two SkyLight reads a followed window (about 32 µs a window on this Mac: 15 windows, about 0.5 ms a 250 ms poll), cached Space types, three cheap process reads an app; the classification about 50 µs for five apps and twenty windows (the stand-in, optimized build; 190 µs unoptimized). Accessibility: one read per app per burst of notifications or new windows, off the main thread.
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1383 unit checks (was 1323: 60 new) and 233 end-to-end, no compiler warnings; every existing host check passes with the observer on. New (`host-model-tests.swift`): 26 table rows of kinds and three more on the rules; the log lines (first sight, nothing said when nothing changed, a window out of every Space with a twin, a transient gone, the main gone, the summary); the observer on the stand-in (FakeHostWorld unchanged; Accessibility played by `FakeObservation` in that file): notifications → a Settings window and a sheet followed before the next poll with their kinds, Accessibility's main changing, a window closed gone at the second miss, given back unwatched and dropped; a window leaving every Space and coming back said once each way and never in between; a window replaced at its frame and the hosted one back as main with a twin; Safari's restored windows known only through the engine's own list; through the engine: TextEdit opened, followed from the end of its open, one on-screen list a poll with the observer reading none, the dev hook's line, given back at its close; Maps restored in full screen: placed as before, `main` in Margin's Space; the cost. *Each rule's checks fail without it* (one change each, the suite run): the leftover rule 3, the replacement 5, the dialog promotion 3, the spare rule 1, the engine's lists not used 2, the strip rule 2.
+
+**Not verified on the real screen:** that AXObserver's app-level moved and resized notifications come for every window of these apps (yabai's experience); that `_AXUIElementGetWindow` answers for a sheet; what the model says of Messages' two windows, the Phone's, and a Safari Margin started, in his next session.
+
+## The behaviour test framework, stage 1 (2026-11-17)
+
+docs/HOSTING-CORE.md's "Behaviour classes and the test framework", built: Chameleon, the stand-in world's models of its switches, and the real-screen suite in the repo (`npm run test:screen`). The suite isn't run yet (it needs the real screen with nobody at it).
+
+- **Chameleon** (`tools/screen-tests/apps/Chameleon`): TestPane's app with one switch per behaviour class, read from its own defaults at launch (`Switches.swift`: restore, windowless, autoTerminate, dialogMain, ordersOut, replacesWindow, axBusy, strip, auxiliary, noFullScreen, fixedSize, extraWindow). `build.sh` makes copies `test.margin.chameleon.1…3` (ad hoc signed) into `tools/screen-tests/build/apps` and checks every switch is read (`--describe`, no window). It logs every window event to `/tmp/margin-screen-tests/<id>.log`, key codes and lengths only.
+- **`restore` by AppKit's own state restoration** (the default, `system`): a priming run of the copy alone makes its windows, asks the full-screen ones in and quits with NSQuitAlwaysKeepsWindows, so the launch Margin makes is restored by AppKit, the Dock making the full-screen Space as the app launches, as with Maps and Safari. `code` (windows made and asked into full screen at launch) is a second scenario: it doesn't reproduce the Dock's Space at launch.
+- **What no Chameleon switch can reproduce exactly:** UIKit's termination attempt (NSWorkspace saying an app quit while its process runs): `attempt` makes Chameleon background-only and runs a terminate that's answered "later" then cancelled; `system` turns on AppKit's automatic termination (what `-NSDisableAutomaticTermination YES` should stop). Which of them matches Maps is for the run to say.
+- **Stand-in world** (`app/platforms/macos/shell/tests/behaviour-world.swift`): `BehaviourWorld` plays each switch in FakeHostWorld (its existing knobs where it had one; the rest at each launch and each step of its clock, through two hooks added to FakeHostWorld, `onLaunch` and `onClock`); 36 checks of the switches' parsing and of each stand-in behaviour. Switches.swift is compiled into the unit checks (tools/app-tests/run.sh). HostEngine untouched. GlueHostWorld (e2e) not extended.
+- **The suite** (`tools/screen-tests`, Swift): check10's steps as the `core` part (L, 0, d, a, m, b, k, c, e, f, s, w, x, R; Chameleon 1 and 2 as its panes); one scenario per behaviour class in four `behaviours` parts (Chameleon 3 with the switch, Chameleon 1 as the item a park shows), each asserting the design's desired state from the window server and holding it 30 s; an opt-in `real-apps` part (Tirth's OK, 2026-11-17) hosting Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes and Calculator through the dev hook only, no event posted, their saved-state defaults keys recorded and put back. Each part is its own process under a hard 10-minute limit (run.sh), records the Mac first to `build/state.json` (`--restore` puts it back if a part is killed), and keeps every check10 rule (idle gate 180 s / 60 s per step, own test apps only, watchdog, signals, the starting Space put back and verified, modifiers released and checked, defaults put back, Margin reopened `--background`). `--dry-run` prints every part's steps: 5 parts, 186 steps with `--real-apps`.
+- **Expected baseline:** many behaviour scenarios fail against today's engine (restore, windowless, replacesWindow, ordersOut, strip, auxiliary over the sidebar at least); stage 3's reconciler turns them green.
+- **Verified (off screen only):** Chameleon builds with no warnings and reads every switch; the suite compiles with no warnings; `npm run test:screen -- --dry-run [--real-apps]`; `tools/app-tests/run.sh all` (1359 unit, 233 end-to-end); `npm test` 916.
+- **Not verified:** everything that needs a window: whether the priming run's restore reproduces a restored full-screen Space, whether a dockless Chameleon can go full screen at all, the desired-state reads' window classification (sizes and the strip's shape are heuristics of the suite's own), the parts' real durations (estimated 6-7 minutes each, about 35 minutes for the Chameleon parts, 7 more for the real apps), whether `defaults export` of a sandboxed app's domain needs a permission prompt.
+
+## The hosting core, stage 3: the reconciler, and the first of stage 4 (2026-11-17)
+
+Stage 3 of `docs/HOSTING-CORE.md` on `feat/hosting-core`: `HostReconciler.swift` (pure: `HostDesired`, `HostSituation`, `step(situation, desired) -> [HostCorrection]`) and HostEngine driven by it, behind the same API (HostedSession, the shell and the UI unchanged). Where the build differs from the design: the doc's "Stage 3 as built".
+
+**How it runs.** A first open and a show keep the engine's steps (the early path under the freeze, the edge reservation, the bridged moves, private Spaces, Accessibility's framing), with the reconciler's decisions at each fork: no window → `reopen` (a Dock-icon click, `kAEReopenApplication` sent to the process; never LaunchServices, which promotes an app Margin started to a Dock app) or `unhide`; a window Accessibility doesn't list → `bringForward` (activated, then a reopen), looked at again; the placement from where the window is (`placeFromOwnSpace`, `outThenAsk`, `askFullScreen`, `frameWindow`). The poll then reconciles every host with what it should be (the one shown: at the page area; the others: parked) from the observed model, and applies one correction at a time in the engine's queue, read again in its turn (an operation in between may have settled it). One line each: `host: <app>: <observed> → <correction> (<budget left>)`. Budgets per show (the others per 30 s): launch 1, reopen 2, unhide 2, adopt 20, put back 3, park again 3, a leftover 2, a strip 3, a window-mode window framed again 2 a show (one not where it was framed: an adoption's frame not taken), a rung of bringForward 1, then the fallback.
+
+**Decided, each from the baseline run (`tools/screen-tests/build/logs/20261117-16*`):**
+- *Leftovers* are also the windows there as the first show of an app Margin started ended (the kinds' new rule 8b; HostModel's `launchWindows`): Chameleon's restored windows came after the window Margin chose (71918 hosted, 71919 restored), so "a lower number" alone missed them. A leftover is closed by its own close button only when that's surely harmless (made before the hosted window, its app discards windows at quit, Accessibility reads it in Margin's Space, the current one): the app asks about unsaved work itself, and one that doesn't close is parked. Every other (a twin, a launch window that may be the app's real main one, Safari's restored full-screen windows) is parked in one private Space per app, its own emptied full-screen Space destroyed (only one its app owns), and moved to its Desktop before its app is asked to quit (one that doesn't quit keeps them where the person finds them). A window opened only to wake an app stays `parkWoken`'s and HostedSession's to close.
+- *Strips* (a full-width strip on screen or in a user Space while the window is shown) are parked; a full-screen member's own toolbar window, inside its frame at its top (every hosted Chameleon's 1154×52), is the app's and left alone.
+- *Replaced* (its app's main window is another now, the hosted one gone or replaced at its frame): adopted as a window-mode window (fast: framed, no full-screen change), full screen tried again at its next show from parked. *Its window gone while shown*, an app Margin started: reopened, the window it makes adopted (windowless); while parked: reopened at its next show, behind the loader (a window opened now would come up over what's shown). The person's app: as before (its row closes). A window the person closes with ⌘W in an app Margin started is reopened too: the item is the app.
+- *A window-mode window off screen in Margin's Space* (the Phone, Calculator, noFullScreen, fixedSize: in Margin's Space, the current one, off screen at every read for 30 s): at the second read, `bringForward`: unhidden, activated, raised; then a reopen; each looked at for 0.5 s; then the fallback: parked, nothing shown, the item kept, the show failed (the page card). Never a Space made current or a window moved for it (14:05: each was a jump), so the design's "readd" rung was dropped. The poll's own "raised once" path for it is gone (stage 4). Why such a window is off screen isn't known: every one of them reads `AXWindow/AXDialog` (a window that can't go full screen in an app with no Dock icon); likeliest, macOS doesn't draw a window that can't go full screen in another app's full-screen Space, which no rung can change. The next run's `still off screen … after activate / reopen` lines say. Also: such a window, unlisted by Accessibility's standard list, is now chosen at once when the window server has one placed and Accessibility finds it by its number (was: 3 s, `serverAfter`).
+- *Window mode, switching:* a parked window-mode window keeps the page area's frame; its frame is given back only with it (its close, Margin's quit, a crash's recovery: the marker has it). A switch to or from it is a move each way, no frame set and no freeze (the real apps: 238–519 ms, its frame given back and set again under the freeze each way; the stand-in now: 30 ms). Its switch is logged as `switched in`. Side effect found: a window at the page area's frame asked into full screen read "placed" before its Space was reserved (its old frame mid-way in): `reserve` now waits for its Space's reservation and the frame held 0.1 s (+0.1 s on the slow path only).
+- *In front of Margin's window:* never a leftover, a strip or a transient by the model, nor any window over the sidebar by more than 8 pt (was a quarter of it): the design's "an auxiliary in front only if it doesn't cover the sidebar"; the baseline's extraWindow was let in front 60 pt over it. A window dragged a little over the sidebar now stays behind Margin's window (seen through the page area only).
+- No `spare` kind: `transient` is what the reconciler needs (nothing).
+
+**The baseline's failures, triaged:**
+- restore-normal, -fullscreen, -both, -code (leftovers in Margin's Space, let in front): *engine, fixed* (leftovers parked or closed, never in front). Also *suite, fixed*: the priming run restored what earlier scenarios had left (2, 3, 6 windows: macOS keeps saved state in a daemon container now, so the suite's removal by path did nothing, hence "saved state MISSING" though the windows came back); primed with `-ApplePersistenceIgnoreState YES`, and the scenario now expects `restored N` from the copy.
+- autoTerminate-system (host "no shown line"): *suite, fixed*: the previous scenario's copy was still quitting when the next was hosted (Margin hosted the dying instance, it failed, the new launch was shown 5 s later), and the host step stopped at the first failure line; `quitCopy` now waits for the process to be gone, the host step for a shown line after a failure (a fallback says it right after). The engine can't tell a quitting instance NSWorkspace still lists: not addressed.
+- ordersOut-untilActive: *engine, fixed* (`bringForward` before giving up).
+- ordersOut-after (Chameleon not running at the check, "quit, not by Margin", its process gone): *not addressed*: not reproduced off screen (the stand-in's scenario passes before and after); the suite now prints the copy's own log after any miss.
+- replacesWindow-every: *engine, fixed* (adopted each time); *suite*: a read within 1 s of the copy's "replaced" line isn't counted (the moment between an app's change and its adoption is the app's).
+- replacesWindow-twin, strip: *engine, fixed*.
+- noFullScreen, fixedSize, real Phone and Calculator (off screen): *engine*: the ladder and the fallback; whether either rung brings the window is for the next run.
+- auxiliary-sidebar passed in the baseline; extraWindow: *engine, fixed* (never in front over the sidebar) and *suite, fixed* (its extra window is the person's: allowed beside the main one).
+- real-apps Safari ("no shown line", "no switch line"): *suite, fixed* (Safari's lines are `safari:<profile>`, not `app:com.apple.Safari`); its restored windows: *engine* (the one in Margin's Space closed by its close button, the two in full-screen Spaces of their own parked, their Spaces destroyed; HostedSession's sweep still closes what its copy can).
+- switches to window-mode apps 238–519 ms: *engine, fixed*; Calculator's 72 ms "FAIL": *suite's* expectation of `switched in`, met by the engine's wording now.
+- core x2: *suite, fixed* (the strip and the window never on screen at all counted as a failure). core k1: not in scope.
+
+**Stage 4.** Removed: the poll's path for a parked window found in a user Space (now `parkAgain`, at the second read in a row as before) and the window-mode branch of the poll's not-on-screen look (now `bringForward`). Left, and why: the shown window out of Margin's Space (`strayed`/`bringBack`: the last day's timing-sensitive fixes; `putBack` in the reconciler names it but the poll's path does it); the woken-window parking (a Safari woken before it's hosted isn't followed by the observer); the restored-window sweep (the close half for Safari's restored windows, through its copy).
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1507 unit checks (was 1419 at stage 2's merge: 88 new) and 233 end-to-end, no compiler warnings; `npm test`: 916; `npm run test:e2e`: 107 of 107; `npm run test:screen -- --dry-run --real-apps`: works (5 parts). New: `tests/host-reconciler-tests.swift` (42 table rows and 5 checks), `tests/host-behaviour-tests.swift` (every behaviour class hosted by the engine in the stand-in world with the real Mac's pacing, the poll every 250 ms, the desired state read as the suite reads it and held). *Against the engine before stage 3* (the stage-2 tree, `git archive 07cd1bbe`, with the new test files and stand-in): restore-normal, -both, -fullscreen ×2, restore with an app discarding windows, windowless, ordersOut untilActive, replacesWindow every and twin, strip, noFullScreen, fixedSize, the off-screen fallback and extraWindow fail; restore-fullscreen (one window), autoTerminate attempt and system, dialogMain, axBusy, auxiliary settings and sidebar, and ordersOut after pass on both (as on the real screen, except ordersOut after). The stand-in plays two new things of the real Mac's: a window ordered out isn't listed by Accessibility (`orderedOut`), and a window that can't go full screen stays off screen in another app's full-screen Space (`windowedHiddenInFullScreen`; with `reopenShows`, until its app is reopened: one hypothesis, not proven).
+
+**Not verified on the real screen:** that `AESendMessage` of a reopen is allowed from Margin's hardened runtime without the apple-events entitlement (`a reopen … wasn't sent: error -1743` in the log if not); whether either rung brings a window-mode window on screen; that closing a restored Safari window by its close button is taken; that parking a full-screen leftover and destroying its Space leaves nothing in Mission Control; the adoption's latency for Messages.
+
+## The hosting core, stage 3: the real-screen run of 17:32 (2026-11-17)
+
+His run of stage 3 (`tools/screen-tests/build/logs/20261117-1732*` to `-175700-real-apps.log`, 39 → 20 failures), read with macOS's own log of the same minutes (`/usr/bin/log show`: WindowServer's focus lines, LaunchServices' process manager, each app's AppKit and UIKit lines, tccd), not only the parts' last 150 Margin lines. Each remaining failure triaged, engine or suite, and fixed at its cause; one behaviour decided by Tirth this round.
+
+**1. Window-mode windows off screen in Margin's Space (Calculator, noFullScreen, fixedSize).** *Engine.* Every app Margin starts is started hidden (LaunchServices' hide option: Chameleon's own log `BringFrontModifier … hideAfter=1 dontMakeFrontmost=1`); its window, ordered in while hidden, stays hidden (WindowServer's `SkyBridge … 73631 none → hidden`, never changed) until its app is made the front process. The Phone came on screen at 17:58:00.014, 224 ms after its own reopen handling made it the front process (`SetFrontProcessWithInfo … (Phone)`, its window `hidden → none → visible`); Margin's `activate` rung never produced a front-process change, and Chameleon never logged `appDidBecomeActive`: `NSRunningApplication.activate(from: Margin)` is refused by macOS's cooperative activation unless Margin is the active app, which it never is since its UI moved to a panel (2026-11-17, "Margin's UI in a panel that never makes Margin active"). On 11-15, when window mode worked on the real screen, Margin was active and the same call made the app front. Full-screen apps get there through their full-screen entry; window-mode ones had nothing. The `unhide` before it did reach Chameleon (`DoShow(self)`), and its window stayed hidden all the same; AppKit apps (Calculator, Chameleon) don't make themselves front on a reopen, the Phone's UIKit does: hence Phone passed, the others didn't. *Fixed:* every "its app in front" (`front`: each show and switch, the `activate` rung, the first open's rung, a press around the window) sets Accessibility's `AXFrontmost` on the app's element first (`HostSystem.frontmost`: the app activates itself, as at a Dock-icon click; public Accessibility, no new private call), then the raise and the old activation; the rung's line now says whether the app is the front app after. No alternative home was needed: such a window does show in Margin's Space once its app is front (the Phone's stayed on screen through every later switch with no activation at all). *If the next run's `activate` line says "not the front app"*, AppKit didn't take AXFrontmost from Margin: the next lever is SkyLight's `_SLPSSetFrontProcessWithOptions` (what window switchers use; a new private call, Tirth's decision).
+
+**2. Safari through the suite.** *Suite and engine.* The first `host Safari` did fail at once and said so (`window failed: Safari's extension wasn't asked for a window (no link)`): Safari runs a copy of Margin's extension from the installed Margin beside this build's, and the copy that linked answered `a newer copy of Margin is running` (stale), then its links dropped. *Engine, fixed:* a window asked of a copy that answers stale, or whose link drops, is asked again (twice at most) once the profile's link is back or another copy's replaced it (`HostedSession.askAgain`). The suite saw none of it ("Margin said: []"): its marks counted the log's lines, and a read that comes back short undoes a count. *Suite, fixed:* marks by the lines' own times (`LogMark`, `ask`). The second show (18:03:37) was its real first open, which is why it placed. *At Margin's quit:* Safari's own log has no quit Apple event from Margin at all (only the suite's at 18:04:42), and the quit's "still quitting" list didn't name it: its ask was skipped (`askQuit` returns silently when NSWorkspace lists no app for the pid) or its entry was gone before; now said when that happens with the process still running. Then Safari's extension started the *installed* Margin (`/Users/tirth/Applications/Margin.app`, 18:03:58, "started for a link"), the test environment's second copy. No LaunchServices type change of Safari's is logged; its `policy 0` came after Margin's quit, while it was the front app with that other Margin linked: not explained by this build's code (nothing here opens Safari through LaunchServices). Next run: the warning line, or Safari quitting.
+
+**3. restore-normal / restore-both.** *Suite (Chameleon), fixed.* AppKit restored only the full-screen windows (`hasPersistentStateToRestore=0` for restore-normal; only `main-0` for restore-both): the priming launch runs with `-ApplePersistenceIgnoreState YES`, which empties the saved state at its first flush, and only windows invalidated after it were saved (the full-screen ones, by their transition). The priming run now invalidates every window's restorable state before its quit (2 s later). **restore-code.** *Engine, fixed:* the second window, parked mid-way into its own full screen, landed in that Space a second later and was never parked again: a window once in `parkedOthers` was left out of the leftovers for good; now only while it's still parked. Its toolbar strip there was taken for the member's own (inside the member's frame, the member having grown to the display's size): now only a strip in the member's own Space is. And the member re-laid out to the display's size by that second full screen was left so: a shown member off the page area for two reads after the show's late watch is placed again (`placeAgain`, once per 30 s).
+
+**4. windowless, ordersOut-after, replacesWindow-every.** *windowless:* the behaviour itself changed (below). *ordersOut-after:* *suite (Chameleon), fixed*: its own log shows AppKit asking `applicationShouldTerminateAfterLastWindowClosed` when its last visible window was ordered out (not closed), and it quit; an app that orders its window out keeps running (the Phone does), so it now says no then. *replacesWindow-every:* *suite (Chameleon), fixed*: its replacements were made with the old window's frame as a content rect, 40 pt off the old frame (`#73494 350,33` for `#73491 350,73`), so they were never taken for replacements; now at the old frame exactly. *Engine, fixed too:* the old window, closed by its app, stayed listed by the window server in Margin's Space, off screen, so the off-screen ladder ran on a closed window and fell back ("the page card shown → empty"). A replacement is now also a newer window on screen that's Accessibility's main window while the hosted one is off screen in Margin's Space, whatever its frame (WindowKinds rule 10). The scenario now expects the adopted window inside the page area (the design's window mode for a replacement; AppKit keeps a window's top below the menu bar's band).
+
+**5. Messages' switch, 142 ms (front 79).** *Engine, fixed:* the 79 ms were Messages answering Accessibility's raise late. A show or switch is now said and emitted once its window is in place and the one before is out; its app's activation and raise come after, said as "its app in front N ms after", not counted: Messages' would have been 62 ms ("in 38, park 24"). "in 38" is the window server's move, read every 5 ms; nothing to take out of it.
+
+**6. The reopen Apple event.** *Delivered, no entitlement needed:* Chameleon logged `reopen asked` within a few ms of each of Margin's reopens, the Phone's UIKit logged `Checking AppleEvent … (aevt/rapp)` and came forward, and tccd logged no refusal (its "requires entitlement com.apple.security.automation.apple-events" lines are identity registrations at Margin's launch, not tied to an event). A hardened app sends the Dock's own reopen without Automation's consent. So no LaunchServices open was needed (and none is used: it would promote the app). *Fixed:* the reopen is sent off the main thread with its answer waited for (1 s), and the log says which: delivered and answered in N ms, sent and not answered, refused (-1743), not delivered.
+
+**Decided by Tirth (this round): a closed window closes its item.** When the shown app's main window is closed (the person's ⌘W or close button; or the app's own close) and no other main window of its app's comes within `goneGrace` (1 s, which keeps replacesWindow's and Messages' twin's adoption), Margin closes that item (`closeItem` → `windowClosed`: the row's page goes, its app left running, as before stage 3); it never reopens a window for it. `reopen` stays only for showing an item whose app runs with no window (Maps windowless at its show; a window gone while parked, at its next show). The reconciler's table, the stand-in tests and the suite's windowless scenario (now: its item closed, nothing reopened, still so 10 s later) say so.
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1520 unit checks (was 1507) and 233 end-to-end, no compiler warnings; `npm test`: 916; `npm run test:e2e`: 107 of 107; `npm run test:screen -- --dry-run --real-apps`: works (5 parts), Chameleon rebuilt (every switch read). New: `host-behaviour-tests.swift` (windowless: its item closed after the grace, nothing reopened; the person's ⌘W on a member: kept for the grace, then closed; noFullScreen and fixedSize with the stand-in's `frontShows` (a window started hidden off screen until its app is made front by AXFrontmost): on screen at the show, no rung needed; a switch with its app's raise 80 ms late: said in under 50 ms; restore-code: a parked leftover its app takes into full screen afterwards parked again with its Space destroyed, its strip there parked, the member re-laid out to the display's size placed again), `host-model-tests.swift` (a replacement off its frame; an extra window the person opened not taken for one), `hosted-tests.swift` (a stale copy's answer asked again), `host-tests.swift` (a window closed: its item closed after the grace; a press around a window-mode window: frontmost, then the raise), `host-reconciler-tests.swift` (the grace, `closeItem`, `placeAgain`). *Against the engine before this round* (the tree at 00056516 with the new test files and stand-in): 14 checks fail, every new one (the reconciler's new rows can't compile against the old reconciler). The poll no longer takes a window whose bounds didn't read for a stray, nor places a gone one again (`lookOnScreen`): either would fail and park the host before the grace could close its item.
+
+**Not verified on the real screen:** that AppKit apps take AXFrontmost from Margin while Margin isn't active (the window-mode fix rests on it); Safari's quit at Margin's quit; the reopen's answer line.
+
+## The hosting core, stage 3: the real-screen run of 18:57 (2026-11-17)
+
+His run of 3d08259f (`tools/screen-tests/build/logs/20261117-185701-core.log` to `-191717-real-apps.log`, 20 → 14 failures; real apps 33 of 34, every switch under 100 ms). Each remaining failure triaged first, engine or suite. One misreading to start with: Space numbers change with every part (Margin's Space is a new one at each launch), so ordersOut-after's "in [9202]", noFullScreen's "[9272]" and replacesWindow-every's "[9235]" were each part's *Margin's* Space, not another one; the suite now says "(Margin's)" beside it.
+
+**1. Safari's 30 s hold.** *Engine, fixed.* Safari's full-screen toolbar window (74772, the page's width, resting just above the page with its toolbar hidden) was a `strip` not "inside the member's frame", so the reconciler parked it; the window server moves it and its page window together, so 74770 went with it out of Margin's Space, was brought back, the strip parked again, until the fourth return in 30 s parked the show (0 of 55 reads; the switch-again phase shows the same loop until the strip's budget ran out). Against the rule of 2026-11-07 (never park, move or reorder Safari's full-screen toolbar window). Now generic: a strip of the hosted app's in exactly the same user Spaces as the hosted full-screen window, at its width, touching its top edge (from inside or from above), is that window's own toolbar and left alone, and remembered as such while it stays where its window is. Strips of its other windows (another Space, or not at its frame: Mail's 1512×88, restore-code's in its second window's Space) are parked as before. The stand-in plays Safari's toolbar (`toolbarAbove`: 52 tall above the frame, moved with its window either way); the new check reproduced the log line for line before the fix (park strip → in no Space → brought back ×3 → parked) and passes after, through a switch away and back.
+
+**2. windowless.** *Engine, fixed.* Neither the grace nor the reopen rung: the close was never seen. Chameleon (like many apps) keeps its NSWindow after its close, and the window server went on listing 74324 at its exit frame, in no Space, off screen, so its bounds read and "gone" (bounds unread twice) never came. The poll took it for a stray, brought the closed window back into Margin's Space, placed it again (refused 3 s), window mode, off screen, `bringForward` (activate, then reopen), and the reopen made the window the suite saw. Now the observer keeps Accessibility's destroyed notification (`HostModelApp.closed`; every window it reads is followed for it, not only the ones listed when the watch began): a hosted window destroyed and in no Space or off screen is gone at once (kind `transient`), never brought back (`strayed` checks again), and the closed-window decision applies (grace, then `closeItem`). A window Accessibility lists again is taken off. The stand-in keeps closed windows listed for every Chameleon (`keepsClosed`); windowless and the person's ⌘W failed with the detection off (the reopen and adoption as on the real screen) and pass with it.
+
+**3. restore-normal / restore-both / restore-code.** *Suite.* AppKit does restore for a copy Margin launches with no Dock icon: the baseline (16:04, a plain priming launch) restored both normal windows ("restored 2"), and every run since restored the full-screen ones. What broke them was the suite's own priming flag: with `-ApplePersistenceIgnoreState YES` AppKit saved only the windows that went full screen, never a normal one, even with each invalidated before the quit (19:00: "restored 0" and "restored 1" of 3). *Primed differently:* a plain `open -g` again, and Chameleon's Restorer restores nothing in a priming run (each earlier window refused, so it isn't saved again: the accumulation of 2, 3, 6 that the flag was for doesn't come back). Not verified on the real screen. *restore-code:* a verdict bug: every read was in the desired state, but the hold began while Margin was placing the member again after its app re-laid it out, so the page card went loading → shown; a hold that starts loading may now end shown (shown → anything else still fails).
+
+**4. ordersOut-after, noFullScreen.** *ordersOut-after: engine, fixed.* The window ordered itself out 3.2 s after it was on screen and stayed in Margin's Space, off screen, for good; Margin only acted on an off-screen member within 3 s of a show (placing it again), and Chameleon (its app still the active one) gets no activation to order it in. Now a member off screen in Margin's Space after the show's late watch is counted like a window-mode one and brought forward (AXFrontmost, then the reopen: Chameleon and AppKit apps order their window in at a reopen); within the late watch `backOnScreen` tries those rungs before placing it again (the stand-in placed it again three times over, out of full screen and back, without them). The stand-in's ordersOut after now keeps the window in its Space, off screen, as the real Mac did (it took it out of every Space), and orders it in at an activation only if its app wasn't the front app. No activation changes the current Space. *noFullScreen: suite.* Its window was on screen in Margin's Space at 350,73 1154×869: AppKit keeps a resizable window to the screen's visible frame (the menu bar's and the Dock's bands out), and Margin centred it in the page area, as the design says for a window of its own size; the scenario now checks inside the page area, as the Phone and Calculator are.
+
+**5. replacesWindow-every.** *Engine, the same as 2.* "[9235]" was Margin's Space: the first replacement (from the full-screen member) at Chameleon's default frame and the closed old window still listed off screen; the adoption waited for the replacement rule's reads (the new one Accessibility's main window, the old one off screen), past the suite's 1 s settle. The closed window is now gone at once by its destroyed notification, so the adoption follows at the next poll. The stand-in doesn't play Accessibility's latency, so it passed before and after: for his next run.
+
+**6. core s0.** *Suite, fixed.* Chameleon 2 opened with `open -g` while Margin's full-screen Space was current: its window went to the Desktop (Space 1), Accessibility lists only the current Space's windows, and the suite's `activate()` is refused (it isn't the active app). Now its app is made the front app by AXFrontmost (which shows its Desktop), else its Desktop made current, then the full screen asked.
+
+Not addressed: core k1 (out of scope).
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1524 unit checks (was 1520) and 233 end-to-end, no compiler warnings; `npm test`: 916; `npm run test:e2e`: 107 of 107; `npm run test:screen -- --dry-run --real-apps`: works. New checks: Safari's toolbar above its frame (left alone, held through a switch), the closed-window kind row, the observer's closed line, ordersOut after with its app the front app (an activation doesn't bring it back, a reopen does), the engine bringing an ordered-out member forward without placing it again. *Failing before each fix:* the toolbar check against the engine at 3d08259f (the log's loop, then parked); windowless and the person's ⌘W with the destroyed signal switched off in the engine (reopened and adopted, as on the real screen); ordersOut after against the engine before its fix (0 of the reads, then 17 of 20 with only the late-watch change). A member that stays off screen after both rungs now takes the fallback (parked, the page card says so), as a window-mode one did; before, nothing was done after the late watch.
+
+**For the next run:** Safari's hold (no `park strip` line for safari; its toolbar window stays with 74770-like windows in Margin's Space); `host: model: … N closed (Accessibility: destroyed)` lines, windowless' item closed with no reopen; restore-normal "restored 2", restore-both "restored 3" (if not, AppKit refuses to save normal windows of a copy never activated: the next step is activating it in the priming run); ordersOut-after `bring forward (reopen)` and the window back; replacesWindow-every's first adoption within 1 s.
+
+## The hosting core, stage 3: the real-screen run of 20:20 (2026-11-17)
+
+His run of 5aff8b48 (`tools/screen-tests/build/logs/20261117-202017-core.log` to `-204119-real-apps.log`, 14 → 6 failures), read with Margin's whole log of those minutes and Safari's own (`/usr/bin/log show`), not only the parts' last lines. Toolbar and strip handling left exactly as they were (his direction this round). core k1: not in scope.
+
+**1. Safari's first open (real-apps: "no shown line in 30 s; Margin said: []", the hold "Safari isn't running", "show Safari again: no switch line in 10 s").** Two opens, read line by line. *The first* (20:44:42.9): Safari's first copies linked at +4.3 s (cold launch: normal); the item's profile, `safari:p646`, is **Personal's** copy (`s-f236459b`: the host id is a hash of the profile id), so the profile Margin woke was the one the item needs, not another; it wasn't linked, so File › New Window was pressed at once; then a fixed 10 s, a second press (another window), a fixed 20 s, and at +36.1 s "Safari's extension didn't link": the open failed and Margin quit the Safari it had started (hence "isn't running"). Meanwhile Safari refused 41 of the copies' native messages, `Other version in use` (PlugInKit code 16: the installed Margin's extension handler and this build's, both registered, one runs at a time); `s-default`'s copy went stale 2 s after linking ("a newer copy of Margin is running": the two builds' copies in one profile share its storage, and the newer one claims it); `s-96d0c16f`'s copy, not in charge, reconnected every ~470 ms for 22 s, each hello closed by the app. The suite's "Margin said: []" was true: before the failure at +36 s every Safari line was `hosted:` or the link's, none `host: safari:`. *The second* (the show-again step, 20:47:19, 21 s): first copy +4.0 s; press +4.1 s; the fixed 10 s and a second press at +14.6 s; the item's profile linked at +19.4 s, at the same moment as two other profiles' copies (four sockets in 3 ms) right after Safari's refusals stopped (33 at +3–4 s, 8 at +9 s, 1 at +24 s); its window +19.9 s, shown +21.0 s (the early path, 1 s). The woken windows stood in Margin's Space for those 15 s (parked only once Margin asked for its own window: the poll is held off during an open).
+
+*Environment, not Margin:* ~4 s of Safari's own launch; the copies unable to ask for their link while the other build's handler ran (~15 s of the 21 s; the whole first open); the stale copies (two builds' copies sharing a profile's storage). *Margin's:* the fixed waits deciding failure, the second press, the woken window left in Margin's Space, and the stale copy's reconnect loop.
+
+*Fixed (Margin):* `HostedSession.safariLinked` decides on evidence and lets time only pace and say (his direction): the link taken the moment it comes; Safari's own copies first (pressed once one linked and it isn't this profile's, or after 10 s with none); pressed again only while no window came of a press (`HostEngine.wokenWindows`, which also parks a woken window out of sight at once, during an open), at most 4 presses that open nothing; given up only when what it was for isn't wanted any more (the show overtaken by another pick: `linkWanted`; the launch's preparation by any request), Safari quits, or the presses opened nothing; said every 5 s while it waits. A stale copy's window ask is asked again once the profile's link is replaced, however long, while wanted (was: 10 s and given up). *Fixed (extension):* a copy refused with `Other version in use` asks again every second (20 times, then as any other time; was 5, 10, 20 s doubling), and a copy no longer in charge stops its link when it drops, never reconnecting or asking again (was: a hello every ~470 ms, each closed). *Suite:* Safari's host waits for Margin's own verdict (90 s, only a bound for a Margin that says nothing), reports the parts (first copy, the profile's link and presses, its window, shown), says when another Margin build's extension is registered (`pluginkit -mDAvvv -i com.unibox.margin.Extension`) and counts Safari's refusals in the step; a show of Safari whose first open had failed is reported as a first open, waited for as long. **The definitive Safari check is a run against the installed build** (one build registered).
+
+**2. restore-code ("over the sidebar in front of Margin's panel: #75818 0,0 1512x982").** *Suite.* 75818 was AppKit's full-screen transition window (made at the full-screen ask, destroyed by Accessibility at 20:27:48.406, 6 ms after Chameleon's `didEnterFullScreen`), in the member's new full-screen Space 9437, while Margin placed the member again (its app re-laid it out to the display's size when its second window went full screen: `placeAgain`, 20:27:47.650–48.673), the whole of it under Margin's freeze (out of full screen, then the early path: "under the freeze"). The single desired-state read came at ~48.3, the page card `loading`: the window server listed 75818 on screen in front of the panel, the glass showed the frozen frame. The hold right after had 53 of 53 reads. No engine change: the panel is in Margin's Space, the window was in another, and nothing of it reached the screen. *Fixed:* a single desired-state read taken while the page card is loading waits for the correction (10 s at most), as the hold already did.
+
+**3. replacesWindow-every (3 of 41 reads, "leftover #76009 off screen in [9478] (Margin's)").** *Suite.* Last round's destroyed detection worked: Margin's model took every replaced window as closed (`76009 closed (Accessibility: destroyed)`, `main → transient`) and adopted each replacement 166–210 ms after its app's close (19 left of the adoption budget each time). The suite reads only the window server, which lists each closed NSWindow at its last frame in Margin's Space, off screen, for good (12 by the end); it counted them as leftovers. *Fixed:* a window its copy says it closed (`closed N kind …` in Chameleon's own log) and off screen is neither a leftover nor a main window.
+
+**Verified (off screen only).** `tools/app-tests/run.sh all`: 1533 unit checks (was 1524) and 233 end-to-end, no compiler warnings; `npm test`: 918; `npm run test:e2e`: 107 of 107; `npm run test:screen -- --dry-run --real-apps`: works; `npm run test:screen -- --self-check` (new, `tools/screen-tests/suite/Verdicts.swift`: the verdict rules against lines of this run): 6 of 6. *Failing before each fix:* the wake checks (`hosted-tests.swift`, `safariWakeTests`, on a clock of the session's own) against the old `safariLinked`: 6 of 9 fail, the stale-copy check a 7th (a link at 35 s given up at 30 s with a second press; 2 presses instead of 4; not-wanted noticed at 10 s, not 3; Safari's quit not noticed, 30 s); the stale-copy ask with the old 10 s wait: asked again at 10 s on the same, unreplaced link; the engine's `wokenWindows` check doesn't compile against the old engine (no such look); `link.test.ts`: the busy retry fails against the old link.ts (doubling 150/300/600 ms), the stand-down fails against the busy-only link.ts (a hello again after the drop). The suite's two verdict fixes: the run's own lines are the before (the old rules produced exactly the failure lines); the self-check feeds them to the new ones.
+
+**For his next run:** real-apps Safari: an `ENVIRONMENT:` line if another Margin build is registered; `hosted: a Safari profile linked in N s (1 press …)`, one press only; the host step's parts (`Safari's first copy linked +… s; the item's profile linked +… s; its window …; shown …`) and `Safari refused … N time(s)`; no fixed 10 s gap between presses; no woken window seen in the page area. replacesWindow-every: every read in the desired state. restore-code: the desired read may say "(read after Margin's correction under way, N s)".
+
+## The sidebar: app icons at a site icon's size, clicks drawn at once, rows sliding (2026-11-17)
+
+Asked by Tirth: apps' icons looked too small in the sidebar, and a click on a row (or its ×) seemed to do nothing until the state came back.
+
+- **App icons.** macOS app icons carry transparent room inside their image (the glyph is about 80 % of it), so at a site icon's size they read smaller. The view model's `Face.isApp` (an app item whose app's own icon is shown; the palette's `isApp` now covers app items too) and `m-class:app` on every row icon in the four themes: rows, pins, folder pins, the launcher's tiles and archive. Each theme draws them about 1.25× (16 → 20 px in Arcadia and Liquid Glass, 18 → 22 in Pixel and Neubrutalism, tiles 32 → 40, 28 → 34, 24 → 30), in their own shape (no tile, frame or notch), a negative margin keeping the row's height and the title's place. The palette's app icons, which were the same size as a site's in Liquid Glass, Pixel and Neubrutalism, got the same treatment. The page card's loader always shows an app's icon and was already sized for one: unchanged.
+- **Where the wait was.** A click runs on the press (behaviors/press.ts) or the click, goes through `dispatch` → `host.send` → Margin.app (`LibraryWindowSource.perform` → the library's rules in JavaScriptCore → `HostedSession` → the whole snapshot pushed back, then the answer) → `host-app.ts receive` → `render`. A switch to a row with a tab was already drawn at the click (shared/switching.ts). Two weren't: a pin with no tab (the switch has nothing to highlight; in Margin.app a new item's show waits in `HostedSession`'s queue, behind any show under way), and every close. In the harness with the answer 400 ms late: a pin 411 ms, a close 411 ms (the round trip); now both on the next frame (1–2 frames, under 35 ms).
+- **The pending intents (`ui/intents.ts`).** One layer in the runtime: each intent overlays its change on the state the UI draws (`viewState`) until the state agrees (confirmed), its request fails or the state disagrees after its answer (corrected), or it times out; then the state is drawn as it is, so a correction is just the real state, never a blend. A close takes the row out at once (an open tab, a Margin tab, an item open in Margin.app by its `mid`), and when it was the row in front, the row Margin will bring forward (the space's most recently used other one, as the library and the copy choose it) is drawn in front until the state has a front of its own. A pin with no tab is drawn in front (`shared/view.ts` sidebar `pinning`, highlighted whole like a switch's tab) until the state has its page in front (8 s at most: a hosted app's show takes seconds). The newest click wins: a switch drops a pin's open, a pin's open ends a switch. Nothing pending: `apply` hands back the same state, no work per update; the runtime's existing expiry timer draws again only at an intent's deadline. Themes only style it (their own `active`/`on` classes).
+- **Rows sliding (`ui/row-motion.ts`).** When rows come or go in the same space, FLIP over every sidebar row (`View.rowElements`: the rows of the view model's tab, pin and folder lists, nested too): boxes read before and after the drawing (two layouts, all reads before any write), each moved row animated from where it was with a one-keyframe transform, a new row with its opacity, 200 ms, `cubic-bezier(0.2, 0, 0, 1)`, through the Web Animations API (compositor, nothing left in the styles; no `getAnimations`, see "Safari getAnimations crash"). Not on the first drawing, a space switch, a pure reorder (a drop), during a drag, or with reduced motion. A row drawn again in a removed row's place (a Margin tab opened gets a new id) isn't faded in. Margin's motion, the same in every theme. A close over 50 rows (the click's work and the slide's set-up): median 3.0 ms in WebKit and Chromium, was 2.0–2.7 ms without the slide; the longest frame while sliding 17–19 ms.
+- **Tests.** `tests/ui-intents.test.ts` (predicted, confirmed, corrected, timed out, a second click, rows that slide, `isApp`); `tests/theme/intents.test.ts` (every theme, both engines, the host's answer 400 ms late: a tab's row and a pin with no tab active on the next frame and steady, a close gone on the next frame with the rows after it sliding and the next one in its place, failures back to the state, the newest click wins, reduced motion, a space switch, the frame budget); `tests/theme/row-icons.test.ts` (an app's icon 1.15–1.45× a site's, the row's height, the title and the icon's centre unchanged). Without the fix: 5 of the 8 intents checks fail in each engine (the pin and close ones at 411 ms) and every icon check.
+- **Not verified:** the real app's own round trip (not measured on the screen: this work was limited to headless browsers); app icons on the real screen. Not done: a close's slide-out of the row itself (it disappears at once, as asked); ⌘W's close (Margin.app's, with no row named) isn't predicted.
+
+## Live resize: tiles in Margin's Space (2026-11-17)
+
+Asked by Tirth (the direction approved, the privileged route relied on: the window manager's bridged operations, as
+every move and destroy already is): the shown app follows a drag of the sidebar's edge live, the parked ones at the new
+size before they can be shown, "properly without causing any issues or errors and without reducing efficiency or
+performance". The design, the fallback and what isn't proven: `docs/HOSTING-CORE.md` "Live resize: tiles in Margin's
+Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part.
+
+- **A hosted window's own tile goes into Margin's Space** (bridged `SpaceTileMoveToSpaceAtIndex`, Margin's Space's
+  `Max Tile Config` raised first) instead of the window alone as a member; its own Space destroyed as before. Its size
+  is its tile's `TileRect` (bridged `SpaceSetValues`), the page area's: one desired page area in the hosting core, the
+  reconciler's new correction `sizeTile` converging every tile to it (the one shown first, each parked one its own turn
+  in the queue, asked at once after the last rather than at the next poll; a switch sizes its target first). A drag is
+  followed frame by frame (`HostEngine.dragging`/`follow`: one write a display frame at most, one in flight,
+  `LiveResizing` on Margin's Space for its length); its end is an ordinary change of the page area. Window mode follows
+  a drag by Accessibility (one `setFrame` in flight): cheap for Margin.
+- **Why tiles and not the reservation:** a member's own Space is gone, nothing resizes it; the kit (2026-11-17,
+  `/tmp/margin-toolbar-test/live-resize/opt4`) found the tile route works shown or parked, with the reservation route's
+  CPU, and Mission Control still lists Margin's Space only.
+- **A tile added or taken out lays the first two of the layout out again** (Margin's own window and the first hosted
+  one as a split's parts): every rect is set again after each of Margin's own changes, under the freeze; Margin's window
+  says when it's narrowed (`MarginWindowController.onNarrowed`, the changes Margin didn't make: an app quit or crashed,
+  a window closed) and every rect is sent again at once, even mid-operation; the poll looks at the tiles too
+  (`lookAtTiles`). Margin's window never takes a page area while it's narrower than its screen.
+- **Seen on the real screen, fixed (the runs of 23:31-00:06):** *Margin's quit left its Space listed* (a window out of
+  full screen leaves its tile there, empty, until its app quits: Chameleon 1 was still quitting): those tiles are
+  destroyed before Margin's window goes. *The first switch after a tile change laid the first two tiles out again*
+  (Chameleon 1, the layout's second, at 489 then 359 wide for 120 ms, then 21 ms after `onNarrowed`): that one switch now
+  runs under the freeze, watched 50 ms, every rect set again before the reveal (the window server's model bounds are
+  still wrong for ~10 ms under it; the screen holds its last picture). *An app killed* leaves a placeholder tile:
+  destroyed within 88-126 ms, Margin's window whole again.
+- **Measured (Chameleon, the new build; the baseline 6081525c from its own 20:20 run):** a switch median 20 ms (p90 29,
+  the frozen first one ~45) against the baseline's 22 (max 25); a drag of 120 frames followed every change Margin sent
+  (83-98 sent, the rest coalesced while one was in flight), median 3.5-7 ms, p95 14.5-17.4 ms from the write to the
+  window there (a 30-frame drag of Chameleon 2: median 11-16, p95 19-24: the app's own redraw, 10-15 ms a resize by its
+  log); the parked windows at the new page area 18-58 ms after the drag's end (the baseline: none until shown, then
+  placed again behind the loader, ~0.9 s; the shown one placed again at the drag's end the same way); CPU over a 1 s
+  drag and 3 s after: Margin 320-390 ms, WindowServer 770-830 ms, the app shown 650-680 ms (the app's and the window
+  server's are the cost of a live resize; the baseline wasn't measured on the same scenario, the screen wasn't free
+  again); resident memory at rest with three hosted: Margin 118-133 MB, WindowServer 147-163 MB (no baseline taken).
+- **The run of 01:13-01:41 (2026-11-18, the build rebased on b5ba6e92):** live-resize 31/31; core 33/33 (an earlier
+  run); behaviours-4 19/19; behaviours-1 34/36, -2 32/33, -3 32/34; real-apps 29/39; live-resize-crash 8/10. Found and
+  fixed after it, **not run on the screen again**: *a tile whose window its app closed keeps a placeholder window of its
+  app's at the tile's rect, on screen in Margin's Space* (windowless: taken for a replacement and adopted; replacesWindow:
+  a leftover on screen): never a replacement now, and the tile destroyed at once when its host's window goes or is
+  replaced; *a killed Margin's own tile stays in its old Space* and kept that Space listed after the recovery (left on the
+  Mac, destroyed by hand with the kit's cleanup, 01:45): the recovery destroys it too. Open: *ordersOut-after* (its window
+  ordered out stays off screen with tiles; not looked into); *Safari didn't host* in real-apps (no shown line in 90 s:
+  the two builds' extensions again, not looked into); real Maps' first switch after a tile change took 109 ms (the
+  frozen watch, 70 ms: shortened to 30 ms after, unmeasured); the suite's drag and background checks assume the shown
+  window fills the page (they fail for Calculator, a fixed-size window, whose parked neighbours were at the new page area).
+  Real apps in tiles held 30 s each: Maps, Messages, Mail, WhatsApp, Notes; Phone and Calculator in window mode.
+- **The baseline (6081525c with only the dev hook's drag), the same live-resize part:** at rest Margin 134 MB and
+  WindowServer 187 MB (new: 118-133, 147-163); over a 1 s drag and 3 s after: Margin 370-520 ms, WindowServer 960-1360 ms,
+  the app shown ~160 ms (new: 320-390, 770-830, 650-680: the app redraws live, the release's re-fit is gone); its
+  switches after a drag showed the old size (2 of 6), its parked ones weren't sized (or 540 ms later, at a show); a
+  killed app's placeholder: not its concern (no tiles).
+- **Not proven:** Safari in a tile; real Mission Control and swipes beyond core's ⌃←/⌃→ steps; two displays; Stage
+  Manager off.
+- **Safari launched at 23:28:43 (2026-11-17) and restored Tirth's two full-screen windows:** neither the builds nor the
+  suite nor the extension's registration: `webpushd` (`Launching com.apple.Safari in response to push`, a site's web
+  push for one of his Safari profiles' data stores) started it in the background, and his margin-helper then started
+  his Margin. Nothing a test can or may switch off (his Safari's settings). The suite now never launches Safari: the
+  real-apps part hosts Safari only when it already runs (his session, its windows left as they are; Margin asks its own
+  extension for a new window there), else skips it and says why; the Chameleon parts never touch it.
+- **Safari in a tile, not proven:** its real-apps host failed twice (01:35, 01:37) before any tile step: the item's
+  profile (Personal) had no window, so Margin pressed Safari's File › New Window for it, and the build under test has no
+  Full Disk Access, so the profile's name isn't known (`File › New Window has no item for safari:s-f236459b…`); 4 presses,
+  given up. Not the tiles and not only the two builds: a run against a build with Full Disk Access (the installed one,
+  once it has the tiles) or with that profile's window already open is needed. Not done.
+- **ordersOut-after:** its app orders its shown window out 3 s after it's first on screen; the reconciler's
+  bring-forward took two rungs (activate, 548 ms still off screen; then its reopen, on screen 54 ms after): the
+  suite's single desired read 1 s after the show landed inside that correction. The 30 s hold passed 54 of 54 reads. A
+  generic skip of the activate rung when the app is already in front was tried and broke the window-mode ladders the
+  real Mac needs (the Phone): left as it is. The suite now reads a desired state caught mid-correction again once
+  Margin's correction is over (5 s at most), said in the step.
+- **The run of 02:03-02:19 (2026-11-18, the fixes above):** behaviours-1 36/36 (windowless: its tile's placeholder never
+  adopted, the item closed), behaviours-3 34/34 (replacesWindow-every: no placeholder left on screen),
+  live-resize-crash 10/10 (Margin killed, opened again: everything given back, its old Space and every tile destroyed),
+  real-apps 33/35 (Maps, Messages, Mail, WhatsApp, Notes in tiles; Phone, Calculator in window mode; drags with
+  Calculator shown followed by Accessibility, every parked tile at the new page area 124-489 ms after; Maps' first
+  switch after the tiles changed 76 ms, 41 of it the frozen watch; the two misses were the suite's first read of a hold
+  getting no page area from Margin's dev hook, then not read again), live-resize 29/31 (the two misses: Chameleon 2's
+  30-frame drags at p95 25.9 and 26.4 ms against the 25 ms bound, its own redraw).
+
+## A hosted window's minimum size: no tile narrower than it, the sidebar's edge stops there (2026-11-18)
+
+- **Seen in Tirth's real use (09:08-09:09):** dragging the sidebar's edge fast with Weather shown, Weather's window left
+  Margin's Space for a full-screen Space of its own three times; Margin brought it back each time by leaving and
+  entering full screen (2-3 s, the loader). The drag said "197 page area changes in 4607 ms, 46 sent, followed 26
+  (median 41.9 ms), 20 not followed within 50 ms".
+- **The cause, measured on the real screen** (the build before the fix, 40534e93; the suite's new `min-drag` steps read
+  every window's bounds and Spaces every millisecond and the shown tile's rect every few): a tile was sent a rect
+  narrower than its window's own minimum. The minimum is in the tile's own values (`SizeConstraints` `Min`, AppKit's,
+  what Split View's divider stops at), read with the same call Margin reads `TileRect` with: no new private call.
+  - Weather (09:43): its tile said 1048×640; a slow drag (240 frames) first sent 1046 wide at 1908 ms, and 24 ms later
+    the window was in a new full-screen Space of its own (type 4). Margin's recovery then took it out of full screen
+    and in again behind the loader. Its later drags in that run were spoilt by that recovery (not counted).
+  - Chameleon 3 with `contentMinSize` 1100×500 (09:38): its tile said 1100×500. Below it, its AppKit window followed
+    its tile to 1024 but drew a second window at its minimum and the tile's height (1099×966, right-aligned, on screen in
+    Margin's Space: Margin let it in front of its own window), and at the next drag's start, still below its minimum, it
+    left full screen (`willExitFullScreen`; Margin placed it again in 824 ms behind the loader). 3 of 3 slow drags past
+    it (240 and 600 frames). Six fast drags above its minimum (130 pt in 8 frames, 140 pt in 3, both ways) were followed
+    with nothing left: speed alone doesn't do it.
+- **The fix:** `HostLayout.fit` (the page area, or the window's minimum with its right edge and top the page area's),
+  used by every tile sizing (`tileRect(for:)`: the drag's follow, `sizeTile`, `reapplyTiles`, `marginNarrowed`) and by
+  the first open's reservation (its own Space's tile read for its minimum before it's reserved). The minimum is read
+  from its tile as it comes in, at each drag's start and each sizing, never per frame. Margin's window is told the shown
+  one's minimum width (the hello's `pageMinWidth`, `pageMin` pushes) and the page's own drag stops the edge there
+  (ui/behaviors/resize.ts), so the edge and the app agree at any speed. A parked one wider than the page area is sized
+  at its minimum, right edge aligned (its overflow under Margin's sidebar when it's shown). One that leaves its tile
+  anyway has its new tile moved back into Margin's Space (`tileBack`, no full-screen exit or entry, no loader), isn't
+  followed again in that drag, and with no minimum said the narrowest it held is taken for one.
+- **Tests:** live-resize-tests.swift (the stand-in world plays Weather's ejection below a minimum: `ejectsBelowMinimum`;
+  8 of its new checks fail without the fix), hosted-tests.swift (the minimum reaches Margin's window), ui-host-app.test.ts
+  (the drag's floor, slow, fast, mid-drag, a reset; both new tests fail without the UI change); the suite's
+  `live-resize-min` part (Chameleon's `minSize` switch) and `real-apps-min` (Weather, opt-in).
+- **Weather's saved window state:** the baseline run (09:43) left `windowSystemFrame` 260,237 1048×640 and
+  `windowGeometry`'s `windowFrame` [[808,400],[1048,640]] (its minimum, after Margin's old recovery took it out of full
+  screen); the suite then recorded no Mac Catalyst keys, so what they were before isn't known. Tirth: leave them as they
+  are. The suite now records keys with a window frame or geometry in their names (both later Weather runs put them
+  back, read the same after).
+- **On the real screen with the fix (2026-11-18):**
+  - The first run (10:31, the coordinator's) found the window never out of Margin's Space and never under its minimum,
+    but the page area ended 1104 wide, not 1100: Arcadia's `sidebarWidth` has a step of 10. While dragged the edge
+    stopped exactly at the floor (the sidebar 404, the window 1100 wide: the suite's narrowest bounds); let go, it
+    snaps to the step under the floor (400: 1104), never past it. The suite's ends were wrong (and assumed the sidebar
+    at 260; it was 240): it now works out where a drag stops and lets go by the theme's rules (Verdicts.swift `letGo`,
+    self-checked), sets the sidebar to 260 first, and checks the window was exactly its minimum while the edge stood at
+    the floor. Its "min none" for the parked Chameleon 3 was the suite's: a parked window's tile names no window
+    (`TileWindowID` 0) and says a 0×0 minimum; Margin kept the one it read before (the parked window was 1100 wide at
+    404, right-aligned) and now says so once ("its tile … says no minimum now (parked): … kept"). Space 11108 was
+    Margin's.
+  - `live-resize-min` (10:51): 27 of 27. Drags past the minimum (240 frames, 12, 3): the window exactly 1100 wide at the
+    floor, let go at 1104; 111 of 111 changes followed (median 3.4 ms, p95 16.2 ms) in the slow one; above it and wider
+    again followed too; Chameleon 3 parked under its minimum at 404,41 1100×933, shown so 5 s (0 reads off), dragged
+    wider; never out of Margin's Space; nothing placed again.
+  - `real-apps-min` with Weather (10:57): 13 of 13 (10:54: 8 of 13, all its misses the suite's 50-ms follow count). Its
+    tile said 1048×640; every drag, 240 frames to 3, stopped with the window exactly 1048 wide (the sidebar 456: the
+    step above it would cross the floor, so it lets go there), never out of Margin's Space, never placed again, no
+    loader. Weather resizes at its own pace, 50 ms a change (median 50.2, p95 56.2 ms in the slow drag; 22 of 36 within
+    50 ms): its drags follow, about 50-100 ms behind the edge. The suite holds a person's app to following and ending
+    where it belongs, Chameleon to 9 in 10 within 50 ms.
+  - Safari was started at 10:41:43 by `webpushd` (a push for one of Tirth's profiles), between runs; it restored two
+    full-screen windows (Spaces 11124, 11127). No test launched it or touched it.
+- **Still unproven:** an app whose tile says no minimum (the narrowest-held fallback), `tileBack` on the real Mac (no
+  window left its tile with the fix), a first open while the page area is already narrower than its minimum, a
+  translucent theme over the overflow.
+
+## The hosting core in Rust, the loop guard (2026-11-18)
+
+Tirth paused new features after a re-layout loop with Weather (13:30: 54 rounds in 18 s, seen as a line, a black page
+and an empty one) and approved docs/ARCHITECTURE-PLAN.md: the hosting brain in margin-core (Rust), shared by every OS,
+each OS keeping only its window calls. Work is on `refactor/host-core`, one step at a time, Margin usable after each.
+
+- **What moved (phase 1-2):** the window kinds, the window choice, the reconciler's step, the layout (plan, tile, fit,
+  home) and the strip test are margin-core's `host` module (app/shared/core/src/host), tested there, a row per case
+  the Swift tests had (ported). margin-ffi (app/shared/ffi) puts them behind a C interface: one JSON call for the
+  decisions, typed calls with no JSON for the layout (a drag asks every frame). Margin.app's Swift imports it as
+  `MarginCore`; the module map's `link` line links it, so the Xcode project needs only two search paths
+  (scripts/safari.sh; tools/app-tests/run.sh builds it for this Mac). The Swift types stay as the engine's values;
+  their rules are gone from Swift. Each HostEngine has its own core (its guard, causes, routes), so two engines never
+  share a count (the first test run did: hosts stopped by another test's rounds).
+- **A new window kind, helper:** a window its app makes at the size Margin just set, within 0.6 s of the resize, while
+  the hosted window is still in a Space (with it gone, a new window is its replacement). Weather's 1264×966 window was
+  one. Never shown, adopted, parked, let in front or reacted to.
+- **The loop guard:** only reactions count (a correction Margin makes because something changed that nobody asked
+  for); a person's operation (open, show, close, a page area's change, a park) is Margin's plan and starts the counts
+  again. The same reaction for the same host three times within 5 s: not applied, the host moved one rung down (tiles →
+  members → window mode), remembered for that version of its app in routes.json beside the marker (tried again after
+  an update). Twelve reactions a second across every host: all held a second. A re-layout of Margin's Space's tiles is
+  counted against the host whose window came or went just before (the causes: AX's destroyed note, at once, even for
+  a window never read), else Margin's own (stopped: the tiles off for the run, every tiled host a member).
+- **Seen in the stand-in (loop-guard-tests.swift):** with the guard off, TextEdit playing Weather loops for good (8+
+  rounds in 6 s); with it, two of its tile's rects sent in answer, the third stopped, it alone moved to members, still
+  shown at the page area, the other app still a tile, the next run a member from its first open; six page area changes
+  in a second are six resizes, nothing stopped. 1614 of 1614 Swift checks; 291 Rust tests.
+- **Weather loops only as the layout's second tile.** A re-layout wipes the first two tiles (Margin's own and the
+  first hosted one); the stand-in's loop ended by itself with Weather third. Weather was the first app opened that day.
+- **On the real screen (17:54-17:58):** `real-apps-loop` (new: Weather opened first, Maps beside it, a drag, switches,
+  40 s watched): no re-layout Margin didn't make, Weather at the page area; the loop didn't come, so the guard wasn't
+  exercised on the real Mac. Its two drag-follow misses are Weather's own 50 ms a resize, as at 10:57. `live-resize`
+  (Chameleon): 30 of 31, drags median and background sizing as before; the miss is the first switch to the layout's
+  second tile: re-laid out 54-63 ms after the ask, past the 30 ms frozen watch (shortened from 70 ms, unmeasured, at
+  01:41), set back 11 ms later by `onNarrowed`. Not new.
+- **Size:** Margin.app's binary 12.2 MB (was 10.3): the core 1.9 MB for both kinds of Mac, after turning dead-code
+  stripping on (the converter's project has it off: 18.1 MB without).
+- **The anchors (18:05-18:20):** two empty tiles of Margin's own at its Space's front instead of windows (no full-screen
+  entries: the bridge makes a windowless tile in 5 ms). The kit showed only they are laid out again by a tile change;
+  the engine makes them under the freeze, keeps them in the marker, destroys them at quit (docs/HOSTING-CORE.md
+  "Anchors"). Real screen: live-resize 31 of 31 (the first-switch miss gone), live-resize-crash 10 of 10, real-apps-loop
+  all but the drag-follow checks, which held Weather to Chameleon's 25 ms (now a person's app is held to its own pace,
+  as the min-drag part does). 1622 of 1622 Swift checks.
+- **Next:** the scheduler on events (the 4 Hz poll), then the operations.
+
+## The engine looks on events: the idle cost (2026-11-18)
+
+The plan's budget: Margin under 0.5% of a CPU at rest, nothing waking it when nothing changes. Measured with the new
+`idle-cost` screen part (the kernel's own counts, proc_pid_rusage: CPU time, idle and interrupt wakeups, footprint),
+three Chameleon copies hosted and left alone 60 s, and nothing hosted for 30 s.
+
+- **Before:** three hosted 4.02% (2448 ms in 61 s), 5 interrupt wakeups a second; nothing hosted 1.60%, 89.5 a second.
+  A sample (`sample`) showed the engine's poll (`Shell.track`, every 0.25 s whenever anything was hosted, and 20 more at
+  0.1 s after each show) most of the main thread's work, and the set-up window's checks every 2 s all the time.
+- **The schedule (margin-core host/schedule.rs):** every 0.1 s for 2 s after activity (an event, an operation's end, a
+  correction, a notification of a hosted app's), every 0.25 s while something is unconfirmed (a read to repeat, an exit
+  or a retry due, a drag, the late watch after a show), every 1.5 s at rest with apps hosted, every 2 s with only copies
+  linked, never with nothing. Events look at once: the workspace's (an app activated, a Space changed, already the
+  shell's), the observer's Accessibility notifications (new: `onHeard` → the shell's read now). The 20 polls after a
+  show are the schedule's fast window now. Timers have a 10% tolerance (coalesced with the system's).
+- **A poll's reads:** the Space list (SLSCopyManagedDisplaySpaces, parsed) once a poll instead of 4-6 times; each
+  running app (NSRunningApplication: a LaunchServices request each time) and the session's state once a poll; a quit
+  seen by the process alone (kill(pid, 0)); an app's windows classified again only when what the classification reads
+  changed (the observer's cost a poll in the stand-in: 604 → 181 µs). The set-up window's checks run only while it's
+  shown.
+- **After:** three hosted 0.45% (276 ms in 61 s), 1.6 interrupt wakeups a second: under the budget. Nothing hosted
+  1.44-1.50%, 89 interrupt wakeups a second: Margin's page is the launcher, its field focused (the dev hook's `say
+  field`: focused true, Margin active), its caret blinking; WebKit draws each blink (its display link started and
+  stopped, a thread each time). The page itself is quiet: no animation running, no frame asked, no message from
+  Margin, no DOM change in 2 s (the dev hook's new `say animations`). That's the cost of a field ready for typing.
+- **Memory at rest:** Margin 63-64 MB with nothing hosted, 100-104 MB with three hosted (its web view's processes not
+  counted).
+
+## Tiles against members, measured (2026-11-18)
+
+The plan's first step: both hosting routes on the same screen with the same parts. `MarginTiles NO` (a development
+setting, the screen suite's new `--members`) hosts every window as a plain member of Margin's Space.
+
+- **Plain switches:** the same (tiles 16-29 ms, members 17-29 ms).
+- **A switch after the sidebar's resize:** tiles at the new page area from the first frame (~20 ms); members first at
+  the old size (260 wide on a 380 page area), then out of full screen and in again to be placed (seen at 900×560 112 ms
+  in): the "takes a moment to show it resized" Tirth objected to.
+- **A drag:** tiles follow it live (median 4-5 ms, p95 16-19 ms); members don't follow (no live resize), the parked ones
+  not sized until shown.
+- **At rest:** the same (three hosted 0.42% either way; nothing hosted 1.5%, the launcher's caret).
+- **Decision (Tirth was away; the plan said he picks from the numbers):** tiles stay the default. Their one weakness was
+  the re-layout macOS makes of a Space's first two tiles, which the anchors now take; the loop guard is behind them.
+  Members stay the route an app steps down to when it won't settle in a tile, window mode below that.
+- **An item in another Margin window (same day):** one window hosts at a time; another window's item stays on it as a
+  card, faded and still ("Click to show Notes here.", every theme: the default loader, Arcadia, Pixel, Neubrutalism,
+  Liquid Glass, each checked by its theme test), and that window brought in front takes the item back. A web item's card
+  is the same card (no picture of the tab yet). Not checked on the real screen (the suite opens one Margin window).
+- **The start:** the default browser first, "Getting you started…", then the item shown last, held at most 15 s.
+
+## The soak on the person's own apps (2026-11-18 20:40)
+
+`real-apps-soak` (new): Maps, Phone, Messages, Mail, WhatsApp, Notes, Calculator and Weather hosted together through
+Margin's dev hook only (nothing clicked or typed into them; Safari left out: the suite never launches it), then switched
+through three times, each left alone 3 s and watched for a re-layout loop, a sidebar drag between rounds; Mission
+Control and memory after, every app given back at Margin's quit. First run 76 of 82: the six misses were the new
+`settled` step's, which held the fixed-size windows (Phone, Calculator: window mode, centred) to filling the page; it
+takes a window inside the page area now. Second run 82 of 82: 24 switches, each app where it belongs every time, no
+re-layout Margin didn't make, Mission Control Margin's Space only; Margin 100 MB, WindowServer 168 MB after. Every app's
+saved state recorded before and put back after (Mail 3 keys, WhatsApp, Notes, Calculator 1 each).
+
+## One loop for every OS; the page's picture on its card (2026-11-18, night)
+
+- **A web item's card in another Margin window** shows its page as Safari showed it last, faded toward the theme's
+  ground, with the card's words on a chip in the theme's style (every built-in theme, both engines). The Safari copy
+  takes it (`hostPicture`: `tabs.captureVisibleTab`, made at most 1600 px wide: ~22 MB decoded at full Retina size,
+  ~5 MB at 1600) just before the hosted window leaves for the other Margin window; Margin waits 0.4 s at most for it,
+  and the card alone stands in otherwise. Kept in memory while the card shows, never stored or logged (the window's
+  test list of pushes keeps only that one was sent). An app's card has no picture: Margin reads no other app's pixels
+  (no Screen Recording, by his decision).
+- **The Mac engine's loop is the core's** (`host::driver`). An OS whose steps are plain calls (Windows) hands the driver
+  its adapter; the Mac's steps are async work in its own queue, so it asks the driver in parts: `decide` (the host's
+  next correction, its tries the core's), then in that correction's turn `decide` again and `admit` (the guard, the try
+  counted, a stop's step down). The budgets' window (30 s, a framing per show) is the core's constant only.
+- **Which window is let in front of Margin's window** is the core's (`host::front`): the rules of 2026-11-17 unchanged
+  (the shown app's, seen at two looks in a row 0.2 s apart, not with an operation, not a strip, not over the sidebar
+  more than 8 pt, in Margin's Space alone). The Mac reads the Spaces only of the shown app's own windows.
+- **Windows hosting** waits on Margin's own window there (the Windows shell still draws over Chrome's and Edge's
+  windows): the hosted design ported first, then its adapter driven. Not wired before that: nothing would call it.
+
+## A fast, safe start and show (2026-11-19, night)
+
+From step 0's timings (Safari: first window 1.2-1.4 s, extension 2.5-3.9 s in any launch mode; apps through Margin
+0-1.6 s slower than opened normally):
+- **Prompts never hidden.** A window in Margin's Space that Accessibility hasn't read yet is never a leftover (Books'
+  "Discover New Books" sheet was parked 70 ms before it read as a sheet: Books waited on an answer nobody could see,
+  then wouldn't leave full screen, close or quit, and ended on the Desktop). A row closed while its app asks something
+  only asks it to quit, its window where it is; one its prompt holds stays Margin's, said in the sidebar.
+- **The start.** Safari is started with Margin, not after its window (2.7 s). A profile Safari's menu has no item for
+  (its name unknown) costs one press, not four and 15 s; its pages open in the default profile, with a note whose Allow
+  opens the one-time folder grant (Safari's profile names without Full Disk Access, proven 2026-11-18). Restored
+  windows are the ones a copy lists at its first look after linking (not by `createdAt`, which the real run suggests a
+  copy can hear for restored windows too). Margin's window is brought forward both ways from the first try.
+- **Shows revealed early.** A show is revealed as soon as its window is in Margin's Space at the page area with Margin's
+  Space current; its own Space's destroy and the settle are checked after, unseen (the guard and these checks put back
+  what macOS moves). About 0.4-0.5 s sooner. Not for Safari's window (its sidebar is hidden after that point).
+- **An app's first window found sooner.** An app Margin started asks Accessibility only once the window server lists a
+  window of it (a launching app can't answer, and each read waited up to 1 s).
+- **Left:** an app whose window opens windowed still waits for macOS's own full-screen Space (~0.5 s, first open only);
+  Safari's window shown before its extension links (adopting its restored window).
+
+## A hosted app's own keys, Teams' meeting, Settings and the folder grant (2026-11-19, morning)
+
+From the first real session on the fast start (its log, 10:55-11:04):
+- **A hosted app's keys that undo its hosting are Margin's while that app is in front** (Carbon hot keys, as ⌘Q's guard;
+  never while Margin itself is, whose menu has them, or another app is). In the window Margin hosts (or its toolbar
+  strip): ⌘W is Margin's Close Tab (the item shown in that Margin window); ⇧⌘W, ⌥⌘W (Safari: Close Window, Close Other
+  Tabs: every tab of the profile's window), ⌘M, ⌘H, ⌥⌘H (Margin among the others) and ⌃⌘F do nothing. In another window
+  of the app's (Accessibility's focused one: a meeting, a draft, Safari's Settings), ⌘W presses its close button and ⌘M
+  minimizes it; the rest do nothing. The keyboard's window unread: nothing (never close what the person didn't mean).
+  Seen: a key in the hosted Safari (Safari's log: `performKeyEquivalent`, then `windowShouldClose`) closed its window and
+  the space's tab with it. Not covered: the Globe-F full-screen key (no Carbon modifier for it), menu items clicked.
+- **A window an app takes into a full-screen Space of its own while the hosted one is still in Margin's is a second
+  window** (core `host::kinds`), never the hosted one's replacement or its twin. Teams' meeting went full screen at the
+  hosted window's frame as Accessibility's main window; Margin adopted it in place of the main window, couldn't place it
+  (Teams busy 12 s), and closed Teams' item when the meeting ended.
+- **The palette's Settings and Archive in Margin's window** (`openLauncher`, refused before): what it hosts parked, the
+  launcher in the page area, Settings open there; the item's row shows it again.
+- **After the folder grant**, the web items open in the default profile only because theirs couldn't be opened are
+  moved into their own: each tab closed in the default profile's window, the one shown shown again in its profile.
+
+
+## The ground behind hosted apps (2026-11-19)
+
+Hosted apps' see-through sidebars (Notes', Weather's, WhatsApp's glass) showed the wallpaper: in a full-screen Space macOS
+draws a blurred copy of it behind every window (WindowManager's windows at about -2^31, listed under every app's), and
+nothing of Margin's was behind the hosted window (Margin's own window is in front of it). Chosen by Tirth: plain grey,
+like macOS. Margin's full-screen window has a second child (`MarginBackdrop`, beside its panel): opaque, in the system's
+window background colour (light or dark as the Mac is), at the window's frame, at the desktop icons' level + 1 (below
+every normal window, above macOS's backdrop), never the mouse's, the keys', the window cycle's or the Window menu's.
+A child, so AppKit keeps it in Margin's Space and moves it with the window; its level is set apart from the parent's
+(the window server keeps a child's own level: read in the app's e2e with the parent raised). Only in full screen. Its
+layer is read back after each placing: at or above a normal window's (it would cover the app) it's taken out for the
+rest of the window's life, said. No Mac-wide setting is touched.
+- **The whole display** (the second look, same day): the backdrop at Margin's window's frame left the menu bar's band
+  (33 pt) showing the wallpaper under the see-through menu bar, and the hosted apps' toolbars reach into it (Safari's
+  toolbar strip from y -11): their glass still took the yellow at the top. It covers the display's whole frame now.
+
+## The start screen (2026-11-19)
+
+Asked by Tirth: while Margin's default browser gets ready, the whole window is the browser's loader, with no sidebar, no
+app's icon and no words; nothing of Margin's can be used before the browser is. Agreed with a way out and a limit:
+- **The screen.** Margin's `<m-startup>` (ui/runtime.ts followStartup) over the whole window and everything in it, taking
+  the pointer; each built-in theme draws its own loader's marks in it (`> m-startup::before`, `::after`, the ones its
+  card draws while starting) on its loader's background; Margin's quiet spinner for a theme that doesn't. The root says
+  `m-startup`. The page ignores Margin's keys meanwhile (the palette, the tab and space keys, Settings); the app opens
+  no new window by ⌘N or its menu (`startupShown`). Shown also when the item shown last isn't resumed (MarginResumeLast NO).
+- **Held up.** Not ready within `startupWait` (15 s): "Safari is taking longer than usual to start." Its preparation given
+  up because its extension never linked: said at once ("…Check that Margin is turned on in Safari › Settings ›
+  Extensions."). With **Try again** (the preparation run again if it was given up, else its limit anew) and **Continue
+  without Safari** (Margin usable; the browser made ready when it can be). No longer does the item shown last appear on
+  its own after the limit. Another reason the preparation is given up (no browser Margin hosts, the early full screen not
+  available) doesn't hold the start, as before.
+- **Checked:** the four themes in WebKit and Chromium (the whole window, opaque, on top everywhere, their marks, no
+  words; the two choices asked of the host), the session (held, Try again, Continue, ready after all, resume off, the
+  extension never linking then Try again with it on).
+
+
+## An app reopened while its last instance quits (2026-11-19)
+
+Journal, closed from its row, took 5 s to quit; reopened meanwhile, its open waited for that exit (as designed), then
+took the ended instance for the person's own: NSWorkspace still listed it (its termination notice not handled yet,
+`kill(pid, 0)` already failing), so the open waited 2 s for a window it would never make and failed; a second press
+worked. An open (and the browser's start) now uses only instances whose process still runs (`HostEngine.liveInstances`).
+Margin's own keys are now said in its log as they're pressed (the command and the front app, never a held key's
+repeats), so a key that didn't reach Margin can be told from one Margin ignored.
+
+
+## The keyboard back after macOS's menu bar (2026-11-19, night)
+
+macOS makes a full-screen Space's owner the active app whenever its menu bar comes down there (the window server's rule;
+only an app with a Dock icon can be an owner), and Margin owns its Space, so the app Margin hosts lost the keyboard to
+Margin at every hover of the top edge and kept it lost after the bar went up. Now Margin, made active with the pointer at
+the display's top edge while an app is shown and no field of Margin's wants the keys, watches the bar (10 times a second,
+only while that's so) and gives the keys back to the app shown once the bar has been up for 0.4 s: the pointer out of the
+top 40 points, no button down, no menu of Margin's open, no Control Center, Notification Center or menu panel on screen (a
+status item's own menu included). It gives up if another app comes in front, a field of Margin's takes the keys (a menu
+item opened the palette), nothing is shown, or after 2 minutes (`MarginWindowController.becameActive`, `watchBar`).
+
+- **Why not keep the keyboard the whole time.** Tried the same day on its own branch, `feat/ownerless-space` (never to be
+  merged without Tirth's word): a Space owned by a helper with no Dock icon, Margin's own drawn menu titles, the real bar
+  shown by Margin. Focus held, but every part of macOS's menu bar needed its own workaround there (an invisible window of
+  the menu bar's own over the status items, third-party items, Notification Center), and one early version stopped the
+  window server. Tirth chose this branch's simpler way: everything at the top stays macOS's own (every status item, the
+  native strip, Margin's real menus), and only the moment the bar is down belongs to Margin.
+
+
+## Settings as its own tab, and the theme picked in it drawn (2026-11-20)
+
+Tirth asked for Settings as a tab of its own, built for each theme, shown as `margin://settings`, gone from under the
+search field in Margin's window, laid out as macOS's System Settings, and for the theme dropdown to work.
+
+- **The theme dropdown.** The choice was kept in memory only, read from another store than the one written, and Margin.app
+  had no package for a built-in theme other than Arcadia. Now Margin's window keeps its settings (`SettingsKeeper`, the
+  app's defaults, never the themes' own values), `hostedTheme` reads the setting it writes, and the build ships each
+  built-in theme's package (`dist/app/theme.<id>.json`, `BuiltinThemes`).
+- **A tab: a library item of Margin's own.** `margin://settings` is an item with the target `{ kind: 'margin', page:
+  'settings' }` (library.ts `MARGIN_PAGES`, Library.swift `ItemTarget.margin`): in the sidebar, the palette and the
+  launch's "last item" as any other, a gear for its icon, never archived (its address isn't a web page's), never changed
+  by a browser's report. Settings asked for (the palette's Settings, a theme's `settings.open`, typing
+  `margin://settings`) shows the space's Settings item again, or makes one (`openMarginPage`): one per space, as a tab.
+- **Drawn by Margin's window, nothing hosted.** The session shows it by parking what the window hosted and telling the
+  window (`setMarginPage`, the page's `marginPage`); its page draws the Settings page where the launcher would be.
+  Hosting covers it, as it covers the launcher; another item shown, Archive, or a switch to an empty space takes it
+  away, and a show that fails leaves it there (the item still the one shown). Shown at a launch at once from the window's
+  first frame (no loader, no app opened), or after the start screen.
+- **The page, per theme.** Each built-in theme draws `settingsTab` in its launcher part: the categories in a sidebar
+  (Appearance: the theme, imports and the theme's own settings; Tabs: archive, sleep, never-sleep sites, Wake all;
+  Browsing: the search engine, gestures, full screen, the frame, the hint; Keyboard: the shortcuts), the chosen one's
+  settings beside them, in its own look. A theme that doesn't read `settingsTab` (an imported one made before) gets the
+  whole form on the same page, as the new-tab page's Settings were drawn. The new-tab page's `#settings` over a browser
+  is the same page; Settings under its search field stays there (it has no tab to go to).
+
+
+## Material, a fifth built-in theme (2026-11-20)
+
+Tirth asked for a Material 3 theme, the look of recent Pixel phones. `extension/themes/material/` is Arcadia's template
+(every part, its behaviours and layout rules) with Material's own parts on top: a navigation drawer with full-pill rows
+and the secondary container as the active indicator, the address as a search bar, "New Tab" as an extended FAB, round
+icon buttons, the spaces as the rail's destinations, a search view for the command bar, menus, 28 px dialogs, snackbars,
+M3 switches, Settings as a drawer of categories, and Material 3 Expressive's loading indicator (a lobed shape turning and
+breathing: the loader animates transform and opacity only).
+
+- **Dynamic colour.** The space's colour is the seed. The tonal surfaces are sRGB mixes of it (Margin.app reads the
+  ground's colour for the page card's corners, and parses sRGB only). The accent roles sit at Material's own tones
+  wherever relative colours exist (`oklch(from var(--space-color) 0.45 min(c, 0.17) h)`: primary at tone 40 light, 80
+  dark, and so on), so a light seed such as yellow still gives a dark, readable primary; elsewhere, sRGB mixes.
+- **Google Sans Flex**, the Pixel's own typeface, bundled (SIL Open Font License, from Google Fonts; weight axis only,
+  77 KB for Latin and Latin Extended). The name "Material" names the design language; there's no logo or Google mark.
+- **Tests.** Its own file (tests/theme/material.test.ts) and the loops over every theme, except behaviours, which drive
+  the three board themes' markup (Arcadia's own file covers the template Material shares).
+
+
+## Another item picked while an app opens (2026-11-20)
+
+Picking B, then C, while app A's first open was still under way kept loading A to the end (its wait for a first window,
+1.3–3.4 s in the real logs, then its placing), and only then started C: the engine does one thing at a time. Tirth asked
+for the item picked to start loading at once, and A's loading bar to go.
+
+- **Given up at the window wait.** The engine's `open` takes `wanted` (the session's: no other item asked for in that
+  Margin window since); an app's own first open asks it while its window is awaited, and gives up as soon as it's false
+  (`HostStep.superseded`): nothing hosted, no event, the one shown before not brought back in between. The launch itself
+  (about 50 ms) and the placing once the window is found aren't interrupted; a Safari window's open, and the browser made
+  ready out of sight, never are.
+- **The app given up stays running, out of sight.** Quitting it would hold the queue up to the quit's limit (Maps takes
+  5 s). It stays Margin's (quit with Margin, in the marker), hidden again if its open had unhidden it (`HostSystem.hide`),
+  so its window never sits on a Desktop or in Mission Control; the reconciler acts only on hosts, so it leaves it alone.
+  Picked again, its open finds it running with its window ready: no second launch. Still no window then: quit, as a first
+  open's own launch is.
+- **No launcher between the two.** While another item is asked for and not shown yet, the hosting isn't settled and the
+  loader stays (its show decides); A's loading bar goes as its show returns.
+
+
+## Apps only passed over aren't started (2026-11-20, later)
+
+Tirth, the same evening: an app that wasn't loaded and that the tab keys (⌘⌥↑/↓) only pass over shouldn't load at all, nor
+keep its loading bar; it saves memory. This replaces "the app given up stays running, out of sight" above.
+
+- **Given up: asked to quit.** An app Margin started for an open given up (another item picked while its window was
+  awaited), with nothing of it hosted, is asked to quit and not waited for, as a row's close asks it (`askQuitWatched`):
+  the next item's open goes on at once, an open of the same app meanwhile waits for that exit. The person's own app is
+  never asked. (`HostSystem.hide`, added for the version above, is gone.)
+- **The tab keys: held a moment before a launch.** The shell tells the session each press of the next/previous-tab key
+  (`cycled`); a pick in that window within 1 s of one, of an app that isn't running and isn't hosted, waits 0.35 s
+  before its app is started, and isn't started if the keys moved on meanwhile (no launch, no loading bar on its row).
+  Hosted apps and web items the keys come to are shown at once; a click is never held.
+
+
+## The app switched to, active from its first frame (2026-11-20)
+
+Switching between hosted apps showed "a focus flicker" (Tirth, with Mail): the app's window came into view drawn as an
+inactive window (Mail's sidebar greyed), and its app was made active 25-30 ms later (Accessibility's frontmost, then the
+raise), when it redrew as the active one. Every app did it; Mail's sidebar shows it most.
+
+- **In, active, then the old one out.** The fast switch (`switchIn`) makes the app active right after its window comes
+  into Margin's Space and before the one shown leaves: a window keeps its place in the window server's order as it
+  moves between Spaces, and the one coming back was last raised before the one leaving, so it's behind it until its
+  app's activation raises it, already active. The switch takes the activation's time more (about 25 ms; Messages' slow
+  raise, 80), before the old one goes; nothing is seen meanwhile but the app shown before.
+- **Checked on the real screen.** A run's first five switches read the two windows' order before the old one leaves and
+  say it ("it came in behind the one before", or IN FRONT); never every switch (a window list read is a cost).
+- Window mode (apps that can't go full screen) still parks the old one first and makes the new one active after; not
+  changed here.
+
+
+## The sidebar hidden while an app is hosted (2026-11-20)
+
+Tirth: the sidebar's button (Keep open off: hidden, out from the left edge) did nothing with an app shown. Since
+2026-11-15 the app host kept the sidebar docked whatever the setting while an app's window was in the page area
+(`sidebarDocked` = `pageOutside || pageHosted`): the hosted window sat above Margin's window then, and a hidden sidebar's
+wider page area put FaceTime where the sidebar is, with nothing able to come out over it. Margin's window has been in
+front of what it hosts since 2026-11-17, so that reason is gone.
+
+- **As the person keeps it.** `sidebarDocked` is `pageOutside` alone (Margin's window as the sidebar beside another
+  app's window). With an app in the page area, Keep open off hides the sidebar: the page area is the frame's (8 pt in
+  Arcadia; the whole window with the frame off), the app placed there (the same path as a drag of the sidebar's width:
+  `pageRectChanged`); the left edge brings the sidebar out over the app with nothing placed again (the page's
+  `pointerWant` and `hits`, as over Safari before: Margin takes the pointer on the sidebar, the app everywhere else).
+- **Placed once, never by the launcher's layout.** The launcher always shows the sidebar beside it, so as hosting
+  began the app was first placed by the launcher's docked page area, then again by the hidden one. Each layout now
+  says whether its page measured it hosting (`pageHosted`, as `pageOutside`); Margin's window offers a hosted placement
+  only from one that was (`hostedPlacement`), and the session's wait for the page area (asking the page to measure)
+  takes that one.
+
+
+## Hover and Margin's menus while a hosted app has the keys (2026-11-20)
+
+Tirth: with a hosted app in focus, the sidebar highlighted nothing under the pointer, and the "+" menu showed for a
+split second and went. Both while keeping the hosted app in focus.
+
+- **Hover** (its first fix replaced the same day, after a measured run on the real screen). WebKit hit-tests a
+  pointer's move for :hover only in a page whose window is active (`WebFrame::handleMouseEvent`: with no button down and
+  the page not active, the move goes to the scrollbars alone; active is its window key, `PageClientImpl::isViewWindowActive`),
+  and Margin's panel is key only while a field or menu of Margin's has the keys. The first fix gave WebKit the moves
+  (`-[WKWebView _simulateMouseMove:]`, private) and then also took the web view's input context away while not key:
+  the probe (branch `diag/hover-probe`, never merged) measured 60-110 moves a second given, 0 dispatched to the page
+  whenever the page wasn't focused, all of them for the few seconds after the panel had been key (hence "sometimes").
+  Both are gone. Now Margin's page does hover itself while the panel isn't key: Margin's window says where the pointer is
+  over its UI (`hoverAt`, at most once per run of the loop, cleared as it leaves for the hosted app, a button goes down
+  or the panel becomes key), the page marks the element there and its ancestors `m-hover`, and every style rule's
+  :hover in the sheets it draws with (the theme's, Margin's own) also matches [m-hover] (rewritten in place as the
+  theme is drawn: `withHoverAttr`, app/shared/host/overlay.ts). Nothing private; the marks change only when the element
+  under the pointer does, and the page's change watcher ignores them. Said at most once per frame of the display Margin's
+  window is on (the first move after a pause at once, then a frame apart at most, the last place each time): a run of
+  100 moves in 312 ms was 19 messages, 100 before (the glue e2e).
+- **A row left lit** (Tirth's recording, the same day): WebKit's own :hover stays where it last was once the panel isn't
+  key, so the row the pointer was over as a hosted app took the keys back stayed lit beside the one Margin marked (the
+  rewrite was ":hover or [m-hover]"). Now, while Margin's marks are in charge, each element WebKit still has as :hover
+  carries `m-hover-off` (read again whenever the element under the pointer changes: a press moves WebKit's :hover even
+  then), and the rules say ":hover not marked off, or [m-hover]"; every mark goes once WebKit dispatches a move again
+  (the panel key). A flag on the root (":hover under a root without it") was tried first and dropped: WebKit didn't
+  always restyle the row when only the root's attribute changed (the glue e2e failed one run in two).
+- **Margin's menus.** After a press in Margin's UI the keys go back to the hosted app (`afterPress` → `keysBack`), which
+  took the focus from the page, and the menus close when it loses its focus (`blur`). A menu or prompt of Margin's open
+  now takes the keys as a field does (the page's `focus`: `popupOpen` in app/shared/host/overlay.ts): no hand-back at
+  the press, its ↑/↓, Return and Escape work, and the keys go back to the hosted app as soon as it closes. The hosted app
+  stays the front app throughout (the non-activating panel takes the keys without making Margin active).
+
+## Back to another Margin window, and closing one (2026-11-20)
+
+Tirth: opening a second window (⌘N), picking a tab there and going back to the first window showed the launcher (the
+search page) instead of the tab that window was on; with the same tab in both, a message was expected. He also asked
+whether a window's close button closes that window or the whole app.
+
+- **Back to the first window.** It did take its item back (`focused`), but its card was cleared before it was hosting
+  again (`prepare`), and a window that neither hosts nor has a card draws its launcher, which then stayed for the
+  loader's grace (0.12 s) while macOS slid to its Space (the log: `page empty` at 10:08:31.722, `page loading` .843,
+  Maps shown 32.106). Now the card stays until the window hosts again, and from the card the loader comes at once (the
+  card is the theme's loader faded: it brightens and turns as its item comes back). A show that fails before it hosts
+  keeps the card.
+- **The same tab in both.** One app window can be in one place only: the window in use shows it, the other keeps its
+  card. The card now says where it is: "Notes is in another window. Click to show it here." (it said "Click to show
+  Notes here."); its words fit on one line in every built-in theme (page-card checks). A press on the card's page area
+  takes the item back as the window brought in front does: on another display the window can be the one in use
+  without ever becoming key (its non-activating panel never does for a press), so "Click" did nothing there.
+- **Closing a window** closes that window only: Margin keeps running (as before, `applicationShouldTerminateAfterLastWindowClosed`
+  is false), and its tabs stay open (they belong to spaces, not windows). Until now the session was never told a window
+  closed: its card and its item stayed in the session's books, and if it hosted, the app shown was left in its Space
+  as macOS took that Space down. Now a window that hosts holds its close until what it shows is parked (1.5 s at most;
+  a second press while held does nothing), the session forgets the window (`windowClosed`) and parks then if the park
+  didn't get there, and an app opening into a window that closes meanwhile is given up or parked once shown. The window
+  left takes its own item back once it's in front. The hosted tiles stay in the closed window's Space until the next
+  window hosts and adopts them (`adoptTiles`), as when Margin's window leaves full screen. Checked by the hosted
+  session tests and the glue e2e; on the real screen still to be seen (two windows, each close).
+
+## Safari's wake window left over a hosted app (2026-11-20)
+
+Tirth, now and then at Margin's start: a Safari window ("Margin.app hasn't placed this window yet", the Personal
+profile) drawn over the hosted app (Maps), gone after another tab and back.
+
+- **Why** (the log of 11:17:35). To link the Personal profile's extension, Margin opened a window from Safari's menu
+  (the wake window), parked out of sight in a private Space. Safari had also restored a Personal window from its last
+  session (96), and the profile's copy linked through that one at .340, before the wake window (152) was reported at
+  .642. The wake windows were taken to be the profile's windows at the link, [96] only. 96 was swept as a restored
+  window, the close of the wake windows asked for 96 ("Window not found") and never 152, and the private Space was then
+  released with 152 still in it: macOS put it in the current Space, Margin's, over the page area. The engine took it
+  for a dialog there and left it. It's rare because it needs a restored window of that profile to link first.
+- **Fix.** Closed within `wokenLate` (3 s) of the link, the profile's windows that came since and aren't Margin's are the
+  wake's too and are closed with it; later, only those known at the link (a window that comes later is the person's).
+  The private Space is released only once no window parked in it is still open; until then the poll looks again
+  (`releaseWokenSpace`). A wake window is never let into Margin's Space.
+- **The address pill** showed "com.apple.Maps" for an app item (its address app://<bundle id> taken for a site): it
+  shows the app's name now, as its row does.
+
+## The app shown gets the keys back when Margin's Space is shown again (2026-11-20)
+
+Tirth: back on Margin from another app's full screen, the hosted app wasn't active until a click. macOS makes a
+full-screen Space's owner the active app when the Space is shown (a swipe, ⌘-Tab, Mission Control), and that's Margin:
+the hosted apps have no Dock icon (as with macOS's menu bar, DECISIONS "The keyboard back after macOS's menu bar"). Now,
+when the Space changes and Margin's window is on the current Space, in full screen, with an app shown and Margin the
+active app, the keys go back to that app (`lookBack`: looked at 0.15 s and 0.5 s after the change, once per change).
+Never while a field or menu of Margin's wants them, another window of Margin's has them (the quit prompt, a file
+picker), a sheet is up, or the menu bar's own watch runs. Not on every activation of Margin: a file picker
+(`NSApp.activate()` before its panel) would lose its focus. Checked by the window tests (the decision) and the glue e2e.
+
+## An app's launch right after its last instance quit (2026-11-20)
+
+Tirth's log, 12:16:39–42: Weather's first open given up (another pick), Weather asked to quit; picked again, the new
+open waited for that exit (heard at .268 by its process, `kill(pid, 0)`), then the launch was refused 2 ms later,
+"couldn't be started with no Dock icon". `RealHostSystem.launchDockless` refused while NSWorkspace still listed any
+instance, and its list names an app for a moment after its process ended (the engine's own `liveInstances` already
+ignored such an instance since 2026-11-19, Journal). Now only an instance whose process runs stops a launch
+(`blocksLaunch`). If LaunchServices itself ever refuses in that moment, the open's `launchWait` and its message say so.
+
+## The row shown keeps its fill under the pointer (2026-11-20)
+
+Tirth: hovering the active tab, already highlighted, drew the hover fill over it. Only in Margin.app with a hosted app
+holding the keys: Margin's page draws hover itself then, and every :hover in the sheets was rewritten as
+`:is(:hover:not([m-hover-off]),[m-hover])`, whose specificity is two pseudo-classes/attributes where :hover is one. The
+themes' hover rules then outweighed their own `.active` rules of equal weight that come after them (Arcadia, Material,
+Neubrutalism, Pixel; Liquid Glass says `.on:hover` itself). Now `:is(:hover,[m-hover]):where(:not([m-hover-off]),[m-hover])`:
+the same match (hovered and not marked off, or marked), a plain :hover's weight, so the theme's own order decides as
+with WebKit's hover. Checked in the glue e2e (the active row marked keeps its fill; failed with the old rewrite).
+
+## The space swipe as Arc's (2026-11-20)
+
+Tirth: Arcadia's two-finger swipe between spaces wasn't as smooth as Arc's; it didn't follow the gesture properly and
+sometimes overshot. Asked to match Arc exactly by reverse-engineering it.
+
+- **How it was read.** Arc 1.174.0's arm64 slice (`lipo -thin`). Hopper's demo couldn't finish analysing 80 MB within
+  its session (REA timed out waiting for it; the document was left to Hopper). Instead: the Swift type metadata
+  (`__swift5_types`: names, fields, vtables, access functions), the selector stubs (`__objc_stubs`), every call to
+  `momentumPhase`/`phase`/`scrollingDeltaX`, and the functions around them disassembled with `objdump`, annotated by
+  small read-only scripts. The sidebar's pager is `ARCUI.PageSwipeController<LayoutPage>`, the lazy `pagingController`
+  of `Arc.WindowLayoutController`, made with no keyframe handler (so Arc's spring drives it frame by frame).
+- **Arc's model.** A trackpad gesture (phases, precise deltas) starts at `mayBegin` (a settle caught) or at `began`
+  when it's at least as sideways as it's vertical; Arc then reads the window's events itself
+  (`nextEventMatchingMask:`) until `ended`, ignoring momentum. Each move: position += scrollingDeltaX × −0.5 (half the
+  fingers' distance). Past the first or last page: Motion's rubber band, coefficient 0.15 over 255 pt. A page crossed
+  past halfway (`frinta` of the progress): `NSHapticFeedbackManager` `.alignment`, `.now`, only where
+  `performsPageDetentHaptics` is on (corrected the same day: Arc's sidebar never turns it on, Dia does; see "The space
+  swipe as Dia's"). At the lift: the speed from
+  `ARCUI.VelocityTracker` (first and last samples of the last 100 ms); at 5 or more a second its direction decides,
+  slower the nearest page; one page at most from where it began. The settle: Motion's spring, damping ratio 1,
+  response 0.4 s (0.25 s only with a keyframe handler, which the sidebar has none of), from the lift's speed when it
+  heads toward the target, else from rest.
+- **Ours.** `shared/space-swipe.ts` `ARC`, `settleArc`, `rubberBandArc`, `springArc`; `ui/behaviors/swipe.ts` uses
+  them when the theme sets `--m-swipe-feel: arc` (Arcadia does; the other themes keep their own feel, Pixel's stepped
+  settle among them), and moves `--m-swipe-offset` each frame of the spring (Arcadia's 200 ms transition removed).
+  Margin.app now tells its page the trackpad's phases (`wheelPhase` → `m-wheel-phase`, only as they change): every
+  theme there is let go at the real lift (no momentum mistaken for the fingers: the overshoot), held while the fingers
+  rest, and its momentum never moves a space; the detent's tick is `haptic.alignment`. Over Safari (no phases) the old
+  inference stays; with Arc's feel, what the momentum added before it was told apart is taken back out.
+- **Not done (yet).** Arc catches a settling sidebar when the fingers touch again (`mayBegin`) and carries on from where
+  it's drawn; ours still ignores a new swipe until the settle is over (~0.5 s). Arc's mouse-wheel path
+  (`NonGesturalScrollState`, cumulative distance) wasn't read.
+- Checked: unit tests of each number and rule, Arcadia's own swipe in WebKit and Chromium (half the distance, held while
+  resting, one tick past halfway, the spring frame by frame and never past the target, the next space shown as it
+  lands, no theme transition), the phases and the tick through Margin.app (glue e2e). On the real trackpad: to be felt.
+
+## Safari not running when its profile is waited for (2026-11-20)
+
+Tirth's launch at 13:45: the browser's preparation failed to place Safari's window ("its window didn't take the page
+area's size in its own Space", its frame not listed by the window server at all: likely a window Safari had restored
+and Margin was closing, picked as the new one by the copy's bounds; not proven), so Margin closed the window and quit
+the Safari it had started. The show after it then waited for that profile's copy and pressed Safari's menu four times
+over 30 s, though Safari wasn't running (its menu can't be pressed, no copy links), before the open started Safari
+again (shown at 13:45:51). Now `safariLinked` starts Safari when it isn't running (no Dock icon, as Margin's start does)
+and then waits as before (the wake and the default-profile fallback keep working); one that doesn't start isn't waited
+for. The window's choice by bounds is said when it had others to tell apart, and a window gone mid-placing is said as
+such, so the next time shows which window it was.
+
+## The space swipe as Dia's (2026-11-20)
+
+Tirth, after Arc's feel: check Dia (The Browser Company's next browser) for a faster or more efficient way, and copy its
+trackpad haptic as a space is switched exactly. Read from Dia 1.58.0's arm64 slice with the same tools (Swift metadata,
+selector stubs, `objdump` with the annotator; a generic class's vtable now read past its generic header).
+
+- **The same controller.** Dia ships the same `ARCUI.PageSwipeController`, byte for byte where it matters: its tracking
+  function is the same 3,228 bytes, and its constants are Arc's (−0.5 of the scroll, 100 ms of speed, 5 a second, the
+  rubber band 0.15 over 255, the spring's damping ratio 1, its response 0.4 s or 0.25 s, keyframes at 1/240 s).
+- **Two differences, both in how it's set up** (`TabSidebar.PagingContainerViewController` and
+  `TabStrip.TabStripSpacePagingController`, each right after making its controller): `performsPageDetentHaptics = true`
+  (vtable slot 34; the initializer stores false, and Arc's `WindowLayoutController` never calls the setter: **Arc's
+  sidebar has no haptic**), and a `settlingAnimationHandler` (slot 1), so the settle's response is **0.25 s** and it's
+  played as keyframes sampled at 240 Hz by Core Animation (`CoreAnimationSettling`, a display link only reading the
+  presentation), not moved by the app each frame (Arc: 0.4 s, frame by frame). Dia's other `.alignment` tick in the
+  sidebar is the tab-reorder one (its setting), not the space's.
+- **Ours.** Feels by name (`--m-swipe-feel: arc | dia`, shared/space-swipe.ts `FEELS`): Arc's 0.4 s with no haptic,
+  as Arc is; Dia's 0.25 s with the detent tick (`haptic.alignment`: `.alignment`, `.now`, crossing halfway, as Dia).
+  Arcadia now asks for Dia's. Either settle is one CSS transition the browser runs (`--m-swipe-transition`: the spring
+  sampled every 1/240 s into a `linear()` easing, `springKeyframes`), as Dia gives Core Animation its keyframes, instead
+  of a script moving `--m-swipe-offset` each frame (Arcadia's moving part takes it under `m-settling`).
+- Not done, as with Arc's: a settle caught by the fingers touching again (Dia, like Arc, can: its session's
+  presentation provider).
+- Checked: unit tests of the two feels and the keyframes (one per 1/240 s, the spring's own positions, a flick further
+  at first); Arcadia's swipe in WebKit and Chromium (the offset at its end at once, one `linear()` transition, the pane
+  drawn on its way frame by frame by the browser and never past the next space, the tick past halfway, the next space
+  shown as it lands). On the real trackpad: to be felt.
+
+## A settling space caught by the fingers (2026-11-20)
+
+Tirth: add what Arc and Dia both do, the fingers touching the trackpad while a space settles catching it where it is.
+In Margin.app (the trackpad's phases), with Arc's or Dia's feel (`ui/behaviors/swipe.ts` `catchSettle`):
+
+- At the touch (`mayBegin` or `began`) mid-settle, the moving part is read once where it's drawn (its transform this
+  instant; unread, the spring's own position), its transition cancelled there (the offset pinned with the transition
+  `none` and the style worked out at once: WebKit otherwise kept the transition running to its end, the glue of
+  Arcadia's test showed it), so it holds still under the fingers.
+- The space nearest that place is the one swiped from, as Arc's `pageAtSwipeBegin`. Nearer the space it headed for (or
+  past it): that space is shown at once (switched, the swipe begun again from it with its own neighbours, the offset
+  carried over: the same pixels, in the same task), so two quick swipes reach a third space. Nearer the space it set out
+  from: the swipe goes on from there, that space kept drawn (`holdSpace`) while the fingers decide; ended back there
+  after the next one was already asked of the copy at the lift, that space is asked back at once (`space.switch`).
+- A touch with no swipe after it (a lift, a vertical scroll, nothing for 2 s): settled again from where it's held, to the
+  nearest space. Past the first or last space, the held place is taken back through the rubber band's inverse
+  (`rubberBandArcInverse`, as Arc does) so the band isn't applied twice. A caught gesture has no notch rule (it was a
+  swipe already). Each settle has a token: a caught one's end never switches anything.
+- Cost: one style read at the touch; nothing per frame, nothing new kept. Other themes (their own settle) are unchanged:
+  a swipe during their settle is still ignored until it's over.
+- Checked in Arcadia's tests, WebKit and Chromium: caught mid-settle with no jump (the same pixels before and after the
+  touch, read in one task), on to a third space in two quick swipes, back where it set out from with that space asked
+  back, a touch alone settled again; run four times. On the real trackpad: to be felt.
+
+## The space swipe's tick as Dia's, exactly (2026-11-20)
+
+Tirth asked whether the tick is exactly Dia's. Checked against Dia 1.58.0's code: the call is the same
+(`NSHapticFeedbackManager.defaultPerformer`, `performFeedbackPattern(1 = .alignment, performanceTime: 1 = .now)`); its
+trigger is the page nearest the position (position ÷ the first page's width, `frinta`, kept within the pages), ticking
+whenever that changes; its last detent is set to the page nearest the position at the start of each gesture (in the
+tracking function, before its loop), so a swipe's start or a caught settle never ticks, nor the glide. Margin's rounding
+of the offset from the space drawn is the same for every place that occurs. The one difference: Dia checks at each of
+the trackpad's events, Margin did at the next frame (up to a frame later). Now checked at each event (`detentTick`);
+Arcadia's test sends the events in one task and finds the tick already asked for (it failed with the frame's check).
+
+## No test copies of Margin in Spotlight (2026-11-20)
+
+Tirth: searching Spotlight for "margin" listed many "Margin" apps with no icon beside the real one. They were the helper
+test's stand-ins (`tools/app-tests/helper-test.sh`: a background-only `Margin.app` and `Browser.app` per run, in
+`build/helper-test-<pid>`), forgotten by LaunchServices at the end but left on disk, so Spotlight indexed each one: 305
+folders, 80 MB (plus two from before the folders were numbered, and the removed splash test's). Deleted; the test now
+removes its folder when it passes (kept when a check failed, to look at). The screen suite's three test apps ("Margin
+Chameleon N", reused across runs) are built into `tools/screen-tests/build/apps.noindex` instead of `build/apps`:
+Spotlight skips a `.noindex` folder, and the suite still copies them into ~/Applications only for a run. Spotlight now
+lists the installed Margin alone (and an experiment of the person's outside the repo, left as it is).
+
+## No grey band over the page during a space swipe (2026-11-20)
+
+Tirth's recording: swiping between spaces (back, the list sliding right), a sidebar-shaped grey band grew over the left
+of the hosted page and stayed until the swipe ended. Read from the frames: a faint strip where the space's title row is
+(white 255 → 252) and the rest down to the bottom bar at 249, both exactly as wide as the list had moved past the
+sidebar's edge. The cause, two faults:
+- What takes the pointer over the page (`ui/host-app.ts hitRects`) measured each element's box without its ancestors'
+  clips. During the swipe Arcadia clips the sidebar (`overflow: clip`) and slides the list; sliding toward the page, its
+  rows and sections (they take the pointer) were reported over the page. Margin.app's catcher fills every reported box
+  at alpha 0.01 so the window server sends the pointer to Margin there: the band, and clicks on that part of the page
+  went to Margin. Now each box counts only as far as its ancestors show it, as CSS clips: `overflow` other than visible
+  on each axis apart, and paint containment; a box positioned `absolute` escapes the clipping ancestors inside its
+  containing block (the nearest positioned, transformed, filtered or contained ancestor), `fixed` all of them unless a
+  transform, filter or containment holds it, so a menu spilling out of a sidebar still counts. Styles and ancestor
+  boxes are read only for boxes that overlap the page, once each.
+- The catcher drew each box over the others, so overlapping boxes came out darker (three, 9/255 instead of 3/255): now
+  copied, every point it covers at 0.01 once. (Windows only hit-tests the region; nothing drawn there.)
+- Tests: the clipping rules on stand-ins (`tests/ui-host-app.test.ts`), Arcadia in WebKit and Chromium swiping back and
+  on, held and settling, nothing more over the page than at rest (it failed, swiping back, without the change), and the
+  catcher drawn into a bitmap (it failed without the copy).
+
+## Safari's toolbar over Margin: traced, cause not known yet (2026-11-20)
+
+Tirth: now and then, back in Margin from another app with a Safari tab shown, Safari's full-screen toolbar shows half
+covered, in the menu bar's place or over the page's top. The logs of the one time (16:31–16:39) held nothing of it:
+Margin read the toolbar window each poll but never said where it was. The one odd return then (the pointer in the menu
+bar's band as Margin's Space came back, the bar revealed, Margin made active by it 0.2 s after Safari got the keys) was
+played by him on purpose with the pointer at the top several times (16:52–16:55): no toolbar, so not that alone.
+Now Margin says, whenever the shown host's own full-screen toolbar window changes (bounds, alpha, layer, on screen),
+where it is (resting above its window, or out over it by so many points), its window's bounds, the front app and the
+pointer (`host: <id>: its full-screen toolbar …`). MenuBarAgent's own log (`com.apple.menubar:reveal`) gives the bar's
+state at the same moments. Nothing read but the pointer: the poll's model has the rest. Next time it's seen, its time
+and these lines tell the cause.
+
+## A theme per space (2026-11-20)
+
+Tirth: each space its own theme, asked when a space is made (the theme of the space it's made from chosen by default),
+and changeable later. His choices: a swipe to a space with another theme slides as usual in the theme it started in,
+then the window cross-fades into the new one as it lands; Settings' Theme sets the theme of the space shown; the theme
+is chosen in the space editor (create and edit) and in each space's menu (Theme: … items, so imported themes whose
+editor lacks the row still work).
+- Data: a space's `theme` (a theme's id; state/model.ts `themeIdOk`); none (every space from before) is the profile's
+  settings.theme, so nothing changes until one is chosen and no value is rewritten (the field is written only when
+  set). The library (app/shared/library) keeps it; `createSpace` takes the one asked for, else the theme of the space
+  the window shows (as browser and profile already were); `renameSpace` takes `theme` (null: none); `setSpaceTheme`
+  for the menu and Settings. The copy's handlers and data set carry it too.
+- Drawn: ui/space-theme.ts says which theme a space is drawn with (its own if Margin has it, else the profile's, else
+  Arcadia: an imported theme removed since never errors). Margin.app picks each window's package by the space it shows
+  (MarginWindowController.spaceTheme, ShellHosted hostedTheme) at every state change, as it already compared the
+  package; nothing chosen anywhere now ends at Arcadia's own package instead of nil (nil told a window that drew
+  another space's theme nothing: the glue check caught it). The overlay waits for a swipe's settle to land (`m-swiping`/
+  `m-settling` gone, 4 s at most), then swaps the theme inside a view transition (180 ms cross-fade; reduced motion or
+  no view transitions: at once).
+- Only where each space's theme is drawn (`features.spaceThemes`: Margin.app's own window): a browser's overlay
+  (Windows, unverified) draws its profile's, so it offers no per-space choice and Settings' Theme stays the profile's.
+- Each built-in theme's editor has a theme row (`editor.themes`, `editor.theme` action, `labels.theme`), styled in its
+  own look; the themes README says it for authors.
+- Cost: nothing per frame; the theme is resolved at each state change as before (cached packages), a rebuild only when
+  a window's theme changes (~45–145 ms measured headless, plus the hosted window re-placed if the page area differs).
+- Tests: model, data set, library, actions, menus, view model, Settings (unit); every built-in theme in WebKit and
+  Chromium (its editor's row, a real click, Save, the menu's item; none without the feature); Margin.app's checks of a
+  window's space theme, and the glue run: a space made with Pixel draws Pixel, back draws Arcadia, Material set on the
+  shown space draws at once, none again draws Arcadia, a theme come mid-swipe waits for it to land.
+Not changed: Import Theme in Margin's own window isn't wired yet (its `theme.save` goes nowhere there, as before).
+
+## Safari's toolbar over the page: a new window's address field (2026-11-20)
+
+Found with the toolbar trace (DECISIONS "Safari's toolbar over Margin: traced"): at each time Tirth saw it (17:34,
+17:35, 18:33) the Safari window had just been made by Margin for a profile (an empty space's first search; a
+profile's first window after a restart), and its toolbar was out over the page (y 41, 52 pt) from its first read
+until a click 5–14 s later; windows Margin already had never showed it through dozens of switches. Safari opens an
+empty window with the keys in its address field; hostShow then sent that new-tab page to the item's address, which
+leaves them there; in full screen Safari keeps its toolbar down while they are (and brings it down again each time the
+window becomes key: likely the earlier "back from another app" sightings, inferred). Now, in a window Margin made,
+hostShow opens a new tab at the address (the keys in its page, as a link opened in a new tab) and closes the new-tab
+page after it (made first: never a window without a tab; a closed blank tab is never archived: only web pages are).
+A blank item keeps the new-tab page (blank either way); a tab Safari refuses to make: the page sent there, as before.
+The trace no longer says "first seen" at every switch between two hosts (each host's toolbars kept while parked).
+To check by hand: the trace's line for the next new profile window should say "resting" at its first read.
+
+## A profile's first window: no screen jump, no 20 s open (2026-11-20)
+
+Tirth, 19:11: an empty space's first search took ~20 s, the screen moved away and back. Margin's log and macOS's
+(Dock, MenuBarAgent) together: the profile had no window, so Margin pressed Safari's File › New Window to wake its copy;
+Safari's front window was full screen (in Margin's Space), so macOS gave that window a full-screen Space of its own
+(764) and switched the display to it 300 ms later, after Margin had already moved the window out of sight. Safari's
+asked-for window then opened in that Space, a normal 667×865 window; the engine took the Space for its full screen
+(no ask of the copy), its placing failed when the Space went (3 s), and the back-out asked a normal window out of
+full screen and waited for it, 7 s twice, before the retry made it in 0.55 s. Three changes (no freeze: it would stop
+the loading animation, Tirth):
+- The woken window's full-screen Space is destroyed as soon as the window leaves it, before macOS switches to it (as
+  an early full screen's own Space is destroyed); only its app's or no one's, with no other window of its app's (the
+  person's) and no hosted window in it; one already showing: Margin's Space shown again, destroyed at the next poll.
+- Through the copy, a window in a full-screen Space it doesn't fill (Margin's full-screen area less the Space's
+  reserved edges: what every real full-screen Safari window measured) isn't full screen there: onto the Desktop, then
+  asked as usual.
+- The back-out and the close through the copy ask out of full screen, and wait, only for a window really full screen
+  (`copyFullScreen`); unread with a Space of its own recorded: asked, as before.
+Tests (the stand-in world): each of the three, failing without the change (the first as the real log: place failed),
+and the person's full-screen Space left alone.
+
+## A space's theme: no animation, Safari at its size first (2026-11-20)
+
+Tirth, after the lab of seven switch animations and the earlier canvas's reveal: no animation; the theme changes at once
+once the switch has landed, and the window-size issue fixed (20:18:23: into Arcadia's bigger page area, Safari was
+smaller than its card ~50–100 ms). Now: the overlay still waits for a space swipe's settle to land, then swaps the theme
+with no cross-fade. When the new page area is bigger than the hosted window (Margin.app says the window's bounds in
+the page's coordinates, `hostedFrame`, in the hello and at each change), the swap runs inside a view transition with no
+animation: the theme before stays on screen until the window covers the new page area (`HOSTED_WAIT_MS` 300 at most,
+~30–50 ms measured for a tile), then the new theme in one frame with Safari already its size. A smaller page area, or
+nothing hosted: at once (the window bigger than it a moment, under the theme's frame). `marginApp.stats().themeSwaps`
+records each (waited, covered). Checks (the real overlay in WebKit): smaller at once; bigger held ~120 ms until the
+window said it was there; never there: drawn after 300 ms.
+
+## Track 2 — Arc/Dia Feature Suite (M2.1–M2.8, 2026-11-20)
+
+- **M2.1 QoL, Toasts, Mute, Unload & Shortcuts (`87217e83`):** Added guarded `<m-toast>` slot & `toast` part, `⇧⌘C` Copy URL + toast, `⌘L` focus-address pre-filled & selected, `⌘D` toggle pin, `⇧⌘T` reopen last archived, `⌃1–9` Space jump, `⌘1–9` item jump, Mute/Unmute, Duplicate, and manual Unload/Sleep.
+- **M2.2 Sticky Pins, Inline Rename & Nested Folders (`1a701a96`):** Pinned tabs keep a sticky `pinnedBy` binding across sub-navigation with `drifted` indicator and `pin.reset` back to `rootUrl`; closing a sticky pin unloads it without archiving. Added `customTitle` inline rename (`m-rename="tab|pin"`) and nested folders up to `MAX_FOLDER_DEPTH = 4` with cycle/depth guards, pre-order `space.pinnedFlat`, and per-folder `shownFlat` for card-grouped themes (`liquid-glass`, `neubrutalism`, `pixel`) so existing `.folder` card layouts and DOM mutation budgets stay intact.
+- **M2.3 Favorites Grid (`39b408f4`):** Added `favorites` collection (cap 12, web tabs & macOS apps, sticky `favoriteId` binding, global across Spaces by default with `settings.favoritesScope: 'global' | 'profile'` in Settings → Tabs, `⌘1–9` prioritizes Favorites first).
+- **M2.4 Background Mini Player (`882a4016`):** Added `extension/content/media.ts` (Media Session + `<audio>`/`<video>` observer), `extension/background/media.ts` (strictly background-only visibility, active tab suppresses mini player). It never reached Margin.app's window (its pushes were dropped, its buttons unsupported there); rebuilt on `feat/arc-media` (below). Its `NowPlaying.swift` (MediaRemote, never instantiated) is removed.
+- **M2.5 Hosted Safari Peek & Little Arc (`3a73f380`):** Added `extension/shared/peek.ts`, `extension/content/peek.ts` (Shift+Click & optional `settings.autoPeekPins` external link capture), guarded `<m-peek>` slot & `peek` part, `hostPromotePeek`, and `⌥⌘N` Little Arc shortcut.
+- **M2.6 Air Traffic Control (`9ce02101`):** Added `extension/shared/air-traffic.ts` and `airTraffic` collection across model/library/Swift, 1-click "Always Open `<host>` in This Space" context menu, and automatic URL-to-Space routing on `newTab`.
+- **M2.7 Universal Split View (`de714188`):** Added multi-pane layout & divider math in Rust (`app/shared/core/src/host/panes.rs` + `api.rs`: `LayoutPanes`, `ResizeDivider`, 2–4 panes, horizontal/vertical axes), `splits` collection, combined capsule `SplitRow` in `ViewModel` + `ActiveSplitView`, and `⌃⇧=` shortcut.
+- **M2.8 All 5 Built-in Themes:** Wired complete Track 2 markup and bespoke sanitizer-clean CSS (no `backdrop-filter`, zero removed by `sanitizeTemplate`/`sanitizeCss`) across Arcadia, Liquid Glass, Material, Neubrutalism, and Pixel, and updated `extension/themes/README.md` and `TESTING.md`. Real Safari/macOS interactive behavior remains manual verification (`TESTING.md`).
+
+## Track 2 — Arc data fixes (fix/arc-data, 2026-11-21)
+
+- **What binds a Margin tab travels with it.** `customTitle`, `pinnedBy` and `favoriteId` (state/model.ts `BINDINGS`) go open → kept (`keptRecord`) and kept → open (`linkKept`, `reclaimTabs`) alike, so a renamed tab keeps its name and a pin's or favorite's tab stays theirs through a sleep, a window closing and coming back, and a restart.
+- **A pin's binding holds in its own space only.** `moveTab` (moveTabToSpace, both sides) drops `pinnedBy` when the pin isn't in the new space; `deleteSpace` re-checks every binding (`settleBindings`: the duplicate pins it drops free their tabs). `closeTab`'s "is it pinned" check is the same rule (`boundElsewhere`: a pin of the tab's own space, or a favorite), so a moved tab closes into the archive as any.
+- **A pin's or favorite's search by address never takes another's tab** (`boundElsewhere`, `keptForUrl`'s `forWhom`): openPin, resetPin (library), openFavorite, and the view's `pinTabId` guess.
+- **A favorite has one tab.** openFavorite (extension) reuses its kept tab (asleep, lost with its window) as that Margin tab, in the space the window shows, instead of opening another beside the hidden one; resetFavorite too. Kept tabs an earlier build piled up for one favorite (hidden: the sidebar never lists a favorite's tabs) go to the archive on its next click (`settleFavorite`), the one used last kept.
+- **A favorite is a web page (http/https) or a Mac app item only** (`favoriteUrlOk`): never about:, an extension's or browser's own page, a file, or one of Margin's pages.
+- **Favorites' scope is the app's, never the page's.** Margin.app's library takes `favoritesScope` from the profile's settings (LibraryWindowSource sets it over anything the page sent, and drops any `scope`) and the profile of the space the window shows (`favoriteScopeOf`, as the sidebar filters), so the 12-per-scope cap holds and a favorite shows where it was added.
+- **Add to Favorites on a pin moves it (Arc's own behaviour, kept), with no undo.** The pin goes and the favorite takes its address, title and given name (`customTitle`); its tab, if open, stays open (unbound from the pin as the pin goes, then found by the favorite at its address). Nothing the person made is lost but the pin's place (its folder, its position among the pins), so no undo is offered: to go back, Remove from Favorites (its tab, if open, returns to the space's list) and Pin Tab on it. Refused (nothing removed) when the favorites are full (12) or already have its address.
+- **Closing a sticky pin's (or favorite's) tab doesn't archive.** In the extension the tab closes and its record goes; in the library its item goes (an item is a pin's open tab there). Either way the pin record stays and shows as not open; opening it again opens its own address.
+- **Splits are by Margin tab ids** (an open tab's `mid`, a kept tab's or library item's id), never the browser's tab ids, which change at a restart and as Margin updates: a pane outlives its tab sleeping, its window coming back and a renumbering, as pins' and kept tabs' bindings do. `settleSplits` runs after every change (background/store.ts `mutate`, library.ts `perform`): a pane whose Margin tab is gone (closed, archived, forgotten, closed outside Margin) leaves, the others' ratios kept relative to each other; fewer than 2 panes: the split goes. Panes saved by browser id by this branch's first build become their open tab's Margin id (or go). The library reads a split's ratios at their panes' own places, one per pane, normalized.
+- **Air Traffic rules can be removed and turned off:** actions `airTraffic.remove` and `airTraffic.toggle` (argument kind `rule`), a tab's menu "Remove Rule for `<pattern>`" for the rule that routes its address, and Settings › Browsing › Air Traffic Control listing every rule (a toggle and Remove each). At the cap of 100, a rule for a pattern already there is still replaced.
+- **Margin.app's open items carry their bindings and sound**: HostedSession `live()` gives each open item's tab `pinnedBy`, `favoriteId`, `customTitle` (the library's item), and `audible`/`muted` from its profile's copy (`copyTabs`, from the copy's `openTabs` as the shell mirrors it). Hosted Mac apps' sound isn't carried yet: NowPlaying.swift isn't wired to anything.
+- **Compatibility:** no migration. Every new field is optional and only written when it has a value; earlier builds ignore unknown fields and collections (a split's panes were new on this branch only).
+
+## The background mini player in Margin.app (M2.4, `feat/arc-media`, 2026-11-21)
+
+Decided by Tirth: the mini player for Safari tabs now; hosted Mac apps later (MediaRemote, the only way to read and
+drive another app's Now Playing, is closed to third parties since macOS 15.4). `NowPlaying.swift` is gone; nothing
+claims hosted apps.
+
+- **The path.** A page (`content/media.ts`) says what it plays (`mediaState`) → the copy keeps each tab's source in
+  memory (`background/media.ts` `createMediaHub`) and pushes `{ type: 'media', sources }` for that tab's window, each
+  source with the item the tab shows (`hostedTabs.itemOf`) → Margin.app passes it on (`Shell.linkReceived` →
+  `HostedSession.copyPush`, checked by `UIPush.swift`) to a Margin window's page → `overlay.ts` `media` →
+  `ui.media` → the view model picks the one shown (`shared/media.ts` `selectBackgroundMedia`) → the themes'
+  `media` part (all five draw it).
+- **The buttons.** Play/Pause, Previous, Next: the UI's `mediaControl` → the library's `mediaControl` (a request,
+  nothing changed) → `HostedSession` → the copy's `hostMedia { itemId, command, tabId }` → the item's tab's page
+  (`mediaCommand`). Mute: `muteTab` (→ `hostMute`, `tabs.update` muted; the copy hears `mutedInfo` and says so).
+  The title: `activateTab` (the item shown, as a sidebar pick).
+- **The UI pushes from a copy, one route.** Margin.app passes only the types in `UIPush.forwarded` (now `media`,
+  `toast`), and of each only its listed fields, each checked and cut (text lengths, http(s) addresses, image data
+  URLs under 128 KB, flags, times); a copy's tab ids never reach the page: each becomes the UI's number for its item,
+  and an entry whose tab isn't an item open in Margin is dropped. Only pushes for the Safari window Margin hosts for
+  that profile; the person's own windows' are not Margin's. A new type (`peekOpen`) is one line.
+- **Which Margin window.** The one showing the space of the item the push is about (its first source: the copy lists
+  playing ones first, newest first); several: the hosting one, else the one in front, else the lowest id; none
+  showing it: the hosting window, else the one in front. A standing push (`media`) given to another window is taken
+  back from the one that had it (its empty one). The window is chosen again at each push, not when a window
+  switches space.
+- **Shown when.** Only for a tab not in front of that window (any item in front: a web item or a Mac app). Playing
+  ones before paused, the newest first. Paused: stays 30 s (`PAUSE_GRACE_MS`, everywhere), then goes: the copy's
+  one timer, only while something is paused. A tab closed (`tabs.onRemoved`) or its page left (a new document in its
+  main frame: `webNavigation.onCommitted`, frameId 0) goes at once.
+- **Safari's tab ids** change on a restart or an update: nothing outlives the background (memory only), the page
+  reports again when it plays (and once as its script starts, which an update's re-injection is). The app finds the
+  item by the copy's tag, else the tab hostShow answered, else the open item of that profile at the page's address;
+  that tab is then kept as the item's and named in `hostMedia`, which the copy uses when its tag is gone.
+- **What a page can't do from Margin's world.** The page's Media Session action handlers belong to the page's world
+  (no `ExecutionWorld.MAIN` in Safari 27.2): Previous and Next press the page's own buttons labelled exactly
+  Next/Previous (with what's played and a shortcut allowed: never "Next page", "Skip ad"); Previous otherwise starts
+  the track again. Media in a frame (`all_frames` is false), a shadow root, or an `Audio()` never in the page isn't
+  seen by the content script: Safari's `audible` for the tab stands in (its title and host; its Play/Pause may do
+  nothing).
+- **Artwork.** The page's Media Session artwork (the largest it lists): fetched by the copy's background (its host
+  permissions; `credentials: 'omit'`, no referrer, https or an image data URL only, an image only, 2 MB at most,
+  6 s), drawn at most 128 px (OffscreenCanvas; else a small one as it is), sent as a PNG data URL (under 96 KB). The
+  report never waits for it: sent without, then again with it. The last 16 kept per address. In Safari without
+  "Allow on every website", a site that doesn't send CORS headers gives none: the site icon, or the letter.
+- **Cost.** Content script: one capturing listener per media event on the document, a report at most every 120 ms
+  after one, the page's elements and its buttons read only then; no MutationObserver, no polling. Background: woken
+  only by those reports and the tab events it already listens to; no timer unless something is paused.
+- **Checked** (headless): unit (`tests/media-player.test.ts`: the rule, the 30 s grace on a fake clock and timer,
+  closed tabs, mute and audible, artwork never waited for and cached, `loadArtwork`'s limits, the page's report and
+  buttons on a stand-in document, `hostMedia`, the library's `mediaControl`); the five themes in WebKit and Chromium
+  (`tests/theme/mini-player.test.ts`: drawn, hidden for the tab in front, paused, gone; real presses send the
+  requests); Swift (`hosted-tests.swift`: `copyPush`'s checks, numbers, windows, the address fallback, `hostMedia`);
+  the app's e2e (`e2e-glue.swift`: a real `media` push over the link drawn in Margin's off-screen WKWebView, a real
+  press on Play/Pause reaching the copy as `hostMedia`, hidden for the item in front, gone with no sources; failing
+  first with the route off). Only by hand in real Safari: TESTING.md M2.4.
+
+
+## Several visible hosts per Margin window: the foundation (docs/PEEK-SPLIT.md §1, 2026-11-21)
+
+Step 1 of the plan, on feat/multi-host; not wired to any UI yet (steps 2–3 call it).
+
+- **Identity.** `HostTarget.safariWindow(profile, SafariRole)`, `main` by default (every `.safariWindow(p)` as before);
+  ids `safari:<p>` for main, `#card`, `#pane1`…`#pane3` after it for the others, logged so (`safari:p1234#card`). Routes
+  and the loop guard's app key take a card's or pane's profile's main id (`HostID.main`): its Safari as a whole. The
+  marker needs nothing new (each window by number, copy id and profile): a card's window is given back and closed by its
+  copy at the next launch like main's (checked).
+- **Engine.** `visible` (rect, role, z) beside `shown`, which stays the focused host; kept as `[shown: main]` by `shown`
+  itself whenever no layout is being applied, so every one-host path is the old one. Each host keeps its own role and
+  rect (`Host.rect`, nil: the page area; kept while parked, so a parked card is never sized for the page area); every
+  rect computation and check reads `pageOf(host)` instead of `placement.page`. `setLayout` applies a whole layout in the
+  queue: main first (a switch as today), each extra back to front beside it (`before(id)`: the one shown is parked only
+  when the incoming host and it aren't both in the layout), the ones left out parked, then fronted back to front, the
+  focused one last. A card's or pane's rect below its window's known minimum is refused (never under the sidebar).
+  `open`/`show` with several visible (or a host in another role) are a layout of it alone. Live resize: every visible
+  tile or window-mode host follows its rect in each frame (`follow(_:rects:)`), one change in flight each. Stray, strip
+  (any visible host of the app speaks for its own toolbar), on-screen and front looks per visible host; `FrontRead` is of
+  the frontmost one. `hostedWindows` tells Margin's window every visible window only while more than one is (and `[]`
+  once after): nothing new is said with one host.
+- **Session.** `safariWindows: [SafariKey: Int]` (profile + role; a string literal is main's key), `requestSafariWindow`
+  with a role (the engine's `requestRoleWindow`), `layout[w]` per Margin window, `setLayout(window:main:extras:focused:)`
+  (a profile's first web item uses its main window, a card its card window, other panes `#pane1`…). The sweeps spare
+  every role's window (they take `safariWindows.values`). `live()` marks the other visible items `visible`. Every
+  role's Safari window is `drawn` for its copy.
+- **Margin's window.** `holes` (each visible host's frame inside its rect); the ground cut for all of them, each one less
+  the ones before it so an overlap (a card over panes) is never filled again by the even-odd fill; the pointer's slot
+  through those holes only, a card's content alone while one is open (the page around it caught, a press there
+  `onCaughtPress`, for Peek's close in step 2); a press in another pane focuses its host (`visibleHost(at:)`, `focus`),
+  never main over a card. `hostedFrames` pushed to the page beside `hostedFrame` (unchanged), kept by the overlay
+  (`marginApp.hostedFrames()`).
+- **Extension.** `hostShow` moves an item's tab from another window it showed items in (tabs.move, its page kept),
+  leaving a blank tab behind in a window it would empty.
+- Not done here: the core's `is_strip` still measures against Margin's page area (a pane's or card's toolbar reads as a
+  transient: never acted on); `lookForOthers` (the core's front.rs) takes the focused app only; a card's first open
+  shows the page card's loader over the whole page area (Peek's own loader is step 2). Tests: the stand-in world
+  (multi-host-tests.swift, multi-host-session-tests.swift), Margin's real window off screen (e2e-glue `multiHoleChecks`),
+  the copy's tabs (hosted-tabs.test.ts). Nothing on the real screen yet (step 4).
+
+## Split View in Margin.app (docs/PEEK-SPLIT.md §4, feat/split, 2026-11-21)
+
+Step 3 of the plan, on the foundation (§1). Decided here (Tirth's decisions are the doc's: 2–4 panes, Safari tabs and Mac
+apps mixed, side by side or stacked, live dividers, each Safari pane a window of its own in the space's profile).
+
+- **Showing.** A split's item shown anywhere (a sidebar pick, the capsule, ⌘1–9, a key, a show after a close) shows the
+  whole split, that pane focused (HostedSession `showSplit`): its panes are the split's items that can be hosted (Safari
+  web pages, Mac apps, each app once: its one window is one pane; Margin's own pages and Chrome/Edge items are left out,
+  said). Main is the pane that keeps its window: the window's layout of this split already, else the split's first web
+  pane (its profile's main window), else its first pane; a profile's other web panes `#pane1`…`#pane3`. Fewer than two
+  hostable panes: the item alone. The library's split actions ask for `showSplit` (create, add, open, swap, axis,
+  remove), with the pane to focus (none: the one the window has focused, else the first); a resize asks nothing.
+- **Rects come from the page, never computed twice.** Margin's renderer puts `<m-pane>`s (flexed by the ratios) and
+  `<m-divider>`s inside `<m-page>` (ui/behaviors/split.ts) while the item in front is a pane and a window is hosted;
+  `View.measure` reports `split` and each pane's box; `PageLayout.panes` → `MarginWindowController.paneLayout` (whole
+  points, screen coordinates) → the session (`paneRects`, waited for up to `pageWait`, the page asked to measure at
+  each look) → `engine.setLayout`. The core's `host/panes.rs` (LayoutPanes, ResizeDivider, never called) is removed:
+  the page is the one geometry source, the engine's `belowMinimum` the one check.
+- **Pane windows** open at their pane's page (`newWindow { url }`, http(s)), or blank when the item's tab is open in
+  another of Margin's windows: it's moved in (`hostShow`) and the blank first page closed (background/hosted.ts), never
+  Safari's new-tab page (its address field keeps the toolbar down). A pane's last tab closed (⌘W) leaves its window a
+  blank page (Margin's window, never closed by Safari with its tab). A pane window in no layout for `paneIdle` (15
+  min) is closed by its copy (the shell's poll, `closeIdlePaneWindows`); with its profile's main window gone, at once.
+- **Leaving** (an item outside the split picked): the engine's one-host switch parks the other panes; the split stays.
+- **Dividers.** Dragged in the page: the two panes beside it take the pointer's change, each stopping at its floor (its
+  window's minimum, `paneMin` from the engine's `minimum(of:)`, else 200 × 140); at most one frame applied per display
+  frame (a 50 ms timer for a window with no frames), measured and reported in that frame; the app told `split.resizing`
+  (the sidebar drag's path: `sidebarResizing`, `engine.dragging`), so tiles and window-mode hosts follow live
+  (`follow(_:rects:)`, every pane's rect), plain members are placed again at the release under their loader. Let go:
+  `split.resize` saves the ratios (drawn ahead of the state until it has them). Double-click: equal. Focused (Tab):
+  ←/→ (↑/↓ stacked) 2%, ⇧ 10%, Home/End, Enter equal; each saved. (Margin.app's panel takes the keys only for its
+  fields, so the keyboard path works in the page, not from a hosted app's focus.)
+- **Live holes.** `follow(_:rects:)` tells Margin's window every visible host's rect in that frame at once
+  (`sayHostedWindows(live:)`); while following, the window takes only the rects (no window-server reads, no log line,
+  no reorder) and its holes and the pointer's way through them follow the page. The overlay's mutation watcher skips a
+  drag frame's own attribute changes on `m-pane`/`m-divider` (what takes the pointer read 150 ms after the last).
+- **The page area changed with several visible** (`pageRectChanged(_:rects:)`): the layout is held while each host is
+  placed again (a plain member's out-of-full-screen-and-in made the one shown the layout alone, so the other panes were
+  never placed and dropped out of it: found by split-tests.swift's drag at release).
+- **Off-screen budgets per host.** `backOnScreen`'s tries, its once-per-show act and what it said are each host's own
+  (Host.offTries, visibleAt, …): a pane's try never uses up main's.
+- **Focus and keys.** A press in a pane focuses it (`pressedHost`: the engine's `shown`, the session's `shown[w]`, the
+  capsule's highlight). ⌘W in a hosted app closes `shown[w]`, the focused pane; the library's `closeTab` then shows the
+  split's next pane (the one after it, else before it), so the split goes on with the rest, or ends at the one left,
+  shown alone; a pane closed while another is focused re-shows the split around the focused one. keysBack and a
+  field's close front the visible hosts back to front, the focused one last. A press on a divider is Margin's (it's in
+  the page's `hits`), never a pane's.
+- **Menus.** A pane's row (the capsule's pane buttons open the tab menu now): Remove from Split View (`split.remove`:
+  the rest shown, its next pane focused), Break Out of Split View (`split.breakOut`: shown alone), Swap Panes (the
+  first two), Stacked / Side by Side. Any other row (not one of Margin's own pages): Add to Split View, into the split
+  of the item in front, or split with it — the row's menu is the chooser of what's added.
+- **⌃⇧= (decided here).** Adds the space's item used most recently that isn't in front or a pane already (Arc pairs the
+  tab you were on before); none: the palette opens for a new tab, and the item it opens is added beside the one in
+  front once it's in front (Escape, or 15 s with nothing new: nothing added).
+- **Refusals.** The library: 4 panes at most, one space, Margin's own pages never, an app once. The page: a pane that
+  can't fit (each pane's floor and the gaps wider than the page area) isn't asked for, a toast says "Not enough room for
+  another pane". The sidebar's edge stops where the panes would no longer fit (`floor`, behaviors/resize.ts). The
+  engine still refuses a rect below a window's known minimum (that pane not shown, said).
+- **Themes.** All five style `m-divider` (gap colour = their frame, a grip, hover/focus/drag), `m-pane[m-focused]` (a
+  ring in the gap), light and dark through their own tokens, `--m-split-gap` 8–12 px; nothing moves the boxes.
+- **Not done / known limits.** Pane windows' loading bar (the copy's `loading` push is read for main windows only); a
+  pane refused by its minimum isn't laid out again once the page re-lays out at the minimum (pick it again); swap of
+  three or more web panes may move tabs between pane windows (roles follow the order); the keyboard divider works only
+  where the page has the keys. Nothing here was run on the real screen: TESTING.md M2.7 is the list.
+- **Checked** (headless): unit (`tests/split-view.test.ts`: the library's requests and refusals, ⌘W's next pane, the
+  actions, a pane's menu, the divider's arithmetic, ⌃⇧='s pick, the copy's pane windows), themes in WebKit and
+  Chromium (`tests/theme/split-view.test.ts`: panes drawn and measured, a real drag, the minimum, double-click, stacked,
+  refusal), Swift (`split-tests.swift`: the session on the stand-in world end to end; live holes; per-host budgets),
+  the app's e2e with the real page (`tools/app-tests/e2e-split.swift`: two apps split, panes measured by the real
+  WKWebView page, windows at those boxes, a divider dragged by pointer events, saved, placed again).
+
+## Peek and Little Arc in Margin.app (docs/PEEK-SPLIT.md §2, §3, 2026-11-21)
+
+Step 2 of the plan, on feat/peek (from feat/arc-suite), on the several-visible-hosts foundation (§1, above). The
+user's choices (the doc's table) as built; what was decided here is marked so.
+
+- **The click, the page's side** (content/peek.ts, core.ts). Only in a window Margin.app draws (the copy's `appDrawn`
+  for the tab's window) and never in a copy that stood back. Heard in the bubble phase on `window`, after the page's own
+  handlers: a click the page handled (`defaultPrevented`) is left alone, nothing ever stops the event. Only trusted
+  primary clicks with no ⌘/⌃/⌥, on an `<a href>` (SVG links too; never `download`, never a same-page `#` link). The
+  default is cancelled at once (it can't be later), then the card asked for; refused, or no answer in 400 ms: the
+  link's own default done by the page (`location.assign`, or the copy's new tab for `target=_blank` and other named
+  targets, `window.open` only if the background didn't answer). Shift+click's own Safari default (Reading List) isn't
+  one a page can do: it opens as a plain click would (decided). Auto-Peek: a pinned tab's or favorite's link to another
+  site, never an auth flow (shared/peek.ts, unchanged). Which pages are a pin's or favorite's in Margin.app is the
+  library's word, not the copy's state (which has no library pins): each `hostShow` says `pinned`, the copy tells the
+  tab's page (`peekPinned`, and hello's `pinned`).
+- **The answer** (background/peek.ts, handlers.ts). The copy pushes `peekOpen { id, url, source, tabId, notAfter }`
+  (a request back is the protocol's only way an app answers a push, as `paletteDropped` is for `palette`): Margin.app
+  answers `peekAnswer { id, ok }` at once (a new request in `APP_REQUESTS`). The copy waits only until `notAfter`
+  (350 ms after the click, under the page's 400 ms); later, it's a no and the app is told `peekCancel { id }` (a card it
+  opened for that click is closed again): a link never opens twice. Chosen over a UI push (`UIPush.forwarded`): the
+  card must be answered and laid out natively before the page can show it (documented in UIPush.swift).
+- **The card's window.** `safari:<profile>#card`, made at the first Peek through `requestSafariWindow(role: .card)`,
+  asked of the copy as `newWindow { url }` at the card's own address (the copy takes an http(s) address only from the
+  app; the empty new-tab page's address field kept Safari's toolbar down). Its page is the copy's tab tagged
+  `peek-card` (background/hosted.ts `CARD_ITEM`, `hostShow { role: 'card', fresh }`: `fresh` sends a tagged tab to a new
+  Peek's address); never one of the library's items, so not in the sidebar, not archived, not counted by the keys. A
+  new tab in the card window (a `_blank` link there) is the card's page from then (the one before closed). Closed:
+  `hostCardClose` closes the tab and leaves `about:blank` so the window stays, parked. Opening a parked one is a layout
+  change (`HostedSession.applyLayout` with the card's extra: main never parked). Closed by Margin after 15 minutes
+  unused (the shell's poll through the sweep) and when its profile's main window goes.
+- **Geometry.** The `peek` part's `<m-peek-page>` (sanitizer: only there, once, empty, never in a list) is measured as
+  laid out (offsets: the card's scale never moves the window) and sent as its own message `peekRect` (decided: not a
+  field of the page's `layout`, which split view grows too, so the two stay apart), turned into screen points by
+  Margin's window (`cardRect`). The session waits for it 300 ms, else Margin's default rect (centred, 8% each side, 7%
+  above and below, at least 420×320, under a 44 pt bar: `HostedSession.defaultCardRect`). The engine refuses a card
+  below its window's known minimum: the card goes and a toast says there's no room. While a card is up the theme's
+  root has `--m-page-*` (the page's place), so `<m-peek>` lays its dim over the page area alone.
+- **Look and motion** (all five themes; Margin's own default card, `m-peek[m-default]`, for themes with none). The
+  dim is a spread shadow around an element at the card's place (never painted over the card's page: Margin's window is
+  above the hosted ones); the card's page is covered while its window isn't in place (`peek.loading`, its own spinner)
+  and as it goes (`peek.closing`), clear once `ready`. Open 150 ms (dim fade, card from 0.96 and nothing), close the
+  reverse, then gone; Reduce Motion: a fade. A card's first open never shows the page card's loader over main (the
+  engine's slow step for a card is the card's own: `cardLoadingStep`). Found by the theme tests: Liquid Glass's and
+  Neubrutalism's ✕ was hidden (their `.close` is a row's hover-only button): it's `peek-close` now.
+- **Focus and keys.** The card is the focused host (keys to its window); the item under it stays the window's item
+  shown (the sidebar's highlight). Fields letting go give the keys to the card, never main over it. Closing lays out
+  main alone again (its app active). ⌘W: Margin's Close Tab and a hosted app's ⌘W both close the card (or Little Arc's
+  field) when one is up, never the item. Esc: in Margin's UI (the card behavior) and in the card's page (a listener only
+  in pages of the card's window, told by the copy: hello's `card`, `cardWindow`), only when the page didn't handle it
+  and focus isn't in a field; ⌘↩ the same for Expand. A press on the dimmed area is the foundation's caught press,
+  which now closes the card.
+- **Attached to its opener.** A pick of another item in that window (any show: the sidebar, the keys, the palette's
+  apps) hides it (parked, kept with its page); the opener shown again brings it back (a pick of the opener itself
+  while it's up keeps it hidden until another item is picked and the opener again). One card per profile: a Peek
+  elsewhere replaces it.
+- **Expand.** A new item of the card's space at its current address and title (target the card's profile), the
+  card's tab moved into the profile's main window as that item's (`hostPromotePeek`, which now leaves a blank tab
+  behind), then shown as main; the card window parked. Over a split, the expanded page is shown alone, as any item
+  picked outside a split (the split stays for its next pick).
+- **Over a split** (merged with split view, §4). A card opens over a split as one more visible host: the split's
+  layout is kept (`HostedLayout.split`, its panes at their `<m-pane>`s, asked of the page again; the card keeps its own
+  `<m-peek-page>` rect, never a pane's), the focused pane stays the window's item shown. Closing it (any way) lays the
+  split out again without it, its focused pane focused. ⌘W: the card when one is up (Margin's Close Tab and a hosted
+  app's ⌘W alike), else the focused pane (split's rule). A page-area change or a drag places the card at its
+  `<m-peek-page>` with the panes (one engine call, the layout held for all). One helper leaves the blank tab in any of
+  Margin's windows a move, a close or an Expand would empty (background/hosted.ts `leaveBlank`). The copy takes an
+  http(s) `newWindow` address from Margin.app only (a card's or a pane's window). Checked: peek-split-tests.swift.
+- **Little Arc** (⌥⌘N, `littleArc.open`): the card with Margin's own field (`m-input="peek"`, no window yet;
+  `peek.littleArc` tells the app so ⌘W closes it). Return takes what's typed as the palette does (shared/search.ts
+  `resolveInput`): an address, else a search, its address from the engine Safari searches with (the palette's
+  `searchUrl`); `peek.go` opens the card at it, then it's Peek. With nothing hosted in the window (the launcher) there's
+  no page under a card: what's chosen opens as the space's new tab at once (decided).
+- **Foundation gaps closed.** A card's or pane's own full-screen toolbar is a strip of its own rect (core
+  `is_strip_of_any`, the hosts' rects given to the observer per app: `hostRects`), never a small transient window, and
+  never moved or parked; the windows let in front of Margin's (core front.rs) count every visible host's app, each
+  one's rect for its strip; the page's hello has `hostedFrames`; a stand-in-world check fails if `desired()` keeps only
+  the focused host shown (a window under a card moved off its place is put back).
+- **Checked** headless: unit (`tests/peek-click.test.ts`: the bubble phase, never stopping the event, the page's own
+  clicks left alone, undrawn windows, the fallback once and in time, the copy's wait; `tests/peek-card.test.ts`: the
+  card's tab, its window, a new tab there, close and Expand; `tests/peek.test.ts`: the sanitizer's `m-peek-page`, the
+  view model), the five themes and the default in WebKit and Chromium (`tests/theme/peek-card.test.ts`: place, cover,
+  clear, the dim, real presses on every button, Esc, ⌘↩, motion and Reduce Motion, Little Arc's address and search,
+  dark), Swift (`peek-session-tests.swift`, `multi-host-tests.swift`), Rust (`kinds/tests.rs`, `front.rs`), the app's
+  e2e (`e2e-glue.swift`: the real page's `peekRect` in Margin's off-screen window, covered then clear, gone; the hello's
+  frames). Nothing on the real screen with real Safari yet: TESTING.md M2.5.
+
+## The real screen's engine finds of 2026-11-21 (fix/screen-engine)
+
+From Margin's log on the real screen (split view and Peek with real Safari). UI and page-side finds are another branch's.
+
+- **An item outside a split, same profile as main, main focused** (a sidebar pick, the keys, a new tab, a pin or
+  favorite, a card's Expand: every show goes through `HostedSession.show`): a web item whose window is in a layout of
+  several is never only a tab switch (the copy's `hostShow`): the engine lays it out alone (`showsAlone`), the other
+  panes parked, the split kept. Before, msu.edu showed in the split's top pane's rect with the other panes on screen.
+- **A visible host placed again on its own** (the reconciler's `placeAgain`, a route moved down, a window brought
+  back): the layout is held through its out-of-full-screen-and-in (`holdLayout`), each host at its own rect, the focus
+  put back. Before, the one shown changing on the way made it the layout alone while it was placed at its old pane's
+  rect ("reserved 240/8/8/635" with the engine saying main at the page area), the other panes left on screen. A host
+  made the layout alone keeps no pane's rect (`followShown`).
+- **A hosted window out of full screen by itself** (Safari's own Esc in its page): a "left full screen" event, not a
+  tile's fight. Taken so in the reconciler's turn before a tile's sizing or a member's placing when the window is still
+  in Margin's Space and its tile holds no window of its, or every toolbar window of its own is gone, or Accessibility
+  reads it out of full screen; a window full screen in its tile that doesn't take the rect is still the loop guard's.
+  Put back into full screen at its rect behind the loader (its empty tile out), Margin's own operation: no try counted,
+  its route kept, nothing saved in routes.json; `returnsMax` times in `returnsWithin`, then left to the reconciler.
+  A routes.json that already holds Safari's demotion keeps it until Safari's next version (or the entry is removed).
+- **The log's drag line** says what's dragged (a split's divider or the sidebar's edge) and how many hosted windows
+  follow it live, the rest placed again at the release.
+- **Remove from Split View** works end to end by the row's number (the pane menu's way): the UI names an open item by
+  its number, so a dispatch with the library's item id is refused (the on-screen dev hook's `false`). The dev hook now
+  maps an open item's id to its row's number, and its `say: state` gives each pane's `tabId`.
+- Checked: `split-tests.swift` (every show path out of a split with main focused), `screen-engine-tests.swift` (the
+  layout held; out of full screen by itself, alone, in a split, as a plain member; a real tile fight still demoted; the
+  drag line), `devhooks-tests.swift`, the app's e2e (`e2e-split.swift`: Remove from Split View on an app's pane of two).
+
+## Fixes from the real screen of Peek and split view (fix/screen-ui, 2026-11-21)
+
+- **An item pinned in Margin.app stays, the pin's tab.** The library's `pinTab` (and `createFolder` with an item) forgot
+  the item, so the page stayed shown with no item behind it: no highlighted row, an empty address field until the pin
+  was clicked again. Now (sticky pins, M2.2) the item stays, bound to the new pin (`pinnedBy`; the pin takes its address,
+  title, given name and target): the pin shows open and active, the item isn't in Today, nothing is asked of the
+  hosting (the page stays shown, `shown` unchanged). Its close isn't an archive (closeTab's rule for a pin's tab), the
+  pin opens that item (openPin finds it by its binding), and unpinned it's Today's again, still open (removePin unbinds
+  it). The extension already bound an open tab this way. Checked: `tests/arc-data.test.ts` (12), `hosted-tests.swift`.
+- **Esc in a hosted page never takes Safari's window out of full screen** (`content/keep-fullscreen.ts`). Safari's own
+  action for an Escape keydown no page took is leaving its window's full screen, which the engine then had to undo
+  (about a second, the page area empty). In a window Margin.app draws (the copy's `appDrawn`: main's, a card's, a pane's
+  windows), an Escape the page left alone has its default prevented. Decided last: a bubble listener is added on the
+  window as the key's capture phase passes it, so it runs after every listener the page has there (the DOM takes each
+  target's listeners as the event reaches it) and after Peek's card's Esc (which closes the card and prevents it
+  itself). Left alone: ⌘/⌃/⌥/⇧ held, a key being composed, an element in full screen (a video's Esc is Safari's), a
+  search field, a modal dialog and an open popover (the engine's own Esc closes or clears them), a key the page stopped.
+  Not covered: a key in a frame (the content script is the top frame's). Checked: `tests/keep-fullscreen.test.ts`
+  (stand-in), `tests/theme/keep-fullscreen.test.ts` (WebKit and Chromium: the order, the dialog closing, the popover).
+- **Stacked split: a band above each Safari pane for its toolbar.** Safari's full-screen toolbar window rests just
+  above its window (on screen: 1264×52 at the pane's top − 52) and is drawn whenever that window was raised after the
+  pane above it (the focused pane is raised last): it showed inside the upper pane's hole. It's never moved or parked
+  (that broke Safari's full screen, 2026-11-07), so the fix is geometry: stacked, the divider above a pane hosted in a
+  Safari window (a web item's; not a Mac app's) is a band at least `SAFARI_TOOLBAR` (52 pt) tall (`<m-divider m-band>`,
+  `flex-basis: max(--m-split-gap, 52px)`), and the toolbar rests in Margin's opaque ground there. The band carries the
+  pane's name and host (`<m-band-title>`, Margin's text; base CSS, each theme's divider colour and grip) like Arc's pane
+  header. The room check for another pane counts the bands (`dividerSizes`, `panesFit` with each divider's size); a
+  pane's own minimum is unchanged (the band is the divider's). Side by side nothing changes (the toolbars rest under
+  Margin's top frame, as one window's does). The app doesn't read the toolbar's height (only the engine knows that
+  window): 52 is the measured one. Checked: `tests/split-view.test.ts`, `tests/theme/split-view.test.ts` (5 themes, both
+  engines: the band's height, place, name; the stacked room check).
+- **Peek's card: its bar covers the card window's toolbar.** The card window's own Safari toolbar window rests just above
+  the card's page (on screen: 1062×52 at the page's top − 52) while every bar was 44–50 pt: its top showed, dimmed,
+  through the dim above the card, and a still pointer there got Safari's "Tab Group picker" tooltip once. Every card
+  bar (the five themes' and Margin's default) is now 52 pt and opaque (Liquid Glass's was 96% `--pop-fill`), so the
+  toolbar rests under it; Margin's default rect (HostedPeek `defaultCardRect`) is under a 52 pt bar, and the cards'
+  clamp keeps 320 pt for the page (`50% - 186px`). The themes README says a card's bar must cover those 52 pt. Left: a
+  rounded card's top corners (radius up to 28 pt in Material) leave the toolbar's square top corners outside the
+  card's curve, a few points under the dim. Checked: `tests/theme/peek-card.test.ts` (the bar covers the 52 pt above
+  `<m-peek-page>` across its width, opaque), `peek-session-tests.swift`.
+- **A split pane opening: its loader over its own box.** Adding a pane (Notes) covered the whole page area with the page
+  card's loader ("Opening Notes…", 2.2 s on screen) while the other panes were shown. The engine's slow step for a
+  host being laid out as a split's pane beside the panes shown (HostedSession `panesLaying`, set around applyLayout's
+  `engine.setLayout`; main's too when that split is what the window shows already) is now that pane's
+  (`paneLoadingStep`): Margin's window says `paneLoading { item, label, bundleId }` (and in its hello), and the page
+  draws `<m-pane m-loading>` with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …" with the app's name
+  or the page's title; Canvas/CanvasText so it reads on any ground; a theme may restyle it), never the page area's. The
+  other panes stay shown and usable (their holes, the pointer); the item's row keeps its loading bar. A switch to one
+  item, a card's first open and the first host of a split are as before. Panes already shown that the engine places
+  again as plain members (no tiles) each get their own box's loader meanwhile. Checked: `split-tests.swift` (no
+  page-area loader, the pane's item and name), `tests/ui-host-app.test.ts` (the message and hello, checked),
+  `tests/theme/split-view.test.ts` (5 themes, both engines: the loader in that pane's box only, readable, gone after).
+
+## Peek's card over a split on the real screen (fix/screen-card, 2026-11-21)
+
+- **The card window's first open over a split: in front of the panes.** The real screen had main's window above the
+  new card window (main's page in the card's top half); a second open (a switch) was right. The engine's own order of
+  raises was already the layout's (checked on the stand-in world: main, the pane, the card last), so the difference is
+  the new window itself: its raise by Accessibility can fail for a window its app made a moment ago and the bridge
+  moved between Spaces (not listed yet), while main's (listed long ago) works, so fronting main again buried the card.
+  The fix, decided here: `frontVisible` (every layout's change, `holdLayout`'s release, a focus, a press around a
+  window, a field's close) reads the window server's order first; the focused host already in front of the other
+  visible ones (a new window is its app's front one), only its app is made active (its keys), nothing raised over it;
+  else the hosts from the first out of place are raised, back to front, the focused one last. Then it's read again up
+  to `orderWait` (150 ms) and, the focused one still not in front, it alone is raised once more (said in the log).
+  The other panes' order among themselves isn't forced when the focused one is in front (panes don't overlap; a
+  stacked pane's toolbar rests in its band). `holdLayout` wasn't the path: a layout's own placing never holds one.
+- **Nothing of Margin's window inside the card's page.** The ground cuts the card's whole rect while a card is up
+  (each visible host's frame ∩ its rect as before for the others), whatever its window's frame reads. The page clips
+  `<m-page>` out of the card's `<m-peek-page>` box while a card is up (behaviors/card.ts: an even-odd `clip-path` on
+  `<m-page>`, `m-card-clip`, its outer edge far outside so a theme's frame or shadow on it is never cut): a split's
+  dividers, bands, pane loaders and a theme's pane ring never paint or take a press there; the dividers aren't reported
+  in `hits` then (host-app.ts), so Margin's catch fill isn't over the card's page either (the dim around it is Margin's).
+- **A still pointer under a change of the pointer's slot.** Margin's panel's `ignoresMouseEvents` was set only on
+  pointer moves; a card opening under a still pointer (last over the page's hole) left the panel passing the mouse
+  over the card's bar, and Safari's toolbar resting under it showed its tooltip. Now every change of the slot
+  (`updateHole`: a card or pane opening or closing, a layout's change, the page's hits, the loader) looks at the
+  pointer again at once (`NSEvent.mouseLocation`; the harness's last move in tests); never in a drag's frames (the
+  page area followed live) or with a button held (a drag keeps its way), nothing said to the page, no cost per move.
+- Checked: `screen-card-tests.swift` (the stand-in world's window-server order, a new window's raise failing: the
+  card's first open over a split with main focused, a pane's first open), the app's e2e (`e2e-split.swift`: the real
+  page's `<m-page>` clipped under the card, Margin's window see-through there as the window server pictures it, the
+  ground cut whatever the card's frame reads; `e2e-glue.swift`: a card opening and closing under a still pointer, a
+  held button kept), `tests/theme/card-over-split.test.ts` (5 themes and the default card, both engines: nothing of
+  `<m-page>` at the band inside the card's page, its pixels as with no `<m-page>`, a pane's loader too, whole again
+  after), `tests/ui-host-app.test.ts` (no divider hits while the card clips). Nothing on the real screen yet.
+
+## A card's new window Accessibility can't raise: Safari brings it in front (2026-11-21)
+
+On the real screen, Peek's card window opened for the first time over a split (main Safari focused) landed behind main,
+and Accessibility's raise of it didn't take, also when tried again (`… focused, not in front of the other visible hosts
+once fronted … raised again`): a window Safari made a moment ago and the bridge moved between Spaces. The parked card's
+later opens were ordered right. Now, when the retry still leaves the focused Safari window (a card or a pane) behind,
+the engine asks its copy to bring it in front (`hostFocusWindow`: `windows.update(id, { focused: true })`, the app's
+request only, a windows call with `notAfter` and one per window at a time) and reads the order again, one log line
+either way. On the real screen that didn't take either (`asked, still not in front`), so the last way is the move
+that does: the window out to a private Space and straight back into Margin's (a window moved into Margin's Space comes
+in front of the others there, as a parked card's switch showed), under the card's or pane's own loader (not revealed
+yet), so no freeze; its rect set again if its tile was laid out meanwhile. The name `focusWindow` stays refused: it was the overlay era's request, removed with it. Checks: the stand-in
+world's new window behind main and unraisable (screen-card-tests.swift, failing without the hook), the copy's handler
+(tests/handoff-copy.test.ts), the app requests list (tests/link.test.ts).
+
+## Margin's own names for Arc's features (2026-11-21)
+
+Tirth decided Margin never uses Arc's names in the product. Everything a person or a theme author sees now says:
+**Quick Tab** (was Little Arc: the ⌥⌘N card with an address field first), **preview** / **the preview card** (was Peek:
+the card a link opens in, Shift+click; Auto-Peek is **auto-preview**, in Settings "Open external links from Pinned tabs
+and Favorites in a preview") and **Link Rules** (was Air Traffic Control: Settings' group; the menu's "Always Open
+<host> in This Space" and "Remove Rule for …" stay). Arcadia's description no longer says "Arc's look"; the theme keeps
+its name. Older entries here keep the old names.
+
+- Theme API (themes/README.md, all five themes, the sanitizer): `<m-peek>` → `<m-preview>`, the guarded `peek` part →
+  `preview`, `<m-peek-page>` → `<m-preview-page>`, `m-input="peek"` → `m-input="preview"`, the view model's `peek` →
+  `preview` (`isLittleArc`/`littleArc` → `isQuickTab`/`quickTab`, type `PreviewView`), actions `peek.*` → `preview.*`,
+  `littleArc.open` → `quickTab.open`, `airTraffic.addHost|remove|toggle` → `linkRules.*`; Margin's default card
+  `m-preview[m-default]` with `[m-preview-card|bar|host|field|button]` and `[m-quick-tab]`; the themes' classes
+  `.preview-*`, `.quick-tab`, `--preview-dim`, `*-preview-in|out` keyframes. The old names are refused like any unknown
+  slot, part or action (tests/feature-names.test.ts). The renamed card is unreleased (feat/arc-suite), so
+  `VM_VERSION` stays 1. Settings' link-rule field ids: `linkRules`, `linkRulesNone`, `linkRule:<id>`,
+  `removeLinkRule:<id>` (never stored). The app key's label: "Open a Quick Tab".
+- "Peek" stays the sidebar's hover reveal (the `m-peek` attribute, `window.sidebar === 'peek'`, `vm.window.peek`,
+  ui/behaviors/peek.ts, PassThrough's peek edges), and a closed folder's `peek` pins: neither is Arc's Peek.
+- Kept, with why: the stored setting `autoPeekPins` and the stored key `settings.appKeys.littleArc` (users' data); the
+  library and extension collection `airTraffic` and its records (stored); the wire between copy, page and app
+  (`peekOpen`, `peekCancel`, `peekAnswer`, `peekPinned`, `openPeek`, `hostPromotePeek`, `hostCardClose`, `cardPage`,
+  `cardKey`, `peekRect`, the app's `peek` push, Margin's page's `peek.close|back|forward|expand|setSpace|littleArc|go`
+  performs, the `addAirTrafficRule`/`removeAirTrafficRule`/`toggleAirTrafficRule` requests, the `little-arc` command
+  and `AppCommand.littleArc`: an older copy with a newer app, or the reverse, must still talk); native identifiers
+  (`card`, HostedPeek.swift, `PeekCard`, `SafariRole.card`, `littleArcs`); code names no one sees (the runtime's
+  `ui.peek` and its `littleArc` flag, `behaviors.card.openLittleArc`, `measurePeekPage`, shared/peek.ts,
+  shared/air-traffic.ts, background/peek.ts, content/peek.ts, the `CARD_ITEM` tag `peek-card`); file names
+  (docs/PEEK-SPLIT.md, its many references kept; the tests' file names). Margin.app's log lines say "Preview:" and
+  "Quick Tab" now. Comments use the new names where they name the feature.
+- Not renamed (not one of the three names): the theme value `--m-swipe-feel: arc` (Arc's swipe feel) and comments
+  that credit Arc's behaviour.
+
+## Split view in real use (fix/split-real-use, 2026-11-21)
+
+From Tirth's real use of Margin.app at 13:25–13:28 (a Safari page split with another, a third Safari pane, divider drags).
+Each fix has a failing-first check on the stand-in world (`split-real-use-tests.swift`, the log's case played: the old code
+reproduced the log's own lines, e.g. `place …#pane1 attempt 1: its window 0,33 1512×949` and one Space switch seen).
+
+- **A pane's or card's first window: macOS's Space switch never shown.** Safari made the pane's window already in full
+  screen (its key window was full screen), in a new Space of its own, and macOS switched the display there and back while
+  nothing was frozen (the Dock's `fullscreened`, `becameCurrent` of the new Space, then Margin's): the screen slid. Why the
+  plain path: the engine found the window already in a Space of its own, so the early path (which watches for a *new*
+  Space after an ask) was skipped and the freeze held only for the 18 ms of "full screen". Now a card's or a pane's window
+  is asked in full screen (`newWindow { fullscreen: true }`: deterministic, one ask instead of a window then
+  `setWindowState`), the freeze is taken at that ask and handed to its placing, Margin's Space is kept current while the
+  window is awaited (macOS's switch undone at once, a Space the person went to left alone), and the window's new Space is
+  taken by the early path (`born`: reserved for the pane's rect, its tile into Margin's Space, the Space destroyed, no
+  wait for a switch already undone). A card's or a pane's freeze is let go as soon as its Space is gone (its window is
+  under its own loader until its layout is done), not after the settle. Decided: a freeze, because the switch's animation
+  starts as the Space is added (before Margin can see it), so nothing short of a freeze from the ask hides it (the woken
+  window's trick, destroying the Space before the switch, can't: the window server lists the window ~0.4 s after the
+  ask). It's as short as it can be: the window's making plus the early path's own steps (stand-in: 409 ms; the card's
+  path on the real screen was 858 ms from its full-screen ask alone). A window that comes up normal anyway goes the card's
+  old way (its ask) under the same freeze. Main windows are unchanged.
+- **Main kept until the new pane is in place.** `applyLayout`: when hosts come in beside the ones shown (a split's new
+  pane, opened or unparked) and the shown ones can be laid out again in place (tiles, window mode), they keep their rects
+  and stay shown; the newcomers come in at their rects (under their own pane loader, held up until the end:
+  `loadingHeld`, revealNow only lets the freeze go), then the shown ones are laid out again in one go (`placeTogether`:
+  every tile's rect sent in one turn, waited for together), then the holes and the loader off. A plain member (tiles
+  off) is placed first, as before (its placing activates its app: done after, it buried the newcomer).
+- **Every app's minimum known before its window exists.** The engine keeps each app's window minimum as its tile said it
+  (`learnMinimum`; Safari's from any Safari window) per app version, in `minimums.json` beside routes.json, loaded at
+  launch (`knownMinimum`, `knownAppMinimums`; another running version: not used, learnt again). The session tells the page
+  (`appMin { web: [w,h], <bundle>: … }`, also in the hello) whenever one changes and whenever it hosts; the page's floors
+  take a pane's own minimum (`paneMin`), else its app's (`web` for Safari's pages), so main, panes not opened yet and a
+  pane being added all count (`paneFloors(split, minimums, apps)`). The room check refuses an add (as before, now with
+  those minimums) and an axis toggle that wouldn't fit (`refusesAxis`: "Not enough room to stack these panes" / "…side
+  by side"); a divider and the sidebar's edge stop at them. The engine refuses an extra whose rect is below its app's
+  known minimum before anything is started or asked (no window made only to be refused).
+- **A failed pane leaves the split.** Decided: out of the split in the library (`removeFromSplit` with Margin.app's
+  `focus`: the pane that had the keys keeps them), not only marked: the page lays out the library's split, so a pane
+  marked failed would stay an empty box and its dividers would drag nothing (the log: three boxes, two drags with "0 page
+  area changes"). The item stays in its space, open; a toast says why ("Not enough room for “B” in Split View", "“B”
+  couldn't open in Split View"). The panes coming in go first: a pane shown before that failed only beside a newcomer
+  stays. The rest is laid out by the show the removal asks for. The engine's rule beside it: a layout that ends with one
+  visible host puts that host at the page area (13:27: main left at 775 wide, the rest blank), and with the deferral main
+  never moved for a newcomer that didn't come.
+- **A new pane's raise.** A window that came into Margin's Space with its tile as part of a layout's first open
+  (`freshFront`) is, when it isn't in front at the first read after its raise, brought in front by the move out to a
+  private Space and back at once (`outAndBack`): no 150 ms waits, no raise again, no copy asked (on the real screen those
+  took ~550 ms and never worked; the move took 19 ms). Other cases keep raise → copy → out and back. The log line says
+  how long from the first raise.
+- **A divider's drag: per window, never in lockstep.** The pump sent every window its rect, then waited until all had
+  landed before the next frame, so the quicker window waited for the slower (two Safari panes: median 26 ms, p95 49 ms,
+  289 of 547 frames coalesced; one window: 4–5 ms). Now each host has its own rect in flight: a host whose rect landed
+  (or was given up after `liveWait`) gets the newest frame at once, hosts free in the same tick are sent in the same
+  tick (tiles first, nothing awaited between them), at most one change a display frame each. The drag's line says the
+  page's cadence, the frames sent to every window, how many sends had more than one window, and each window's sends and
+  landing times. Stand-in (60 Hz page, 60 frames): one window 4 ms and one 30 ms: before 34 and 34 frames sent, the quick
+  one's frames landing at 30 ms; after 60 and 34, the quick one at 4 ms. Two windows alike (8 ms): 60 of 60 frames sent
+  to both in the same tick, before and after. What only the real screen shows: whether two Safari windows' reflows
+  (one Safari process) are slower together than apart, the WindowServer's share, and the page's own frame rate.
+- **The shell's engine forwarded too little.** `LateHostEngine` (the real app's) didn't forward `liveFollowers` and
+  `showsAlone`, so the real app took the protocol's stand-in answers: a divider's drag of two logged "the hosted window
+  follows it live", and an item of main's profile picked with a split up was only a tab switch unless the session had a
+  layout recorded (fix/screen-engine's `showsAlone`). Both forwarded, and `knownAppMinimums`.
+- Checked: `split-real-use-tests.swift` (the session and engine on the stand-in world: born window, freeze, main kept,
+  raise, room, failure, a drag of a quick and a slow window, the glue), `tests/split-view.test.ts` (floors by app,
+  `removeFromSplit`'s focus), `tests/ui-host-app.test.ts` (`appMin`), `tests/theme/split-view.test.ts` (5 themes, both
+  engines: no pane below its app's minimum, a divider stopping there, three Safari panes in 1264 pt refused, side by side
+  refused when it wouldn't fit). Nothing on the real screen: TESTING.md M2.7 step 13.
+
+## A split pane's first open: fronted once, revealed once its toolbar rests (fix/pane-fronting, 2026-11-21)
+
+The real screen at 14:29:59–14:30:00 (a Safari page B added beside A, side by side; main window 23758, the pane's new
+window 23774): the pane was fronted twice and its toolbar showed over its page. Read from Margin's and the copy's logs:
+
+- **The second fronting's cause.** After the layout (00.215, the pane in front after one move out and back), the
+  session showed the pane's item in its window (`hostShow`, 00.215–00.375): its tab moved in from main's window, the
+  blank page closed, and Safari put main's window back in front of the pane's, unasked. Then the page's next report of
+  its panes' rects (the session's `placeAgain`, `hosted: page area changed: 1264×933` at 00.975) ran the engine's
+  `pageRectChanged`, whose `frontVisible` read main in front of the focused pane: main raised (the copy heard window 414
+  focused at 00.399), the pane raised (heard 549 at 00.445; its raise never takes for a new window, before or after a
+  move), then `raised again`, its copy asked, and out to a private Space and back (00.970): ~590 ms and a second move
+  between Spaces. (The keys given back at 59.962, "its Space shown again", came from macOS's undone switch; not the cause.)
+- **Decided: only the order that shows is kept.** Two visible hosts need an order only when they overlap: their windows
+  (each as it is and where the layout puts it), a full-screen window counted with its toolbar's room above it
+  (`toolbarRoom`, 52 pt: Safari's toolbar window rests just above its window, measured on the real screen). A card over
+  the panes: kept as before (the card last, out and back for its new window). Panes side by side never overlap, and a
+  stacked split's band above a Safari pane is 52 pt, as tall as its toolbar (it meets the pane above, never overlaps
+  it): their order isn't chased, whatever Safari does to its own windows. The focused one only gets the keys (its app
+  made active, its window made its app's main one: that takes even when the raise doesn't). The focused one in front of
+  every host it overlaps: none of those raised over it; two others out of order between them only when neither overlaps
+  it. Only when the focused one is behind a host it overlaps: the raises, its copy, out and back, as before.
+  So a side-by-side pane's first open has no move out and back at all (the stand-in: the split 30 ms sooner) and the
+  page's next report costs nothing (stand-in: 494 ms → 0).
+- **The pane's loader until its tab is in and its toolbar rests.** Safari keeps its full-screen toolbar down while the
+  keys are in a new window's address field (its blank first page): at 00.298 it was out over the new pane (876,41
+  628×52), resting at 00.368, once the copy had moved the tab in; the pane's loader had been lifted at 00.215 (the
+  engine's end), so up to ~150 ms of Safari's toolbar over the new pane. Now a pane whose window is made in that layout
+  keeps its own loader (`revealHeld`, HostedSession) after the engine's slow step, through its tab's `hostShow`, then
+  the engine reads its toolbar (`toolbarsRest`: the toolbar trace's rule, its own strip at its window's top edge in its
+  window's Spaces, out when its bottom is below its window's top; from the window server, read every 10 ms only while
+  one is out, at most `toolbarRestWait` 0.5 s, never moved or parked) and the loader goes. Said when it waited: `host:
+  <id>: its full-screen toolbar out over its page by N pt at its reveal: resting after … ms` (or `still out (revealed
+  anyway)`). A pane shown before (its tab shown before the layout) and a card are unchanged.
+- Kept: born in full screen under the freeze, main kept until the pane is in, the per-pane loader, the card's first
+  open over a split, the stacked band, ⌘W per pane.
+- Checked: `pane-fronting-tests.swift` (the log's case on the stand-in world: the new window unraisable after a move
+  too, born with its toolbar out, the copy's `hostShow` putting main back in front; failing without the fix: out and
+  back twice, raised again, its copy asked, the loader lifted with the toolbar out; side by side, stacked across an
+  8 pt gap (order kept), stacked across the 52 pt band (not chased), a toolbar that stays out (revealed after 0.5 s)),
+  `split-real-use-tests.swift` 4 (no out and back side by side, the keys the pane's), `screen-card-tests.swift`
+  (unchanged: the card's order). Nothing on the real screen: TESTING.md M2.7 step 13g.
+
+## Tiles kept when Margin's own window comes back late after a tile change (2026-11-21)
+
+On the real Mac under load (two research test apps busy), Margin's launch turned live resize off for the whole run:
+"a tile's rect didn't take (its tile came in and its window is at 240,41 1264×933, not 240,41 1264×933)". The hosted
+window was at its rect; what `reapplyTiles` hadn't seen within `tileWait` (0.3 s) was Margin's own window back at the
+display's width (a tile change lays it out as a split's half for a moment). With tiles off, Safari was a plain member:
+every split resize became a re-place out of full screen and in (1 s behind the loader), and the chain that followed
+(order chased, main out of full screen) came from that. Now `tileIn` looks once more (another `reapplyTiles`) before
+tiles go off for the run, says when it took longer, and the off message names Margin's own window's bounds too.
+Check: screen-engine-tests.swift (Margin's own window back after 0.4 s: tiles kept; never back: off, as before).
+
+## A split's pane window made around its open tab (2026-11-21)
+
+On the real screen a new pane whose tab was open in the main window came up with Safari's full-screen toolbar down
+over it and the address field focused (blue ring): its window had been opened blank, the tab moved in after, and Safari
+had already put the keys in the blank window's address field (the same cause as the 2026-11-20 toolbar). The engine's
+reveal waited 0.5 s and gave up ("still out (revealed anyway)"). Now the app names the item (`newWindow { itemId }`)
+and the copy makes the window around that tab (`windows.create({ tabId, focused, state: 'fullscreen' })`, hosted.ts
+`windowAround`: a blank left behind in a window it would empty), so the window never has a blank first page. An older
+copy ignores `itemId` and opens blank, as before; a browser that refuses `tabId` falls back the same way. Checks:
+tests/hosted-tabs.test.ts (windowAround), split-tests.swift (the payload names the item; failing without it).
+
+## A new pane's or card's Safari window: its page given the keys before it's revealed (2026-11-21)
+
+On the real screen a new pane window came up with Safari's full-screen toolbar down over it and the keys in its address
+field (its text selected), whether it was made at its page (`windows.create({ url })`) or around an open tab. Safari
+keeps the toolbar down while the keys are there, and it stayed down (even a click in the pane didn't move them). Tested by
+hand: Accessibility's AXFocused on the window's AXWebArea moved the keys into the page and the toolbar rested at once
+(822,41 → 822,-11); the window became key with it, and giving the keys back to the main pane kept the pane's toolbar at
+rest. Now, for every Safari window made in a layout (a pane's, the card's), the engine gives its page the keys under its
+loader (`HostEngine.focusPages`, `HostSystem.focusPage`: a breadth-first walk to the AXWebArea, 64 elements at most),
+then fronts the layout again so the focused host has the keys, then waits for the toolbar to rest (`toolbarsRest`)
+before the reveal. No private call, no polling; one Accessibility call per new window. Checks: pane-fronting-tests.swift
+(a toolbar that wouldn't rest by itself: page focused, revealed resting; failing without it).
+
+## The first click in another pane goes through (2026-11-21)
+
+Decided by Tirth: in a split, a click in the pane that doesn't have the keys took two clicks (a link in the other
+Safari pane, a note's text in Notes). Each pane is its own hosted window under Margin's window, which lets the pointer
+through holes over them; a press on a window that isn't key only made it key: WebKit refuses the first mouse
+(`WebViewImpl::acceptsFirstMouse` is NO but for a selection drag or a legacy scrollbar), and so do AppKit's text
+views (an `NSButton` takes it). ⌘-click and right-click already reach Safari without the keys.
+
+The lab (the click-through research of 2026-11-21, a Margin-like non-activating panel with holes over two WKWebView
+windows and a native one): catching the press in Margin's window and replaying it fails (the window server keeps
+routing the press's events to the window that got the down); SkyLight's front-process-with-window focus (yabai's)
+fails within one app. An active CGEventTap on presses that makes the pane's window key with Accessibility, then lets the
+press go on, delivered every kind of click exactly once: a link, Shift+click, a button, a text field, a double-click
+with its dblclick, a drag-select, a right-click, across apps both ways. 6-13 ms within one app, 25-80 ms across apps,
+58-66 ms the first time (a cold Accessibility cache).
+
+- **Held in the callback (the lab's variant c'), not swallowed and re-posted (c).** Both measured the same. Held, the
+  window server's event stream waits for the callback, so every event keeps its order: a key typed right after the
+  click reaches the pane clicked, and a scroll, a trackpad's pressure or a key can't overtake the press (a re-post lets
+  every event outside the tap's mask through first). Only left presses come through the tap; a re-post needs every
+  drag and release too (a round trip each, for every drag anywhere while a split is up). Nothing is copied, posted or
+  tagged. The cost: all input waits while the window is made key, so the hold is capped at 120 ms (the lab's slowest
+  was 80): not key by then, the press goes on as before (it only focuses) and the pane is focused the usual way.
+- **When there's a tap at all.** Only while a Margin window shows two or more hosted windows (a split, or the preview
+  card over main) on the current Space, Accessibility is granted (`AXIsProcessTrusted`) and Margin isn't quitting.
+  One pane, nothing hosted, another Space current: no tap, no thread, nothing. When it's no longer wanted every press
+  passes at once and the tap goes a second later unless it's wanted again (a layout's change takes the panes away for
+  a moment); at quit, at once. On a thread and run loop of its own (`margin.pane-click-tap`, user-interactive), never
+  the main thread's: Margin busy never holds the input. macOS's "too slow" or "user input" off: on again at once.
+- **What it decides with** (`PaneClick.decide`, a pure function): the hosting window's scene, published as its holes
+  change, a field of Margin's takes or lets go of the keys, or the Space changes (`MarginWindowController.paneScene`:
+  each pane's hole with its window and app, the one with the keys, Margin's slot with its hits, Margin's own window
+  numbers). A press passes untouched over Margin's own UI (`PassThrough.pageGets`: the divider, a stacked band, the
+  card's bar, menus, the palette, the dim around a card), outside every hole, in the pane with the keys, with ⌘ or ⌃
+  (unchanged: Safari takes them without the keys), with another button held, or while a field of Margin's has the keys.
+  A card open: only its page counts. Shift and ⌥ are held (Shift+click's Preview is one click now). Last, for a press
+  it would hold, the window server's list of windows above the pane's (no permission) at the point: any other window
+  there that shows (a menu or popup of any app, a sheet, the Dock, a banner) and the press passes as before.
+- **The quick focus** (`AXPaneFocus`, HostSystem.swift): its app made the front app (AXFrontmost) only if it isn't,
+  the window its app's main one (AXMain) and raised (AXRaise); key once its app is the front one with that window
+  focused, both read from the app itself every 1 ms. Each call's messaging timeout is the press's time left, set on
+  this class's own elements only (never the system-wide element, which would set every element's in Margin, HostAX's
+  too). Only ever the pane's own window, by its number: never a full-screen Safari window's toolbar. The panes' window
+  elements are looked up ahead on a queue of their own as the panes change. Its window key already (Margin's word
+  behind): let go at once.
+- **Bookkeeping without fronting.** `HostEngine.focus(_:fronted: true)` records the one shown and the holes' focus and
+  fronts nothing: `frontVisible` around the press would make another app the front one mid-click. The tap says each
+  press it held on the main thread (`onPaneClick` → `HostedSession.paneClicked` → `pressedHost(fronted: true)`: the
+  keys, the sidebar's highlight, ⌘W's target); the press's own monitor (`pressed(at:number:)`) knows it by its event
+  number (AppKit's `eventNumber` is the event's `mouseEventNumber`; by its point when it has none) and leaves it
+  (`paneTapClaimed`). A press the tap let go (not key in time, covered) isn't claimed: the monitor focuses it the
+  usual way, as before.
+- **Log**, at the host lines' level, one line per press it held: `host: <id>: a click in its pane while <id> had the
+  keys: its window <n> key in <ms> ms (in its own app | its app made the front app): the click delivered`, `… key
+  already (<ms> ms; Margin's word behind) …`, `… not key within <ms> ms: the click let go as before …`, `… over another
+  window there (window <n>, pid <p>, layer <l>): let go as before`; `pane clicks: on (…)`, `pane clicks: off (no split
+  shown on the current Space | Margin quits)`; said once: `pane clicks: Accessibility isn't granted …`, `the event tap
+  wasn't made …`. Nothing per move.
+- **Costs (the stand-in):** a press that passes costs the tap's decision about 1.5 µs (a lock, the scene, pageGets; no
+  Accessibility, no window list); a held press costs its focus (the lab's numbers above). Idle: nothing (a tap on
+  presses is woken only by a press). Memory: one thread and one Mach port while a split is up; the scene is a few
+  hundred bytes. Nothing private is new (`_AXUIElementGetWindow`, already HostAX's, finds a window's element).
+- **Checks:** `pane-click-tests.swift` (the decision for every case, the hold on a stand-in focuser and a pipe of
+  events: a click, a double-click, a drag from the other pane, the cap, key already, across apps, covered, the claims,
+  the mask; the engine's `fronted` focus with nothing fronted, failing when it fronts), `split-tests.swift` (the
+  session's bookkeeping for the tap's word: focused, highlight, nothing fronted; a let-go press changes nothing),
+  `e2e-split.swift` (the tap's life in Margin's own window: made at two visible and told each pane, its claimed press
+  left by the monitor, the card's page alone, another Space for a moment and for good, gone at one, Margin's quit).
+  The real screen: the `pane-clicks` part of `npm run test:screen` (two Chameleon copies; Chameleon's grid refuses the
+  first mouse as WebKit does) and TESTING.md M2.7 step 13h (Safari+Safari, Safari+Notes).
+
+## The pane click tap: overlays aren't covers (2026-11-21)
+
+On the real Mac the screen suite's first run of the pane-clicks part let every held press go: "a click in its pane over
+another window there (window 36, pid 874, layer 2147483628)", a keep-awake app's two full-screen windows at the
+shielding level, over the whole display and letting the pointer through. Windows at the assistive-technology level
+(1500) and above (screen dimmers, keep-awake and zoom overlays, shielding, cursor) are never covers now
+(`PaneClick.overlay`); a menu, a sheet or panel, the Dock or a system dialog still is.
+
+## Row slides under Reduce Motion: asked afresh, a running one stopped (2026-11-21)
+
+The theme suite's "reduced motion: a close is drawn at once, nothing slides" check failed now and then in WebKit (Pixel
+most), on base 93722290 too (3 in 8). The cause was in `ui/row-motion.ts`, not the test: it kept the
+`prefers-reduced-motion` MediaQueryList made at its start, and WebKit's kept list still said no-preference for a moment
+after Reduce Motion came on (a fresh `matchMedia` already said reduce), so that change slid its rows 34–42 px. It's now
+asked afresh at each change of the rows (only at a click, a close or an open: never per frame). And when rows change
+with no slide this time (Reduce Motion, a hidden page, a drag), a slide still running from the change before is stopped,
+so the rows are at their own places instead of sliding on toward old ones. (Found with the rows' own animations: the
+sidebar is in a shadow tree, which `document.getAnimations()` doesn't list.) Check: tests/theme/intents.test.ts "a slide
+still running when a change is drawn with reduced motion" (failing in all 5 themes × 2 engines before; 6 of 6 and 3 of 3
+whole-file runs green after).
+
+## Every pane of a split draws active (2026-11-21)
+
+Decided by Tirth, as polish on the pane click tap: in a split only the window server's front app drew active. The
+other panes showed as inactive windows do (Safari's grey toolbar and selection, no caret, `document.hasFocus()` false,
+no `:focus`), so a split read as one live pane and one dead one. Now every pane whose app isn't the front one is kept
+active (`app/platforms/macos/shell/PanesActive.swift`, `app/platforms/macos/private/PaneRecords.swift`).
+
+The research (2026-11-21, its scratchpad's `allfocus/`: two probe apps, experiments e1-e6, WebKit's sources, yabai's
+`window_manager.c`). AppKit decides inside each app whether it's active and which window is key, from the event records
+the window server delivers to it. Margin sends a pane's app two kinds with SkyLight's `SLPSPostEventRecordTo`, as yabai
+and AltTab do: an *application activated* record (an AppKit-defined event, type 13, subtype 1) and the *make-key* pair
+(a left mouse down and up whose byte 0x3a is 0x10: the window made key, no click). That app then takes itself for the
+active app and makes that window key, while another app stays the window server's front process. `NSApp.isActive`, the
+key and main window, the active appearance, WebKit's `WindowIsActive`/`IsFocused`, `document.hasFocus()`, `:focus`, the
+blue selection and the caret are all real. A *deactivated* record (subtype 2) gives it back cleanly. It held 10 s and
+more, and timers and `requestAnimationFrame` aren't throttled by inactivity anyway (only by visibility). Inside an app
+that's already active, the make-key pair alone doesn't move its key window: the old one's app is deactivated, then the
+new one activated and made key, 40 ms apart (yabai's recipe). `SLSSetWindowHasKeyAppearance` and `SLSSetWindowActive`
+sent from another process do nothing.
+
+- **Who.** In a split shown in Margin's hosting window on the current Space (the scene the pane click tap is told,
+  `MarginWindowController.paneScene`), every visible pane whose app isn't the front one, one window per app: the one
+  focused last in it, else its frontmost pane. AppKit has one key window per app (WebKit's `isViewWindowActive` is
+  `isKeyWindow`), so two panes of the same app can't both be active; it's never tried. Margin in front (its menu, a
+  prompt): the focused pane's app counts as the front one, which draws inactive as it did (the keys are Margin's then).
+  Never kept: Margin itself, an app Margin doesn't host, a pane whose window isn't shown, an app quitting. An app with
+  a sheet or an alert up is kept as any other: its sheet draws active with its window, and the keys still go only to
+  the front app (the ring says which). A preview card open: nothing kept or let go for it. Its dim covers the split and
+  the card has the keys; the split's apps are left as they were until it closes (no records for a card's open and close).
+- **The keys and the menu bar** stay the window server's front process, the pane last clicked: the pane click tap makes
+  that pane's app the front one. A kept app takes itself for active, so Accessibility's AXFrontmost reads true and its
+  pane's window focused. The tap's "key already" fast path now needs the window server's front process to be that app
+  too (`SLPSGetFrontProcess`); otherwise the window server makes it the front one (`_SLPSSetFrontProcessWithOptions`,
+  kCPSUserGenerated, and the make-key pair), because AppKit's own activation, which AXFrontmost asks for, may be taken
+  for done in an app that believes it's active. The engine's own fronting (a press the usual way, the sidebar, a
+  layout) does the same for a kept app first. The keyboard follows the click, and the app that had it is kept from then.
+- **When.** Told the scene as it changes (only its panes' windows, apps, roles and focused window count: a drag's rects
+  every frame are nothing) and each change of the front app (NSWorkspace's activation; the tap's own word on a press it
+  focused, before NSWorkspace's). An activation only counts when its app is the window server's front process: an
+  activation by a record is never one, so a record can't start a loop. Applied once per main-queue turn, never through
+  the engine's operation queue: a front change re-asserts at once, whatever operation runs. An app the window server
+  deactivated since (it was the front one and another is now, or it was between two steps) is kept again. One kept and
+  still kept is never sent anything again. Nothing at rest: no timer, no polling, nothing per pointer move. A loop's
+  guard: an app kept more than 60 times in 10 s is left alone for the run, said once.
+- **Let go** (a deactivated record): its pane gone from the scene, or not shown, for 1 s (the tap's grace: a layout's
+  change takes the panes away for a moment, and an operation moving a window has it not shown for a moment). Released
+  at once when another app that Margin doesn't host comes in front, when its app is quitting (a row's close, Margin's
+  quit), and when Margin quits: sent and waited for before the quit's steps (`quitAll`), and again at
+  `willTerminate`. When its app quits, it's forgotten and nothing is sent. Margin's windows closed: the scene's gone.
+  After a crash: the marker (`hosted.json`, `keptActive`: pid, window, app, launch) lists the apps sent active since
+  they were last let go, written only when that list changes (a split's start and end, not each click). The next
+  launch's recovery deactivates each one that's still that launch, isn't the front app and still takes itself for
+  active (AXFrontmost; unread counts as yes). A record is never sent to the window server's front app (read just
+  before, on the records' own queue): it's active for real.
+- **The records** (`PaneRecords`): 0x100 bytes zeroed (AltTab: the window server reads past 0xf8 since 14.7.4), the
+  length 0xf8 at 0x04, the type at 0x08, the window's number at 0x3c, the subtype at 0x8a. **The launch check** builds
+  an AppKit-defined event (subtype 1, data1 and data2 set) and a mouse press and release with public calls (NSEvent),
+  reads them back as the window server's records (`SLEventRecordPointer`) and compares every offset. Any mismatch, or
+  any of the six calls missing, turns the part off for the run (today's behaviour), said once in the host's launch line
+  (`… ; panes active ok` / `panes active off: <why>`). The make-key flag can't be made with a public call: it's yabai's
+  and AltTab's, and the research's. A record the window server refuses (a nonzero result): off for the run, said once.
+  `defaults write com.unibox.margin MarginPanesActive -bool NO`: never kept, while a crash's leftovers are still let go.
+- **Off the main thread.** Records are sent on a queue of their own (`margin.panes-active`, user-interactive). The
+  front process is read inline, at about 2.7 µs a read, and made front inline: on the tap's thread for a press, on the
+  main thread for the engine.
+- **The ring says where the keys go.** Several panes draw active now, so Margin's ring around the focused pane is what
+  says where typing goes. `tests/theme/pane-ring.test.ts` measures it in all five themes, light and dark, in WebKit and
+  Chromium: on the focused pane only, at least 2 px, its outer edge at least 3:1 against the gap (WCAG 2.1 1.4.11).
+  Arcadia's and Liquid Glass's rings were the accent at 70% and 60% (2.4:1 and 2.1:1 in light), so both are the full
+  accent now. Arcadia's frame takes the space's colour (an accent ring fell to 1.9:1 in dark over a yellow space), so
+  its ring has a 1 px edge in the frame's own text colour (`--fg`). Material, Neubrutalism and Pixel pass as they were.
+- **Log:** `panes active: <id> kept active (its window <n> (pid <p>)); <id> let go (<why>; …) (the keys: <id>; <n>
+  kept)`, one line per step that sends anything; the tap's line for a kept pane: `… (its app, kept active, made the
+  front app by the window server): the click delivered`; at launch, the host's line `… ; panes active ok`; after a crash,
+  `panes active: a crashed Margin kept <n> app(s) active: <m> let go (deactivated), …`; said once:
+  `panes active: the window server refused a record (error <n>): off for the run …`, `panes active: off
+  (MarginPanesActive is NO) …`, `panes active: pid <p> kept active <n> times in 10 s (a loop?) …`.
+- **Costs (the stand-in):** a step at rest sends nothing and costs about 7-12 µs (unoptimised test build: the keeper
+  over four panes, or the engine's step with the front read and the hosts looked up). A front change costs one step
+  and three records for each app kept anew (the window server's work: microseconds each). No timer except while a
+  let-go waits out its grace. Memory: a few dictionaries keyed by pid.
+- **Risks and unknowns** (for the hand checks): app logic keyed on `isActive` (panels that hide on deactivate,
+  notifications held while active, an app that refreshes on each activation); input methods, dead keys and secure input
+  follow the real front app; the ~30 ms between the window server deactivating the app that had the keys and Margin
+  activating it again (the research's swap: 27-36 ms) may draw one inactive frame; real Safari's and Notes' behaviour
+  beyond the probes' (WebKit's own state matched them in the research); AXFrontmost reading a kept app's own
+  `isActive` (believed so: the crash recovery and the tap rely on the window server's word, and AXFrontmost only gates
+  the recovery).
+- **Checks:** `panes-active-tests.swift` (the records' bytes; the launch check against the window server's own record
+  as read on 27.2.1 and every offset moved; the part's own launch check; the keeper's every case; the engine on the
+  stand-in world, which keeps, re-asserts and lets go on every exit path, its marker and the next launch's recovery,
+  coalescing, and its cost), `pane-click-tests.swift` (`paneClickKeptTests`: a kept app's pane is never "key already",
+  the window server's way), `e2e-split.swift` (Margin's own window: the split kept, the tap's scene carrying it, let go
+  at the split's end and when the windows close), `tests/theme/pane-ring.test.ts`. The real screen: the `panes-active`
+  and `panes-active-crash` parts of `npm run test:screen` (Chameleon's `state` probe: AppKit's own word), and
+  TESTING.md M2.7 step 13i (Safari + Notes).
+- **Verified on the real screen (2026-11-21, build 7bb83541):** `panes-active` 29 of 29 (both active after every click
+  of 6 flips, the kept pane's inactive gap a median of 12 ms, most 13; let go on the split hidden and on Margin's quit;
+  idle with a split up 0.43% CPU, 0 idle wakeups a second, footprint 104 MB) and `panes-active-crash` 10 of 10 (killed:
+  the kept copy still active; the next launch lets it go). Safari + Notes by hand: Notes kept active beside Safari's
+  pane with the keys (both apps' AXFrontmost true, Notes drawing active); a click in Notes' pane gave it the keys and
+  kept Safari active, a click back on Safari's page 7.2 ms; keys typed then reached only Safari's field; Margin's quit
+  let Notes go before quitting the apps it opened. The click check now takes "already key while kept active" (no new
+  `becameKey` is logged for a window that stayed key).
+- **A real app's risk found by the screen run:** the make-key pair's location is NaN on purpose (the bytes yabai and
+  AltTab send). An app's own mouse monitor that converts the location to an integer traps on it: the first run crashed
+  Chameleon (`Int(locationInWindow.x)` in its local monitor) 40 ms after it was kept, now guarded in the test app. Real
+  apps rarely convert a monitor's location unchecked, and yabai and AltTab send the same record to every app they
+  focus, but a crash of a hosted app on being kept would point here first (`MarginPanesActive` NO turns it off).
+
+## A split that can't fit is refused before anything moves (2026-11-21)
+
+The real screen, 19:32:02: "Add to Split View" on the row of the Safari tab in front, Notes used just before it, both
+open in Margin's window. The library splits an added item with the item used last in its space besides it, so it made
+Notes + that tab (Notes first). Notes' window said 701 pt at least, Safari's 574, the page area 1264: they couldn't fit.
+The page's own room check let it through, the page laid Safari's pane at 949…1523 (past the page area and the display),
+Safari's full screen had no plan there, and each of five asks in 12 s made and dropped a Space of its own before failing;
+then both panes "failed" and the page showed the launcher.
+
+- **The page's check pairs as the library does** (`extension/shared/front-item.ts` `frontItemOf`, used by both
+  `app/shared/library/library.ts` `addToSplit` and `extension/ui/behaviors/split.ts` `refusesAdd`): the item used last
+  in the added one's space, not itself, joined to that item's split if it has one. It had measured the front tab beside
+  itself (574 + 574: fits). Its items are the closed ones (`keptTabs`) and the ones open in Margin's window, which the
+  app puts in `tabs` as rows of a number (`mid` the item: HostedSession `liveTab`) and takes out of the kept ones; the
+  menu names an open row by its number. Each add is said in Margin's log (`split add: com.apple.Notes 701 + web 574 +
+  gaps 8 in 1264 (horizontal): refused; apps known: …`).
+- **Margin.app checks again before any window moves** (`HostedSession.noRoom`): every pane within the page area (1 pt)
+  and at its window's known least (its host's as learnt, else its app's). One that isn't: the panes coming in leave the
+  split (main never; else the ones that don't fit; else the last pane), the person told ("Not enough room for … in Split
+  View"), the pane that had the keys keeps them, nothing asked of any window (`layout: split …: no room in the page area
+  … nothing moved`). A split's main that fails for room lets the newcomers go too, so main is shown again alone.
+- **A page area with no full-screen plan is never asked into full screen** (`HostEngine.enterFullScreen`): it fails at
+  once, "no room for it", which `leaveSplit` reads as no room. The no-plan log lines name the host's own page area, not
+  Margin's.
+- Checked: `tests/front-item.test.ts`; `tests/theme/split-view.test.ts` (the real screen's pair, both open by row
+  number, and Notes closed: refused; in 1400 pt: added; each failing on the code before); `split-real-use-tests.swift`
+  (`splitRoomTests`; part 7: a pane past the page area, nothing asked, no Space made, the newcomer out, the item shown
+  before kept). On the real screen with the person's own items: refused by the page with its toast, Notes never opened;
+  and, with the page check bypassed (the build before), refused by Margin.app with nothing moved and no Space made.
+- **Open:** Notes' least as its tile says it changes while it goes full screen: 701×53 first, 501×300 ~90 ms later (its
+  folder column shown or not). Whichever came last is kept, so Notes beside a Safari tab is refused at 701 though Notes
+  can sit at 628 (it did, at 501). Taking the settled reading is a follow-up.
+
+## A pane narrower than its window is shown cut, with arrows (2026-11-22)
+
+Tirth (2026-11-21): rather than refusing an app or tab that can't fit in its split pane, "allow them in there but show
+however much can fit inside it", arrows on hover on the sides with more to show, and split limits like Arc's.
+
+- **Arc's limits**, read from Arc 1.174.0's binary (its `ARCUI.SplitViewController`): `minimumPaneWidth` 220 pt, a
+  constant, also the least height stacked; a divider's drag snaps to an even split of its two panes within 14 pt, a
+  haptic only when the drag is slower than 120 pt/s; 4 panes at most (Margin had that). Now `PANE_FLOOR` 220×220 for
+  every pane (`ui/behaviors/split.ts`), whatever its window needs; adds and axis toggles refused only where 220 each
+  and the gaps don't fit; Margin.app's own check before any window moves (`HostedSession.noRoom`) uses 220 too.
+- **The cut pane** (docs/PEEK-SPLIT.md §4b): its window at its own minimum within the display (margin-core
+  `layout::cut`, the engine's `frame`), Margin's hole the pane, kept under the panes beside it (`frontVisible`), its keys
+  without a raise (kCPSNoWindows + the make-key pair), its presses delivered to its window as records by the pane click
+  tap (never routed: routing raises the clicked window), put back under them if its app comes in front another way.
+- **Arrows**: a slide (its tile's rect, 150 ms eased) to its other alignment, which shows that side whole. First built
+  as "slide where there's room, reveal over its neighbours at the display's edge" (Tirth's choice, 2026-11-22); then
+  Tirth asked to move the window to the screen's edge properly instead (2026-11-22, below), and the reveal went.
+- **Past the display's edge** (2026-11-22): the earlier finding that macOS ejects a tile past the display's edge was
+  wrong. Read in AppKit (`_NSFullScreenContentController reshapeContentForTileFrame:…` and its delayed block): a window
+  leaves its tile only when it can't take the tile's size, never for its position. Measured with a Chameleon test copy
+  (Margin paused so its keeper didn't put it back): tiles 388 past the right edge, 300 past the left, 400 past the
+  bottom, 300 past the top, each kept, drawn clipped at the edge. So a cut pane's window lies away from the other
+  panes (`layout::cut` with no alignment asked): an edge pane's rest goes past the display's edge or under the sidebar,
+  under no pane (nothing kept behind, nothing polled, its focus and presses as any pane's); a middle pane's under the
+  pane before it (a chain, ordered by `tuckedOrder`); a slide that would put two cut panes over each other's isn't
+  offered. Only tiles may pass the edge: a window entering, a member and tiles off keep a frame within the display
+  (`layout::within`), since a full-screen Space's reservation can't be negative (`layout::plan`); `layout::tile` takes
+  a page past the area now.
+- **Research that ruled things out** (2026-11-21/22, on the real screen with Chameleon test copies and a Safari test
+  page; lab dev hook on `lab/split-overflow`, never merged): a window-mode window can hang off the edge but draws above full-screen tiles (its hidden part over the
+  neighbour), shows its title bar and stops short of the Dock; a tile's own Space ignores `SLSBridgedSpaceSet
+  {Transform,Shape}Operation` (stored, never drawn); Codex's two-root scene (two full-screen Spaces shown together,
+  clipped and translated) draws the second Space only while it's the current Space here too, and any click in the
+  other one blanks it, so every click in Margin's Space would have to be re-delivered: kept as research. A click on a
+  window behind another, routed by the window server, raises it; the same click as the window's own record doesn't.
+- **Cost**: nothing at rest. The tap now also hears every button's drags and releases while a split is up (one
+  comparison each, a cut pane's taken); `paneHover` is said only as the pointer enters or leaves a cut pane; a slide is
+  ~9 rects of ~0.2 ms; a press on a cut pane lying under another reads its window's origin once. The poll's look at the
+  window order runs only while a cut pane lies under another (not for edge panes). No timer.
+- **Seen on the real screen** (2026-11-22): Chameleon past the edge, slid both ways; Notes (pane 328, window 501) past
+  the edge beside Safari, slid under Safari's pane and back; the screen suite's `cut-panes` part, 14 of 14.
+- **Open**: a second display beside this one (none connected yet): a tile past the edge should stay clipped to its own
+  display.
+
+## The UI and its themes move to app/shared/ui (2026-11-22)
+
+- `extension/ui/` is now `app/shared/ui/`, and `extension/themes/` is now `app/shared/ui/themes/` (Tirth, 2026-11-22;
+  docs/CORE-REFACTOR.md "Between steps 1 and 2"). In the hosted design, Margin's own window draws both: the overlay
+  page on the Mac (`app/shared/host/`), and on Windows next. The extension's content scripts, new-tab page and away
+  page use neither.
+- **A pure move**: the built extensions and `dist/app/` are byte-for-byte the same as before, except the themes'
+  README, whose path text changed. The theme files are still copied into each extension build's `themes/<id>/`
+  (`scripts/build.ts` buildTo), because the background still reads the active theme's package from its own URL
+  (`background/theme-package.ts`). The background's theme settings and package import, and the model's theme
+  settings, import from the new folder until step 4 removes them.
+- **The test and CI rules follow it**:
+  - The CI plan and `npm run test:quick` treat `app/shared/ui/` as the theme suite's runtime, the same as
+    `extension/ui/` before. It still reaches the e2e suite and the WebKit host.
+  - The manifest tests also scan the UI's files for third-party URLs, `corner-shape` and fetches in themes.
+  - `tsconfig.json` type-checks the new folder.
+- **margin-ffi moves too** (Tirth, 2026-11-22): `app/shared/ffi/` is now `app/platforms/macos/ffi/`. Only the Mac's
+  Swift needs the C interface; the Windows shell and the connector use margin-core directly. A pure move: the
+  workspace's member list, the crate's path to margin-core, build-core.sh, safari.sh, and the app tests' and the
+  WebKit host's `-I` paths. The library, its header and its module map are otherwise the same.
+
+## Chrome, Edge and Windows on the hosted design: the plan and its first steps (2026-11-22)
+
+Asked by Tirth: Chrome and Edge hosted as Safari is, on the Mac and Windows, and the Windows shell on the hosted design.
+The plan is docs/HOSTED-WINDOWS-CHROMIUM.md (its §9 lists what's Tirth's to decide, §10 what the Windows side needs from
+the core's session work, which isn't re-implemented here). Built on `feat/hosted-windows-chromium`; mine, not asked:
+
+- **The copy knows the windows the app hosts** (`hosted.ts` `isHosted`: made for the app with `newWindow { hosted:
+  true }` or `{ mark }`, or an item shown there). Chromium's own "Margin full screen" (`followFullscreen`) leaves them
+  alone: it took a window the app put in full screen out of it and back in (the headless Chromium e2e reproduced it,
+  the copy's `windows.update` to normal then full screen; it passes with the guard). They also count as in full screen for
+  "only in full screen" (Margin's keys in a hosted window on Windows, which is a normal window there). Safari's paths
+  are unchanged: its build differs by these lines only, none of them reached in Safari.
+- **A window found by its mark on Windows:** `newWindow { mark }` opens Margin's new-tab page with `?mark=`, titled
+  `Margin <mark>`, so the window's title carries it (Chromium titles a window after its front tab) until `hostShow`
+  replaces that page. A title is exact where bounds can be ambiguous (restored windows at the default size); bounds stay
+  the fallback.
+- **One contract for every app that hosts a browser:** margin-core `hosted_browser` builds each request as the copy
+  checks it (vectors shared with the copy's tests, `tests/fixtures/hosted-browser.json`).
+- **Windows hosting:** a hosted window lies directly under Margin's window at its rect (`SetWindowPos` after Margin's
+  window, never activated); the page area is cut from Margin's window region so clicks reach it natively (no pointer
+  poll); a click in the hole raises it and it's put back under at once (the person's input within 0.5 s is never a
+  loop; an app raising itself is the core's loop guard's); its taskbar button removed while hosted; parked = hidden; a
+  person's minimize or maximize of the hosted window is Margin's to follow; an elevated app is refused; a window that
+  can't be resized is centred; one with a minimum goes to `layout::fit`. Windows' reads are final (no Space transitions):
+  one read counts as the reconciler's two. Browsers on Windows take the framed route (their own full screen, held at the
+  rect) and step down to the covered route (their toolbar under Margin's window) after two placements that didn't hold.
+- **A real-PC check before the session exists:** `margin.exe --host-check <program | window>` runs the mechanism alone
+  (docs/windows/UNVERIFIED.md "Hosting (the hosted design)"); the default launch is the overlay shell, unchanged.
+- **Verified:** `tests/hosted-chromium.test.ts`, `tests/hosted-tabs.test.ts`, `tests/e2e/chromium-hosted.test.ts`
+  (headless Chromium), margin-core's and margin-windows' Rust tests (the adapter against a simulated Windows), clippy
+  clean for `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. **Not run on Windows**, nor with real Chrome or Edge
+  hosted on the Mac.
+- **One setWindowState builder** (the merge of feat/hosted-windows-chromium, 2026-11-22): step 1 had added `land` to
+  protocol.rs's `HandoffRequest::SetWindowState` for the Mac's hosted windows, while the Windows branch built the same
+  request in `hosted_browser::Ask::SetWindowState`. The Mac's FFI (`margin_link_protocol`'s `setWindowState`) now uses
+  the hosted one, and `HandoffRequest` is the old handoff's only again. Its times are whole milliseconds written as
+  integers (`protocol::number`), as every other request's are: it had sent `1800000002000.0`.
+
+## Arcadia's "a settle caught" test: held within the settle's own travel (2026-11-22)
+
+- It failed now and then in the gate and never alone: "held where it's drawn (-80.35 → -82)", a 1.65 px gap against
+  1.5 px allowed. The swipe was right. WebKit reads a running transition at the moment it's read, and the catch
+  (`catchSettle`) reads it itself a little after the test's read, then holds it there to within 0.01 px. The catch's
+  dispatch takes 15-23 ms; on a busy machine the settle moves on in between. Earlier "passes alone" runs with
+  `--test-name-pattern` ran nothing (this file's tests are subtests), so they proved nothing.
+- Now the harness (`rtPhaseRead`) sends the phase inside the test's own frames, with no extra frame: an extra one
+  moved the early catch past halfway. Each read carries its time, and the frame before is read too. A hold passes
+  within 1.5 px, or in the way the settle was moving, as far as its speed carries it in the dispatch's time.
+- Checked: a jump of 30 px or of 5 px against the motion, put into `catchSettle` by hand, fails the test. The code as
+  it is passes 3 of 3 alone and 8 of 8 with four runs at once.
+
+## A sidebar click hands the keys back: k1 checks that, as Arc does (Tirth, 2026-11-22)
+
+- The screen suite's k1 had failed since 2026-11-17, and not as a flake. A press in Margin's panel moves the keyboard
+  to Margin. macOS does that for any press in another app's window, even a non-activating panel that refuses to be key.
+  So the hosted app's window resigns key, and Margin hands it back 80 ms after the release (`afterPress` →
+  `keysBack`): 185-193 ms in all on the real screen. The app stays the front app throughout, and a key typed meanwhile
+  reaches it (the key relay).
+- Tirth: as in Arc, where a click in the sidebar takes the focus from the page, a feature, not a bug. Margin gives
+  the focus back to the app shown, so its field is focused again after the click.
+- k1 now passes when every resign is followed by the window becoming key again within 0.5 s, and the window is key
+  at the end. The rest of the check is unchanged: the app front, the panel's press, the key reaching the app, Margin
+  never active.
+- Not done: taking presses on the panel through an event tap so the keyboard never moves (mouse events only, no
+  Input Monitoring). Its cost was put to Tirth, who chose the hand-back.
+
+## Core refactor step 2, part 9: the hosting rules the Swift had twice, the core's only (2026-11-22)
+
+- Each Swift copy now calls the core's one rule by a typed call (no JSON, nothing allocated): `HostLayout.near`
+  (`margin_layout_near`, its 42 callers unchanged; the unused `WindowKinds.near` deleted), the toolbar strip at a
+  window's top (`kinds::toolbar_of`, new, the 150 the core's `STRIP_MAX_HEIGHT`; `toolbarOver`'s height filter reads
+  the core's constant; `Options.stripMaxHeight` deleted), the backed-out attempt's strips (`kinds::is_strip` with the
+  host's own placement), the sidebar and a window over it (`front::sidebar`, `front::covers_sidebar`), the 0.1 s wake
+  (`schedule::wake_due`), the same-launch 2 s rule (new `exits::same_launch`, five copies), `toolbarRoom`'s 52
+  (`layout::TOOLBAR_ROOM`; the UI's `SAFARI_TOOLBAR` stays a copy, a core test holds the two equal) and `nextPoll`
+  (typed: it was a JSON call every poll).
+- Kept as each copy had it: the ±2 pt toolbar slack, the edges included (`<=`), `abs(a - b) < 2` for a launch. The
+  crash recovery's own launch rule differs from the other four (marked with a launch time and the running app's
+  unread: not the same) and keeps that difference in its caller, said there.
+- Checked before the Swift went: Rust vectors at every edge (zero-size, touching, exactly at and a hair past each
+  tolerance), and the deleted Swift against the core over 4 million vectors (a scratch run): no difference. One edge
+  differs and is accepted (the design's note): `is_strip` with no area or no page width known answers by the side
+  known, where the engine's copy took any width; the engine never asks without a placement (every open, layout,
+  show and page change sets it first). The app's 2038 checks pass unchanged.
+- `liveFollowers` and `liveFollowersList` share their candidates and their "follows a drag" rule; the list's own
+  difference stays explicit (the shown ones only, the one shown first). `tucked` in `sayHostedWindows` waits for
+  part 3.
+
+## Core refactor step 2, part 1a: each host's state in the core (2026-11-22)
+
+- The engine's core (`HostCore`, Rust) gains `model` (host/model.rs): every host by a `u32` handle, made with its
+  `Host` and freed in its `deinit`. The fields the design lists for a host (window, role, rect, slid, phase, mode,
+  resizable, placedPage, member, tiled, noTiles, minSize, narrowestHeld, unread, strays, returns, offScreenReads,
+  offPageReads, the off-screen look's tries and says, visibleAt, reentries, reentrySaid, fullScreenFailures,
+  retryFullScreen, gone, goneAt, freshFront) are now computed properties of `Host` reading and writing the core by
+  typed calls (`margin_model_get/set`, `_real`, `_rect`, `_times`), under `HostCore`'s lock. No decision moved; the
+  engine's code and the tests are unchanged (the app's 2038 checks pass).
+- `Host` is a class, so every reference reads the same host, as before; nothing copies one. Its starting values are
+  the core's `HostState::new` (the same ones). `tile` stays the Mac's (the tile's id) and sets the core's `tiled` as
+  it changes; `pid` stays a `let` beside the core's copy (it never changes). A slide is kept as its pane and two
+  alignments; a minimum size as a rect at 0,0 (zero sizes kept as sizes).
+- Nothing allocated in the core on a field's read or write: a margin-ffi test (tests/no_alloc.rs, a counting global
+  allocator) checks the model's calls and every typed rule the engine asks per frame, wait or poll. Lists of times
+  have room for 8 from the start (the engine keeps at most 4). On the Swift side, a list's read makes a Swift array,
+  as the copy of a stored one did not: only on strays, re-entries and the off-screen look, never per frame.
+- Left for 1b, deliberately: the engine's own state (`visible`, `shown`, `shownAt`, `focusWanted`, `placement`, the
+  hold, `applyingLayout`…) and `options`' `configure`. Nothing in the core reads them before the decisions move, and a
+  computed `visible` would build its dictionary at every one of its many reads (more CPU for no gain). The app's
+  version beside its key waits for part 5 (the minimums are the only reader).
+- Not measured here (no screen suite on this branch): `idle-cost` and `live-resize` before and after, as the plan asks
+  before the merge.
+
+## Core refactor step 2, part 5: every app's window minimum in the core (2026-11-22)
+
+- What's kept per app and version (minimums.json beside routes.json) is the core's (host/minimums.rs `AppMinimums`,
+  on the engine's model): the load's filter (0 ≤ side < 20000; a file not of the shape taken as none, as the Mac's
+  decoder refused the whole file), the version gating (none for another version than the one running; a version not
+  known: the one kept holds), remembered only when new for that app and version (an unread version kept as "?").
+  Each host's own (host/model.rs): its tile's minimum rounded up, a tile that says none keeping the one read (said
+  once: `min_unread_said`, a model field now), the narrowest held, taken for its width when it leaves a tile with
+  none said; a pane's and a target's minimum (its own, else its app's kept one; a window-mode host's none).
+- The file's format is unchanged: Swift reads its bytes and hands them to the core (`loadMinimums`, as
+  `loadRoutes`), and writes the core's answer atomically (`saveMinimums`, sorted keys, as `saveRoutes`). A Rust test
+  loads today's exact JSON (whole numbers without a point, as JSONEncoder wrote them) and writes it back the same.
+- The versions stay read by Swift (`sys.appVersion`, once per process, its cache): the core never reads one. A host's
+  version sits beside its key in the model, set the first time a decision needs it (the core answers "its version
+  not read yet" only when a minimum is kept for its app), so the OS is read exactly when it was before. A target
+  with no host: Swift reads the running app's version only when the core has a minimum for that app.
+- Not as the design sketched: a host's app minimum is looked up by its key at each read (a map of a few entries, no
+  allocation) rather than cached at `add` and `remember` (no copy to keep in step). `appKey` stays Swift (it maps
+  the shell's `HostTarget`; the key is given to the model at `add`, as 1a does). `shownMinimumWidth` moves with 1b
+  (it reads the visible set).
+- Checked before the Swift went: the deleted Swift against the core over 480,000 generated vectors (a scratch run:
+  40,000 files of every shape, 200,000 known/remember steps, 240,000 learn/held/leave steps): no difference. The
+  typed calls allocate nothing (no_alloc.rs: a pane's minimum, a tile's read, the narrowest held, a kept one asked).
+  The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 1b (first of two commits): the layout of Margin's page area and its decisions in the core (2026-11-22)
+
+- The engine's own state is the core's now (host/model/visible.rs, on the model): the layout (`visible`: each host's
+  rect, role and place back to front, ids a layout names before their hosts exist), the one shown and when it was
+  shown, the focus asked, the placement, a whole layout being applied, the hold, the layout's held hosts; and which
+  host the engine holds as each id (`setHost`, the five places `hosts` was written, tells the core).
+- The decisions read there, each asked at the point it's made today (no plan made up front): the visible hosts'
+  order (z, the one shown last among equals, then the id's bytes: ids are ASCII, so as Swift's `<`), visible, main,
+  alone, a host's own page area and placement, the poll's rank, the one shown before another comes in, a card below
+  its minimum (with part 5's tri-state: the version read only when a kept minimum needs it), the one shown's minimum
+  width; `shown`'s follow (`set_shown`: the setter asks it, then tells Margin's window, as the didSet did), an
+  operation's end (`settle_begin`, then the shown set, then `settle_focus`, then the shown set again: two calls
+  because the setter's own effects run between them as before; "did the layout change" by a generation count, no
+  copy), applyLayout's refusals, its start (`layoutBegin`: the layout, arriving, held, deferring, each one's role and
+  rect), the held ones laid out again, its end (the one left alone at the page area), its focus. The per-target
+  bookkeeping between them (a failed one out of the layout, a newcomer's time and its off-screen word) stays where it
+  was, the layout's entry removed by a typed call.
+- `holdLayout` and `pageRectChanged`'s copy are one hold (`hold`/`release`), its two kinds' differences kept as they
+  were and named: a placing's hold (only beside others, never inside a layout; puts each one's role and rect back;
+  the focus kept) and a page area's (whenever several are visible; keeps only those still laid out; the host placed
+  shown when nothing is). The fronting after it stays the callers' (a page's always, a placing's with several).
+- `options` is sent to the core in its `didSet` (one JSON call per change; only the tolerance is read there so far:
+  the other options join as their parts' decisions move). `shown` keeps its id here as last set (it's read hundreds
+  of times an operation; a string out of the core each read would allocate): only its setter writes it, through the
+  core. `visible` is a computed dictionary built from the core for the tests only; the engine reads the layout by
+  typed calls. `livePage`, `belowSaid`, `liveCandidates` and the cut panes' state stay Swift for parts 3 and 6 (their
+  readers move there); so does `focus`'s card rule (not in 1b's list).
+- Checked before the Swift went: the deleted Swift against the core over 238,268 checks in 4,000 generated runs of
+  40 operations each (28,262 whole layouts with refusals, deferring, newcomers made mid-layout, failures, relays,
+  parkings, the alone rule, the focus; both holds with changes while held; settles; shown set and cleared; every
+  query after every step): no difference. The harness was itself checked by mutating the old Swift (a tie's order,
+  the noTiles rule in deferring, the hold's focus, the slide's reset, the page hold's filter, the focus kept with one):
+  each caught. The typed calls allocate nothing (no_alloc.rs: every read, an operation's end with nothing to change,
+  the shown set to itself, an entry set as it is). The app's 2038 checks pass unchanged.
+- The core also gains `bring_in` and the window-mode frame (`layout::inside`, `window_frame`, `at_page_area`) with
+  their Rust tests; the Swift switches to them in the next commit (one adds, the next deletes, as the design asks).
+
+## Core refactor step 2, part 1b (second commit): how a host is brought in, and a window-mode window's frame (2026-11-22)
+
+- `bringIn`'s tree is the core's (`bring_in`), asked at each of its four points in turn, between the same waits as
+  before: its window gone (reopen), a new app's window taken first, its route (full screen again after a failed one,
+  window mode, a tile held below tiles placed again, a tile sized first), then switched in or placed (for another
+  page area: said). The facts only the Mac has (a new one, an app's, taken, retrying, made ready out of sight) are
+  passed as bits. The full screen again's model change (its mode, its retry spent) and the held tile's forgotten page
+  are made by the core as it decides; the marker's save, the log lines and every wait stay where they were.
+- A window-mode window's frame is the core's (host/layout.rs `inside`, `window_frame`, `at_page_area`: the one the
+  Windows thread asked for): centred at whole points (Swift's `rounded()`, half away from zero, as Rust's `round`),
+  never past the page's top left; the page area for a resizable one, its own size centred for a fixed one; nothing
+  to set when it's there, or placed before and at its own limits centred. The live pump's window-mode target uses
+  the same `inside`.
+- Left in Swift: `visibleHost(at:)` (a loop over the window server's bounds and each pane's frame, part 3's), the
+  reopen and take themselves, and the gone check after the reopen (it reads whether the engine still holds the host).
+- Checked before the Swift went: the deleted Swift against the core in the same scratch run as the first commit's
+  (bringIn's tree at every point with every fact and model state, in the 4,000 runs; the window-mode frame, its
+  "there" check and the centring over 2,000,000 generated rects at and around each tolerance, zero sizes and
+  half-point centres included): no difference. Rust tests pin each point and the frames' edges. The app's 2038
+  checks pass unchanged.
+
+## Core refactor step 2, part 3 (first of two commits): where each window goes and cut panes in the core (2026-11-23)
+
+- The core gains the Mac's pane rules (host/model/panes.rs, on the model): a host's window frame for a page area (window
+  mode and a card: the page area; a split's pane cut at its window's minimum, at its slide while its pane is the one it
+  was slid in, held within the display unless a tile; else `fit` at its own minimum), its placement fitted and as its
+  own full-screen Space reserves it, its tile's rect, whether it's cut, a cut pane's sides, the slide that shows a
+  side, the panes its window lies under (at its frame, or at a frame given: the drag's, as `sayHostedWindows`' copy
+  asked), whether it's tucked, the order that keeps each behind the ones it lies under (the loop's fallback as
+  given), whether its window is over a pane it lies under in an on-screen list, and a slide's frames (`slide_rect`:
+  ease-out cubic over the slide's time, the last when the time is up; `slide_step` adds its tile's rect). The page
+  area of a drag being followed (`livePage`) is the core's now (the frame reads it). Typed calls, nothing allocated
+  (no_alloc.rs: each of them on a cut pane whose minimum is its app's kept one).
+- CGRect's edge rules, as these decisions were written and measured with, are the core's `geometry::cg` (standardize,
+  meets, inset, union, intersection, equal): a zero-size rect meets one it starts in or at the start of, touching
+  edges don't meet, an inset past the size is none (CG's null), a union keeps a zero-size rect. Fitted against CGRect
+  itself over 4,000,000 generated pairs of whole and half sizes (zero and negative included): the same answers. The
+  rest of the core keeps `Rect`'s own (a zero size never meets), so nothing else changes.
+- A host's minimum read by these rules may be its app's kept one with its process's version not read yet. Its answer
+  then uses that one (what an unreadable version answers) and notes the host (`versions_wanted`, read in the same
+  lock); the engine reads each noted host's version through its own `minimum` (once per process, as before), sets it
+  and asks again, until nothing new is noted. So a version is read in the same call it was read before, for the hosts
+  whose minimum that call reads, and the answer is the one the Swift gave. An unreadable version is read once a call
+  (the Swift read it at each look within a call): the same answers, fewer reads.
+- Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the next commit.
+
+## Core refactor step 2, part 3 (second commit): the engine asks the core where each window goes and of its cut panes (2026-11-23)
+
+- `frame`, `entryFitted`, `tileRect(for:)`, `isCut`, `cutOf`, `slideFor`, `lyingUnder`, `tucked`, `tuckedOrder`,
+  `overPaneItLiesUnder` with the poll's list, the `tucked` copy in `sayHostedWindows` (now `tucked(h, at: window)`) and
+  the drag's page area are the core's, asked at the same points; `paneFrame`, `paneMinimum`, `hidden`, `slidFrame`
+  and the Swift `livePage` are gone. `fitted` stays a two-line Swift composition (its placement as given, the core's
+  frame in it), so a placement handed in keeps its own rects exactly. `overPaneItLiesUnder` without a list still asks
+  the window server per pane (`windowBehind`), the core's panes in hand.
+- The slide: its decision reads the core (the side allowed, its alignment, tucked before and after: the same calls
+  at the same points), and each frame's rect and tile rect are the core's from the time it is (`slideStep`), sent by
+  the engine; the frame's pace is the same sleep of one `liveFrame`, the last frame when the slide's time is up, as
+  before. No new wait.
+- One Swift helper (`versioned`) makes every such call read a noted host's version through `minimum` and ask again
+  (the first commit's note). Nothing allocated on the hot path: a frame is one typed call (the Swift's was a dozen:
+  its fields, the placement, the minimum, `near`, `cut`, `within`).
+- Checked before the Swift went: the deleted Swift (copied verbatim, `self`'s members aside) against the engine's new
+  calls on two cores built alike from 100,000 generated worlds (1 to 5 hosts, every role, mode and phase, rects on a
+  grid of touching edges, zero and half sizes and 5% anywhere with negative sizes, slides on their pane, beside it and
+  elsewhere, tiles and tiles off, own minimums and their apps' kept ones per version with readable and unreadable
+  versions, a drag's page area, tolerances 0 to 3; every query for every host and side, given placements, frames
+  given, on-screen lists with missing windows, tucked orders of random subsets, 400,000 slide frames): 17,190,982
+  checks, no difference, the versions read at the same calls. Two placements given with a negative height answer
+  standardized (the same rect by CGRect's `==`; every reader of a frame standardizes, and no caller hands one in).
+  The harness was itself checked by breaking the old Swift on purpose (a slide's "shows more" at equality, no inset in
+  "lies under", the crossing rule without its cut check, tiles off ignored, the loop fallback reversed, an alignment's
+  tolerance at equality, the ease's exponent off by 1e-7, the slide kept on another pane, a version never read): each
+  caught. And with the core's "lies under" on `Rect`'s own edges instead of CGRect's: 4,406 differences, so the
+  vectors reach the zero-size and touching cases. The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 2: the visible windows' order in the core (2026-11-23)
+
+- `frontVisible`'s decisions are the core's (host/model/order.rs): the order wanted (the cut panes lying under others
+  behind every one they lie under, the focused one too when it's cut, then the others, then the focused one), the
+  pairs whose order shows (`overlapping`: each window's frame with its bounds, a full-screen one with the toolbar's
+  room above it, overlapping past the tolerance; the room is an option sent with the tolerance now), the pairs out of
+  order in the window server's, and the plan: the keys only; or the raises that fix two others out of order without
+  going over the focused one, then the keys; or every one from the first out of place that overlaps another, back to
+  front, the cut ones too only when two cut ones are out of order, then the keys for a cut focused one or the confirm
+  (waited for, or out and back at once for a fresh one). Each raise is over the cut pane it lies over (`raiseOver`) or
+  plain.
+- The one up-front plan the design allows, because the Swift also decided everything before its first raise: the
+  engine reads each wanted window's bounds and the window server's order once, asks once (JSON `frontPlan`, a fronting
+  at a time, at most four hosts), then raises in its order. One difference, in a race only: the Swift re-evaluated
+  "is it tucked" and "the cut pane it lies over" between its raises (lazily, in its loops' filters). They read only
+  the model, and no operation changes it inside a fronting (they wait for the serial queue); what can, between two
+  raises, is a drag of the sidebar's edge begun or followed then (`dragging`, `follow`: not serial; a new minimum read
+  at its start, its page area per frame). In that race the Swift mixed the state before and during the drag; the plan
+  uses the state before the first raise throughout, as the design accepted (Tirth's "decides first and then acts"). The confirm's check (every `memberEvery` for up to `orderWait`) is typed
+  (`margin_order_top_behind`, nothing allocated) and keeps nothing in the core between calls: the plan's own windows
+  and the hosts overlapping the focused one are handed to it, so two frontings can't read each other's.
+- "Lies under" is one rule (panes.rs `lying_under`; `lies_under` for a pair): the tucked ones, their chain, the
+  raise over, and the poll's look all read it. The window server's order of the wanted windows is the core's rule
+  (`server_order`, also for the log line); the Swift `overlapping`, `violated`, `serverOrder`'s filter and
+  `tuckedOrder`'s wrapper are gone. The ladder after a failed confirm (raise again, Safari's copy, out to a private
+  Space and back), each raise and its waits stay Swift: mechanism.
+- Checked before the Swift went: the deleted `frontVisible` decisions (copied verbatim, each raise, the keys and the
+  confirm recorded instead of done, with the old Swift pane rules under them) against the engine's new path on two
+  cores built alike from 200,000 generated worlds (part 3's worlds with more hosts shown, toolbar rooms 0 to 100,
+  bounds on, beside and away from each frame, on-screen lists with others, missing and twice-listed windows, unread,
+  fresh hosts; four confirm reads each): 1,359,235 checks, no difference, the versions read alike (raises over a cut
+  pane in 39,530 worlds, the focused one seen behind in 55,198). The harness caught each deliberate break: the cut
+  pane raised over found first instead of last, no toolbar room above, the overlap at equality, the fix set ignoring
+  the focused one's overlap, the tucked chain reversed, an unread order taken as in order, the old "lies under"
+  without its inset, the loop fallback reversed. Two candidate breaks turned out to be no change at all ("tucked"
+  before "lies under", equal places in the order) and were replaced. Rust tests pin the order's rules (side-by-side
+  panes keys only, a card raised then confirmed, fresh, the toolbar's room, a cut pane behind with its keys, nothing
+  over the focused one, two cut panes out of order). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 4 (first of two commits): the budgets and the full-screen ladder in the core (2026-11-23)
+
+- The four budgets of Margin's own corrections that outlive a show are the core's (host/model/budget.rs, on the
+  model): a stray's returns (filtered, this one in, then checked: past `returnsMax` within `returnsWithin` the list
+  cleared and the host parked, said each time), the re-entry into full screen (filtered, checked, then in; said once,
+  a re-entry made resets the said), off screen in place (once a show, said once a show) and elsewhere (said once until
+  it's newly visible), one list of tries for both, and a cut pane's repair (3 within 5 s or 3 in a row that didn't
+  take; said once and held until its order is seen right). Each keeps the Swift's order of filter, check and append;
+  the engine asks `spend` at the point it checked, and says the line the answer names (the log lines word for word,
+  their counts the core's). `returnsMax` and `returnsWithin` are sent with the tolerance (`configure`).
+- A cut pane's repairs stay kept by its id, as the engine's dictionaries were (a host made again with the same id is
+  still held until its order is seen right); the rest by handle. The poll's "seen right" is typed and allocates
+  nothing (no_alloc.rs); a cut pane's first repair keeps its id (one allocation, rare).
+- The retry-once full-screen ladder stays per host and per run (Tirth, 2026-11-22: it doesn't join routes.rs): a
+  failure backed out (`full_screen_failed`: tried again at its next show the first time), another window adopted
+  (`adopted`, asked before the host's fields change: a shown member's failures forgotten, retried when it can go full
+  screen and never failed), the loop guard's move to window mode (`moved_to_window`). The fields only these wrote
+  (the times lists, the said flags, the failures) are no longer `Host` properties; `retryFullScreen` is read-only.
+- One clock read per budget: the Swift read `sys.now()` once to filter and again to append, with no wait between; the
+  core takes one `now` for both (the same within the same turn of the run loop).
+- Checked before the Swift went: the deleted Swift (copied verbatim) against the core over 11,292,436 checks in 40,000
+  generated runs of 60 steps (three hosts or one, half the runs on one kind, times stepping by 0 to 60 s with exact
+  5 s and 30 s edges, limits 0 to 5 within 0 to 60 s, shows, the said reset, hosts made again with the same id, the
+  ladder's fields written by other paths; every answer, count and field after every step): no difference. The harness
+  caught each deliberate break (the stray's `<=` as `<`, the re-entry's said not reset, the in-place filter at
+  equality, the streak's limit, `adopted` without the member, "seen right" not clearing the said, the elsewhere's try
+  not appended, the cut tries' filter at equality). Rust tests pin each budget and the ladder. The app's 2038 checks
+  pass unchanged.
+
+## Core refactor step 2, part 4 (second commit): every budget's action counts toward the loop guard's hold (2026-11-23)
+
+- Step 2's one change of behaviour (Tirth, 2026-11-22). Before, a budget's action was Margin's own and the loop guard
+  never saw it: a loop between Margin and an app through a re-entry into full screen, a look off screen or a cut
+  pane's repair was limited only by that budget per host (3 in 30 s, 3 in 5 s), so N hosts could run N times that,
+  and nothing tied it to the guard's other actions. Now each of these actions is one of the guard's: a budget with
+  room asks the guard's per-second hold before it's spent (`LoopGuard::budgeted`, `HostCore::spend`). Twelve actions
+  a second across every host (reactions and budgeted actions together) hold every one of them for a second, as the
+  guard already did for reactions; held, the action isn't made and nothing of its budget is spent, so it's tried again
+  at the next look after the hold. A budgeted action never counts toward a host's stop (3 of the same reaction within
+  5 s): its budget is its own, and stopping a host for its own re-entry would move it down a route for no fight of its.
+- Which actions: the re-entry into full screen (`reenterFullScreen`; held: true, nothing else that turn, so no tile is
+  sized for a window out of full screen), the off-screen look in place and elsewhere (`backOnScreen`; held: nothing
+  this time), a cut pane's repair (`repairCutOrder`; held: false). Each held one is said in the log as the guard's
+  holds are ("… held: too many reactions this second across every host (N ms more)"). A stray's returns don't ask the
+  hold: their action is the guard's "put back" reaction (`guarded`), which already counts and holds; asking twice
+  would count it twice.
+- Counted whatever `planned` is (the cut repair runs as Margin's own plan, the re-entry makes itself one: honouring
+  `planned` would leave both outside, the opposite of the decision); off only with the loop guard itself
+  (`options.loopGuard`), as every guarded action.
+- When it can hold in real use: only past twelve such actions and reactions within one second, together. A split of
+  four is at most four visible hosts: each budget allows 3 within its time per host, so the budgets alone reach twelve
+  only if every pane of a four-pane split leaves full screen, or goes off screen, three times within the same second,
+  or with the reconciler's own corrections at the same time (a display change re-laying out four tiles while they
+  exit full screen). That's a loop, which is what the hold is for; Rust tests pin both sides (thirteen in a second
+  held, nothing of the held one's budget spent; a four-pane split at eight a second for two minutes never held).
+- The app's 2038 checks pass unchanged, and none of them sees a hold: run once with every hold's line marked on stderr
+  (the guard's own and the budgets'), none was reached. The screen suite's `behaviours-*`, `cut-panes` and
+  `real-apps-loop` parts are to show no hold they didn't before (not run here: the screen suite runs before the merge).
+
+## Core refactor step 2, part 7 (first of two commits): the poll's counts, strays and off screen in the core (2026-11-23)
+
+- The core decides (host/model/watch.rs, on the model), each asked where the Swift decided, typed per host per poll:
+  the poll's count of a window's reads (its app's close as two reads that missed, unread twice in a row gone, a read
+  resetting the count and its "gone"); a gone window's tree (gone already: nothing; being made: gone as any; its app
+  running: an app Margin started parked reopened at its next show, the one shown left to the reconciler's grace, else
+  gone as any; marked gone with its time when it waits); a window's place counted (the one shown outside Margin's
+  Space or with Margin's window out, a parked one in any Space, twice in a row; the one shown in no Space at once);
+  `strayed`'s verdict in its turn (both in place now: nothing; Margin's window out at the poll or now: park; its
+  returns spent: park alone; else bring back); `backOnScreen`'s (the look still missing something, before and after
+  the host's own read; in place or elsewhere with each one's budget, and what's made current and moved). A window's
+  Spaces go in as a place (unread, in no Space, Margin's alone, elsewhere): OS-neutral, Margin's Space the page
+  area's place on the Mac.
+- Every read stays where and when it was, in the same order: the window server is read lazily (a read only when the
+  decisions before it pass), so the one read inside a decision (a gone window's process, read again only when the
+  tree reaches it) is answered "read it" by the core and asked again with it. `strayed` reads its window and Margin's
+  again in its turn and asks the core with those fresh reads, as the Swift re-decided there. The guard's "put back"
+  stays the engine's call (its stop moves a host down a route: the Mac's mechanism).
+- Left in Swift, deliberately: `noteOffScreen`, `noteOffPage` and `leftFullScreenSign` (with `leftFullScreen`'s
+  guard). Each is a chain of window-server and Accessibility reads, each read only when the ones before it pass, ending
+  in a count reset or +1 of a core field (`offScreenReads`, `offPageReads`, which the reconciler reads) or a Mac sign
+  (a tile's window, Safari's toolbar windows, Accessibility's flag). Moving them would read eagerly (more reads every
+  poll: CPU) or need a call per read (more crossing than the rule). Also left: the on-screen look's own counters
+  (`offReads`, `offReadsOf`: the engine's look), `closedByItsApp` (the observer's model and two reads), the promote,
+  the rungs of the in-place bring-forward, the drag's hold (part 6's).
+- Checked before the Swift went: the deleted Swift (copied verbatim, its reads given as facts and recorded when made)
+  against the engine's new order of calls over 6,800,029 checks in 30,000 generated runs of 80 steps (every phase,
+  reads unread, closed or read, a process running or not, every place, Margin's window in or out, looks with and
+  without the host's own read, the displays' current Space unread, Margin's or another, the engine's own writes
+  between polls; every verdict, every read made, every field after every step): no difference, the same reads in the
+  same order. The harness caught each deliberate break (a read not resetting "gone", gone at the third read, "in no
+  Space" taken for unread, Margin's window now ignored, make-current without Margin's window, move-in inverted).
+  Nothing allocated per poll (no_alloc.rs). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 7 (second commit): the close's decisions, the exits and the recovery's launch rule in the core (2026-11-23)
+
+- `closeNow`'s tree is the core's (host/close.rs, pure), asked at each of its points between the same waits, with
+  the host's facts as they are then (a step before may change them: its frame given back, a close button pressed):
+  asked to quit at once while its app asks something; under the freeze; what's given back first (its frame, out of
+  full screen, nothing); whether its app quits; whether its close button may be pressed first (its app's "keeps its
+  windows" read only when the core says so, as before); home after; whether where its window is before the quit
+  matters (Margin's Space read only then) and where it goes (home, out of sight); a copy's window to the Desktop;
+  a Safari window left to the person; and what the marker keeps of an unfinished close (`unfinished`: done, kept,
+  kept as a member). The facts go as bits, one typed call per point, nothing allocated (`margin_close_decide`).
+- The apps a row's close asked to quit are the core's (host/exits.rs `Exits`, on the engine's core): asked, heard
+  gone, overdue (every poll, typed into a buffer: nothing made when there are none), taken back (still that launch,
+  its bundle and launch time the same: Margin's again; else its exit unheard), the ones of an app still finishing,
+  whether one is ending (the panes-active keeper's every step, typed). An ask, its exit and a take-back are typed too,
+  so the launch and ask times are kept exactly: a first try sent them as JSON and the harness caught Foundation's
+  JSON writing a launch time 1 ulp off (1000002.123456789 came back 1000002.1234567888), which the marker would have
+  written. The list with its ids and bundles (the marker's save, the quit's line, the tests' `exitingPids`) is one
+  JSON call only when there's any, its times read typed.
+- The crash recovery's own launch rule (marked with its launch time, the running one's unread: not the same) is the
+  core's (`same_marked_launch`) beside the shared one; part 9 had left that difference in its caller.
+- Left in Swift: the marker's format and `recoverNow`'s sequence (Mac Space and tile ids, as the design says); who's
+  whose in the recovery (`ours`, `safariMade`): each reads a running app lazily inside `&&` and `||` (the same
+  Safari read up to twice, or not at all), so moving them would change the reads; the facts' reads themselves
+  (`asking`, `viaCopy`, the window server's), every step and wait of the close.
+- Checked before the Swift went: the deleted Swift (copied verbatim, the host's fields and each read given as facts,
+  fresh at each point as a step between may change them, its target fixed as a `let` is) against the engine's new
+  order over 1,285,901 checks: 200,000 closes of every exit kind and host (each point's decisions and every lazy read
+  in order), 200,000 unfinished closes, the recovery's rule on launch times at and around its 2 s edge and unknown,
+  and 10,000 runs of 40 exits steps (asks, asks again, exits heard, take-backs by the same launch, another or none,
+  overdue at its edge, the dying, every entry with its exact times after every step): no difference. The harness
+  caught each deliberate break (the freeze without its copy rule, the person's not going home, out of sight from a
+  private Space, every Safari left to the person, a member kept through its copy, the rule's unread case, a
+  take-back without its launch time, overdue half a second late). Rust tests pin each predicate and the exits.
+  Nothing allocated on the reads asked often (no_alloc.rs). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2: a held step of the tiles' sizing asked again when the loop guard's hold ends, not at once (2026-11-23)
+
+- The spin: `sizeTilesSoon` queues one host's step; a step that didn't act (its host gone, its re-entry into full
+  screen done, or its sizing not admitted) asks `sizeTilesSoon` again at once. With the loop guard's per-second hold
+  in force, a step's re-entry (counted toward the hold since part 4's second commit) or its sizing (`admitted`, as
+  before) is held, the same host's step is queued again at once and held again: a busy loop through the serial queue
+  for up to the hold's second (the stand-in's run: 9 held re-entries at one instant, back in full screen 2 s after
+  the hold's end). Pre-existing for a held sizing; part 4 added the held re-entry to it.
+- Now the core answers when the hold in force ends (guard.rs `held_until`, typed `margin_guard_held_until`: a read,
+  nothing allocated), and `sizeTilesSoon` takes no step while it's in force: one retry waits for that moment on the
+  engine's clock (`sys.sleep` to the core's deadline, as the engine's other waits; one at a time), then sizes as
+  before. Every step it skips would have been held (each is guarded: the re-entry budgeted, the sizing admitted with
+  the guard), so only the timing changes: no repeated attempts during the hold, the retry at its end. The
+  reconciler's own path (`reconcile`, one step per poll) doesn't spin and is unchanged: a held correction there is
+  asked again at the next poll.
+- Pinned by an engine test with the stand-in (T/screen-engine-tests.swift): a page change sizes a parked tile, the
+  one shown leaves full screen meanwhile and the guard's second fills, its re-entry is held once and made at the
+  hold's end, never again in between (failing first: 9 attempts without the fix); and a Rust test of the hold's end
+  (answered until it lapses, a read only). The app's 2040 checks pass.
+
+
+## Core refactor step 2, part 6 (first of two commits): the live-resize pump's scheduling in the core (2026-11-23)
+
+- The core gains the pump's decisions (host/model/live.rs, on the model): a drag's start (none under way, not
+  quitting, the one shown shown, it or another visible host following: a tile or a window-mode window; the others
+  that follow, back to front, for their minimums' one read), its end (its page area and pending frame forgotten), each
+  page frame (the newest wins, the drag's page area), the drag held (the one shown left its tile), a drag never said
+  over (`liveForget`), the session's count of followers, and each tick of the pump: the flights landed (their window's
+  bounds near their rect, the engine's reads; a fixed-size window-mode window's taken as landed) or given up after
+  `liveWait`, the narrowest width a tile held; the newest frame owed to every follower (the one shown first, shown ones
+  only); the gate (an operation, Margin quitting, the drag held, the one shown not shown: held, the frame kept; the
+  pump ends when nothing's owed or in flight); the followers free for it (owed, none in flight, a `liveFrame` less a
+  microsecond since their last), tiles first (a stable order); then each send's rect (its rect in the frame, its own,
+  the page area; another than the one shown never below its minimum; a tile's rect and its window's frame, or a
+  window-mode window's frame, centred when fixed) and its record, and whether the pump ends.
+- Typed calls (ffi live.rs, `margin_live_*`), nothing allocated per frame or tick (no_alloc.rs: 240 ticks of a split
+  of two tiles and a card, frames coalesced, flights landing and given up, a new run, the hold, the end); the lists in
+  fixed arrays of 16 on both sides. The timing (`liveFrame`, `liveWait`, the tolerance) goes with each tick as the
+  options are then, never through JSON (part 7's 1-ulp lesson): a comparison at its edge is the Swift's.
+- The pump's state lives one run of the engine's pump, as its locals did (`live_pump_begin`), not one drag: a drag
+  ended and begun again while a run sleeps goes on with that run's flights, as before. It's kept by handle and follows
+  the engine's hosts by id, as the Swift's dictionaries by id did: a host made again as the same id (a follower's app
+  opened anew mid-drag) takes over its id's flight, last send and owed frame (`relisted`, told by `list`); a host gone
+  keeps its id's part (its flight forgotten at the next tick, never counted), and a send recorded after its host went
+  is its id's; a host freed before it's let go (its last reference gone as the engine drops it, `list` told after)
+  is let go the same way (`remove`). Only that rare path allocates (the id kept), never a frame.
+- Rust tests pin each rule (one in flight, the newest wins, the give-up wait at its edge, the throttle per host and
+  tiles first, a held frame kept, a follower gone and made again as its id, the one shown freed first, the counts, a
+  forgotten drag). Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the
+  next commit. The app's 2040 checks pass unchanged.
+
+## Core refactor step 2, part 6 (second commit): the engine's pump asks the core, its copies deleted (2026-11-23)
+
+- `dragging`, `follow`, `sendLive` and `pumpLive` ask the core at the points they decided: the drag's start and end,
+  each frame, each tick (the flights' bounds read first, outside the lock, then one call), each send (asked again after
+  a version is read, as `frame` is) and its record, the tick's end. `liveFollowersList`, `liveCandidates`,
+  `followsLive`, `livePending`, `liveLast`, `liveHeld` and `setLivePage` are gone; `liveOn` reads the core;
+  `liveFollowers` (the session's count) is the core's, with the drag's own list beside it in one rule: part 9's
+  duplication folded in.
+- Stays Swift, as planned: every write (a tile's rect with the observer's note, a window's frame by
+  Accessibility and the bounds read to centre a fixed one), every read of the window server, every sleep exactly as
+  before (`liveFrame` while held, `tileEvery` otherwise: the same awaits at the same places, no new wait), the pump's
+  task, the window-mode hole's and Margin's window's tellings, and the drag's numbers (`LiveStats`: the core answers
+  each flight's end and the tick's counts, the engine records them). The log line ("host: live resize: in N ms: …",
+  parsed by S/LiveResize.swift, read for "each: " by T/split-real-use-tests.swift) is built by the same Swift as before,
+  word for word, so no Rust pin is needed. HostEngine: 96 lines out, 51 in (the calls and the mechanism around them);
+  HostCore's `setLivePage` gone (its 7 lines).
+- Checked before the Swift went: the deleted Swift (copied verbatim, `self`'s members aside) against the engine's new
+  code (copied verbatim, checked against HostEngine.swift by a script: only the mechanism's stand-ins differ), each on
+  its own core built alike, in a world of virtual time scheduled deterministically (every task on the main actor's
+  queue, sleepers woken by time then order), on 28,008 generated drags in two runs of 14,004 (the second with ticks a
+  frame's time less a microsecond apart, waits a whole number of ticks and frames at those gaps, so the throttle's, the
+  give-up's and the forgotten drag's edges are hit exactly): 1 to 4 hosts (tiles, window-mode windows resizable and
+  fixed, ones that don't follow; shown, parked, preparing; mains, panes, cards; a layout naming a host not made), frames
+  0 to 60 ms apart and coalesced, landing lags 0 to 70 ms, windows landing off by up to 4 pt, never landing, writes
+  refused, window-mode writes awaited (other frames landing meanwhile), tolerances 0 to 3, `liveFrame`, `liveWait` and
+  `tileEvery` varied, operations holding frames, Margin quitting, the drag held, followers parked, untiled and retiled,
+  gone and made again as the same id, the one shown changed or none, rects and minimums changed mid-drag, kept minimums
+  with versions read and unreadable, drags forgotten, ended and begun again while a run sleeps. Every write with its
+  time to the bit, every telling, the pump's life, the drag's numbers (each time to the bit) and the model after:
+  1,996,999 lines compared, no difference. The one difference, accepted as part 3 did: an unreadable version is read
+  once a send now, where the Swift read it at each of its three looks (the same answers, fewer reads). The first run
+  found one: a host freed before the engine said it let it go (its last reference dropped in `setHost`, `list` told
+  after) kept its flight until the give-up wait instead of being forgotten at the next tick, so the pump ran up to two
+  frames longer: fixed in the first commit (`remove` lets it go by its id), pinned by a Rust test. The harness caught
+  each of 23 deliberate breaks of the core (the throttle at equality and without its microsecond, tiles not first, the
+  give-up at equality, the oldest frame winning, the owed not reset, a gated pump stopping with flights out, a frame
+  counted held with nothing owed, the one shown last, the drag's hold ignored, landing without the tolerance, a fixed
+  window's landing read, the frame's rect ignored, the one shown checked against its minimum, the pump ending with a
+  frame pending, a gone host's flight kept, a host made again starting afresh, the narrowest held not kept, the one
+  shown's phase not asked, a drag begun with nothing to follow or while quitting, a fixed window not centred, the
+  forgotten drag at equality); the throttle's edge only once the second run's timings were added. Rust tests pin each
+  rule; the per-frame cost is in ffi tests/live_cost.rs (release: a page frame 2-3 ns, a tick at rest with three in
+  flight 41-48 ns, a tick sending a frame to three 321-323 ns, ~107 ns a host; the engine adds its lock, ~20 ns a call)
+  and the engine's side per tick fell (the scratch bench, -O, three followers: at rest 560 to 171 ns, sending a frame to
+  three 5.6 to 2.1 µs: no dictionaries, sets or arrays a tick but the sends' list). The app's 2040 checks pass
+  unchanged.
+- Not measured on the real screen (no screen suite on this branch): `live-resize` (followed median and p95) and
+  `idle-cost`, before the merge as the plan asks.
+
+## Core refactor step 3, commit 2: the pointer's pass-through for several holes in the core (2026-11-23)
+
+- passthrough.rs is brought up to PassThrough.swift and the Mac's Margin window's pointer moves into it. One rule with
+  two edge semantics: `Plain`, the old overlay's own `Rect` (Windows' old overlay through core/shell/overlay.rs: its
+  code path, answers and tests unchanged), and `Cg`, CGRect's to the bit (each rect standardized as
+  CGRectStandardize does it, its change added to the origin so a -0 is 0; CG's null; Swift's `min` and `max`). `Slot`
+  gains `holes: Option<Vec<Rect>>` (None for the old overlay); `CatchRegion` gains its holes, each cut to the slot's
+  hole. The Mac's pointer is `PagePointer`: the slot placed from the page's layout, hits and hole (one host: the rect
+  within the hole, its corners the card's only within 2 pt of it, MWC:1121-1126 as was) or holes (several: the card's
+  alone, chosen by MWC as before), the catch region, the theme's window buttons while windowed (MWC `passes`), the
+  positions the page wants and their throttle, the leaving, the cut pane under the pointer (the frontmost) and its
+  forgetting, and whether the panel lets the pointer through. A placing answers what changed (the slot: the pointer
+  looked at again; the catch region: drawn again), compared as Swift's `==` compared.
+- margin-ffi's page object (`MarginPage`, ffi page.rs) owns it now; commit 3's `page::Page` becomes that object with a
+  `pointer: PagePointer` field, so no C signature changes then (`margin_page_place_slot` becomes the Page's own call
+  at its hole decisions). Per pointer event one typed call, `margin_page_pointer(page, at, content, buttons_down, now,
+  out)`: the content's rect is passed (the window's frame changes without the core being told) and `now` (the core
+  reads no clock). The pane click tap's read and the facade the tests use are pure calls on a slot the caller holds
+  (`margin_pass_*`, any thread, no lock). Nothing allocated per event nor per placing once warm (ffi tests no_alloc.rs).
+- Swift: PassThrough.swift keeps `Slot`, `CatchRegion` and `PointerWant` as the values Margin's window, the tap and the
+  tests hold (their rules read through the core), `PageCore` (the page object's wrapper), `PointerWatch` and
+  `CatchView`. Deleted: `pageGets`', `decide`'s, `slot(in:)`'s and `CatchRegion`'s maths, `wants`, MWC's `passes`, the
+  one-host rule, the several hosts' slot, `hoverCut`, the push throttle and `pointerInside`/`lastPointerPush`/
+  `hoveredCut`/`pointerWant`. Stays Swift: PointerWant's reading of the page's message (a boolean `zone` is 1 there and
+  24 in the core's old-overlay `from_json`: two readers of one message until commit 9 routes the page's messages),
+  which holes are the pointer's (part 11, commit 3), the guards on visibility and the harness, the pushes' JSON, the
+  panel's `ignoresMouseEvents`, the hover. Swift lines: 95 out, 218 in (the facade and the wrapper).
+- Checked before the Swift went: the deleted Swift (copied verbatim, renamed) against the new code over the core, on
+  generated slots (negative, zero and touching sizes, -0 and NaN values, radii past half a side), holes (none, empty,
+  touching, zero-size, out of the slot), hits, corners' arcs and edges a ulp either way, layouts, frames and pointer
+  sequences (placings, buttons, full screen, wants, cut panes, held buttons, the throttle's edge): 101,658,375 checks,
+  every value to the bit, no difference. The old overlay's path against the old passthrough.rs (copied) on 20,700,000
+  checks: no difference (any NaN taken as equal: its sign is LLVM's to choose). The harness caught 27 of 28 deliberate
+  breaks (edges, the holes' test, the corner, Swift's min with NaN, the 2 pt rule, the cut and empty slots, the -0
+  origin, the region's holes and hits, the buttons, the throttle, the leaving, the push's size, the frontmost cut pane,
+  a held button, the cuts forgotten, the change compared without the radius, the region never redrawn, the wants' edge,
+  three of the FFI's mappings); two only once the generator had a card over a pane and a placing changing only the
+  radius. The one missed (Swift's `max` written as Rust's `f64::max`) is the same function on every reachable input:
+  a size less the insets is never -0 there.
+- Cost (release, ffi tests pointer_cost.rs): a pointer event over a split of two panes with three hits and a cut pane
+  15 ns, the slot looked at again 9 ns, a placing 37 ns, the tap's read 10 ns. The Swift side's whole pointer event
+  (the scratch bench, -O) fell from 172 to 63 ns, the tap's read from 18 to 16 ns. The app's 2040 checks and 321
+  end-to-end checks pass unchanged; `pane-clicks` not measured (no screen suite on this branch).
+
+## Core refactor step 3, commit 4 (first part): Safari's waker its own Swift type, nothing moved (2026-11-23)
+
+- Safari's own window mechanics, which step 3 leaves the Mac's (docs/CORE-REFACTOR.md part 2, "What should not
+  move"), out of HostedSession into SafariWaker.swift: the presses' ladder (`linked`, was `safariLinked`'s body), the
+  windows opened to wake a profile closed again (`closeWoken`) and their private Space released, the windows a Safari
+  Margin started restored from its last session swept (the poll's half of `sweepRestoredSafariWindows`), the profiles
+  Safari's menu has no item for (`unopenable`, forgotten by `namesChanged`). Its state is its own (`wokenByMenu`,
+  `wokenAtLink`, `wokenLinkedAt`, `wokenHeld`, `unopenable`, `swept`); what it reads of the session (the links, the
+  engine, the options, the clock and sleep, the log, `resolve`, `linkWanted`, which windows are Margin's: `safariWindows`,
+  `made_`, `requesting`) it reads at each look, as before.
+- A move only: every line the same but for `session.` before what's the session's (checked line by line against the
+  deleted Swift). HostedSession keeps its API (`safariLinked`, `closeWoken`, `wokenByMenu`, `unopenable`,
+  `profileNamesChanged`, `sweepRestoredSafariWindows`) as one-line calls into the waker, so the engine's hooks and the
+  tests are unchanged; `linkWanted`, `secs`, `requesting` and `made_` lose their `private` for it. When the session's
+  flows are the core's (commit 5), the waker reads the session's `linkWanted` through a typed call instead.
+- HostedSession 172 lines out, 16 in; SafariWaker.swift 199 lines. The app's 2040 checks pass.
+
+
+## Core refactor step 3, commit 4: the session's skeleton in the core, navigate the first flow moved (2026-11-23)
+
+- margin-core gains `session` (app/shared/core/src/session/): one object per app, re-entrant like the Swift class
+  (every entry `&self`, its state in `Cell`/`RefCell`, no borrow across a port call or an await: clippy's
+  `await_holding_refcell_ref` denied for the module, a test adapter calling back in on every port call, and a call made
+  inside another only changing state and queuing). Its executor (exec.rs) has no runtime, thread or timer
+  (`Waker::noop`: a task is made ready by what it waits on): one serial queue for what HostedSession enqueued and
+  detached tasks beside it, ready tasks first in first out, a spawned task after its spawner suspends. A task that
+  starts a command ends the run: the answer hands the commands out (`start`, a list), Swift starts each at once and
+  says so with `tick(0)`, and nothing runs in between (`held`), so the command's synchronous part runs where Swift's
+  `await` ran it. A library edit (`Perform`, for parts 1 and 3) is answered in the same turn and resumes its task before
+  anything that became ready meanwhile (the delegate's requests). Sleeps are deadlines: the earliest goes out with each
+  answer, Swift's one timer sleeps with the session's `sleep` (a test's own) and ticks `max(now, deadline)`; a sleep
+  counts from the later of the clock and the last tick, so a test's frozen clock still wakes sleepers in deadline
+  order. `wait` keeps the Swift's shape (looks counted, never a clock compare: 0.3 s at 0.05 is 8 looks, 3 s 62, as the
+  Swift's arithmetic gives, pinned with the Swift's counts), `first_of` gives the one that came first even when both
+  came before the poll.
+- One finding the design didn't have: an input never runs what it makes ready in the same call. A main-actor `Task`
+  (HostedSession's `enqueue`) starts after the Swift code that made it, and that code goes on after the call (a
+  library perform's other requests, its delegate's loop, the caller's own steps): run at once, the first try failed 4
+  of the app's checks (two resize checks, the preview card's answer order, a split's pane window). The answer says
+  `ready`, and the facade ticks in the next main-actor turn (`runSoon`, once); answers and ticks run what's ready as
+  before. docs/CORE-REFACTOR.md's "What every part shares" says so now.
+- Ports (session/mod.rs `Ports`): the clock, Margin's windows (`window(id)`, `windowIds`), the engine's reads
+  (`shown`, `isHosted`), the links' (`safariProfiles`, `linkEpoch`), the OS's (`appName`); each part adds its own. On
+  the Mac they are two C callbacks made with the object, as `MarginDataNeed`: `now` typed, `port` JSON in and out
+  (malloc'd, freed by the core). Commands: `Ask` (a copy's request, answered `{ result, error }` in the Swift's words),
+  `Perform`, `Run` (a Swift job's turn: HostedSession's `enqueue` now puts its bodies in the core's queue, so the core's
+  flows and the Swift's take their turns in one queue). The library is read in place (`LibraryView` over the library
+  object's set: `item(collection, id)`, a map lookup, `LibraryStore::item`).
+- The state the flows share while they move (session/state.rs): `shown`, `open`, `safariWindows` are the core's now,
+  and the 200 log lines kept (`done`, built in Rust: Swift's `note` is an input, its line logged from the answer in
+  order with the core's). HostedSession keeps the same API: each is a computed property over the core, read again only
+  when its revision changed (`margin_session_rev`, typed, 0.3 ns) and written as the difference (`put`, `del`), so
+  T/'s `session.shown[1]`, `session.open[...]`, `session.done.suffix(4)` and the Swift flows that write them are
+  unchanged. Options stay the Swift struct, sent whole on each change (the core reads `every` for now).
+- FFI: `margin_session_new(library, options, ctx, now, port)`, `_free`, `_input`, `_answer(id, …)`, `_tick(due)`,
+  `_done`, `_idle`, `_rev`, in the header and the module map's library; every answer `{ start?, ready?, deadline, log?,
+  reply?, error? }`, a bad input `{ error }` and a warning once a kind; nothing panics on a bad pointer or input.
+- `navigate` (HS:2378-2385) is the first flow moved (session/navigate.rs), its Swift copy deleted: the window, its item
+  shown and where its page is read at once; at its turn the profile's window by the role in its host id (-1: none)
+  and the item's address (about:blank: none), `hostShow`, then the copy's own request for the tab it answered (Swift's
+  `int`: a number, whole, under 9e15). The payloads are built as the Swift built them (no `pinned`, a -1 window sent),
+  not by hosted_browser's `Ask`, which would refuse a -1 window: unchanged. HostID's logged form and role are ported
+  (host_id.rs) with the Swift's own answers as a vector.
+- Checked before the Swift copy went: T/hosted-tests.swift gained navigate's checks against the Swift first (its tab by
+  `hostShow` in its window with no pin, then the copy's request for that tab; the front window with none named;
+  nothing for a window not there, an app's item, a refused `hostShow`), unchanged after. The deleted Swift (verbatim, its
+  members a harness's) against the core through the FFI, the state written as the facade writes it: 20,000 generated
+  vectors (1 to 3 navigates each, the windows, the items shown, their hosts with every role and odd suffixes, the
+  profiles' windows, the state changed between two asks, addresses that are no string or no object, tab ids whole,
+  fractional, 9e15, strings, bools, null, refusals), 13,869 requests (3,844 of them the copy's own goBack, goForward or
+  reload), no difference; each of 11 deliberate breaks of the core caught on 3,000 vectors (about:blank lost, no window
+  as 0, the role ignored, a profile-less item asked, the window read when asked instead of at its turn, a tab id
+  truncated, 9e15 let in, a bool as a tab, a non-string address, a non-object item, the queue's order reversed). HostID: 180,022 generated ids against the Swift's `description` and `safariRole`,
+  no difference; 7 breaks caught. The one difference, accepted as step 1's caps took it: a `#` or the `:` of `safari:`
+  joined to a combining mark after it is one Character in Swift and so not found (685 of 20,000 such ids differ),
+  ids that never have one (profile ids and roles are ASCII).
+- Before macOS 26 a task can't be started at once (`Task.immediate`): there each command is a task of its own and the
+  run goes on in the next one (one main-actor turn later than the Swift's `await`); on 26 and later, at once.
+- Cost: nothing per frame (the skeleton adds no call to a drag). Release, the core's side: a note 1.7 µs, a field read
+  2.4 µs, a tick with nothing due 0.4 µs, a revision 0.3 ns, a whole navigate (an input, four ticks, two answers, one
+  port) 10 µs (ffi tests/session_cost.rs). With the facade's JSON (Swift, -O): a note 5.6 µs (it was an array's
+  append), the open items read again 33 µs for 20 (only after a change: a read with none is a revision, 1 ns). A
+  switch's dozen notes are well under a millisecond. The app's 2045 checks pass.
+
+## Core refactor step 3, commit 0: the session's pure rules pinned against the Swift before they move (2026-11-23)
+
+- New Swift checks (T/session-rules-tests.swift, 105 of them) of what commit 1 moves, against today's Swift: the
+  four pin and favourite paths of the library's requests (open and reset, each with an item or not, `addItem`
+  refused, overtaken: an open is skipped with its line, a reset never is), `noRoom` at its 1 pt slack and the least's,
+  `lastItem`'s tie (the smallest id among equal `lastUsed`) and its names, `loaderApp`, `resolve`, `webAddress`
+  (Foundation's `URL(string:)`: what it encodes, the hosts it refuses, 2,048 characters), `searchUrl`, the UI pushes'
+  caps, a host's logged form (`safari:p<djb2 % 10000>`), the ground's holes with zero-size and touching rects, the
+  pointer through several holes and the catch region's, the page's layout report (fills, splits, panes).
+- Two of the design's lines were wrong, found by these checks: `searchUrl` never kept a Unicode letter unencoded
+  (Foundation's `addingPercentEncoding` ignores the non-ASCII part of the allowed set, so "café" was already
+  `caf%C3%A9`); `noRoom` with only main cramped answers none (main never goes), not an empty list. The design and
+  open question 8 are corrected with commit 1's.
+- The baseline numbers the commit also asks for (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a
+  switch) are measured on the screen, not here.
+
+## Core refactor step 3, commit 1: the session's pure rules in the core, the Swift's copies deleted (2026-11-23)
+
+- margin-core gains `session` (app/shared/core/src/session/, plain functions, no state yet): a split's room and a
+  drag's line (layout.rs: `PANE_LEAST`, `NO_ROOM_REASON`, `is_no_room`, `no_room`, `drag_line`), the card's default
+  rect and a web address (card.rs), a web item's profile (choice.rs `resolve`), the item a window showed last and its
+  loader's app (start.rs), a target as the Swift writes it (target.rs), a search's address (ui.rs), the copies'
+  pushes for the page (push.rs: UIPush's table, `page`, `empty`, the image rule), and the page's layout report with
+  the fields it lacked (protocol.rs `PageLayout`: `outside`, `hosted`, `fills`, `split`, `panes`; `rounded` leaves them
+  out, so the old overlay's outbox compares as before). The Swift keeps its names (HostedSession.noRoom, isNoRoom,
+  paneLeast, noRoomReason, lastItem, loaderApp, dragLine, resolve, LibraryWindowSource.searchUrl,
+  HostedSession.defaultCardRect, webAddress, UIPush, PageLayout) over margin-ffi's session_rules.rs: the rare ones one
+  JSON call (`margin_session_rule`), a split's room, the card's rect, a web address and the layout report typed, a push
+  with the UI's numbers asked through a C callback in the entries' order (as the Swift's `compactMap` asked them,
+  twice a list's cap read). App Swift: 191 lines out, 142 in (SessionRules.swift's 44 among them).
+- Exact, as Foundation and Swift answered: `webAddress` is `URL(string:)` as macOS 14 and later parse (RFC 3986 with
+  invalid characters encoded: only a port that isn't digits, something after an IP literal, an IP literal's address
+  or a host outside RFC 3986's characters refuse an http(s) text; swift-foundation's masks copied); a host with letters
+  outside ASCII goes through ICU's UTS #46 IDNA, which the core can't port, so the core answers "its IDNA decides" and
+  the Mac asks Foundation that one question (`URL(string: "http://<host>/")`). The search template's checks are
+  Swift's characters (`contains`, `hasPrefix`) and its replacing NSString's composed sequences, as is `isNoRoom`'s
+  `contains`: kept with three tables of the scalars that join an ASCII character (session/unicode.rs, generated from
+  this Mac's Swift over every scalar). `addingPercentEncoding` ignores the non-ASCII part of
+  `CharacterSet.alphanumerics`, so the query's encoding is encodeURIComponent's set (no Unicode table). Image data URLs
+  as NSRegularExpression's `$` matches (before one final line terminator too). `lastItem`'s `selected` as Swift's
+  `as? Bool` (a number 1 is one), its tie the smallest id.
+- Accepted differences, at edges only: caps count Unicode scalars, as step 1's (a web address's 2,048, a push's
+  texts, a fill's 80): a text with combining marks or joined emoji can be cut shorter or refused; ids and profiles are
+  ordered by their UTF-8 (Swift's String order differs only for non-ASCII that isn't NFC; both are ASCII); a layout
+  report with a NaN (WebKit's message can carry one, JSON can't) is read as the page's JSON would say it (null): a NaN
+  radius now gives radii of 0 (the Swift gave four NaNs), a NaN among the radii the radius four times (the Swift kept
+  the NaN). The workspace's serde_json reads floats exactly now (`float_roundtrip`): its default was 1 ulp off on some
+  (1e-9 read as 9.999999999999999e-10, found by the comparison), which every JSON the core reads gains.
+- Checked before the Swift went: the deleted Swift (copied verbatim) against the new Swift over the core in a scratch
+  harness, 13.3 million vectors over eight runs (740,065 or 2,220,065 each, five seeds): split rooms at the slack's and the
+  least's edges with negative and zero sizes, card rects at the rounding's halves and -0, 150,000 addresses from a
+  grammar (schemes, user info, IP literals, every ASCII and IDN hosts, ports, paths with marks), the 2,048 edge,
+  queries and templates with marks, joiners and prepended marks, profiles, last items with JSON's every kind of
+  `selected` and `lastUsed`, drag lines, pushes with images at the limit and every line end, flags, times and lists past
+  their caps (each tab ask compared), layout reports with every kind of number, fills, ids and panes: no difference
+  but the accepted ones and one more, the core's the right one: JSONSerialization reads a long decimal as an
+  NSDecimalNumber whose `doubleValue` can be 2 ulp off (0.011969999916118468 read as …464), where the core reads the
+  text exactly (a WebKit message's numbers are doubles: none there). The harness caught each of 32 deliberate breaks of
+  the core (every rule's edges: the slack, the least, the tie, the rounding, the masks, the port, the IDNA question,
+  the marks' tables, the caps, the flags, the times, the image's line ends, the splits, the floats' parsing); two
+  more were found to be no break at all (a least height the 7% always covers, a "[" before a scheme's colon, which
+  http(s) can't have), and two were caught only once the generator made clean splits. The app's checks: 2145 pass (the
+  commit-0 pins of the three scalar caps changed to the new edge).
+- Cost (release, `--ignored` session_cost): a web address 53 ns (was 490 ns in the Swift), the card rect 1.4 ns, a
+  split's room 240 ns, a layout report read 3.6 µs in the core and 14 µs a report on the Swift side (was 10: its JSON
+  made, the answer typed; commit 6 keeps it in the Page); a push 31 µs (was 5.5: a few a second while media plays).
+  The typed web address and card rect allocate nothing (no_alloc.rs).
+
+## A search's address encodes every letter outside ASCII (Tirth, 2026-11-23: step 3's open question 8)
+
+- Tirth's answer to the design's question 8: `searchUrl` percent-encodes every non-ASCII letter ("café" →
+  `caf%C3%A9`), as the extension's search (shared/search.ts, encodeURIComponent) does. The design took the Swift to
+  keep Unicode's letters, marks and digits unencoded (`CharacterSet.alphanumerics` in its allowed set); commit 0's
+  checks found it never did: Foundation's `addingPercentEncoding` ignores whatever of the allowed set isn't ASCII. So
+  his decision is the behaviour Margin already had, and nothing changes: the core's `search_url` (session/ui.rs) keeps
+  ASCII's letters and digits and `-_.!~*'()`, every other byte its `%XX`.
+- Pinned in both: the Swift's checks (T/session-rules-tests.swift: café, a combining mark, CJK, Arabic digits, ½ and
+  Ⅻ, ß, all encoded) and the core's (ui.rs `a_search_address`). The design's question 8 and part 10's risk say so.
+
+
+## Core refactor step 3, commit 5: the library's requests, the show, the choice of host and the engine's window asks in the core (2026-11-23)
+
+- Moved (session/requests.rs, hosting.rs, items.rs, target.rs, choice.rs; their Swift deleted): the Library's delegate
+  (`library(_:wants:)`: a show request's item drawn in front at once, its preview card hidden, the request queued),
+  `overtaken`, `handle` (every request type), the four pin and favourite near-copies made one (`open_by`, the
+  differences as `reset`), `show` with its six after-steps in Swift's reverse order (each `defer` an inner flow whose
+  every return comes back through them), `cycled` and the cycle's hold, `host` (its five results), `close`, `openApp`,
+  `profileFallback`, `linkWanted`, `requestSafariWindow` with its stale-copy retries on the link's epoch, `askAgain`,
+  `closeSafariWindow`, `safariFullScreen` (hosted_browser's `SetWindowState`), `safariFocus`; `ItemTarget(json:)`'s
+  rules (target.rs, the Swift enum built from the core's answer) and `DefaultBrowser`'s table (choice.rs
+  `default_browser`, Foundation's `.whitespaces` to the scalar, U+200B among them). `resolve` is choice.rs's
+  (step3/pure's), the private copy gone.
+- State moved to the core as commit 4's three fields were (a revision each, the facade reading again only on a change,
+  writing the difference): `requested`, `hostingWindow`, `labels`, `showing`, `marginPages`, `marginOpen`, `cycledAt`,
+  `safariTabs`, `safariMuted`, `safariAudio`, `preparingWindow`/`preparingProfile` (written by the preparation, still
+  Swift), `requesting` and `made_` (read by the waker). The facade's fields keep their names and types, so T/ and
+  the Swift flows of later parts are unchanged; the generic cache (`field`, `setMap`, `setSet`) is ~40 lines.
+- The ports gained what the moved flows read and do: the engine's `appRuns`, `showsAlone`, `stopHidingWoken`; the
+  links' `windowIds`; the wall clock (`notAfter`); Margin's windows' `setShowing`, `setMarginPage`, `push`; `changed`
+  (onChange); the waker's `wokenByMenu`, `unopenable`; `log`; and one `swift` port for the Swift flows of parts not
+  moved yet, by name (`cardLeaving`, `cardReturning`, `pinnedOrFavorite`, `cardUrl`, `settleHosting`,
+  `refreshLoading`, `leaveMarginPage`, `hasLayout`, `clearLayout`, `layoutsWith`, `clearElsewhere`,
+  `forgetElsewhere`, `paneFor`): each goes as its part moves. Commands: `Engine` (open, parkShown, close), `Waker`
+  (ensureLinked, the design's `EnsureLinked`, read through the typed `margin_session_link_wanted`; closeWoken),
+  `Swift` (interim: `prepare`, `showSplit`, part 3's), `Reply`.
+- A flow Swift calls (the engine's asks, `show`/`close`/`profileFallback` from the Swift flows still there, the
+  palette's `openApp`) is a `call` input that runs at once (its task first: a Swift call ran its first part at once),
+  answered with a `Reply` command; the facade resumes the caller's continuation and lets the core's run go on in the
+  next turn, so the caller goes on first, as a Swift return did. A new app's open asks `margin_session_open_wanted`
+  (typed) while its window is awaited.
+- Two findings the design didn't have:
+  - The notes go out through a `log` port as they're made, not in the answer: in the answer, a flow's lines came
+    after what it did to Margin's windows meanwhile (the comparison's first difference), and a Swift line logged during
+    a port call came before them. The app's log is in the Swift's order again; `done` was always.
+  - A window the core named is held by the facade until nothing is under way (the queue idle and no call
+    outstanding): the Swift flows held the window they were for, so one closed mid-show was still told
+    (`setShowing(nil)`); held weakly, its calls were dropped (the comparison's second).
+- Tirth's change 3 is its own commit (next entry); nothing else changes behaviour.
+- Checked before the Swift went: the old Swift (refactor/core-session at 53ffc75f) and the new over the core, both
+  built whole with the unit tests' stand-ins and one scratch driver, on generated sequences in a deterministic world:
+  a real library, an engine, copies and two Margin windows whose every async operation waits at a gate the driver
+  opens in a generated order with generated answers (refusals, stale copies, links down, busy and late window calls,
+  tab ids that aren't whole, superseded opens, an engine open that asks for its window first: re-entrance), virtual
+  sleeps, requests through the library and straight to the delegate with every field missing or wrong, palette
+  picks of every kind, cycles, engine asks of every role, links and windows coming and going: 450 vectors over nine
+  seeds, 26,469 steps, 19,034 requests and asks, 11,311 engine opens and copy requests. 446 the same to the line; the
+  4 others differ only where the driver makes no order: two sleepers due at the same virtual instant, one the core's,
+  one the Swift's (the waker's presses against `requestSafariWindow`'s wait on the link, 3: the core's one timer is
+  armed after the Swift's sleep, so at an exact tie the Swift's resumes first; real deadlines never tie, and the
+  driver's answers take a random moment so its timers rarely do), and the order two Margin windows are told of a
+  closed Margin page (Swift's dictionary order against the core's window order, 1; each window's calls the same).
+  The driver caught 17 of 21 deliberate breaks of the core; of the 4 it missed, three can't happen in its world (a
+  third stale retry, the launch's preparation's window, a pane's address: part 3's Swift never asked) and are caught
+  by the core's tests (requests_tests.rs), and one isn't a break (the next item of a closed one shown in the last of
+  the windows showing it rather than the first: one window shows an item at a time, the design's risk).
+- Cost: a web tab switch (a library request, the show, the copy's hostShow) 35 µs in the core (release, ffi
+  tests/session_cost.rs, every port its JSON); a note 2.1 µs (1.7: its line now through the `log` port). Through the
+  facade with the stand-ins (a scratch bench of 2,000 switches through the deterministic world's answers given at
+  once, -O): a web tab switch 244 µs against the Swift's 124 (best 163 against 91), an app switch 236 against 100:
+  +120 to +135 µs a switch, the ports' and fields' JSON on the Swift side (a dozen ports a show); well inside the
+  16 ms budget, and nothing per frame. The waker's look (`link_wanted`) allocates nothing (no_alloc.rs). The app's
+  checks: 2150 pass.
+
+
+## A pin's or favourite's reset overtaken: its tab back at its address, not shown (Tirth, 2026-11-23: step 3's open question 3)
+
+- Tirth's answer to the design's question 3: a reset (a pin's or a favourite's) that another pick in its window
+  overtook before its turn still navigates its open item's tab back to its address (the copy's `hostNavigate`), but
+  isn't shown: no flash of it before the item picked after it. Until now only an open was skipped so (HS:495-496,
+  525-526); a reset showed its item, then the later pick.
+- Where it's checked: after the navigate, at the point an open checks it (right before the show), so a pick made
+  while the navigate was under way counts too; said as an open's is (`<item>: not shown, <newest> asked for since`).
+  A reset with no item (one made at its address) is shown as before: nothing could have been asked for it.
+- Pinned: the core's (requests_tests.rs, both resets: the navigate, then only the later pick's hostShow, the line)
+  and the Swift's (T/session-rules-tests.swift: commit 0's check of the old behaviour turned into the new one).
+
+## Core refactor step 3, commit 3: Margin's window's page in the core (2026-11-23)
+
+- margin-core gains `page` (app/shared/core/src/page/): one `Page` per Margin window, MarginWindowController's
+  decisions. The page card's state (`empty`, `loading`, `shown`, `elsewhere`; the setters' sameness rules; the
+  loader's label and app; the start's look) and the loader's grace, now a deadline (`settle(now)`: dropped, then begun
+  or the state applied, in the Swift's order; `grace_over`); the holes (one host's: its window's bounds in the page
+  area, the page area while it follows a drag, the old hole while the grace runs; several: each visible host's
+  window in its rect, a card's whole rect a cut, the focused one's hole), their corners (the card's within 2 pt), the
+  ground's cut-outs and `subtract` (holes.rs), the pane click tap's holes, and the slot and catch region placed from
+  them (the Page owns the pointer, `PagePointer`); the ground's colour (fill.rs: `PageFill`'s CSS colours and the
+  most common, cached per layout); in front (front.rs: `keepFront`'s level and orders, the yield and the cover, the
+  poll's read at rest with `SETTLE`, `MISS_APART`, `PROBE_EVERY`); the page area (area.rs: `measuredAt`, `pageRect`,
+  `narrowed`, `hostedPlacement`, `idlePlacement`, `paneLayout`'s whole points) from the page's layout report, parsed
+  and kept there (`set_layout_bytes`: protocol.rs's `from_geometry`, a split's panes' change answered).
+- margin-ffi's `MarginPage` is now the core's `Page` (every pointer call as it was; `margin_page_place_slot` gone:
+  the Page places its slot at `margin_page_place_hole`). Typed calls only: each setter, the settle and the grace, the
+  holes' placing (its ground handed out in place), one read of everything the window shows (`margin_page_read`), its
+  texts into a buffer, the page area and the placements, `keepFront` and the poll's read (the clock through a C
+  callback, read at each of the Swift's points), the pure rules the tests read (`margin_page_rect`, `_measured_at`,
+  `_narrowed`, `_fill_color`, `_fill_common`, `_subtract`, `_ground_holes`).
+- Swift: MWC keeps its mechanism and its order. Each decision is a typed call at the Swift's own point (the design's
+  out-callback dropped: MWC re-enters the session through its page rect, so nothing reads the Page while a call is
+  under way), its answer carried out before the next call: the window's page rect, the ground's drawing and the
+  panel's background, the level and orders, the keys, the pushes, the log lines (word for word: the core answers
+  codes and numbers). The hosted window's bounds are read where the Swift read them (`readHosted`, `readVisible`, the
+  same reads) and handed in before the decision. The grace's deadline is kept by MWC's own timer (one a window, as
+  before: the session doesn't own the Pages). PageCore.swift is the Page's wrapper (PassThrough.swift's moved into
+  it); MWC's fields the session and tests read are computed over it (`pageState`, `hole`, `holes`, `pageGround`,
+  `mechanism`, the counts…). `PageFill`, `MarginWindowGeometry.pageRect`/`measuredAt` and MWC's `subtract`/`groundHoles`
+  stay as thin wrappers the tests read. The HostedWindow contract is unchanged. Swift: 482 lines out, 527 in (323 of
+  them PageCore.swift, 90 of which moved from PassThrough.swift).
+- The layout report comes as its JSON text: Margin.app's window says `layoutText` in its hello and its page
+  (host-app.ts) sends the report it built as `JSON.stringify` makes it; the bytes go to the core as WebKit hands them
+  (no NSDictionary made by WebKit, none walked or re-serialized by Swift), the Swift `PageLayout` built only when
+  read. The same report: JSON.stringify writes numbers exactly (commit 1's path made them JSON from WebKit's numbers
+  again; a -0 was already read as 0 there). The overlay over a browser, Windows and the tests' dictionaries send
+  `geometry` as before, which MWC makes JSON as commit 1 did.
+- Two Mac facts the comparison found, now the core's: NSColor's `==` compares each component as a 32-bit float (the
+  ground's "most of the corners" counts so); Swift's `Double(_:)` (its runtime's strtod) takes `snan`, a NaN's
+  payload only as none, `0x` and hex digits, `0` and octal ones, or a decimal number, and nothing with a NUL in it.
+- Checked before the Swift went (scratch harness, two processes: the old MWC's members verbatim over 53ffc75f's core,
+  the new over this branch's, each writing every call of the window's mechanism and every value it holds after each
+  step, doubles to the bit): 50,000 generated sequences (setters, layout reports as text and as dictionaries, hits,
+  hosting, the hosted window and its bounds, visible hosts and their frames with zero-size, touching, negative and
+  sub-point rects, following, cover, yield, full screen, resizes and displays, elsewhere, the start held up, the
+  poll's reads at rest over a while, keepFront, Space changes, the keys, a simulated clock firing the grace):
+  100,388,607 lines, no difference; the pure rules with NaN and odd texts (subtract, the cut-outs, 50,000 seeds of CSS
+  colours with marks, prepended marks, hex floats past 53 bits and their ties, NaN payloads, NULs, colours alike as
+  floats, the page area): 14,000,000 lines, no difference (after the two facts above). The harness caught 34 of 35
+  deliberate breaks of the core (the grace's conditions, the hole kept in a grace, the loader's label, a point's hole,
+  the 2 pt corners, the card's cut, the focused hole, the cut-outs' corners and slivers, the colours' alpha, tie and
+  float compare, strtod's octal payload, marks at separators, hex rounding, the reorder, the misses' gap, the probe's
+  time, the warning said once, narrowed, measured within a point, the sidebar-alone layout, the panes' rounding, the
+  setters' sameness, slow off hosting, the start's look, the ground per layout, the FFI's two mappings, the top place,
+  the holes and the pane holes): three only once the generator had a point-wide hole, exact 2 pt corners and colours
+  alike as floats, one once the poll was read over a while, and two once the harness's copy was rebuilt from scratch
+  each time (rsync kept the branch's file times and cargo a break). The one missed (the page rect compared raw, not
+  standardized) is no break: a page area's sizes are never negative. A NaN in a visible host's rect or a window's
+  bounds traps the old and the new alike (its `Int(...)` in the frames' pushes): never generated there. The app's
+  checks: 2150 unit and 321 end-to-end pass unchanged (two loop-guard timing checks failed once under the harness's
+  load, passed idle); T/margin-window-tests.swift and every `window.loadings`/`showings`/`hostings` check of
+  T/hosted-tests.swift unchanged.
+- Cost (release, ffi tests page_cost.rs): a setter 26 ns, the holes placed 38 ns (one host) and 109 ns (two panes
+  under a card), the page area again with the placement 14 ns, the poll's read at rest 12 ns, keepFront 6 ns, a read
+  of the page 7 ns, a layout report's parse 4.1 µs (serde's `Value`: it allocates; commit 6's typed follow path can
+  end that). MWC's calls, old against new (the harness, -O, the stand-ins writing nothing): a show's setter 6,961 → 505
+  ns, the hole placed (`updateHole`) 6,604 → 170 ns with one host and 9,506 → 348 ns with a split under a card (the
+  ground's colour no longer read from four CSS texts each placing), the poll's read at rest 74 → 182 ns (every 1.5-2
+  s), a layout report with its page area and hole 20,186 → 3,907 ns. The layout report
+  on the Swift side: 2.5 µs (3.7 with a split), was 6.6 (12.0) before commit 1 and 10.7 (15.0) after it. Nothing
+  allocated by the holes' placing, the setters of a drag's frame, the reads, keepFront or the poll's read once warm
+  (no_alloc.rs). `page-frames` and `idle-cost` not measured: no screen suite on this branch.
+
+## A switch costs no more than the Swift's: the session's ports, answers and fields typed (2026-11-23)
+
+- Tirth's rule (no CPU increase) against commit 5's measure: a switch through the facade cost about twice the old
+  Swift's (a web tab switch 220 µs of the main thread against 115-125, an app switch 220 against 88-96), the JSON of
+  a dozen ports a show, every core answer read as JSON, and each field the show changed read again as JSON. Now:
+  - The ports a show asks are one typed C callback (`MarginSessionCall`: the port's number, a window, a flag and up
+    to three texts as bytes; it answers a number, `INT64_MIN` for none, and gives texts and lists back through
+    `margin_port_out_text`/`_int` during the call): the window, the engine's reads, the links' profiles and epochs,
+    the app's name, `setShowing`, `setMarginPage`, `push`, `changed`, the waker's two reads, `log`, and the Swift flows
+    of later parts a show calls (the card's leaving and returning, `pinnedOrFavorite`, `settleHosting`,
+    `refreshLoading`, `leaveMarginPage`, the layout's reads and clearing, the elsewhere card's). The JSON port stays
+    for the rare ones (`layoutsWith`, `cardUrl`, `paneFor`, the wall clock) and for a session made with no callback
+    (the Rust tests).
+  - `margin_session_input`, `_answer` and `_tick` write readiness and the deadline into a `MarginSessionStatus` and
+    answer JSON only when there's more to say (commands to start, a reply, a warning): most answers of a switch are
+    nothing to read.
+  - The facade's fields are read and edited as typed rows (`margin_session_rows` to a sink, `margin_session_edit_row`),
+    not the JSON `state` input; the `state` input stays for the core's own tests.
+  - The interim `prepare` hands the core a number for its placement, kept on the Swift side for the engine's open
+    (the core only passes it on): no placement's JSON there and back.
+- Measured (the scratch bench's 5,000 switches, the main thread's own CPU time per switch, median, two quiet rounds;
+  the Mac was shared, so CPU time, not wall time): a web tab switch 84-88 µs (the old Swift 115-125, commit 5 229-231),
+  an app switch 79-87 µs (old 88-96, commit 5 218-222). Under the Swift's in both.
+- Nothing changes in what the session does: the 450-vector comparison rerun against the build it starts from
+  (551d3016, commit 5 and change 3), all 450 the same to the line (26,469 steps, 18,989 requests and asks, 11,086
+  engine opens and copy requests); against the old Swift, the differences are change 3's (a reset overtaken: not shown)
+  and commit 5's four ties. The
+  waker's look and a field's typed rows allocate nothing (no_alloc.rs). The app's checks: 2150 pass.
+- The one extra main-actor turn a Swift caller of a core flow waits (commit 5: a `Reply`'s continuation resumes in the
+  next turn) is scheduling, not work: one job hop, about a microsecond, unchanged by typing the ports. It goes when
+  its callers are the core's: the Swift flows that still call `show` and `close` (part 4's `expandCard`, part 5's
+  `focused`, part 6's resume and `enteredFullScreen`, `profileNamesChanged`) as their parts move. The engine's asks
+  keep it (the engine is the Mac's and awaits the session's answer): removing it there would need the engine to take
+  the answer through a callback in the same turn instead of awaiting, a change of the engine's own flow for one hop.
+
+## Core refactor step 3, commit 7: the preview card and Quick Tab in the core (2026-11-23)
+
+- Moved (session/card.rs; HostedPeek.swift's flows deleted, the file now the facade): the card's state machine and
+  every flow of it, each a transliteration at the Swift's points between the same awaits: the copy's word
+  (`peekOpen` answered at once, before anything else is asked of the copy, `peekCancel`, `cardPage`, `cardKey`), the
+  page's (`littleArcOpened`, `littleArcGo`), `showCard`, `placeCard` (the page's `<m-preview-page>` waited for, else
+  the default rect), `dropCard`, `cardLeaving`, `cardReturning`, `cardRectChanged`, `closeCard` (the page told first,
+  the cover wait, the rest laid out again, `hostCardClose`), `closeCardForKey`, `expandCard`, `cardHistory`,
+  `cardHostGone`, `closeIdleCards`, the pushes to the page and `pinnedOrFavorite`. The interim card entries of the
+  `swift` port (`cardLeaving`, `cardReturning`, `pinnedOrFavorite`, `cardUrl`, typed or not) are gone: requests.rs and
+  hosting.rs call the core's own.
+- State: `Card` and the fields `cards` and `littleArcs` are the core's (their rows typed as the others', a card's
+  parts as their JSON text in one of its texts: read again only when a card changed), `card_used_at` the core's only;
+  what Swift's layout reads of a card (its address, a new page or not) is a typed read-only field, `cardPages`, whose
+  revision moves with `cards`'.
+  `HostedPeek.swift` keeps what parts 3, 7 and 8 (still Swift) read of a card: `cardPart`, `cardShowPayload`,
+  `cardHostRects`, `cardPlaced`, `cardLoadingStep`.
+- Three things the design didn't have:
+  - The layout the card reads and lays out is part 3's. Its field (`layouts`) is the core's now, Swift's applyLayout
+    writing it through the facade, and the core lays out through a `Swift` command (`applyLayout`) until commit 6. The
+    show's `hasLayout`, `clearLayout` and `layoutsWith` read the field there too: three fewer ports a show.
+  - Quick Tab's new tab and Expand's item are library edits made inside a synchronous call (the Swift performed them
+    in place, its delegate's requests arriving before it went on), so a `perform` port, not the awaited `Perform`
+    command: the delegate's requests reach the session re-entrantly, as before.
+  - The card's title with no page title is Foundation's `URL.host` (percent-decoded, an IP literal without its
+    brackets, nil for an empty authority or a host that doesn't decode as UTF-8): `web_host`, ported with
+    Foundation's answers on macOS 27.2 as its vectors; a host with letters outside ASCII is the OS's IDNA (`urlHost`).
+- Ports added: typed `wall` (the clock's bits), `cardRect`, `hostedPage` (a rect's four numbers as bits), and
+  `margin_session_pinned` (Swift's layout asks it for each web pane); JSON `idna`, `urlHost`, `perform`. Inputs: one
+  `peek` input by kind for the copy's and the page's word (part 10 routes them later); `close` and `closeForKey`
+  answer whether one was closed; a page's click typed as well (`margin_session_peek_open`: its id, address and
+  time), the one the Mac sends, so a peek open carries no JSON in. A layout's row text is written by hand on the
+  Swift side (a few times cheaper than JSONSerialization, each layout change).
+- Edges as the design said: Swift's dictionary order where two cards share a window (one hidden, another profile's
+  open: `card(in:)` took either at random) is the lowest profile here; a click's id (80) and a title (300) count
+  Unicode scalars, step 1's rule. Nothing else changes.
+- Checked before the Swift went: the old flows (refactor/core-session at f78d6598, its HostedPeek.swift) and the new
+  over the core through the facade, both built whole with the unit tests' stand-ins and one scratch driver (commit
+  5's, with the card's steps), on generated sequences in its deterministic world: page clicks from every window of
+  every profile with ids, addresses and times good and bad, cancels, the card's page and keys, Quick Tab opened and
+  chosen with and without anything hosted, closes with and without the page told, ⌘W, Expand into a space named or
+  not, history, hosts gone (a card window, a main window), idle sweeps after time passing, the page's rect moving by
+  less and more than a point (a negative size too), presses around the card, all among the library's requests,
+  splits laid out by the page, the engine's and the copies' answers in a generated order with failures, and a second
+  Margin window coming and going: 150 vectors over six seeds, 14,991 steps, 6,217 card actions, 5,269 engine opens and
+  copy requests, all 150 the same to the line. (A first run differed only where the driver jumped its clock past
+  several sleepers at once, the Swift's own and the core's: the order of sleepers overdue together, which the driver
+  can't make; its jumps now wait for no sleeper to be due.) The driver caught 22 of 27 deliberate breaks of the core
+  (on 36 vectors each); the 5 it missed are rare in its world (Expand into a named space other than the card's,
+  the idle sweep at exactly fifteen minutes, the page's rect moved by half a point, a main window gone with its card
+  window hosted, a layout's window shown again) and each is caught by the core's tests (card_tests.rs, four of them
+  added for it).
+- Cost, a peek open's Margin side (the scratch bench: a web item shown, then a page's click to the card laid out at
+  its rect and the page told, the copy and the engine answering at once; the main thread's CPU time per open, 400
+  opens a round, ten rounds old and new alternately; the Mac shared with other work at a load of 30-38, so the rounds
+  vary by ±15%): the old Swift 493 µs (mean of the medians; the rounds' best 253), the core's 534 µs (best 273), about
+  8% more, 20-40 µs. Not yet "no dearer than before". What a peek open still pays that the Swift didn't is the
+  interim's: the layout laid out through the `applyLayout` command and its answer (part 3's Swift, both as JSON; gone
+  with commit 6) and the copy's `peekAnswer` as a core `Ask` (its command and answer as JSON) where the Swift called
+  the copy itself. Measured on the way: the first build (every new port JSON) cost 75-150 µs more; typing the wall
+  clock, the card's rect, `pinnedOrFavorite` (Swift's layout asked it as a JSON input per web pane), the click itself
+  and `cardPages`, and writing a layout's row by hand, took that to this. Nothing is per frame: a drag reads the
+  card's rect through the facade's cached field (a revision a frame, typed).
+- T/peek-session-tests.swift, T/peek-split-tests.swift and T/screen-card-tests.swift unchanged and passing; the app's
+  checks 2150 pass, its end-to-end ones 321 (off screen).
+## Core refactor step 3, commit 9: the loading bar, the copies' pushes, `drawn`, the page's hello and ops, the UI's requests and rows in the core (2026-11-23)
+
+- Moved (their Swift deleted): the loading bar (session/loading.rs: `loading`, a split's pane's own loader and its
+  reveal held and let go, the copy's `loading` push for the window Margin hosts, `refreshLoading` with what each window
+  was told; the UI's numbers given in order of first use and back, an open item's row); the copies' messages
+  (session/route.rs: a push routed by its type, the UI's to the Margin window it belongs in with the mini player's
+  pick and the standing push taken back, `uiNumber` with the address cut as NSRegularExpression's `#.*$` and `/$` cut
+  it, the copy's tabs' sound, `drawn`'s rule); the UI's requests (session/ui.rs `ui_request`: an open item's row by its
+  number mapped back, the settings' route, the pasteboard's text, openApp and the history, a search's address with the
+  query trimmed of Foundation's `whitespacesAndNewlines`, `addFavorite`'s scope from the settings, ⌘W, the quiet ones;
+  answered as a route the Mac carries out; AppCatalog's bundle id check ported for `app.open`) and the rows the UI
+  draws (`live_plan`: which items, their numbers, their place, in front, visible, sound; `live` the Mac's shaping of
+  them into the library's snapshot until step 4); Margin's window's page (page/said.rs `Page::said`: every op read as
+  the Swift read WebKit's objects, a rect's list, the all-or-nothing list casts, Swift's `as? Int` and `as? Bool`,
+  PointerWant's reading: one reader now, the Mac's `PointerWant(body)` through it; page/hello.rs `Page::hello`).
+- No Swift dictionary on a push's way: the link object hands a push out with its message's JSON text (`msgText`, its
+  `type` beside it: ffi link.rs `wire`), Shell gives the text to the session (`margin_session_copy_message`), the core
+  reads, routes, checks and cuts it and gives the page its JSON as text through the `push` port. LinkMessage's `.push`
+  carries a `Push` (its text and type; an object only for the tests that read one). A copy's
+  `openTabs` goes as its JSON's bytes as the link's mirror keeps it (`StateMirror.data`).
+- `drawn`'s diff is kept by the link object per connection (`margin_link_drawn`, which sends each change itself), not
+  in the session as the design had it: a copy links, and its windows are told, before Margin's window (and so the
+  session) is made. The session answers only which windows it hosts for a copy (`drawn_windows`).
+- The page's ops come as their JSON's text (`saidText` in the hello, as commit 3's `layoutText`: overlay.ts's `post`
+  sends `{ op, json }` for every op but the hello, `send`, the appearance and the layout's own); a dictionary's body (the
+  tests', an older page) is made JSON first. The hello's head (`windowId` … `state`) was written in a Swift
+  dictionary's order, a new one each launch (its hash seed; probed: it differed within one run), so no byte order
+  existed for it: the core writes it in a fixed order, and everything after it is the same bytes (checked); strings
+  escaped as JSONSerialization does (`\/`, the short escapes, `\u00xx`).
+- Ports and inputs: typed `setLoading` 31, `setPaneLoading` 32, `setLoadingTabs` 33 (Margin's windows'); interim JSON
+  `swift` calls, each gone as its part moves: `uiSettings`, `startupRetry`, `startupSkip`, `openLauncher` (part 6).
+  The interim `refreshLoading` port (24) is deleted: the core's own now, and the Swift flows of later parts that change
+  what it reads call `margin_session_refresh_loading`. Fields 22 `panesLaying` and 23 `revealHeld` (applyLayout's,
+  Swift until part 3's flow moves). Inputs `ui`, `loadingForget`.
+- On commit 7's core (rebased onto it): the card has no Swift hop left in these parts. A copy's card pushes
+  (`peekOpen`, `peekCancel`, `cardPage`, `cardKey`) go straight from the push's routing to card.rs's flows; the UI's
+  `peek.*` and ⌘W to `close_card`, `expand_card`, `card_history`, `little_arc_opened`, `little_arc_go` and
+  `close_card_for_key` (`peek.go`'s address by card.rs's `web_address`, its query cut at 1,000 characters counted with
+  the marks that join one, as the Swift's `prefix` did for every query a person types); the card's own loader
+  (HostedPeek's `cardLoadingStep`) is loading.rs's; a window's layout's items for `visible` are commit 7's `layouts`.
+- One difference, accepted: the numbers a `refreshLoading` gives items it is the first to number go in their ids'
+  order; the Swift gave them in its Set's order (hash order, new each launch). In practice an item loading has its
+  number from its row, which the UI draws first. Two edges as commits 1 and 3 took them: a pushed text's cap counts
+  scalars; a NaN in a page's message is JSON's null (the page's own text says so), so a five-value rect list with a
+  NaN reads as its other four. The Rust map order where Swift took a dictionary's first: a tab several items claim is
+  the first item's by id.
+- Checked before the Swift went, two ways. The session: the old Swift (f78d6598) and the new over the core in commit
+  5's deterministic world, extended (the copies' pushes of every kind with tabs known and not, items named by another
+  profile, addresses with fragments, slashes and line ends, `loading` pushes, the copy's tabs' sound with every kind
+  of flag, the engine's slow steps with panes laid out, the UI's requests of every route with numbers given and not,
+  the rows drawn; inputs through JSON as the link and WebKit hand them): 150 vectors over six seeds, 8,871 steps, 1,216
+  copy pushes, 397 slow steps, 387 UI requests, 370 draws, 1,117 calls to Margin's windows: the same to the line but
+  one line in one seed, the accepted numbering (two new items numbered by one refresh), with the library's items
+  numbered first; without that, the same difference and only it. The pure parts (the deleted Swift verbatim against
+  the core through the new Swift: `drawn`'s diff, every op's reading and route on generated bodies with every kind of
+  value, PointerWant, the hello over pages in every state with odd strings): 560,413 checks over five seeds (60,000
+  hellos: every one parsed equal, every one the same bytes after its head), no difference once the harness gave the
+  old Swift WebKit's NSNumbers rather than Swift's own Ints. The harnesses caught each of 31 deliberate breaks of the
+  core (20 by the session's vectors: the logged form, the icon, the main window's loading push, the other windows told
+  none, the shown item's host, the same numbers, the pane's title, the mini player's two picks, the standing push, an
+  item of another profile, the tab kept, the address's cut, muted, nextTo, the scope, the trimming, visible, muted
+  from the copy, the quiet ones; 11 by the pure ones: the hits' cap, the list casts, the bool zone, Swift's Int, the
+  card's rounding, a rect's list, the slash, the stuck words, an empty pane cut, the minimum's truncation, `drawn`'s
+  forgetting), the hits' cap only once the generator made lists right at 64.
+- Cost. The push as the link hands it (1.8 KB, three sources), main thread CPU, Swift and core together: 16 µs (the
+  Swift at f78d6598, the same push through Shell's dictionary: 112 µs; commit 1's sanitiser alone was 31, the Swift's
+  before it 5.5); of it the Swift side is the wrapper and two typed port calls (the window, the push's text), the rest
+  the core's parse, check and cut and the page's JSON (release, ffi tests routing_cost.rs on this shared Mac, load
+  ~22: 18.9 µs; serde's `Value` and the workspace's `float_roundtrip`: a few a second while media plays). A draw's
+  `live` (10 open items) 35 µs (was 32: the plan's 3 µs, its callbacks, each kept tab read once); the engine's slow step
+  3.6 µs (was 2.8). The core alone: a loading push 0.9 µs, a slow step 0.65, a draw's plan 1.1, a UI request's route
+  2.1, a `pointerWant` 0.6, ten hits 1.6, a log line 0.4, a hello over a 42 KB state 2.5, a poll's drawn look 42 ns,
+  which allocates nothing (no_alloc.rs). Nothing per frame changed: a layout report still goes straight to the Page.
+## Core refactor step 3, commit 6: layouts, splits and the page area moving in the core, a drag's frame typed (2026-11-23)
+
+- Moved (session/layouts.rs, page_area.rs; their Swift deleted): `showSplit` (an app one pane, main the pane that
+  keeps its window else the first web one, the panes' first addresses and items for their windows), `paneRects`
+  (waited `pageWait`, the page asked to measure again at each look), `paneHostRects`, `pageAppMinimums`,
+  `refreshPaneMinimums`, `appMinimumsChanged`, `applyLayout` (each decision at the Swift's point between the same
+  awaits; its three `defer`s run only once reached, in reverse order), `leaveSplit` (the library's `removeFromSplit`
+  and the toast), `forgetInLayouts`, `prepare` (the other window's item pictured and parked first; full screen, its
+  page's full-screen layout, hosting, its page area measured), `pageRectChanged` (a drag the one shown follows: each
+  frame to the engine at once; else one placing per burst), `placeAgain` with its one retry after `refitRetryAfter`,
+  `sidebarResizing` and its `dragLine`. It writes commit 7's `layouts` field and commit 9's `panesLaying` and
+  `revealHeld` (the facade's writers of the last two, and `margin_session_release_reveal`, are gone: applyLayout was
+  their one user). `paneAddress`/`paneItem` are the core's (`PaneOpens`): the interim `prepare`, `showSplit` and
+  `applyLayout` Swift commands and the `paneFor` port are gone. The card's layouts are this flow (card.rs calls it),
+  the card's parts in it the core's (its part, its hostShow payload, its window's rect in a placing and a drag's frame,
+  its rect kept after a placing): HostedPeek's `cardPart`, `cardShowPayload`, `cardHostRects`, `cardPlaced` and the
+  facade's `cardPages` gone. `HostID.iconApp` is commit 9's `loading::icon_app` now (the Swift copy gone).
+- Left Swift, by name through the `swift` port (rare: a layout's): the elsewhere card's `showElsewhere` (and
+  `pagePicture`, async, a Swift command) and the cut panes' `paneCuts`, until their parts move. `HostedSession.
+  applyLayout` stays the API `setLayout` queues (the tests'), a `call`. `noRoom`, `isNoRoom`, `noRoomReason`,
+  `paneLeast`, `dragLine` stay the static wrappers the tests read.
+- The ports `prepare` asks on a show are typed (`MarginSessionCall` 40-47: the window's number, full screen, its
+  layout's mode, its placement with a token, hosting, its Space, every app's known minimum and their setting); the rest
+  are JSON (a layout's, a placing's, a drag's start and end). Two things the design's sketch lacked:
+  - The engine's layout results come with their Swift description (`"\(result)"`): the layout's "not shown" line
+    prints it, and it names the Swift module, which the core can't know.
+  - A placement Margin's window gave the core goes back to the engine as the window's own value: the port answers a
+    token with it, and the commands carry it (no placement made again of JSON numbers, which JSONSerialization can
+    read an ulp or two off for long decimals). It replaces the typed-ports commit's interim number for `prepare`'s.
+- The hot path, a drag's frame (≤120 a second): the page's layout report is read straight into the Page's kept layout
+  (page/report.rs: serde_json's own deserializer through a seed, every value through `deserialize_any` as a `Value` is,
+  so the same numbers, escapes, nesting limit and refusals; each key's last; the layout and a spare taking turns: no
+  allocation once both have grown; 200,000 generated reports and near-reports against `from_geometry` over a `Value`,
+  bit for bit). Then `updatePage` → the page rect → the session's `pageRectChanged` →
+  `margin_session_page_rect(s, window, page, content, display, card)`: the window's Page in the core
+  (`HostedWindow.pageFrame`, MWC's; a test's window has none and is read through the ports), its content and display
+  as MWC reads them, and where its page draws the card (`cardRect`: the core decides whether its card is there). While
+  the one shown follows, the core reads the placement and the panes' rects from the Page and the hosts from its state
+  (copied to the stack: nothing borrowed across the call out) and calls the engine's typed `MarginSessionFollow`
+  (`margin_session_set_follow`): no JSON, nothing allocated (no_alloc.rs `a_drags_frame_allocates_nothing`: 400 frames
+  of a split, with and without the card). The engine's `shown` is read after the drag's hold now, not before it (a
+  read: the same answer), so a drag that isn't followed asks nothing per frame either.
+- Checked before the Swift went (scratch harness layouts/: commit 5's driver extended): Margin's windows each a real
+  Page in the core whose layout report the driver writes from what's in front (the sidebar's width, the split of the
+  item in front and its ratio, a pane past the page area, none laid out yet, a stale layout, windowed), its
+  `setHosting` telling the session its page rect at once (`prepare`'s re-entrant `pageRectChanged`); the engine's
+  layouts with generated refusals (below a minimum, no room, didn't open, not laid out) and the copy's windows asked
+  for them, placings again (placed, kept, left full screen), drags of the edge and of a split's divider, followed or
+  not, with the card over them, splits of every shape (web and app, two of a profile and an app, an app twice and a
+  Chrome page, an app first, four), `setLayout` of up to six items, minimums, host events, presses, Quick Tab's card and
+  its close, full screen left, a narrowed window. Against the Swift at each base this branch sat on: f78d6598 (commit
+  5's typed ports) 192 + 86 vectors, commit 7 (187a6525) 196, commit 9 (40f909d4) 72: 541 of 546 the same to the line.
+  The five others are two sleepers due at the same virtual instant (`prepare`'s look and a link's wait, both the
+  core's now and so ordered by creation, the Swift's on its own timer; real deadlines never tie). A first run also
+  showed a Swift caller of the test-only `setLayout` going on one main-actor turn sooner (the `call`'s reply; nothing
+  of the app awaits it: the card's flows are the core's), which the driver no longer prints. Commit 7's merge found one bug, fixed (a card's hostShow
+  asked `pinnedOrFavorite` of Swift after commit 7 made it the core's).
+- The harness caught 23 of 32 deliberate breaks of the core over its runs (19 on this branch's final tree with three
+  seeds of eight vectors); of the nine it missed, seven are caught by the core's tests (an app twice, a profile's
+  fourth pane, the reveal held, the panes laid out for main, the focus moved back when a layout's host goes, a card's
+  rect not over a pane's, a pane the layout hasn't not followed: layouts_tests.rs), and two by neither: a no-room's
+  focus kept and the failed panes' order (newcomers out first): rare in the driver's world (two refusals beside a
+  focus change) and pinned only by T/split-real-use-tests.swift.
+- Cost. The core's side (release, ffi tests/drag_cost.rs): the report's parse 0.84 µs (was 4.1 with `Value`), the
+  session's page rect with the typed follow 0.2 µs, a whole frame (report, page area, session, holes) 1.4 µs. Through
+  the facade (scratch bench, main thread CPU, five alternating rounds against commit 9): a drag's frame 4.1-4.5 µs →
+  1.29-1.35 µs; a switch the same (web tab 68-97 against 66-88 µs, app 74-120 against 69-94); a peek open with commit
+  7's bench median 403-507 against 430-534 µs, best 265-307 against 253-303 (the card's layout now the core's whole,
+  `prepare`'s ports typed). The app's checks: 2150 unit and 321 end-to-end pass.
+
+## Core refactor step 3, commit 8: an item shown in another Margin window and the start in the core (2026-11-23)
+
+- Moved (session/elsewhere.rs, start.rs; their Swift deleted): part 5's `showElsewhere` (the card's name: the app's,
+  else the title, else the address, 120 at most), `pagePicture` (the copy's `hostPicture` raced against `pictureWait`
+  with `first_of`, the Swift's rule: a JPEG or PNG data address, no 8 MiB cap, Tirth's answer 4), `focused`,
+  `windowClosing` (parked first, then Swift's `done`), `windowClosed`, `forgetElsewhere`; part 6's start screen
+  (`Startup`, `StartScreen`: its seven fields and the setting it ran with), `startupRetry`/`startupSkip`,
+  `holdStartup`, `preparationOver`, `lastItem`'s and `loaderApp`'s use, `resumeLast`, `resumeShow`, `settleHosting`,
+  `openLauncher`, `leaveMarginPage`, `prepareBrowser`'s four steps (the browser started at once and awaited later: a
+  command handed out when the flow next suspends, `begin`, as Swift's `let t = Task { … }` … `await t.value`). The
+  start screen's words are the core's (`STARTUP_LABEL`, `STARTUP_SLOW`, `STARTUP_NO_LINK`, read by Swift from the
+  rules' constants).
+- The interim `swift` calls the earlier commits left for these parts are gone, the core's flows calling its own: commit
+  5's `settleHosting`, `leaveMarginPage`, `clearElsewhere`, `forgetElsewhere`; commit 9's `startupRetry`,
+  `startupSkip`, `openLauncher` (the UI's request now the core's flow: the launcher's Settings edit a main-actor turn
+  later than the Swift's call made it, as commit 9's `app.open`); commit 6's `pagePicture` (a Swift command) and
+  `showElsewhere` in `prepare`, and its `clearElsewhere`. Left, not these parts': `uiSettings` (the profile source's
+  settings, part 13) and `paneCuts` (the engine's visible windows' cuts, Swift's list).
+- State moved: `elsewhere`, `resume` (also written by `leftFullScreen`, still Swift), `resuming`, and the start screen
+  (read only, one row); the facade reads them as typed rows. `startupShown` is typed (`margin_session_start_screen`,
+  0.5 ns, nothing allocated): the keys' gate reads it per key press, the menu per check.
+- Ports added (typed, numbered from 60, after commit 6's 40-47): `setElsewhere`, `setStartupStuck`, `clearCover`,
+  `hasHostedPlacement`, `hasIdlePlacement` (each read where the Swift read it, the `&&`s short-circuited the same),
+  `preparesOutOfSight`, `marginActive`, `activateMargin`, `engineShows` (the engine's `shown != nil`, allocation free);
+  commit 6's and 9's own used for the rest (`windowSetHosting`, `setHosted`, `windowFullScreen`, `windowNumber` and
+  `fullScreenSpace`, `setLoading`). Fields 24-27 (`elsewhere`, `resume`, `resuming`, `start`).
+  Commands: the engine's `start` and `prepare`, the waker's `ensureLinked` with `prepare` (its look then
+  `margin_session_prepare_wanted`, typed, nothing allocated: the preparation's own `wanted`), `Done` (a callback given
+  with an input). Inputs (JSON, rare): `windowOpened`, `windowFocused`, `windowClosing` (answered: later or now),
+  `windowClosed` (the loading bar's own of the window forgotten in it, commit 9's), `startupRetry`, `startupSkip`,
+  `preparationOver`, `lastItem` (a read); flows Swift calls: `prepareBrowser` (awaited), `openLauncher`. Hosting settled from the Swift flows of later parts and the engine's
+  events: `margin_session_settle`, answered as an input.
+- The window given to `resumeLast` is held by the facade while the core resumes it or its start screen is up, as the
+  Swift flow held it (a closed one is still told, as before).
+- Not moved, and why: the poll's sweep (`closeIdleCards` is part 4's, `closeIdlePaneWindows` reads part 3's layouts,
+  the restored windows' sweep is the waker's): the design's `poll` input comes with them.
+- Accepted differences:
+  - The picture's wait is on the session's clock (its `sleep`, a deadline), as every other wait; the Swift's was the
+    one on `Task.sleep` directly. The same in the app; a test's own sleep now paces it too.
+  - Order against a Swift task: a task the core enqueues during a run starts in that run, where Swift's `enqueue`
+    started it a main-actor turn later, and a Swift caller of a core flow (`prepareBrowser`'s) resumes a turn after the
+    flow returns (commit 5's hop). Seen only as when the harness's `prepareBrowser` caller says it's over and the
+    `onChange` it causes, never in what either flow does.
+  - As step 1's caps: the card's 120 characters are counted as Unicode scalars, Swift's as Characters: only a title
+    with combining marks past 120 differs.
+- A finding the design didn't have, fixed in the facade (commit 4's timer): a deadline dropped before it was due (the
+  picture's wait once the picture came) cancelled the one timer, whose cancelled sleep ended at once and still ticked
+  that deadline: the core's time jumped to it, so the sleeps after counted from a moment still ahead (the next
+  picture's wait 0.05 s longer, in the comparison). A timer let go is now never ticked. No flow before this one
+  dropped a deadline early.
+- Checked before the Swift went: the old Swift (refactor/core-session at f78d6598) and the new over the core, both
+  built whole with the unit tests' stand-ins and commit 5's driver extended: three Margin windows, closings mid-show
+  (parked first, then closed), the start screen held up, retried, skipped, a pick meanwhile, the preparation started,
+  given up (not out of sight, no window in time, not started, never linked), prepared, pictures of every kind racing
+  their wait, windows in and out of full screen and without a page area, the launcher, Settings last; the old Swift's
+  picture wait put on the session's clock and its losing wait let go, so the race is the virtual clock's in both. 720
+  vectors over 18 seeds (42,905 steps, 20,021 requests and asks, 11,889 engine opens, preparations and copy requests;
+  1,450 resumes, 2,630 preparations, 86 start screens held up, 694 window focuses, 546 closings, 557 cards, 68 of them
+  pictured, 740 picture asks, 921 launchers, 954 settles): 602 the same to the line, 114 the same but for when the
+  harness's `prepareBrowser` caller says it's over and the `onChange` around it (the hop above), 4 differ only where
+  the driver makes no order: sleepers due at the same virtual instant, the core's against the Swift's (commit 5's
+  class). Rerun on each new base: on commits 7 and 9, 270 vectors more over 9 seeds (16,011 steps), 231 the same, 37 the
+  same but for the hop, 2 ties of the same class; on commit 6 (the last), 270 over 9 seeds (16,141 steps), 230 the
+  same, 40 the same but for the hop, none different. The harness's breaks (31 of the core's flows, one at a time,
+  three runs at a time, 15 vectors of three seeds against the old Swift's output, the hop's lines left out and the
+  `onChange` lines counted): 20 of 31 caught on the first base, 18 of 31 on the last; 25 caught on one base or
+  another. The 6 never caught are paths the generated sequences seldom reach in that many vectors (a card's name
+  from the address, a window in front that already hosts, a closed window's resume, a window closed while it still
+  hosts with no closing first, the failure kept with no start screen up), or no break at all (Try again's limit read
+  again: the option didn't change meanwhile); each is pinned by the core's own tests (start_tests.rs).
+- The app's checks: 2152 unit and 321 end-to-end pass (a timing check that failed once under the harness's load
+  passed idle). The tests the design names are unchanged; the core's own pin each flow's shape through the re-entrant
+  adapter (elsewhere.rs, start_tests.rs).
+- Cost (release, ffi tests/session_cost.rs, the Mac shared with the harness): the start screen's read 0.5 ns and the
+  preparation's look 39 ns typed, neither allocating (no_alloc.rs); hosting settled 4-6 µs and a window in front 6 µs
+  with every port as JSON (the Mac's are typed); rerun quiet: 0.5 ns, 4.9 ns, 1.4 µs, 0.7 µs. Nothing per frame.
+  Swift: ~400 lines out, ~120 in.
+
+## The start screen held up re-checks only on events, no 50 ms looks (Tirth, 2026-11-23: step 3's open question 5)
+
+- Tirth's answer to the design's question 5: once held up (its words said, Try again and Continue without Safari),
+  the start screen no longer looks every 50 ms (HS:1559's `wait(.infinity)`, 20 wakes a second for as long as it's
+  up); it re-checks only when what it reads changes, and nothing wakes while it's up and idle. The first `startupWait`
+  (15 s, before it's held up) keeps its looks: the question was the held-up wait's.
+- What the looks read, and where each changes (every one inside a session call, so each is an input or a step of a
+  flow one runs):
+  - Continue without Safari: the `startupSkip` input (the page's `startup.skip`).
+  - Try again's count: the `startupRetry` input (`startup.retry`).
+  - The preparation over, and whether it was given up for a reason the screen says: the `preparationOver` input (the
+    shell's, the preparation off), and the preparation's own flow, run by its commands' answers: the browser
+    started (an app), Margin's window in full screen with its page area (a window), the copy linked or given up
+    (a copy's link: the waker's answer), its window made ready (the engine's).
+  - The window's item asked for (`requested`): a library request (a sidebar pick, the palette), a window in front
+    (`windowFocused`), a window closed (`windowClosed`), the core's own flows, and the Swift flows of later parts
+    that write it through the facade (a split, the card, a window back in full screen): the facade ticks in the next
+    turn when such an edit woke it (`margin_session_ready`, typed, nothing allocated).
+  The looks read nothing else: no port, no window, engine or link directly. So in the core: a task can wait for a
+  change (exec.rs `changed`), woken by any change of the start screen's state or of `requested` (`Core::bump`, the one
+  place every edit of a field passes); it re-checks then, and waits again if it isn't over. No deadline while it waits.
+- Measured (the harness's `idle` mode, real time, the session's own sleeps counted over 3 s once held up): the browser
+  not ready within its limit, no preparation under way: 20.0 wakes a second in the old Swift, 19.7 after commit 8's
+  move, 0 now; its extension never linked, the preparation given up: 19.7, 19.7, 0. Continue without Safari still
+  lifts it at once in each.
+- Pinned: the core's (start_tests.rs `held_up_it_rechecks_only_on_events`: no deadline while held up, then each event
+  (Continue, Try again, the preparation over, a facade's edit, a library request, the window closed) re-checks at
+  once); the Swift's (T/hosted-tests.swift: held up and idle, nothing wakes, in `hostedResumeTests` and the start
+  screen of `preparedBrowserTests`; the checks of Try again, Continue and the browser ready after all unchanged).
+
+## Core refactor step 3, commit 10: a draw takes the profile's settings and icons without a State, the facades trimmed (2026-11-23)
+
+- Part 13: `DataSetWindowSource.settingsAndIcons()` gives what the library's snapshot takes of the profile: its
+  `settings` with each theme's own under `themes` and the in-memory overlays over them (the Swift's merge, now one
+  `overlaid` that `snapshot()` uses too), and its `siteIcons`. `LibraryWindowSource.snapshot` takes it instead of
+  building the whole State (every collection, every kept tab) per draw to read two keys. `state` and `snapshot()` stay
+  only as the no-rules fallback (Tirth: it goes at step 4's switch).
+- The interim `uiSettings` call on the `swift` port is gone: the core reads the settings a search, `peek.go` and
+  `addFavorite` need through a `settings` port of its own (rare, JSON), answered by `drawnSettings` (the same settings,
+  no State built). The `swift` port is left with `paneCuts` only (built from the engine's visible list in Swift, as
+  commit 6 left it); `Command::Swift`, which nothing has handed out since commit 8, is deleted.
+- The facades trimmed to what the app and the tests read. Deleted: the fields nothing reads (`marginOpen`, `cycledAt`,
+  `labels`, `safariMuted`, `preparingProfile`, `startup` and its enum, the facade's own `startupStuck`; MWC reads the
+  core's), the setters nothing calls (`marginPages`, `showing`, `cards`, `elsewhere`, `preparingWindow` are reads now;
+  `setSet` and `PeekCard.cells` with them), `onCardDismiss` (never set: the press closes the card as before), the
+  card wrappers the page's requests reach the core without (`expandCard`, `cardHistory`, `openCard`, `isCardItem`,
+  `cardTag`), and the JSON answers of every port margin-ffi asks typed (SessionCore always gives the typed call, so the
+  core never asked them as JSON; ffi keeps its JSON forms as its contract, its tests run them). Kept on purpose: `paneCuts`,
+  the poll's sweep (`closeIdleCards`, `closeIdlePaneWindows`, the restored windows), `applyLayout`/`setLayout` (the
+  tests' API), the static wrappers the tests read (`noRoom`, `isNoRoom`, `paneLeast`, `noRoomReason`, `dragLine`,
+  `liveTab`, `searchUrl`, `webAddress`, `defaultCardRect`, `loaderApp`, the start's words), `copyLoading`/`copyPush`,
+  `startupRetry`/`startupSkip`, `littleArcOpened`/`littleArcGo` (the tests'). The core's `peek` input keeps `expand`
+  and `history` (its tests drive the flows through them). No `TODO(step3` marker and no interim entry is left; the one
+  `#[allow(dead_code)]` (ffi tests/drag/world.rs) is a helper module two test binaries share, each using part of it.
+- Checked before the Swift went: the old snapshot's `settings` and `favicons` (the Swift at 04ea0a76, verbatim in the
+  harness) against `settingsAndIcons`, `drawnSettings` and the new `snapshot()`'s settings, on generated profile sets
+  (settings and theme settings of every kind of value, deletions, site icons, a profile with no set, another profile,
+  none), keepers of both kinds (a kept `themes` key among them) and overlays of every request: 8 seeds, 1,200 sources,
+  7,180 checks, no difference. The harness caught each of 9 deliberate breaks (no overlay, no `themes`, icons empty or
+  from another collection, the set's value winning over the overlay's, a theme's old value winning, themes merged
+  before the settings, the theme overlay skipped, the guard reading the settings' overlay alone; 390 to 2,952 differences each).
+  Pinned in T/margin-window-tests.swift (the source's draw values the same as the fallback's).
+- Cost (release Swift, the Mac loaded ~7, a set and a library of N items each: pins, tabs, the archive, favorites,
+  site icons, overlays on): a draw (`LibraryWindowSource.snapshot`) 1.74 → 0.86 ms at 50 items, 17.6 → 5.1 ms at 500;
+  of it the profile's part 1.19 ms → 75 µs and 12.7 → 0.50 ms (the site icons' read); a UI search request's route
+  1.24 / 13.4 ms → 47 µs (it built the whole State for the settings). Nothing per frame changed.
+- Swift: 140 lines out, 59 in.
+
+## Core refactor step 4, commit 1: the JavaScript the library's rules rely on, in the core (2026-11-23)
+
+- margin-core gains `library` (app/shared/core/src/library/), its first two files: `js.rs`, what library.ts and
+  model.ts get from the engine without saying so, as JavaScriptCore runs it in Margin.app (a bare `JSContext`, as
+  LibraryRules.swift makes it): UTF-16 lengths and cuts (`len16`, `slice16`, a prefix of the input: no copy), `.sort()`'s
+  unit order (`cmp16`), JS's one list of spaces for `trim` and `\s` (`is_space`, `trim`, `squash_spaces`: U+FEFF is
+  one, U+0085 and U+180E aren't, the other way round from Rust's), `localeCompare` (`Collation`, ICU4X for a locale),
+  `Math.round`/`max`/`min` (-0 and NaN as JS), a comparator's `x - y` (`num_cmp`: NaN goes on to the tie, as `||`),
+  `String(n)` (`number_string`: `1e+21`, `1e-7`), `!!v`, `??`, `Number.isFinite`, `String(v)` and `obj[v]`'s key for
+  JSON values, the address regexes (`/i` as JS folds it without `u`: ASCII only), shared/data-set.ts's `fingerprint`
+  (JSON.stringify's escapes, FNV-1a over UTF-16), and library.ts's `idMaker` (`Ids`: the given ids first, used up
+  one each whether they pass or not; then the core's random letters, Swift's rule: a byte mod 36). And `import.rs`:
+  library.ts `importValues` up to its last step (the values with the import in them and its counts, `nsId`,
+  `nsTabId`, the sets' filter); its normalising through `stateOf`/`valuesOf` and the `diff` join it with part 2.
+- Found: **a bare JSContext has no `URL`** (it's WebCore's), so in Margin.app `new URL` always throws and both sites
+  catch it: model.ts `normalizeUrl` gives the address as it is, air-traffic.ts `patternMatchesUrl` is false. Measured
+  with dist/app/library.js in a JSContext: `routeUrl` of an address a rule matches answers null (Node: the rule), and
+  `addFavorite` of `https://a.com` beside `https://a.com/` adds a second (Node: refused). So a link rule never routes
+  in the app today, and pins, favorites, the archive and `keptForUrl` match addresses exactly as given. The core keeps
+  that (`RULES_PARSE_URLS = false`: `normalize_url` returns its input, `rules_url` nothing); the WHATWG reads
+  (`url_parts`, `normalize_url_whatwg`, the `url` crate: Tirth's answer 2) are there for when he decides the app's
+  rules should parse addresses as the browsers' copies do (the design's open question 11, asked).
+- Measured against JSC on this Mac and Node 25 (scratch harness: edges.js through a JSContext and through Node,
+  compared by a Rust tool over js.rs): every code point's space the same (1,112,064, `trim` and `\s` one list in
+  both engines), the cuts, the sort, 43 numbers' strings, 24 rounds, the max/min signs, 22 values' strings and keys,
+  17 fingerprints, 23 addresses' regexes, the lowercase of 6 hosts; `localeCompare` (`en-US`, what JSC resolves here)
+  the same on all 9,025 printable ASCII pairs, 20,000 two-character ASCII pairs, 20,000 id-shaped pairs, 3,000 ids in
+  JSC's sorted order and 30,000 random pairs over accents, combining marks, Hangul, CJK, emoji, joiners and
+  ignorables. It differs on 1,880 of 63,487 adjacent BMP characters in JSC's order and 284 of 12,858 in a
+  supplementary sample: all Han but 31 (Apple's ICU orders Han by radical and stroke, ICU4X's compiled data by code
+  point; the 31 are new in Unicode 17, which ICU4X 2.1 lacks and 2.2+ has, needing Rust 1.86+). Node and JSC differ
+  only there too (their CLDR versions). No id Margin makes has a Han character. A locale's tailoring reorders ASCII
+  (Danish `aa` after `z`), so the collation takes the locale: the app must give JSC's (the person's preferred
+  language) at the switch, commit 6. The `url` crate against WebKit (an off-screen WKWebView, Safari's parser) and Node
+  on 90 WPT-like addresses: the same parts and `normalizeUrl` for all but `https://xn--a.com` (the browsers take it,
+  the crate refuses: its `normalizeUrl` is the same either way).
+- Size (a release binary with the workspace's profile; arm64, x86_64 the same within 7 KB): the collation +1.26 MB
+  (1,618,816 bytes against 356,976), the WHATWG parser +0.22 MB, both +1.48 MB. Over the ~1 MB of Tirth's answer 1, so
+  it's asked again (open question 1, with the system's ICU and the ASCII table as the other choices); ICU4X stays
+  until he answers. Nothing reaches the app yet: margin-ffi calls neither, and the linker drops them.
+- The import: 2,000 generated imports (random sets of every browser, profiles long enough to be hashed, odd values
+  everywhere, sets given twice, orders with unknown and repeated entries, every kind of `now`) against library.ts in
+  Node, two ways: the Rust's values before normalising against library.ts's own (its last step taken off a copy made
+  at run time), 14,225 values, and after library.ts's normalising and diff, 13,257 changes: no difference, once a cut
+  through an emoji drops its broken half on both sides (Tirth's answer 3); a second seed, 5,000 imports (35,018
+  values, 32,619 changes): none either. 42 deliberate breaks of js.rs and import.rs, each alone, all caught (33 by the
+  unit tests, 9 by the harness): the spaces, the cut, the sort, the collation's strength, punctuation and bytes, the
+  rounding's half and -0, the max's -0 and NaN, the number strings' thresholds and `+`, arrays' nulls, falsy 0,
+  `"undefined"`, the fingerprint's escapes and prime, the regexes' spaces and case, the ids' length, the URL's `/`,
+  the URL switch, and the import's cuts, icon case, a repeated order entry's place, both tie-breaks, the archive's
+  fallback, `open`, `selected`, `now`, the folders' ids, `file:` items, the 256-unit hashing by units, the tab id's
+  key, unranked spaces' place, a pin with no address and `finite` on places.
+- Cost (release, scratch bench): a cut 1 ns when short (the input back, no copy) and about 0.3 µs for 3,000 ASCII units,
+  `trim` 9 ns, a number's string 33 ns, a fingerprint 0.2-0.3 µs, a collation's compare 0.13-0.4 µs (ties only), a
+  `Collation` made 0.7-1.5 µs (once per library, not per call).
+- Not done here: the vectors' `js.json` (commit 0's, recorded by its own branch: these edges are its cases, and its
+  JSC answers must equal the tables in js_tests.rs), the import's normalising (part 2).
+
+## Core refactor step 4, commit 2: the library's typed state, its values, the diff and the snapshot's text in the core (2026-11-23)
+
+- margin-core's `library` gains library.ts's `stateOf`/`targetOf`/`placeOf` (`state.rs`), `valuesOf`/`diff`
+  (`values.rs`), the snapshot's text (`snapshot.rs`) and the import's last step (`import.rs` `import_changes`, LT:932-934:
+  the import's values read through the rules once and diffed against the values as stored). Nothing calls them in the
+  app yet (commit 6 switches); no behaviour changes.
+- The state is typed, not JSON: every collection an `Rc` of a list of `Rc`s, every string an `Rc<str>`. A copy of the
+  state is nine refcounts (an action's spread copies), a record a rule didn't change stays the same `Rc` (JS's
+  `p === state.pins[i]`), and a rule that changed nothing hands back the same lists (`LibState::same`: the TS's
+  `next === s`, which decides `result: null`). A field model.ts can leave out of a record it makes (a pin's `pos`, a
+  favorite's `target`) is an `Option`, so `valuesOf`'s fallbacks see what JS sees.
+- JS's key order, kept: `Object.entries` lists array-index keys first, ascending, then the rest as inserted; the
+  windows' ids are numbers, so `activeSpaceByWindow` is `{"2":…,"10":…}` in JS's text and in the core's (`JsObject`,
+  over `indexmap`, already built for serde_json's `preserve_order`: no new crate). The design said the set's order;
+  corrected in docs/CORE-REFACTOR.md.
+- `valuesOf` is written once, as rows borrowed from the state; `diff` compares two states' rows (equal exactly when
+  LT's two `JSON.stringify`s are: one writer for both, -0 as 0, any two non-finite numbers both `null`), builds JSON only
+  for what differs, and skips a collection or an item both states share. The import's diff is the JSON one
+  (`diff_values`): `current` is the values as stored, so an import rewrites a value stored in another key order and
+  deletes what the rules don't read, as LT's does; a perform never does (its `before` is the rules' reading).
+- `localeCompare` is handed in (`js::LocaleCompare`, Tirth's answer: the system's sorter): ICU4X's `Collation` is one
+  until the platform's comparator lands (its removal from the dependencies is that commit's), `CodePointOrder` the
+  tests' stand-in. `import_values` takes it too.
+- Part 3's three pieces are laid out: `library/model/mod.rs` holds what more than one needs (the bindings
+  `pin_of_space`, `has_favorite`, `bound_elsewhere`, `held_bindings`, `settle_bindings`; `has_space`, `pos_of`; the
+  shared limits) and six files name their functions: spaces + order, kept + favorites, splits + links, none calling
+  another's.
+- Measured against library.ts in Node (scratch harness: random libraries of every collection with odd values, emoji at
+  every cut, integer-like and non-tab ids, ties, non-finite ratios, each paired with a mutated copy): 5,000 libraries
+  (two seeds), the snapshot's text byte for byte, `valuesOf(stateOf(…))` as text (key order counts), 64,337 changes of
+  the import-style diff and 20,168 of perform's diff between two readings: no difference; the 5,000 imports of commit
+  1's harness now whole (`import_changes` against `importValues`): 32,619 changes and the counts, none. A cut through an
+  emoji drops its broken half on both sides (Tirth's answer 3).
+- 64 deliberate breaks of state.rs, values.rs, snapshot.rs, the import's normalising and model/mod.rs, each alone: 62
+  caught (61 by the unit tests, 1 by the harness: the import diffing its own reading); the 2 left change nothing
+  (a bundle id's 255-unit check after its 255-unit cut; Rust's `round` for JS's on ratios, which are positive). Three
+  first missed (an object's keys not compared, a plain string with only a `\` or U+001F, a pin with no `pos` in the
+  text) got tests, then were caught.
+- Cost (release, scratch bench, a library with 2 KB icons, 200 archive entries, 30 spaces, 60 pins; JSC is today's
+  dist/app/library.js in a bare JSContext, its JSON in and out only, Swift's JSONSerialization not counted): at 50 / 500
+  / 2,000 items, the snapshot's text 0.09 / 0.26 / 0.85 ms (JSC's `snapshot` 1.8 / 4.7 / 15.3 ms), `state_of` from the
+  store's set 0.2 / 0.6 / 1.7 ms (once per revision of the set), a perform's diff 0.7 µs for a window set and 3 / 22 /
+  85 µs for an item moved (JSC's whole perform 2.5 / 6 / 18.6 ms). A perform and a draw end far cheaper than today's.
+
+## Core refactor step 4, commit 0: the library's shared vectors, as JavaScriptCore answers them (2026-11-23)
+
+- tests/fixtures/library/ (README.md has the format whole; docs/CORE-REFACTOR.md part 8 its summary, kept stable for
+  the parts that load it): `cases/*.json` (each `{ about, from, cases: [{ about, values, steps }] }`, a step one of
+  `perform`, `snapshot`, `import`, `normal`, `target` with its `expect`), `throws.json` (the throw survey's sites) and
+  `js.json` (part 1's cases). A file holds many cases (the design's one case a file would be ~350 files). Steps merge
+  their **expected** changes before the next, so one wrong step fails alone; each collection's ids are in code-point
+  order, the core's store's.
+- Recorded by `npm run library:vectors` (tests/library-vectors/record.ts, ~8 s): Node's module hooks (`registerHooks`)
+  send the ten TS test files' imports of library.ts to a wrapper that records every `perform`, `snapshot`,
+  `importValues`, `stateOf`, `targetOf` and `call` (inputs made the vectors' first: plain JSON, ids sorted, the env's
+  ids padded with fixed `zq000001x`…, trimmed after the last one the answer shows), and of node:test to one that keeps
+  the test's name; every file still passes under it. 318 calls of the tests' ~70 cases, 300 generated sequences of 30
+  steps (generate.ts, seeded: every action and 6 names that aren't, right and wrong payload types, ids that exist and
+  don't, emoji at every cut, JS's odd spaces, equal places and times, addresses that differ by a slash or a fragment),
+  and the throw survey (every action, each payload field as each of 12 wrong JSON types: 2,085 calls). In all 347
+  cases, 9,327 steps (8,750 performs, 289 snapshots, 283 round trips, 3 targets, 2 imports), every one of the 57
+  actions; 7.4 MB (the design guessed 1-3: the snapshots and round trips repeat a library's values; kept, as plain
+  JSON a line a step, for readable diffs).
+- Today's answers are JavaScriptCore's: each step is library.ts's in Node with `URL` deleted from the global object
+  (`new URL` a ReferenceError, as in a bare JSContext), then every case runs again in JSC (tools/library-vectors/
+  jsc.swift, a one-file `JSContext` tool, over dist/app/library.js as buildApp makes it) and JSC's answer is the one
+  kept. They agree on every step but a throw's words; js.json's 26 groups the same in both. A step whose answer
+  differs with `URL` is marked `"url": true` (68): the URL commit re-records them (Tirth's answer 11).
+- A throw is named by its site, `<action>: <Node's words>` (stable across edits; `where` gives the function, from the
+  stack of a copy of library.ts made at run time that keeps what its `catch` caught); throws.json holds JSC's words and
+  Node's. The survey finds **one** site: `createSpace {name: <not a string>}` (model.ts createSpace's `name?.trim()`;
+  JSC: `name?.trim is not a function. (In 'name?.trim()', 'name?.trim' is undefined)`). Every other payload value of the
+  wrong type is checked before it's used (`typeof`, `String(x ?? '')`, `Array.isArray`).
+- A title cut through an emoji, on the Mac today: JSC's `JSON.stringify` writes the half as `\ud83d`, and LibraryRules'
+  `JSONSerialization` refuses the whole answer ("expected low-surrogate code point"), so the action fails (`perform: no
+  answer`, nothing changed), a snapshot comes back empty and an import fails (and runs again at the next launch).
+  Measured with a scratch tool (JSC → its text → `JSONSerialization`). The vectors hold Tirth's answer 3 instead: the
+  broken half dropped (`"cut": true`, 600 steps; library.ts's answer with the half dropped is what both runners
+  compare).
+- The "first of several equal" order is the ids' (Tirth's answer 10): the recorder gives library.ts each collection in
+  code-point order, as the core's store reads it (JS still iterates integer-like keys first: only the windows'
+  `"7"`, `"12"`, which no rule's outcome depends on).
+- Corrected in the design: part 9's "a vector run feeds Rust's output back through LT's `stateOf` and expects no change
+  from `valuesOf(stateOf(…))`" doesn't hold for library.ts itself (a change writes only what moved, so a space's
+  `order` read back can differ, and a value of an odd type is written as given and read as `''`); what holds is that
+  the core writes exactly library.ts's changes, which every vector checks.
+- Run by tests/library-vectors.test.ts (`npm test`: library.ts without `URL`, 24 tests), margin-core's
+  `library::vectors` (`cargo test`: `Engine` with a default `None` per kind, `run`, `Report`, `differ`, `merge`,
+  `data_set`, `js`, `throw_words`; vectors_tests.rs checks the runner with an oracle and js.json against js.rs: every
+  code point's space, the cuts less the broken half, the sort, 41 numbers' strings, rounds, max and min, ratios, 24
+  values' strings, keys and truthiness, 17 fingerprints, 6 import ids, the id check, 23 addresses' regexes, the
+  lowercase, the no-URL answers, and all 9,025 ASCII pairs and 22 id pairs through today's collation).
+
+## Core refactor step 4, commit 0: the vectors through the app's rules, the shadow, today's costs (2026-11-23)
+
+- The hand-written edges (tests/library-vectors/edges.ts → cases/edges.json, 14 cases): the ties the generator rarely
+  makes (two Settings items used at once, a favorite's two items, a pin's unbound items, the front item, spaces and
+  link rules at equal orders, the archive at equal times, a clear of five items, equal places beside each other), cuts
+  at every limit, JS's spaces, addresses with no URL, numbers (`0.1 + 0.2`, 2^53 + 1, -0, a window id as a string and
+  with a fraction), payload keys (an array as a tab id, names of the object prototype as actions). In all 361 cases,
+  9,385 steps.
+- The vectors catch the reference broken: 17 deliberate breaks of library.ts, model.ts, front-item.ts,
+  pinned-rules.ts and air-traffic.ts, each alone (the cut, the changes' id order, settleSplits after a success, the
+  ratios' rounding, three tie-breaks, a refusal's words, the name's trim, the archive's and favorites' caps, a folder's
+  depth, the pattern's lowercase, the no-URL address, the selected item's tie), 16 caught; the one missed is
+  equivalent (clearToday's `.sort()` of `t-` ids given in code-point order: UTF-16 order is the same for them).
+- T/library-vectors-tests.swift (`npm run test:app`) runs every perform, snapshot and import step through
+  LibraryRules (dist/app/library.js, JavaScriptCore): 8,800 performs, 295 snapshots, 2 imports the same, 288 steps it
+  can't ask (normal, target); the 403 `cut` steps fail there as the app does today (no answer). And a check of the
+  Mac's own outcome: a title of 1,999 units and an emoji fails `addItem` with nothing kept; 1,998 and the emoji whole,
+  2,000 units kept. Two broken copies of library.js (a refusal's words, the cut at 1,999) fail it (21 and 85 steps).
+- The shadow (the same file, `LibraryShadow`): for the run, JSValue's `call(withArguments:)` is exchanged, so every
+  LibraryRules call of the whole Swift suite (9,442: 9,122 performs, 314 snapshots, 6 imports) is seen with no change
+  to the app's Swift; each is given to both engines as the same text (each collection's ids in code-point order, the
+  core's store's; the env's ids made ones the rules take, then 48 more) and the answers compared: 0 differ. Its second
+  engine is a second JSContext (MARGIN_LIBRARY_SHADOW_JS gives it another script: both broken copies are caught, 20+
+  calls each) until commit 5 makes it margin-core's library. Found by it: some Swift tests' ids (`q1x`, three letters)
+  are refused by library.ts (`^[A-Za-z0-9]{4,30}$`), so those actions drew Math.random's ids; the shadow gives ten
+  letters in their place, as Math.random's would be.
+- Found: library.ts's import compares the stored values' **text** (LT:934 `diff(current, normal)`, `JSON.stringify` of
+  each), not their normal form as `perform` does: a value whose keys come in another order than `valuesOf` writes them
+  is written again, the same value. In the app the values cross Swift dictionaries, so the first import rewrites the
+  library's own values (same values, a new time); harmless, and noted in part 5 for the core's import. The vectors'
+  imports keep the order the TS tests gave; the Swift run leaves those rewrites out on both sides.
+- Baselines (`MARGIN_LIBRARY_BASELINE=<items>`: a process each, off screen; 2 KB icons, 200 archived, two spaces; each
+  the median of 25, two rounds on a shared Mac, the quieter kept):
+
+  | Items | A perform (activateTab, all of L.perform) | The rules' call alone | A snapshot | A draw's library part (snapshot + its text) | State | Footprint, library open → after the 125 calls |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | 2.7 ms | 1.7 ms | 2.2 ms | 2.8 ms | 147 KB | 13 → 22 MB |
+  | 500 | 16.2 ms | 7.6 ms | 11.0 ms | 13.9 ms | 1.2 MB | 20 → 53 MB |
+  | 2,000 | 62.0 ms | 28.0 ms | 40.7 ms | 52.3 ms | 4.6 MB | 72 → 354 MB |
+
+  (A perform's rest is the values through JSONSerialization both ways and the store's apply; the footprint after is
+  JavaScriptCore's heap before it collects.) The app: Margin.app built from this commit (`npm run safari --
+  --no-install --unsigned`): its binary 19,150,304 bytes (arm64 9,041,376, x86_64 10,084,320), the bundle 22.9 MB,
+  library.js 68,103 bytes, JavaScriptCore linked. The running app's footprint isn't measured here (it would open
+  windows on the screen); the library's part of it is the table's.
+
+## Core refactor step 4, commit 3 piece 1: the model's rules for spaces and the pinned area's order in the core (2026-11-23)
+
+- margin-core's `library/model/spaces.rs` (model.ts's `setActiveSpace`, `createSpace`, `orderSpaces`, `updateSpace`,
+  `deleteSpace` and its cascade) and `model/order.rs` (`pinForUrl`, the folder lookups and PR's `folderDepth`,
+  `pinOrder`, `writeOrder`, `placed`, the names, `addPin`, `removePin`, `bindTabToPin`, `unbindPinTab`, `renamePin`,
+  `renameTab`, `movePin`, `createFolder`, `renameFolder`, `setFolderOpen`, `moveFolder`, `deleteFolder`), each with
+  M's name and line, its kept half only (the library has no open tabs). Nothing calls them in the app yet (commit 6
+  switches); no behaviour changes.
+- A value library.ts hands M straight from a payload is an `order::Arg` (undefined, a JSON value, or the caller's
+  string), so each rule tests it as M does: `movePin` refuses a truthy folder id that's no string and takes a falsy one
+  as the top level, `moveFolder` refuses any parent but null that isn't a folder's id (`""` and `0` too), `renameTab`
+  with an array as the id (library.ts's own check finds it by its key) is an open tab's to M: unchanged. Part 4 builds
+  them with `Arg::of(p.get(…))`, `.or_null()` for `?? null`. The other pieces will want it too: it belongs in
+  model/mod.rs (asked, not moved: mod.rs isn't this piece's).
+- `create_space` answers a `Result`: `name?.trim()` throws for a name neither a string nor nullish (the throw survey's
+  one site), with JSC's words.
+- A gap found, not closed: `createSpace` stores a truthy emoji or colour that's no string as given (`emoji: 5`; 17
+  generated vector steps), which the typed `Space` can't hold. `create_space` writes `""`, what the next reading of it
+  is, so every later state is the same and only that step's stored change differs. Exact needs a raw value in `Space`
+  (state.rs, values.rs) or part 4 refusing such a payload (a behaviour change): the caller's decision.
+- Identity kept as JS's: a rule that changes nothing answers the same lists (`LibState::same`), a record it doesn't
+  change is the same `Rc`, and where M always makes a new array or object (`updateSpace`'s `map`, `deleteSpace`'s
+  archive, items and windows, `setActiveSpace`'s spread) so does the Rust.
+- Checked against model.ts: a scratch harness (random libraries, step4-state's generator, and structured ones: nested
+  folders with cycles, parents in other spaces, tied places, bound items, one address in two spaces; 14 calls each with
+  library.ts's argument shapes, payload values of every type): 2,800 cases, 39,200 steps against Node and 2,500 cases,
+  35,000 steps against JavaScriptCore (`jsc`, a bare context, no `URL`), the throws' words too: none differ (each
+  step's values, `next === s`, and the lookups' answers). The shared vectors through a test engine of the 16 actions
+  library.ts answers with these rules alone (createSpace, renameSpace, setSpaceTheme, deleteSpace, orderSpaces, unpin,
+  pinTab, renamePin, renameTab, movePin, createFolder, renameFolder, setFolderOpen, deleteFolder, moveFolder,
+  nestFolder): 2,304 perform steps checked, all the same; skipped: other actions' steps, 17 of the gap above, 23 whose
+  `settleSplits` (piece 3's) would change the splits.
+- 81 deliberate breaks of the two files, each alone: 78 caught (75 by the unit tests and the vectors' steps, 3 first
+  only by the harness and then by unit tests added for them; 3 more first missed got tests: a depth past the limit, a
+  folder with no place after another space's, a parent `""`); the 3 left change nothing (`folderParent`'s check for
+  itself, which its walk's `seen` makes again; `addPin`'s falsy folder and a new pin's place, which `movePin` decides
+  again).
+- Cost (release, the bench library: 2 KB icons, 200 archived, 30 spaces, 60 pins, 8 folders): at 50 / 500 / 2,000 items
+  a rule alone 0.2-140 µs (`deleteSpace` 21 / 43 / 141 µs, `removePin` 1 / 4 / 17 µs, every other under 35 µs), with
+  perform's diff after it 1-920 µs; JSC's whole perform today 2.7 / 16.2 / 62 ms.
+
+## Core refactor step 4, commit 3 (piece 3): splits and link rules in the core (2026-11-23)
+
+- margin-core's `library/model/splits.rs` and `links.rs` gain model.ts's split rules (M:1628-1775: `normalizeSplitRatios`,
+  `paneKey`, `hasMarginTab`, `splitForItem`, `withPanes`, `createSplit`, `addToSplit`, `removeFromSplit`, `settleSplits`,
+  `swapSplitPanes`, `resizeSplit`, `toggleSplitAxis`) and its link rules (air-traffic.ts's `normalizePattern`,
+  `patternMatchesUrl`, `matchAirTrafficRule`; M:1594-1624's add, remove and toggle, the cap of 100), one function each
+  with M's name. Nothing calls them in the app yet (part 4's actions do, commit 6 switches); no behaviour changes.
+- Link rules keep today's app exactly: its JSContext has no `URL`, so no address parses and no rule routes a new tab or
+  `routeUrl` (`js::rules_url`, `RULES_PARSE_URLS` false). What a parsed address does is written and tested beside it
+  (`pattern_matches_parts`, `match_air_traffic_rule_with` over `js::url_parts`, against Node with a URL), so Tirth's fix
+  (answer 11) is that constant flipped and the test that pins today's answer (`no_address_matches_today`).
+- The open-tab halves aren't ported (the library's state has none): `paneKey` of a number or a string of digits (an
+  open tab's browser id) is none. A prototype name as an id (`constructor`) finds no item, open question 4's Rust
+  answer (model.ts in JS finds a function: the only difference the generated sequences showed, and left out of them).
+- "Unchanged is the same state": every rule that changes nothing hands back `s.clone()`; a split M remakes is a new
+  `Rc`, every other one the same (checked against model.ts's object identity, split by split). A link rule already at
+  its place keeps its `Rc` where M makes an equal new object (unseen: the diff compares values). `settle_splits`, run
+  after every perform that succeeds, allocates nothing when every split holds.
+- `matchAirTrafficRule` sorts by `Number(order) || 0` alone (stable); its ties by `localeCompare` are `stateOf`'s, which
+  already ordered the list (the stub's header said otherwise; corrected).
+- Checked: the shared vectors' 1,011 perform steps of the actions these rules carry alone (`addAirTrafficRule`,
+  `removeAirTrafficRule`, `toggleAirTrafficRule`, `routeUrl`, `resizeSplit`, `toggleSplitAxis`, `swapSplit`, through a
+  test stand-in of their library.ts actions: part 4 writes the real ones): none differ; js.json's `patterns` (18) and
+  `url.matches` (7) as JavaScriptCore answers them. The other split actions (`createSplit`, `addToSplit`,
+  `removeFromSplit`, `breakOutSplit`, `openSplit`, `closeSplitPane`) need part 4's helpers (`used`, `frontOf`,
+  `splitRefusal`) and run with it. A scratch harness of 6,000 random libraries (odd panes, ratios, orders and patterns)
+  with 25 random calls each (150,000 calls: 24,583 changed the state, 95,183 the same state, 30,234 lookups) against
+  model.ts in Node without `URL`, in JavaScriptCore (a bare JSContext), and for the address lookups against Node with
+  `URL` (2,322 addresses matched a pattern or a rule there, none today): none differ.
+- 78 deliberate breaks, each alone: 74 caught (71 by the unit tests with the vectors, 3 by the harness); the 4 left
+  change nothing (a JSON number is always finite; `""` has no digits to fail; old ratios of another length are made
+  equal anyway; an http address's pathname is never empty). Five first missed (a `_` in a label, `http:/` with one
+  slash, a pattern trimmed after its scheme, a length in bytes, a non-http address with the host) got tests, then
+  were caught.
+- Cost (release, a library of 500 items, 4 splits of 3, 99 rules): `settle_splits` with nothing to change 0.4 µs, a
+  rule added at the cap's edge 8.7 µs, a match today 0 µs (no address parses), parsed and found at the 99th rule
+  10 µs, a split made 0.7 µs, a pane added 0.4 µs (today's whole perform in JavaScriptCore is 2.5-18.6 ms).
+
+## Core refactor step 4, commit 3 piece 2: items' places, the archive and favorites in the core (2026-11-23)
+
+- margin-core's `library/model/kept.rs` (model.ts's `placeOf`, `lastPlace`, `tight`, `renumber`, `forgetKept`,
+  `archiveKept`, `archiveTab`, `removeArchived`, `keptForUrl`, `placeBeside`, `placeKept`, `moveTab`, and
+  front-item.ts's `frontItemOf`) and `model/favorites.rs` (pinned-rules.ts's `favoriteScopeOf`, `renumberFavorites`,
+  `favoriteUrlOk`, `keptOfFavorite`, `addFavorite`, `removeFavorite`, `moveFavorite`, `renameFavorite`,
+  `bindTabToFavorite`, `unbindFavoriteTab`), each with M's name and line, its kept half only. Nothing calls them in the
+  app yet (commit 6 switches); no behaviour changes.
+- A throw the payload survey can't find, as it's a state's: an item whose space is gone, archived (`closeTab`,
+  `itemClosed`) in a library with no spaces, reads `state.spaces[0].id`; JSC on dist/app/library.js fails the action
+  with `failed: undefined is not an object (evaluating 'state.spaces[0].id')`. `archive_kept` answers that as its
+  error (`NO_FIRST_SPACE`) for part 4 to fail the action with, as today.
+- `favoriteScopeOf` takes whether favorites are per profile from its caller (LT:593 builds the setting from the
+  payload), not `DEFAULT_SETTINGS` as the design said (corrected there).
+- Payload values go in as `model::Arg` (piece 1's): `p.tabId` for `forgetKept`/`archiveKept`, looked up as JS's key
+  (`["t-a"]` finds `t-a`); `favoriteId`, `beforeId` (a falsy one, `""` too, is the end; a truthy non-string none's) and
+  the new name as they came.
+- A rename through an emoji: JS's cut name keeps half of it, which no stored name equals, so it renames even to the
+  name it has; the Rust decides the same (`next !== s`) with the half dropped (Tirth's answer 3). The typed diff then
+  sees no change where library.ts's recorded vector writes the same value again (generated-11 case 22 step 4, a `cut`
+  step): the one vector step of these actions that differs, and only in that no-op rewrite; the test names it. Whether
+  the vector or the diff should give way is the step 4 lead's call.
+- Checked: 3,000 generated libraries with 40 ops each (119,810 ops) against model.ts in Node (no `URL`) and in
+  JavaScriptCore, the same (the throw's words JSC's, 624 of them); 14 renames of a name the chained TS state held half
+  of (no store between the ops, which the library never does) are counted apart. The shared vectors: all 1,217 perform
+  steps of the 8 actions these rules answer (`removeItem`, `moveTabToSpace`, `moveTab`, `itemClosed`, `addFavorite`,
+  `removeFavorite`, `renameFavorite`, `moveFavorite`, written in the test as LT does, with piece 1's `removePin` and
+  piece 3's `settleSplits`), the same but the step above. 51 deliberate breaks: the unit tests (with those vector
+  steps) catch 50, the one missed equivalent (`placeBeside`'s "beside itself", which the list without the moving item
+  already refuses); the generated run alone catches 41 of the first 47 (the rest: places that can't be non-finite,
+  `lastPlace` the library doesn't call, a scope or profile `stateOf` never leaves empty, the equivalent one, and the
+  rename's identity, which no value shows).
+- Cost, each rule alone from the state (Rust release against the same rule of model.ts in JSC, the median of 9 × 200;
+  JSC's timer is in ms, so its small ones read 0–20 µs): at 2,000 items `placeKept` 27 µs (JSC 620), `archiveKept` 16
+  (250), `keptForUrl` 9.5 (195), `frontItemOf` 5.8 (75), `keptOfFavorite` 1.6 (140), `addFavorite` 0.8 (20),
+  `moveFavorite` 0.8 (10), `removeFavorite` 14 (360), `bindTabToFavorite` 12 (70); at 500 items about a quarter of
+  those. What costs is the items' map copied (`{ ...keptTabs }` in the TS too).
+
+## Core refactor step 4, commit 4: the library's 57 actions and perform in the core (2026-11-23)
+
+- margin-core's `library/actions.rs`: library.ts's 57 actions (LT:283-807), `ACTION_NAMES` (LT:810, sorted as JS
+  sorts) and `perform` (LT:816-832), with the helpers they share (`win`, `windowSpace`, `frontOf`, `spaceTarget`,
+  `targetOfItem`, `used`, `pinOfItem`, `addItem`, `archiveItem`, `splitRefusal`, `splitShown`, `splitNext`), one Rust
+  function each with LT's name and line, over the model's rules (commit 3). Nothing calls it in the app yet (commit 5
+  makes the library object, commit 6 switches); no behaviour changes.
+- `perform(state, action, payload, env, compare)`: on the state the caller read (`stateOf`; part 7's object keeps it
+  per revision of the set), the sorter handed in (the system's, Tirth's answer to question 1). `values.imports` isn't
+  taken: LT passes it through both sides of its diff, so it never changes. An unknown name, or one of the object
+  prototype's (`__proto__`, `constructor`, `toString`…), is `unsupported` (`Object.hasOwn`). A failure has no changes
+  and no requests (a composite's requests made before it failed are dropped, as LT drops them).
+- The model's two throws fail the action with JavaScriptCore's words, as LT:825 does: `createSpace`'s `name?.trim()`
+  (`spaces::CREATE_SPACE_NAME_THROWS`) and `archiveKept`'s `state.spaces[0].id` for an item of a gone space with no
+  space left (`kept::NO_FIRST_SPACE`: `closeTab`, `closeSplitPane`, `itemClosed`).
+- A request's target is the object JS built: `targetOfItem`'s and `targetOf(pin.target)`'s checked again,
+  `spaceTarget`'s as the space holds it (a profile longer than 256 units, which `createSpace` and a stored space keep,
+  is named whole in a `newTab`'s request and stored cut in the item: checked against library.ts in Node). A request's
+  `windowId` is the payload's as it came, its numbers through a double.
+- The ids: the env's first (Swift's 4 a perform; a given one that isn't 4–30 letters and digits used up all the same),
+  then the core's own 10 letters (`js::Ids`, open question 6): a clear of 6 items given 4 ids, checked.
+- `kept.rs`'s private `key_of` is `model::Arg::key()` (ToPropertyKey), which the actions' `s.keptTabs[p?.tabId]` use
+  too.
+- Commit 3's three stand-in engines (spaces_tests.rs `Piece1`, favorites_tests.rs `Piece2`, links_tests.rs `Rules`,
+  ~650 lines re-writing a few actions) are deleted: one engine of the real actions runs every perform step of the
+  shared vectors (actions_tests.rs).
+- Checked: the shared vectors' 8,800 perform steps, 8,783 the same as JavaScriptCore's; 17 skipped as piece 1's known
+  gap (a `createSpace` given an emoji or colour that's truthy and no string: JS stores it as given, the core `""`); the
+  one `cut` step of piece 2 (generated-11 case 22 step 4: a favorite renamed through an emoji, JS's no-op rewrite)
+  answered the same but without the rewrite. A scratch harness of 3,000 more generated sequences of 40 steps
+  (tests/library-vectors' generator with seeds 101, 202, 303; library.ts in Node without `URL`, then in
+  JavaScriptCore, whose answers are kept; 129 of its steps threw, all at createSpace's site): 112,559 perform steps,
+  112,334 the same, 225 of the gap, and 1 more no-op rewrite of a cut (a folder renamed through an emoji at 40), none
+  differ.
+- 98 deliberate breaks of actions.rs, each alone (every helper and every action: a check dropped, a fallback changed,
+  a request's field, an order, a cut, the throws' words, the names' order): 87 caught by the shared vectors and the
+  unit tests, 3 more by a unit test added for them (a pane given twice counts twice against the cap, `moveTabToSpace`
+  of an id a key finds, `openMarginPage`'s item used last, each checked against library.ts in Node); the 8 left change
+  nothing the vectors or the 112,334 harness steps can see: `?? ''` for a rename (the rules read nullish as empty),
+  `targetOfItem`'s check again (every target that reaches it was read by `stateOf`), a new item's `keptAt` (never
+  stored), an empty binding (`valuesOf` drops it), the link rule of a new tab and `routeUrl`'s target (no address
+  parses today: the URL commit), an app's title written again unchanged, `closeTab` leaving the pane to `settleSplits`
+  (the same split after), and a refusal's requests (no action asks before it refuses).
+- Cost (release, commit 0's baseline library: 2 KB icons, 200 archived, two spaces; the median of 25): a click's
+  perform (`activateTab`: the rules, `settleSplits` and the diff) at 50 / 500 / 2,000 items 0.007 / 0.034 / 0.13 ms on
+  the kept state, 0.17 / 0.49 / 1.6 ms with the state read from the store's set first (part 7's object reads it once a
+  revision); `renameTab` 0.005 / 0.029 / 0.12 ms, `closeTab` 0.031 / 0.057 / 0.16 ms. JSC's whole perform today 2.7 /
+  16.2 / 62 ms (its rules' call alone 1.7 / 7.6 / 28). What costs is the items' map copied by `used` (`{ ...keptTabs }`
+  in the TS too) and, with the read, the icons' text.
+
+## Core refactor step 4, commit 5: the library object, the import once, the FFI, the system's sorter (2026-11-23)
+
+- margin-core's `library::Library` (library/object.rs): Library.swift's `Library` (L:89-286) over the store
+  (`LibraryStore`, unchanged) with the rules in the core. Its state is read from the set once per revision (only the
+  object writes the set, so its own count of saves is the revision) and kept with the snapshot's text. A perform asks
+  the host for the env (`LibraryHost::env`: Swift's `now` and 4 ids), runs the action on the kept state, stores the
+  changes at the host's `now` (its second read, as L:233), tells the host the collections changed (the observers),
+  keeps the last 100 requests, then gives each request to the sink (`RequestSink`: the session) at the point L:225 gave
+  them to the delegate. A failure stores nothing, tells no one and asks nothing; an edit that changes nothing stored
+  tells no observer but still hands on its requests (as L:230's early return). Re-entrant as the session: `&self`,
+  cells, no borrow across a call out; a Rust test host re-enters every read on every call out (env, now, observers,
+  the sink) and an observer performs again inside a perform: never a borrow held.
+- The session as the sink: `Session::sink()` (weak), its request the `library` input inside the perform, with the
+  session counted as in a call (what it starts waits for the caller's next tick; no port call made inside it runs the
+  queue). Tested with the real library and the session's re-entrant ports (requests_tests.rs). margin_session_new
+  doesn't register it yet: no perform of the app reaches the core's object until the switch (commit 6, with
+  `Command::Perform`'s removal; a perform Swift makes itself then ticks the session after).
+- The import once in two halves: `import::sources(&mut DataSync)` (L:251-267: every profile's set the data has,
+  Safari's first then the browsers by name, each set's five collections, each browser's spaces in the person's order
+  by the slots rule over browser.json) and `Library::import_once(sets, order)` (its marker, L:274's line in its words,
+  None when it had run). Two halves so the data object is let go before the import's observers run (they may call it):
+  the design's `import_once(&DataSync)` corrected. Pinned by T/library-tests.swift's importChecks scenario in Rust
+  (two Safari profiles with the same `personal` space and tab id, browser.json's order, the files unchanged, never
+  twice, after a relaunch too, the marker alone with nothing to import) and a Chrome profile after Safari's.
+- library.js's entry in the core (`object::call`, LT:939): `perform`, `snapshot`, `importValues`, `actions` on JSON
+  arguments, LT's answer's text, each value LT's shape (a failed perform has no `result`). Every kind of the shared
+  vectors runs through it (`vectors::run_entry`: 8,783 performs, 295 snapshots, 2 imports, 285 normals, 3 targets;
+  the known 17 `createSpace` steps of piece 1's gap skipped and the one known cut rewrite), with the core's stand-in
+  sorter and, in margin-ffi's tests, the Mac's.
+- The FFI (ffi data.rs): `MarginLibrary` is the core's object; `margin_library_new` takes three callbacks more (`env`,
+  answering the time and giving its ids through `margin_library_env_id`; `now`; `changed`, the names as JSON), each
+  NULL: Library.swift's defaults (the wall clock in ms, 4 random ids, no observer); `margin_library_call` takes the
+  object shared and gains `perform`, `snapshot`, `actions`, `item`, `requests`, `imported` (every answer with its
+  `log`); `margin_library_import(library, data)`; `margin_library_rules(library, name, args)`, library.js's entry for
+  the tests' shadow. The session's `LibraryRef` reads through the shared object: ffi/session.rs's SAFETY note said
+  "never while a library call is under way (the library calls nothing back)", now false; it says the library calls
+  back, the read is shared and the object holds no borrow across a call out. Touched in session.rs: `LibraryRef`
+  (`*const`, its two reads, the note) and the cast at `margin_session_new`; nothing else. Library.swift passes NULL
+  for the three callbacks (its one call); no app behaviour changes: the app still runs LibraryRules.
+- The system's sorter (Tirth's answer after commit 1): ICU4X (`icu_collator`, `icu_locale_core`) out of the core's
+  dependencies, `js::Collation` deleted; the platform hands the core its `LocaleCompare`. The Mac's: margin-ffi
+  collation.rs, libicucore's `ucol_open` for the person's first preferred language (`CFLocaleCopyPreferredLanguages`,
+  as JavaScriptCore takes its default locale) and the attributes JSC's `Intl.Collator` sets (tertiary, no case level,
+  case first off even where a locale's data says upper, no numeric ordering, punctuation not ignored, normalization
+  on), then `ucol_strcoll` over UTF-16 (on the stack up to 128 bytes). The module map links `icucore` and
+  CoreFoundation. js.json's `localeCompare` cases (the 95 characters' order, all 9,025 ASCII signs, the 22 pairs with
+  the accents) and every vector run through it in margin-ffi's tests (vectors_tests.rs `js_json_collation` moved
+  there; the core's own tests sort with `vectors::AsciiCollation`, ICU's root on ASCII built from js.json's recorded
+  order, a stand-in). Against JSC through the FFI under 18 preferred languages (`-AppleLanguages`: en-US, da, sv,
+  en-GB, lt, cs, de-DE, tr, es, fr-CA, zh-Hans-CN, zh-Hant-TW, ja, ko, is, pl, hu, fi), 47 strings at equal places
+  (ASCII, accents, Danish and Swedish letters, Czech `ch`, Turkish `ı`, kana, Hangul, Han, emoji): every order the
+  same. Windows': the Windows shell's collation.rs over icu.dll (the same attributes, ICU's default locale),
+  compile-checked only, unverified on a PC.
+- The shadow (T/library-vectors-tests.swift): its second engine is margin-core through `margin_library_rules` (the
+  second JSContext and `MARGIN_LIBRARY_SHADOW_JS` gone). The whole Swift suite's 9,442 calls of the rules (9,122
+  performs, 314 snapshots, 6 imports): the same but 403 cuts (JSC's answer holds half an emoji, written as its escape
+  by JSON.stringify; the same once dropped, Tirth's answer 3), the one known cut rewrite and the 17 steps of the gap,
+  each counted; 0 differ. Three breaks of the core, each alone, all caught by it (a refusal's words: 186 calls; the
+  sorter upper first: 6; the snapshot's archive oldest first: 171).
+- 41 deliberate breaks of the Rust, each alone (the object's order, cap, cache, clock, borrows across the env and the
+  observers, the import's once, line and clocks, the entry's result, env and import time, the sources' order, the
+  sink's call, the sorter's six attributes, its locale, its bytes and its stack cut, the FFI's env, clock, observers,
+  ids, log and the session's read): 35 caught, 4 of them by checks added for them (the oldest requests dropped, a
+  browser's spaces by their order, the stack cut, the env's time stored). The 6 left change nothing the tests can
+  see: a profile with no set read (the data lists only profiles with sets), the sink's call outside a call (no port
+  of the stand-ins runs the queue between), normalization off (ICU's data handles the canonical pairs here), the
+  answer's log dropped (no call here writes a store line), the FFI's early "imported" (the object refuses too), the
+  entry's root sorter (en-US is root's on this Mac).
+- Cost (Swift, `MARGIN_LIBRARY_BASELINE`, commit 0's library: 2 KB icons, 200 archived; the median of 25, two rounds;
+  the core in a folder of its own, opened as the app will, written in the background): a click's perform through the
+  FFI (the request's JSON in, the answer read back by JSONSerialization, the store's apply and the observers in it)
+  0.6 / 3.6 / 15.5 ms at 50 / 500 / 2,000 items, today's JSC perform 2.6 / 16 / 61; a snapshot as JSON through the
+  call 1.3 / 6.5 / 25.5 ms (JSC's 2.1 / 11.2 / 41.4; the draw's typed text is commit 7's), a rename and the snapshot
+  made again 1.9 / 10.8 / 41.8. In Rust alone (release): a perform through the object 0.58 / 3.6 / 14.6 ms, the kept
+  snapshot nothing. What's left of a perform is the store's apply (data/library.rs: the whole set cloned, the changed
+  collection's file written out for the writer), step 1's and unchanged.
+- Size: Margin.app's binary (`npm run safari -- --no-install --unsigned`, universal) at this commit 20,786,272 bytes (arm64 9,759,840, x86_64 11,009,808; the
+  bundle 24.5 MB), at its base (cae309bf, built the same way from an export of it) 19,471,856 (arm64 9,166,320, x86_64
+  10,286,672): +1.31 MB, +0.59 MB arm64 and +0.72 MB x86_64, all of it the library's rules and object now reachable
+  from the FFI (until now the linker dropped them); no collation data (libicucore is the system's, linked dynamically:
+  `otool -L`), where ICU4X's would have added 1.26 MB more per architecture (commit 1's measure). JavaScriptCore stays
+  linked until the switch.
+
+## Margin.app's rules parse addresses as the browsers do (Tirth, 2026-11-23: step 4's open question 11)
+
+- Tirth's decision (answer 11, "fix it, as its own commit"): the library's rules read addresses as the browsers' copies
+  of model.ts and air-traffic.ts do (WHATWG `URL`), no longer as Margin.app's bare JSContext did (it has no `URL`, so
+  `normalizeUrl` gave every address back as given and `patternMatchesUrl` was false for every address). In margin-core:
+  `js::RULES_PARSE_URLS` true (step4/urls), over `js::url_parts`/`normalize_url_whatwg` (the `url` crate, written and
+  checked against Node and WebKit in commit 1). **Margin.app's behaviour changes only at step 4's switch (commit 6)**,
+  when the app runs the core's rules; until then it runs library.js in JavaScriptCore, as today.
+- What changes for him then:
+  - **Link rules route.** A new tab opened with an address and no space given (`newTab`: the palette, a link Margin
+    opens) goes to the space of the first enabled rule it matches, in that space's browser and profile, and the window
+    shows that space; `routeUrl` answers the rule and its space's target. Until now no rule ever matched in the app (the
+    extension's copies routed). Patterns as air-traffic.ts reads them: `linear.app` (that host, any path),
+    `*.figma.com` (the host and every subdomain), `github.com/my-org/*` (a path and under it), http and https only.
+  - **Addresses match as the browsers match them** wherever the rules compare two: a pin and its item (`openPin`), a
+    favorite and its item (`openFavorite`), a favorite added to a scope that has one at the address (refused), a tab
+    pinned where a pin at the address is (not pinned twice), the pins moved when a space goes (one at an address the
+    other space has is dropped), and the archive (closing an item drops older entries at its address: one an address).
+    The same address now: with or without the bare trailing slash (`https://a.com` = `https://a.com/`; not a path's,
+    `/x/` ≠ `/x`), with any fragment (`#top`), the scheme's and host's case (`HTTPS://A.COM`), the scheme's default
+    port (`:443`, `:80`), dot segments (`/x/../y` = `/y`), `\` for `/`, an empty query (`?`), spaces around it, an IDN
+    host and its punycode (`bücher.de` = `xn--bcher-kva.de`), IPv4's other spellings (`0x7f.1` = `127.0.0.1`). Still
+    other addresses: the scheme (`http` ≠ `https`), `www.`, a path's case, the query, another port, percent escapes
+    (`~`, `%7e` and `%7E` are three, as in the browsers). An address that doesn't parse matches as given.
+  - **Nothing stored is rewritten**: no address is normalised on disk, at load, at the import or in the snapshot; an
+    address is stored as given (pinned by kept_tests.rs and a break that rewrote the archive's, caught). Only what an
+    edit from now on matches changes, so duplicates already stored (two favorites at `https://a.com` and
+    `https://a.com/`) stay until an edit meets them.
+- The vectors (tests/fixtures/library, `npm run library:vectors`): the recorder keeps each step's answer with Node's
+  `URL` and marks `url` the steps whose answer without it differs; those 76 (75 before, one new hand-written case of
+  11 steps: the host's case, the default port, dot segments, the archive, a `*.` rule) are the browsers' answers, and
+  JavaScriptCore's answer of each is checked to be Node's without `URL`. Every other step is JSC's answer (JSC differs
+  from Node on none). Since the steps after a `url` step start from its changes, and the generator's one random stream
+  and the padded ids follow every earlier answer, the generated sequences after the first that met an address and the
+  ids of later edges and the survey were made again: 24 files, 360 cases, 9,395 steps (8,798 performs, 302 snapshots,
+  290 normals, 2 imports, 3 targets), 651 cuts, the one throw site. js.json's `url` group is Node's with `URL`
+  (`jscUrl`, JSC's). tests/library-vectors.test.ts runs the `url` steps with `URL` (and each must answer otherwise
+  without). The one known cut rewrite moved (generated-11 case 24 step 4) and the known `createSpace` gap is 19 steps.
+- Pinned answers moved to the browsers': links_tests.rs `addresses_match_as_the_browsers` (was
+  `no_address_matches_today`), js_tests.rs, kept_tests.rs (an item by its address, the archive one an address),
+  order_tests.rs (`pinForUrl`), favorites_tests.rs (a scope's address), vectors_tests.rs (js.json), and margin-ffi's
+  `the_ffi_entry_parses_addresses_and_answers_as_jsc_without`.
+- The Mac's shadow (T/library-vectors-tests.swift) compares JSC with the core until the switch, so it now differs
+  exactly on calls whose answer depends on parsing an address. Each such call is asked again of the core with no URL
+  (`js::without_urls`, through `margin_library_rules_without_urls`: test builds only, both gone with the shadow at
+  commit 6) and counted and named by action when that is JSC's answer; anything else still fails it. The whole Swift
+  suite: 9,447 calls, 440 cuts, the known rewrite, 19 of the gap, 76 by addresses alone (addFavorite 6, clearToday 22,
+  closeSplitPane 3, closeTab 3, createFolder 2, deleteSpace 1, itemClosed 1, newTab 6, openFavorite 3, openPin 6,
+  pinTab 8, resetPin 3, routeUrl 12: the vectors' 76 `url` steps; the rest of the suite makes none), 0 differ. The
+  vectors through LibraryRules leave the 76 out, counted (JSC can't give the browsers' answer). Broken (that entry
+  parsing too): all 76 differ, caught.
+- Checked: every vector through the core (8,779 performs and every other kind; through library.js's entry with the
+  core's stand-in sorter and, in margin-ffi, the Mac's); 3,000 more generated sequences of 40 steps (the scratch
+  harness, seeds 101, 202, 303, with `URL` for the url steps, JSC for the rest: 120,000 steps, 798 `url`): 112,295
+  performs, 112,294 the same, 219 of the gap, 1 no-op cut rewrite, and **1 that differs, not by an address**: a
+  `createFolder` named through an emoji (`cut`) beside a folder with that name's whole half (39 `a`). library.ts
+  compares the name holding half an emoji, finds no such folder and keeps it; the core drops the half first (Tirth's
+  answer 3), finds the folder and names the new one `… 2` (order.rs:457, `unique_name`). Today's Mac fails the whole
+  action there (no answer). Not an address; left as it is and reported, for Tirth to say which.
+- 26 deliberate breaks of the URL path, each alone (parsing off, `without_urls` doing nothing or never ending, the link
+  rules or the matching unparsed, the bare slash kept, every trailing slash dropped, the query, port or scheme dropped,
+  the fragment kept, the path lowercased, an unparsed address as empty, the host without its port, the search with
+  its fragment, the input not trimmed, the rules' match and pattern unparsed, each of the six matching sites on raw
+  text, the archive's address rewritten, the shadow's entry parsing): 26 caught (6 by the js.rs and js.json tests
+  alone: the vectors meet no other port and no query that differs).
+- Cost (release; a library of 50 / 500 / 2,000 items in two spaces, 200 archived, 50 pins, 12 favorites, 99 rules, the
+  last the one that matches; the median of 41; parsed, then with no URL): `normalize_url` of an address 0.55 µs;
+  `routeUrl` found at the 99th rule 10 µs (0.3); `openPin` 13 / 107 / 420 µs (2 / 5 / 13: `keptForUrl` parses each
+  item of the pin's space); `openFavorite` 12 / 39 / 150 µs (2 / 3 / 6); `closeTab` 100 / 128 / 221 µs (30 / 56 / 147:
+  the archive's 200 entries); `newTab` with an address 15 / 45 / 152 µs (6 / 36 / 143); `addFavorite` 0.8 (0.8).
+  Today's JSC perform is 2.6 / 16 / 61 ms, so a perform still ends far cheaper than today's. The lever if it's ever
+  needed: each item's normalised address kept with the state. Size (a release binary of library.js's entry, the
+  workspace's profile): +0.23 MB arm64 (1,049,888 → 1,284,720 bytes), +0.24 MB x86_64 (1,169,368 → 1,410,680): the
+  `url` crate now reachable (commit 1 measured +0.22 MB).
+- Still differs from the browsers: an IDNA edge commit 1 found (`https://xn--a.com`: Node and WebKit take it, the `url`
+  crate refuses it, so there it matches as given and `https://xn--a.com` and `https://xn--a.com/` stay two).
+
+## Core refactor step 4, commit 6: the switch: Margin.app's library is margin-core's (2026-11-24)
+
+- **Margin.app runs the core's library.** Library.swift is a facade over margin-core's library object (library/
+  object.rs through margin-ffi's `margin_library_*`), the same API the app and the tests read (`perform`, `snapshot`,
+  `spaces()`, `items()`, `target(ofItem:)`, `split(…)`, `space(ofWindow:)`, `liveValues`, `values`, `observe`,
+  `importOnce`, `requests`, `isImported`, `actions`), each one call of the core's; its cache of every collection, its
+  `apply`, the import's Swift body and the rules' calls are gone. Its `now` and `randomIds` closures answer the core's
+  env callback (Swift's 4 SecRandom ids per action, as before), its observers the core's `changed` callback, called
+  during the core's call and free to read the library again. LibraryRules.swift is deleted; nothing of the app imports
+  JavaScriptCore any more (`otool -L` of the built app: WebKit and libicucore, no JavaScriptCore.framework; WebKit's own
+  stays, the page needs it). library.js is no longer built into the app (scripts/build.ts `buildApp`;
+  `buildLibraryScript` builds it for the vectors' recorder only, which still runs it in JavaScriptCore), so dist/app and
+  the app's Resources/app have no library.js; tools/app-tests/run.sh no longer builds or passes it.
+- **The session is the library's sink.** `margin_session_new` registers it (`Library::set_sink`, weak): a perform's
+  requests reach the session inside the perform, after its observers, as the delegate had them. `Command::Perform` (a
+  flow's edit handed to Swift and answered in the same turn), the executor's `same_turn`, `Ports::perform` (the card's
+  Quick Tab and Expand), HostedSession's `LibraryDelegate` conformance, its `library(_:wants:)`, its `perform` command
+  and port are gone: the session's flows call the library directly (`LibraryEdit`, `LibraryView`'s subtrait), the edit
+  made in the flow's turn and its requests queued behind it. A perform Swift makes itself (a UI request, the first run's
+  space, the tests) is followed by the session's `edited` input, which answers what the requests left in the session
+  (their lines, `ready`) without running anything, so their handling runs in the next main-actor turn, as the `library`
+  input's did for the delegate (not a tick: that would run it at once). Of several sessions over one library (the Swift
+  tests' rigs, where `library.delegate = session` chose one), `margin_session_take_requests` (HostedSession
+  `takeLibraryRequests`) makes one the sink again. The facade's `LibraryDelegate` stays for a library with no session
+  (library-tests.swift's recorder); the `library` input stays for requests of shapes the rules don't make (the session's
+  tests, HostedSession `request(_:)` for the Swift tests').
+- **The no-rules fallback is gone** (Tirth's answer 9): `Library.open` can't fail, `Shell.library` isn't optional,
+  ShellHostedGlue's "no library (its rules didn't load)" branch, ShellLibrary's "the library's rules didn't load" line,
+  `DataSetWindowSource.state` (the third copy of the snapshot), its `snapshot`, the window's chosen space and its
+  `unhandled` count, `defaultSpace`, and `spaceTheme`'s top-level `activeSpaceByWindow` are deleted. DataSetWindowSource
+  stays as the profile's settings and site icons, no longer a `MarginWindowSource`.
+- **What changes for Tirth** (every user-visible difference; each one of his decided answers, now in effect):
+  - **Link rules route** (answer 11): a new tab opened with an address and no space (the palette, a link Margin opens)
+    goes to the space of the first enabled rule it matches, in that space's browser and profile, and the window shows
+    that space; until now no rule ever matched in the app.
+  - **Addresses match as the browsers match them** (answer 11): opening a pin or a favorite finds its item at the same
+    address with or without the bare trailing slash, with any fragment, in another case of scheme or host, with the
+    scheme's default port, dot segments, `\` for `/`, an empty query, an IDN host or its punycode, IPv4's other
+    spellings; a favorite added where its scope has one at such an address is refused (no duplicate); a tab pinned where
+    a pin at such an address is isn't pinned twice; the pins moved when a space goes drop one at such an address the
+    other space has; closing an item drops the older archive entries at such an address (one an address). Nothing stored
+    is rewritten: duplicates already stored stay until an edit meets them.
+  - **A title cut through an emoji** (answer 3): an item's title (2,000 units), a space's name (200), a folder's name, a
+    custom title, an icon or a profile cut through an emoji now keeps the text with the broken half dropped (1,999
+    units). Until now the whole action failed with nothing changed (the rules' answer held half the pair, which the app
+    couldn't read): adding the item, renaming it, saving the page's title. A folder named through an emoji beside one
+    with that name's whole first half is named `… 2` (the found case of the URL commit).
+  - **Ties go by the ids' order** (answer 10): of several equal candidates (two items at a pin's or a favorite's
+    address, items, spaces or link rules at equal places, archive entries at equal times, the first kept tab the UI's
+    `nextFront` takes) the pick is the same every launch, the lowest id; until now the values crossed Swift
+    dictionaries, so it was a per-launch hash order.
+  - **The system's sorter** (answer 1): the same libicucore collator JavaScriptCore used, for the person's first
+    preferred language: no visible difference.
+  - **The fallback** (answer 9): Margin's window never draws a profile's spaces read only any more; it can't happen.
+  - Not visible, for the record: ids an action makes beyond Swift's 4 come from the core's random, not `Math.random`
+    (answer 6), so a clear of 5+ items names its archive entries otherwise (and of entries at the same time the cap
+    keeps others: found on Tirth's copy); an id named like JavaScript's object prototype (`constructor`) is "no such
+    item" (answer 4; no id Margin makes is one); `createSpace` given a truthy emoji or colour that's no string stores
+    `""` (piece 1's gap; the UI sends strings); a payload that isn't JSON is refused with the old words; the log lines
+    "hosted: the library's rules didn't load…" and "Margin's window: no library…" can't be said; "library: imported N
+    profile set(s): …" is the core's, the same words.
+- **Faster** (off screen, through the app's own path: Library.swift over the core, `MARGIN_LIBRARY_BASELINE`, commit 0's
+  library: 2 KB icons, 200 archived, two spaces; the median of 25; commit 0's JavaScriptCore figures beside):
+
+  | Items | A perform (activateTab, all of Library.perform) | A rename | A snapshot | A draw's library part (snapshot + its text) | A rename and the draw after it | Footprint, library open → after the 125 calls |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | 0.64 ms (2.7) | 0.61 | 0.61 ms (2.2) | 1.14 ms (2.8) | 1.83 | 9 → 20 MB (13 → 22) |
+  | 500 | 3.6 ms (16.2) | 3.6 | 3.9 ms (11.0) | 6.8 ms (13.9) | 10.9 | 12 → 75 MB (20 → 53) |
+  | 2,000 | 15.0 ms (62.0) | 15.2 | 15.3 ms (40.7) | 25.7 ms (52.3) | 42.5 | 62 → 330 MB (72 → 354) |
+
+  Two rounds, the quieter kept (the two within 3%). The footprint after counts the store's writer's backlog: these
+  125 edits come far faster than their saves are written (each save the changed collection's file, ~1 MB at 500
+  items): with the store writing at once (`background: false`) 200 edits and draws at 500 items stay flat at ~30 MB,
+  in the background it grows ~0.6 MB an edit while the writer is behind. The store is step 1's and unchanged; the
+  JSC figures' after was JavaScriptCore's heap before it collected, so the two afters aren't the same measure. What's
+  left of a perform is still the store's apply (the set cloned, the changed file made), as commit 5 found; the draw's
+  own typed text is commit 7's.
+- **Data, both ways** (the scratch harness step4-switch/compat: margin-ffi's library object over real folders, JSC over
+  library.js as LibraryRules ran it, each given the store's values with each collection's ids in the store's order):
+  - Every shared vector (360 cases, 8,798 perform steps): each case's values stored, then each step performed by the
+    core's object and, on a second store, by JSC with its changes stored as Library.swift stored them: what each wrote
+    read back by both, JSC's snapshot of the stored values against the core's: **the same for all 360 starts and all
+    8,798 × 2 writes**. The two wrote the same values for 8,716 steps; 64 differ only where an address is parsed
+    (Tirth's answer 11: the vectors' `url` steps) and 18 are piece 1's known `createSpace` gap (a truthy emoji or colour
+    that's no string: JSC stores it as given, the core `""`); none other.
+  - A copy of Tirth's profile set (data/app of 2026-11-20: 6 spaces, 27 items, 88 archived, 2 windows; read from the
+    scratch backup, never his folder): drawn the same by JSC and the core; 32 edits of a day (activate, rename with an
+    emoji, pin, move, favorite, a new tab, a folder, a space chosen and renamed, a close, a restore, a link rule, a
+    route, a clear) made by each and read back by both: all read the same; 31 wrote the same values, the clear of the
+    space's items differs only in the archive entries' ids past Swift's 4 (the core's random, JSC's `Math.random`:
+    answer 6), so of entries at the same time the cap kept other ones. set.json keeps its keys and `format` 1.
+  - The import of that copy's five Safari profile sets into an empty library (the core's `sources` and `import_once`):
+    178 items, 90 archived, 6 spaces, its line in the old words; every file under data/safari (149) byte for byte as it
+    was (the extension's copies' sets are only read); JSC's `importValues` of the same sets over what the core imported
+    changes nothing (275 the same value again in another key order, as the import compares text); the marker in
+    library.ts's shape, so neither an older Margin nor this one imports again.
+  - The store's files are step 1's (unchanged): an older Margin reads the set this one writes, and the values in it are
+    library.ts's shapes (above).
+- **Tests.** The Swift suite runs on the core: the 11 files' `MARGIN_LIBRARY_JS` and `Library.open(script:)` gone,
+  `library.delegate = session` gone (the session registers itself; hosted-tests' main session takes the requests back
+  after its rigs' sessions and preparedBrowserTests' rig takes them), library-tests.swift's rules-loading checks
+  replaced by the core's (57 actions, an observer reading the library again inside the call, a payload that isn't JSON),
+  library-vectors-tests.swift's runs through LibraryRules and the shadow gone with JSC (the vectors with the Mac's
+  sorter are margin-ffi's library_tests.rs, every kind through the same entry the app links), keeping the Mac's outcome
+  of the cut (now kept, 1,999 units) and the costs; margin-window-tests' fallback-state checks gone; e2e-hosted's
+  stand-in source draws the library's snapshot of its values. The session's Rust tests run over the real library object
+  (session/tests.rs `TestLibrary`: the core's `Library` over a store in a temporary folder, its env, clock and observers
+  re-entering the session): the stand-in shelf and its canned edits are gone from every session test file (requests,
+  card, layouts, routing, start); the tests that answered `Command::Perform` check the real edits and what their
+  requests did. margin-ffi: the session is the sink from `margin_session_new` (a perform through `margin_library_call`
+  leaves its request's handling ready in the session). js.rs `without_urls`, its thread-local and
+  `margin_library_rules_without_urls` are deleted with the shadow; the tests that pinned JSC's no-URL answers through
+  them go (js.json's `jscUrl` stays as recorded). `tools/app-tests/run.sh all`: 2,140 unit checks and 321 end-to-end
+  checks pass; `scripts/rust-test.sh` green; `npm test` green.
+- 26 deliberate breaks, each alone (scratch step4-switch/breaks.py and swift_breaks.py): 21 caught. Rust (15, 12
+  caught): the sink not registered by `margin_session_new`, `take_requests` doing nothing, the session's edit refused,
+  the card's Quick Tab and Expand edits dropped, the edit's outcome with no result or no refusal's words, the `edited`
+  input refused or running what's ready, the snapshot's fast path empty, `values` ignoring its collection (caught by a
+  check added for it), the sink told before the observers. Swift (11, 9 caught): the facade not answering what the
+  requests left, the session not taking the requests at its start, `takeLibraryRequests` leaving the sink as it was, the
+  env's ids ignored, the observers or the delegate never told, the snapshot empty, a refusal's words lost, the import
+  not reading the profiles. Missed, and why: `LibraryRef`'s edit refusing (margin-ffi's tests make no session flow that
+  edits; the Swift suite's do, through the same entry), the sink told outside a call with no depth (no port of the
+  stand-ins runs the queue there: commit 5's same miss), the snapshot's fast path dropping its log (no call here writes
+  a store line), the env's clock ignored (the stored times are the second clock's, which the tests read; the env's
+  stamps only `lastUsed`), `edited` ticking at once instead of the next turn (the Swift tests await the session's idle,
+  which hides the turn).
+- Size: Margin.app's binary (`npm run safari -- --no-install --unsigned`, universal) 21,388,928 bytes (arm64 10,051,200,
+  x86_64 11,319,632), at its base (d979dfe2, built the same way from an export of it) 21,336,688 (arm64 10,031,728,
+  x86_64 11,283,360): +52 KB (the facade's callbacks, the session's sink and edit now reachable; the rules were linked
+  since commit 5); the bundle 25,028 KB against 25,048 (library.js's 68,103 bytes gone from Resources/app). The running
+  app's footprint isn't measured (it would open windows on the screen); the library's part is the table's.
+
+## Core refactor step 4, commit 7: a draw is the core's text, nothing of the library parsed or written again (2026-11-24)
+
+- **What Margin's window is pushed is one call of the core's.** `margin_session_state` (Session::state_text over
+  `Library::state_text`, library/snapshot.rs `Parts`): the library's kept snapshot (made once per revision of the set)
+  with the items the session has open moved from `keptTabs` to `tabs` (each its tab as the UI takes it: number,
+  window, place, title, address, icon, `active`, `lastActive`, `mid`, `order`, the pin or favorite it's the tab of and
+  the name the person gave it when they have a value, `audible`, `muted`, `visible`) and `tabSpace` (their spaces), and
+  the profile's `"settings":…,"favicons":…` spliced in before the last brace. The snapshot's text keeps where its open
+  tabs' objects and each kept tab's entry are, so a draw is copies of that text and the few open rows: no JSON parsed,
+  no dictionary, nothing of the library written again. HostedSession `live` and `liveTab`, SessionCore `livePlan` and
+  its row type, `margin_session_live_plan` and `MarginLiveRow` are deleted; `LibraryWindowSource.snapshot` is
+  `stateText()`, and MarginWindowController pushes that text as it is (`stateChanged`, `pageHello`).
+- **The space's theme typed** (`margin_library_space_theme`, Library.swift `spaceTheme(window:)`): the window's space's,
+  else the first space's, none when it has none of its own; MarginWindowController's static `spaceTheme` over the
+  snapshot's dictionary is deleted, the windows' `theme` closure takes the space's theme id, Shell `hostedTheme(spaceTheme:)`.
+- **The profile's settings and site icons as text, kept** (DataSetWindowSource `drawnText`): made again only when what
+  it reads may have changed: any call of the data object's but a read (`DataSync.changes`, counted as the call is made,
+  before its save is written, so a draw between never shows the old text), a setting changed in Margin's window, or
+  another profile picked. Until now every draw read the profile's settings, theme settings and site icons through three
+  JSON calls and wrote them again.
+- **Corrected in the design** (part 6): the state isn't per window. `live` drew the same open items for every window (the
+  session's hosting window's, `live_plan`), so `margin_session_state` takes no window (the design's
+  `margin_session_state(session, window, out_len)`); the theme is the per-window part, typed beside it. And the
+  settings' text goes into the call (`tail`) rather than being spliced by Swift after it: one buffer, no copy of the
+  state's text in Swift.
+- **Behaviour.** The text's values are the ones `live` gave (pinned by a reference transliteration of HostedSession
+  `live`/`liveTab` in snapshot_tests.rs, on hand-made and 400 generated libraries with any items open in any order,
+  rows for items not kept, empty bindings, odd strings, with and without the tail); only the text's spelling differs:
+  keys in one fixed order (the dictionaries' was a per-launch hash order: nothing reads it, `tabs`' keys are numbers,
+  which JS orders itself), numbers as JS writes them, `/` not escaped. The theme chosen per window and the settings
+  drawn are as before.
+- **Faster** (off screen, MARGIN_LIBRARY_BASELINE, commit 0's library, the median of 25, debug Swift and release Rust as
+  `run.sh` builds them; a draw now: the window's source over a session with an app item open, its text, as pushed):
+
+  | Items | A draw (commit 7) | The same draw at commit 6 (snapshot, `live`, settings, `jsonString`) | Commit 6's library part | Commit 0's (JSC) library part | A rename and the draw after it (commit 6) | Footprint after the 125 calls (commit 6) |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | **0.01 ms** | 1.19 ms | 1.14 ms | 2.8 ms | 0.67 ms (1.92) | ~20 MB (20) |
+  | 500 | **0.07 ms** | 6.98 ms | 6.8 ms | 13.9 ms | 4.15 ms (12.03) | ~75 MB (73) |
+  | 2,000 | **0.26 ms** | 29.37 ms | 25.7 ms | 52.3 ms | 16.2 ms (45.5) | ~330 MB (243–330) |
+
+  What's left of a rename and its draw is the perform (the store's apply: the set cloned, the changed file made) and
+  the snapshot's text made once for the new revision. The footprint is the store's writer's backlog (the next commit's: pending writes coalesced).
+- **Tests.** Rust: snapshot_tests.rs (the state's text against `live`'s transliteration: by hand, the commas at every
+  place an open item can be, 400 generated libraries), object_tests.rs (`space_theme`'s cases, moved from
+  margin-window-tests; `state_text`, `keeps`; each read again inside every call out), routing_tests.rs (the session's
+  `state_text` over the real library with three open items, one not kept), margin-ffi library_tests.rs (the two typed
+  calls, a null session, a buffer too small), routing_cost.rs's draw now `margin_session_state`. Swift: the tests read
+  the draw as the page would (`drawnState`: the state's text parsed), hosted-tests check the settings spliced into what
+  the window is pushed, margin-window-tests the profile's text kept and made again and the space's theme through the
+  facade; e2e-hosted's stand-in source gives text. `tools/app-tests/run.sh all`: 2,145 unit and 321 end-to-end checks;
+  `scripts/rust-test.sh`, `npm test` green.
+- 21 deliberate breaks, each alone (scratch step4-finish/breaks7.py, swift_breaks7.py): 19 caught, and the two missed
+  answered. Rust (14, 12 caught):
+  an open item left kept, a kept entry cut at its comma, `visible` never said, the tail not spliced, the window drawn in
+  not said, the tabs' spaces wrong, the theme ignoring the window, no first space's theme, every open item counted kept
+  (the rows' places), the session drawing no open items, the FFI dropping the tail, the FFI's theme always none; missed:
+  an empty binding written (the state never holds one: `stateOf` keeps a binding only with a value, so the filter was
+  dead and is removed), the snapshot's parts made from another state when a draw is the first to make them after an
+  edit (the tests made the snapshot first; routing_tests.rs now edits and then draws first, and catches it: run again,
+  caught). Swift (7, all caught): the profile's text kept over a data change, over a setting changed here, a read of the
+  data's counted a change, the source or the facade dropping the profile's text, the facade's space theme none, a
+  window drawn again keeping its theme (e2e-glue's theme per space).
+- Swift (app, from a08abad7): 122 lines deleted, 87 added (HostedSession 56 → 10, MarginWindowController 28 → 16,
+  SessionCore 21 → 9; ShellHosted +17 for the kept text, DataSync +7 for its count). Rust: ~250 lines in (~110 out: `live_plan`'s FFI, the old snapshot writer), ~290 of tests.
+
+## The data store's pending writes coalesce: a burst of edits holds one text of each file (2026-11-24)
+
+- **What the switch found** (commit 6's footprint): in a burst of rapid edits the store's background writer (step 1.2's
+  design: memory at once, the files written in order on one writer thread) falls behind, and each save waiting held its
+  files' whole text (the library's edits rewrite the changed collection's file, ~1 MB at 500 items with their icons). At
+  500 items, 200 renames each drawn took the footprint from 105 MB to 357 MB (1.26 MB an edit); written at once it
+  stays at ~30 MB.
+- **Now** (data/store.rs `Job::merge`): a save handed over while the last job waiting for the writer is the same
+  profile's becomes part of that job, as if the two had been one save from its start: each collection's file once, with
+  its newest text, `set.json` last as the newest save has it (its rev, its acked, its time). So however long the burst,
+  what waits is the file being written and one text of each file after it. Only a job not yet taken by the writer is
+  merged into; one being written is left as it is; another profile's save is a job of its own behind it (the order
+  across profiles kept).
+- **Step 1's guarantees kept**:
+  - *What's on disk is what one save at a time leaves*: the same files with the same text once the last write lands,
+    which lands no later (fewer files are written: the burst above writes 3 + 4 files for 21 saves, not 63). The
+    in-between states that are skipped are states a crash could have left anyway.
+  - *`set.json` first with the new rev and the acked from before, then the collections, then `set.json` with the new
+    acked*, so no copy's rev ever names items that aren't on disk: the merged job's first `set.json` has the newest rev
+    with the acked from before the first of its saves (after a first set, none: there's no set until `set.json` lands;
+    after a save that changed no collection, the later save's own first, as written one at a time). `set.json`'s text is
+    made as it's written, from those.
+  - *A save's result only once it's on disk*: each save keeps its ticket and its own rev, and its result (`take_done`, in
+    order) comes once the job with its text is written: the sync's follow-ups (an ack, the changes sent, a carry) run
+    as before, for each save, never earlier. A merged save's own rev was never on disk by itself; its ack still names it
+    (the copy took the set at that rev), and a later relink on it finds the set moved on and is answered as any newer
+    set (the lost changes, the set): the same as when a later save had been made before the ack, which was already so.
+  - *A failed write forgets the profile's memory*: a merged job that fails fails each of its saves (each its line), and
+    the set is read again from disk. One at a time, the saves before the failing one would have been kept; merged,
+    they're lost with it (none of them was confirmed to a copy). Accepted: a disk that fails one write mid-burst is the
+    case, and nothing was said to be saved.
+  - A test's crash (`crash_after_writes`, which counts files one save at a time) merges nothing.
+- **Measured** (off screen, MARGIN_LIBRARY_BASELINE, two rounds, the larger kept): the burst's highest footprint at 50 /
+  500 / 2,000 items **13.7 / 33.9 / 186 MB** (0.01–0.03 MB an edit), was 53.7 / 357 / 466 MB (0.16 / 1.26 / 0.81 MB an
+  edit); after the baseline's first 75 calls 11.4 / 24.6 / 184 MB (was 16.3 / 71.5 / 301; commit 0's JavaScriptCore
+  library 22 / 53 / 354). A perform, a draw: unchanged (3.5 ms, 0.07 ms at 500).
+- **Tests.** store.rs: 21 saves while the writer is held at its wake (a gate in the test's wake, no wait of a time): the
+  20 waiting are one job, each file once in the order first changed, `set.json` first with the acked from before them,
+  another profile's save a job behind, each save's result in order with its own rev, the files on disk the newest, 10
+  files written for 23 saves; `set.json`'s first write after a first set, after an acked alone, before one; nothing
+  merged under a test's crash; `written_in_the_background_in_order` now waits for the writer (its three quick saves are
+  written together, so it's woken once, not three times). The sync's tests (data-merge vectors, links, carries) pass
+  unchanged over the background store. 9 deliberate breaks, each alone (scratch step4-finish/breaks7a.py): all caught
+  (a file's older text kept, a merged file written twice, `set.json`'s first always the later save's, or dropped after
+  an acked alone, the older rev last, the later saves' results lost, another profile's save merged, merged under a
+  test's crash, nothing merged).
+
+## Core refactor step 4, commit 8: step 4 done, the library's rules margin-core's (2026-11-24)
+
+- **The rule** ("Margin.app owns the spaces: the library", 2026-11-15, its rules paragraph replaced): the library's
+  rules are margin-core's; library.ts is the shared vectors' reference and the extension's own rules' companion while
+  the browsers' copies own their spaces, built into nothing (its header says so; `buildLibraryScript` builds
+  library.js for the vectors' recorder only, since commit 6).
+- **The test-only app API**: `Library.store(_:at:)` (values stored as given, no rule run) is out of the app: the
+  tests' own, over the core's `apply` call through `corePointer` (library-tests.swift for the unit checks,
+  e2e-hosted.swift for the end-to-end ones), since only tests store values in shapes the rules may never write (an
+  older Margin's, odd types: session-rules-tests' last items, margin-window-tests' themes) or 2,000 items at once (the
+  baseline); the app has no way past the rules now. HostedSession `request(_:)` is kept: it's the session's `library`
+  input, which the core keeps for request shapes the rules never make, and session-rules-tests pins the session's
+  handling of them through it (a pin or favorite with no item and no address: said, nothing shown); it needs the
+  facade's private `drive`, so it can't move to the tests without opening that. Not called by the app.
+- docs/CORE-REFACTOR.md: "Step 4: done (2026-11-24)" (what moved, what stayed and why, the totals, each commit's
+  results and breaks, what's open), the order table's rows 7, 7a and 8 done.
+- Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
+  `scripts/rust-test.sh`, `npm test` and the quick tests green.
+
+## Link resilience, part 1: a request ends on evidence, the copy acks and dedupes, its waits advanced by events (2026-11-24)
+
+- **The rule** (docs/LINK-RESILIENCE.md §1 rules 1–6 and 11–14, §2 rules 5–7; Tirth approved the design with its
+  defaults, "please work on this properly. make no mistakes"): a request to a copy has no time of its own. It ends on
+  its reply, the link going down (closed, replaced, or the 40 s silence rule: `Down`), the session's cancel (no answer
+  at all), or lost (`Lost`). The rules are margin-core's and the extension's; Swift lost its duplicate 15 s and gained no
+  rule. Part 2 (the session: `ask_until`, `Command::Cancel`, the loader's progress, the start-up's gate) is
+  fix/link-resilience-session's.
+- **margin-core** (`link.rs`): `Timing.request` and `LinkError::TimedOut` gone, `LinkError::Lost` new. Each waiting
+  request keeps its kind, when it was sent, the last tick's number sent before it, whether it's acked, whether it was
+  sent again, and its text. Ticks are numbered per link (`tick { seq }` from 1). `ack { id }` marks it taken; a
+  numbered `tock` later than its tick with no ack: sent once more with the same id (logged), lost the second time
+  (logged, `Answer Err(Lost)`). A tock without a number (an older copy, the copy's own probe after a pause) is life only.
+  `Link::cancel(conn, id) -> Option<Action>` (the `cancel { id }` to send; none: nothing waited for it), and
+  `Link::slow(conn, now) -> Option<Secs>` (the oldest unacked request's age; `now` added: the core is sans-IO), passed
+  through `SocketLink`, `LinkHub` and margin-ffi's `cancel` (answers `cancelled`) and `slow` (answers `slow`). Alive
+  (any bytes) still feeds only the 40 s rule; nothing new decides from it. `next_deadline` has no requests in it now.
+- **Protocol** (`protocol.rs`): `AppMessage::Tick { seq }`, `AppMessage::Cancel { id }`, `LinkMessage::Ack { id }`,
+  `LinkMessage::Tock { seq: Option<i64> }` (a `seq` that isn't a whole number: none). Backward compatible both ways: an
+  older copy leaves `cancel` and the tick's `seq` (unknown kinds and fields), and its requests are answered as before; an
+  older app's tick has no `seq`, so the copy's tock has none, and it ignores `ack`. No version bump (design risk 4).
+- **Relays** (`relay.rs`): unchanged. They only find the app (their header: "nothing of the link goes through them");
+  Chrome's and Edge's links are WebSockets on the same `Link`, so the same rules hold there with nothing to add.
+- **Swift** (`ExtensionLink.swift`): `SocketLink.Timing.request` and its `timing.request` to the core deleted.
+  `LinkError` is `down`, `lost`, `cancelled` (this side's own call ended by `cancel`) and `notJSON`. Mechanism only, for
+  part 2's glue: `LinkConnection.request(…, asked:)` says the id as it's sent, `cancel(id)` (the core's cancel; the call
+  ends `cancelled`), `slow` (the core's `slow`). The Windows shell (`shell/mod.rs`) only names `Lost` (it has no timing
+  of its own).
+- **The extension** (`background/link.ts`): each `req` acked as it's read, before anything runs (even one refused). The
+  epoch's last 64 ids: one running or held is left (its reply comes), one answered gets its reply again, unless it was
+  over 64 KB (a picture's): then `ok: false`, "answered before; that answer is no longer kept" (64 kept pictures could be
+  64 MB). Another epoch's `req` is refused and not remembered. `cancel { id }`: held, dropped; running, its `stopped()`
+  says stop; neither answered. The newest `hostShow` per window wins: `sender.stopped()` (not enumerable: the sender
+  keeps a page's shape) is true once a newer show for its window starts, and `hosted.ts show` checks it before each
+  Safari call, throwing `overtaken` (answered `ok: false, error: 'overtaken'`: the app's request must end on evidence,
+  and a show the copy stops says so unless the app cancelled it). After a detected pause the `req`s read are held one
+  turn (`setTimeout 0`, as the judge), then of several shows for one window only the newest runs, the older answered
+  `overtaken`. The pause is seen by the link check or by the app's first message after it, whichever runs first (the
+  late timer and the socket's queued messages come in either order); the same note and probe as before.
+- **The extension's waits** (`after`/`due` in link.ts): the ask's pacing, the reconnect's, the handler's answer, the
+  app's `link` and the welcome each have a due time, run by their timer or by `due()`: the windows and tabs events (focus,
+  created, closed, bounds, a tab shown, `tabs.onUpdated`), a page's `runtime.onMessage` (background.ts) and every
+  native port message. `due()` runs a microtask after the event, so a `link` that came on the port ends its wait first.
+  A wait that judges and ran over 1.5× late is armed again for its whole time from then (logged), so a welcome or an
+  answer that came during the pause is seen first; only one on time gives up. Rule 7 read as: a try in which a judging
+  wait ran late isn't counted in the doubling (`askMs` kept, not doubled). Waits aren't dropped at `stop` (a `within`
+  left unsettled would hold its try for good), as the timers before them weren't.
+- **What follows from no time-out** (design risk 1's default): every `request` (the waker's `closeWindow`s, the themes'
+  `updateSettings`, the Windows shell's switch requests, which keep their own time-outs) waits until evidence; a copy
+  that keeps reading but never answers one is only logged, never given up on.
+- **Tests, each written failing first** (evidence: the same tests against 6919c854 in a copy of the tree):
+  - core `link.rs`: alive but not reading, still waiting at 15, 60 and 600 s (was `TimedOut` at 16); `Down` on 40 s of
+    silence and nothing before it (was `TimedOut`); an older copy's tocks life only (was `TimedOut`); cancel (no answer,
+    `cancel { id }` sent, a later reply left, once); read past, sent again with its id, then `Lost`; an acked request
+    through later tocks; `slow`; each link's ticks numbered (the last five didn't build: no `cancel`, `slow`, `Lost`,
+    `seq`). `link_hub.rs`: no time-out, `slow`, the ack, `cancel`'s frame and its late reply left (was `TimedOut` at 18).
+    margin-ffi: `slow` and `cancel` calls (answered null: no such call). `protocol.rs`: ack, cancel, the numbered tick
+    and tock, and the shared vectors (didn't build).
+  - shared vectors `tests/fixtures/link-protocol.json`, read by protocol.rs, the Mac's unit checks (tests.swift, through
+    the core; `MARGIN_LINK_VECTORS` in run.sh) and tests/link.test.ts (the copy's answers: failed, no `seq`, no `ack`).
+    There were no protocol vectors before; this is the first such file, as `hosted-browser.json` is for the hosted checks.
+  - tests/link.test.ts: acked before its handler resolves and a repeated id run once (no ack); cancel before start and
+    under way; two shows for one window, only the newer reaching the tabs API (both did); after a pause only the newer
+    show of a window; an extension event running the due ask (only at the timer); a late welcome wait not giving up (gave
+    up). All six failed on today's link.ts.
+  - app e2e (`e2e-link.swift`, `MARGIN_E2E_ONLY=link`) over fake-extension.mts's new `stall { ms }` (each message held
+    `ms` after it's read, in order, the host's window reports still going at once; acks and tocks late with the rest;
+    `drained` once caught up) and `lose { n }` modes, the fake now a current copy (acks, dedupes, echoes `seq`, honours
+    `cancel`): a 7 s stall waited for and answered after it (was `timedOut` at the suite's 5 s); read past once, sent
+    again and answered; twice, `lost` (both `timedOut`); slow and cancel (didn't build); the silence rule `down` (passes
+    on both: kept behaviour). The design's other e2e checks (an app picked meanwhile shown at once, the show after the
+    reconnect, no start screen for an app) are the session's (part 2), with this `stall` mode.
+- Not run here: the screen suite, an install, `npm run gate`. `scripts/rust-test.sh` and `npm run test:quick -- --base
+  fix/link-resilience` green; `tools/app-tests/run.sh all` green (2154 unit checks; e2e 328 of 329, the one a timing
+  check under load, "glue: back to the app … under the loader's 120 ms grace" at 148 ms, which passed run alone twice,
+  47 and 49 ms: no link request is in that switch).
+
+## Link resilience, the session's part: a show waits for a slow copy without holding anything up (2026-11-24)
+
+docs/LINK-RESILIENCE.md §1 rules 7–10, Tirth's defaults ("please work on this properly. make no mistakes"): `slowSay`
+3 s and feedback only; a request whose copy reads but never answers keeps waiting (logged, any other pick moves on).
+The link's part (acks, no fixed timeout, `Link::cancel`, `Link::slow`, `Down`/`Lost`) is on `fix/link-resilience-link`;
+this part codes against those names.
+
+- **`ask_until`** (session/mod.rs, beside `ask`): a copy's request raced against its pick being overtaken, with no time
+  limit of its own. The predicate is read only when what the flows read changes (`exec.changed()`: the start screen's
+  state and the windows' items asked for), never on a look. Overtaken: its wait let go first (an answer that comes now
+  is no task's: rule 10), then `Command::Cancel { profile, id }` (the ask's command id), awaited like any command, and
+  the flow stops. Overtaken already: not asked. Both the answer and a pick before the task's poll: the answer wins.
+- **`Command::Cancel`** carried out by the Swift facade (HostedSession `start`, `"cancel"`, answered at once) as
+  `HostedLinks.cancel(profile:asked:)`: ShellHostedLinks keeps each ask's link and request id by the command's id
+  (`LinkConnection.request(…, sent:)`), and `LinkConnection.cancel` ends the Swift wait (`LinkError.cancelled`) and asks
+  the core's link to cancel (`margin_link_call` `{ type: "cancel", conn, id }`). Mechanism only; the stand-in links
+  can't give a request up (the protocol's default), and the session lets their answer go.
+- **`show_web`** (requests.rs, `ask_show`): its `hostShow` through `ask_until`, overtaken by another item asked for in
+  its window or by the window gone (nothing can be picked in a closed window: without it, the queue would wait for a
+  copy that never answers). Logged "overtaken … the request cancelled", never "wasn't shown".
+- **The loader while it waits** (rule 8): set at once for a tab switch too (`set_showing(w, title, Safari, false)`), as
+  a switch-in already set it; the page's grace keeps a quick switch unseen, so nothing changes on a quiet Mac. The
+  copy's slowness is read through a new port, `Ports::link_slow` (JSON `linkSlow` → `HostedLinks.slow(of:)` →
+  `LinkConnection.slow` → `margin_link_call` `{ type: "slow", conn }` → `{ slow: secs }`), `slowSay` after the ask, then
+  each `slowSay` or when it would reach it; `slow` told on each change, both ways. A pace, never a decision.
+- **A show whose link went down** (rule 9: `down`, or `not linked` at the ask): still the pick, its profile linked
+  again through the waker (`ensure_linked_for`, its own wait `link_wanted`), then asked again, only on a new link (a new
+  epoch: "linked" on the same link isn't evidence it came back, and a `Lost` that Swift still maps to `down` can't
+  loop). Overtaken meanwhile: not asked again, said. Only `hostShow` is asked again.
+- **Tests, each failing first** (requests_tests.rs, on the stand-in ports; `pump_holding` keeps commands unanswered):
+  a `hostShow` never answered holds no pick up (an app picked after it: `cancel`, then shown; its late answer changes
+  nothing); one for a window closed is cancelled; the loader at the ask, `slow` once the link says slow for 3 s (looks
+  at 3, 6, 7 s), back when it doesn't; down or not linked and back on a new epoch: asked again and shown; the same epoch:
+  not, said; another error: as before; overtaken while its link is waited for: not asked again. Swift
+  (hosted-tests.swift): the facade carries the core's cancel out (a held `hostShow`, an app picked: one cancel, the app
+  shown; caught with the `"cancel"` case removed); the front tests' "a tab switch says nothing to Margin's window" is
+  now "says its item while its copy is asked, not as slow" (rule 8 replaces it).
+- **Not here**: the link's FFI arms (`cancel`, `slow` in app/platforms/macos/ffi/src/link.rs) need the link's
+  `cancel`/`slow`: until they land, a cancel ends the Swift wait and the core's link answers it as a call it doesn't
+  know (one warning a cancel), and `slow` is never reported. The page draws `slow` only as "no grace" (page/mod.rs
+  `set_showing` ignores a change of `slow` alone): words for "Safari is slow" are a UI piece of their own. A pick in
+  another Margin window still waits behind a show its copy never answers (overtaken is per window, as the design says).
+
+## Link resilience: the start waits only for what the first item shown needs (2026-11-24)
+
+docs/LINK-RESILIENCE.md §2 rules 1–4, Tirth's default: when the first item is an app, there's no start gate.
+
+- **The gate** (start.rs `resume_last`): only for a web item shown last, on its profile's preparation. An app, Margin's
+  own page or no item (the launcher; MarginResumeLast NO is no item): no start screen, shown at once, the browser's
+  preparation running out of sight with nothing waiting for it (it gives itself up once something's shown, as it did
+  when the person picked first).
+- **The profile prepared** (`prepare_browser`): the last item's own when it's a web item (`resolve` of its target's
+  profile, the one its show resolves), else the space's as before; the window made ready is the one the first show
+  uses. Other profiles link on first use (`show_web` → `host` → `ensure_linked_for`, unchanged).
+- **"Held up" stays feedback**: `hold_startup` unchanged; it ends the moment the preparation is over, whenever that is.
+- **Tests, each failing first** (start_tests.rs): an app last: no start screen, shown with the preparation not begun; no
+  item, or Settings: no start screen; a web item of s-p in a space of s-q: s-p woken for and made ready, not s-q. The
+  start screen's own tests now use a web item last (an app no longer gets one). Swift (hosted-tests.swift): Settings and
+  an app last with the browser not ready: no "Getting you started"; the held-up, Try again, Continue without Safari and
+  lifts-by-itself checks with a web item last; MarginResumeLast NO: the launcher at once; the extension that never
+  links: with a web item last (stored for the check, removed after).
+
+## Link resilience: the waker's quit check pinned before it counts windows (2026-11-24)
+
+docs/LINK-RESILIENCE.md §3: 94bd90ab's fix, pinned by a unit check (hosted-tests.swift `safariWakeTests`): a quit
+begun between two looks, and no count of the woken windows once it's begun (the stand-in engine counts them while
+quitting), one press only. Caught by counting before the check (`_ = engine.wokenWindows(…)` above it).
+
+## Link resilience joined: nothing waits behind a slow copy, "Safari is slow…", relinks on evidence (2026-11-24)
+
+Both parts merged (`fix/link-resilience-link` into the session's part): one cancel path (the link's
+`LinkConnection.cancel`, the core's `Link::cancel` behind margin_link_call `cancel`), one slow read (`Link::slow`,
+`slow`); the session's own stand-ins for them gone (HostedLinks' defaults: FakeHostedLinks implements them).
+
+- **A show waiting for its copy holds no other window's pick** (requests.rs `ask_show`, exec.rs `leave_turn`,
+  `rejoin`): once `hostShow` is asked, the show gives the serial queue's turn up; the answer taken, it waits for its
+  turn again (behind what was queued meanwhile) and looks again before doing anything with it: overtaken in its window,
+  its window closed, or its item closed since: nothing more; another window's show took the engine meanwhile (`host`
+  was asked since and its window doesn't host now): the later pick keeps it, this window keeps the item as its card
+  (`show_elsewhere`), its tab recorded. Ordering holds because nothing of the engine's is under way while it's out (it
+  asks only from in turn, and does nothing after the answer until in turn), a pick in its own window cancels it first
+  (its `cancel` goes before the newer `hostShow` on the same socket), and the after-steps of a superseded web show leave
+  the newer show's loader and host marker alone.
+- **A relink without Safari's menu** (requests.rs `relinked`): a show whose link went down while its Safari window is
+  still hosted waits for its copy's next link (a new epoch) on the links' own events (a new input, `linked`, from the
+  shell's `linkUp`/`linkDown`), while the pick is wanted; only with no window left is the waker asked (its own rules).
+- **"Safari is slow…"**: the session tells the window `setCopySlow` (a new port, JSON) beside `setShowing(…, slow)`;
+  the core Page keeps it (`copy_slow`, cleared with the item; a change of `slow` alone is now a change too, ending the
+  grace), its `pageState` push and hello say `slow`/`pageSlow`; ui/host-app.ts reads it (only while `loading`, never at
+  Margin's start), ui/runtime.ts draws Margin's own `<m-page-slow>` over the page's place with the words, BASE_CSS, the
+  same in every theme (a theme may restyle it). Theme tests in both engines for the five themes.
+- **The preparation when an app shows first** (start.rs): still wanted (`prepare_wanted`: the item shown first with
+  no start screen counts as nothing picked), so Safari starts and the needed profile links out of sight; its window is
+  kept (`later`) and made ready the first time nothing is shown in Margin's window (`settle_hosting`), since the
+  engine makes one out of sight only then (its `prepare` refuses while something is shown: making one while an app is
+  shown needs the engine's own change and a screen check, not done here).
+- **Every request to a copy, now that none times out** (each ends on its reply, the link down, or lost, and):
+  - `hostShow` of a show (`show_web`): raced against the pick (cancelled), out of the queue (above);
+  - `hostShow` + `goBack`/`goForward`/`reload` (navigate.rs): the show out of the queue (`ask_aside`), the history's
+    own told (`tell`: handed out in order, waited for by nothing);
+  - `hostMute`, `hostMedia` (requests.rs), `hostPromotePeek` (card.rs Expand): out of the queue (`ask_aside`);
+  - `hostClose` (close), `hostNavigate` (a pin's or favourite's reset), `hostCardClose` (card.rs): told;
+  - `newWindow` (hosting.rs, under the engine's open), `setWindowState`, `hostFocusWindow`: raced against
+    `link_wanted` (another item picked: cancelled, "given up"), and at Margin's quit against the copy not reading it;
+  - `closeWindow` (hosting.rs, the engine's, at quit too): raced at Margin's quit (`quitting` input, from the shell's
+    `stopHost`) against its copy not reading what it was sent before the quit (the link's `slow`: its oldest unacked
+    request no younger than the quit), judged as the input comes and at each read of its link after it (the shell's
+    `linkHeard` while it quits, as `linked`: an ack, a tock; the link down), never on a timer: `slowSay` paces the
+    words only. A request sent since the quit and not acked yet isn't unread by that alone. And, as the engine's own
+    quit decides (`quitWait`, sent to the session with its options: `quitWait`, never copied), no request an engine
+    operation waits for outlasts `quitWait` after the quit began (`ask_until`'s `limit`): given up, said ("at quit:
+    closeWindow for <profile> unanswered after quitWait (6.0 s): left in the marker"), cancelled. The engine keeps a
+    window not confirmed closed in its marker (`leftSafariWindows`), closed by its poll or the next launch. Tested
+    failing first: a copy that acks and never answers holds the quit `quitWait` and no longer (requests_tests.rs), and
+    e2e-resilience.swift's quit with the copy stalled ends within `quitWait`, the window kept in the marker (it waited
+    for the link's 40 s before);
+  - `hostShow` of a layout's pane (layouts.rs `show_tab`): raced against another item (none of the layout's) asked for
+    in its window, and at quit;
+  - `hostPicture`: raced against `pictureWait` (as before); `peekAnswer`, the card's history: detached tasks, nothing
+    waits; the waker's `closeWoken` is now handed out and waited for by nothing (`waker_tell`), its own closes ending on
+    their links;
+  - Swift's own: SafariWaker's sweep `closeWindow`s and the themes' `updateSettings`/`userThemes` run in tasks nothing
+    waits for.
+- **Tests, each failing first**: requests_tests.rs (a pick in another window shown at once while a show waits, the
+  later pick keeping the engine; a relink on the next link with no waker while the window's there, the waker when it's
+  gone; the callers above holding nothing: a close, a mute, a `newWindow` given up when overtaken, a `closeWindow`
+  given up at quit when unread), start_tests.rs (an app first: the preparation wanted, its window kept and made once
+  nothing is shown), page/tests.rs (`copy_slow`, `slow` alone a change), tests/ui-host-app.test.ts (`pageSlow`),
+  tests/theme/page-state.test.ts ("Safari is slow…" in each theme, both engines), hosted-tests.swift (the prepared
+  check: kept, not given up). The app's end-to-end run, e2e-resilience.swift (MARGIN_E2E_ONLY=resilience): over the
+  fake copy's `stall`, a tab switch's loader, "Safari is slow…" after 3 s, an app picked at once and the switch
+  cancelled before the copy ran it, a show landing after its link closed and came back with no menu press, a pick in a
+  second window at once and the first keeping its card; its last three checks failed on the code before this, the first
+  ones need both parts.
+- **Not here**: the e2e for the preparation and for no start screen with an app last (the e2e world has no early full
+  screen, so no preparation can run there at all: the core's and the unit checks pin them); the engine preparing a
+  window out of sight while an app is shown.
+
+## The WebKit host's `undrawn`: a race in the harness, not a regression (2026-11-24)
+
+- **Seen**: on fix/link-resilience-int the gate's `undrawn` failed 4 checks: `PASS A: linked` 2 ms after the copy's
+  hello, `appDrawn false` then `drawn kept: no copy linked`, the snapshot 2 ms later. The link server knows a copy's
+  window only from its first snapshot (link-server/main.swift `firstWindow`), and the scenario's `linked('A')` passes on
+  the page's `appLink` state, which the copy writes as it says hello (`linked()` → `setPageState('linked')`), a few ms
+  before its snapshot is read and sent (`snapshot()` reads storage and the windows first). That order is unchanged
+  since before link resilience.
+- **Measured**: the same scenario at 6919c854 (fix/waker-quit plus the design's doc only) failed 1 run in 10, and once
+  more passed with the check seeing `linked` before the snapshot; at 0e3fae3a 1 in 6. The check polls every 100 ms: it
+  fails when a poll lands in the 2–4 ms between hello and snapshot.
+- **Fix (the harness only, no change to Margin)**: a `drawn` asked while a copy is linked but its first snapshot hasn't
+  come is held ("drawn held: the copy's first snapshot not here yet") and sent as that snapshot names the window. 20 runs:
+  none failed, the hold taken in 5. Moving the copy's `linked` after its snapshot was not done: it would change what
+  pages see, which the link resilience design doesn't ask for.
+- `npm run test:webkit` (41 scenarios), `npm test` (1112), `tools/app-tests/run.sh all` (2156 unit, 339 e2e) and
+  `scripts/rust-test.sh` green.
+
+## A press on Margin's sidebar never takes the keyboard from the hosted app (GitHub #29, 2026-11-24)
+
+- **Why**: the window server moved the keyboard to Margin at every press in its panel, a non-activating panel that
+  refuses to be key included, so the hosted app's window resigned key and drew its unfocused look until Margin handed
+  the keys back (`pressSettle`, 80 ms after the release: 185-193 ms in all on the real screen). Tirth accepts that a
+  page's field loses its focus to a sidebar press, as in Arc; not the app's unfocused look for any time. This is the
+  event tap the 2026-11-22 entry ("A sidebar click hands the keys back") left as not done. Design: docs/SIDEBAR-PRESS.md.
+- **The core decides** (core/page/press.rs): `keys_stay` (hosting, a hosted window shown, no field of Margin's wanting
+  the keys: the rule Windows' `MA_NOACTIVATE` is too, which it can read once its window has a core page) and
+  `press_way` (outside, through to what's hosted or the window's own buttons, Margin's UI with the keys staying,
+  Margin's UI as before), over `passthrough::passes`, now a free function `PagePointer::passes` calls. The page keeps
+  the field's word as it reads the `focus` op (`Page::set_field_keys`; `Said::Focus { on, was }`); the Swift's
+  `pageWantsKeyboard` reads it (no second copy).
+- **The Mac's mechanism** is the pane click tap, not a second tap (a second would be a second round trip per press):
+  its scene carries every hosting Margin window's panel (`PaneClickScene.panels`); a press of any button the core's
+  way says is Margin's UI with the keys staying, with no other button held and no other window over the panel there
+  (the window server's list read for that press only), is taken and delivered to the panel as the window server's own
+  record (`PaneFronting.deliver`, as a cut pane's press, proven on the real screen 2026-11-22), at the panel's own
+  point; its drags and release follow it there, and another button's press until the last is up. A press under way
+  whose release the tap never heard (macOS turned it off a moment) is dropped at the next press. The tap now lives
+  while a Margin window on the current Space hosts (it lived only while a split was shown).
+- **`pressSettle`**: a press the tap delivered is known at its release by its event number (`claimedPanel`) and skips
+  `afterPress` at once: no hand-back, nothing waited for. `pressSettle` is left only for a press the window server
+  still routed (no tap: Accessibility not granted, the records' layout refused at launch, `MarginSidebarTap` off;
+  covered there by another window) and for `menuItemRan`, unchanged.
+- **Off**: `defaults write com.unibox.margin MarginSidebarTap -bool NO` (today's hand-back). The dev hook's `say: front`
+  says `delivered N`, the presses delivered without the keyboard moving.
+- **Cost**: nothing at rest (a mach port on the tap's own thread, no timer, no poll; moves, scrolls and keys never
+  reach it). Per press: one round trip to the tap's thread, the core's way (11.1 ns, ffi tests/press_cost.rs in
+  release), and for a press on Margin's UI the window server's list of the windows above the panel. Per drag of a
+  press it took: a round trip and a record posted.
+- **Tests, each failing first**: core page/press.rs (the rule's cases, the field's word kept by `said`), said.rs, the
+  FFI's no-allocation run of `margin_press_way`; panel-press-tests.swift (12 of its checks failed with the panel branch
+  off); e2e-glue.swift's press tap block (a delivered press: no hand-back; a routed one: as before; a field's keys told;
+  the part off; 2 failed with the claim off). The screen suite's k1 is tightened back (see the screen-suite entry).
+
+## A double-click on the sidebar's empty part opens the palette, as Arc's does (2026-11-24)
+
+- **Where**: the shared UI, for every theme and host (Windows' web view too): the rule in app/shared/ui/empty.ts, the
+  behaviour in app/shared/ui/behaviors/empty.ts, the palette key's rule in the runtime (`paletteKeyOptions`,
+  `openPaletteAsKey`), which Margin.app's overlay's own `command palette` now reads too: one rule for the key and the
+  double-click (in Margin's own window the new-tab palette). Nothing in Swift, nothing per theme. In Margin.app the
+  press reaches the page through the press tap as the window server's own record, so it's the page's own `dblclick`.
+- **Empty**, walking up from the element under the pointer: no Margin slot or `m-empty="never"` on the way; up to the
+  nearest element holding a control or a row, no control (a link, a button, a field, an action, a handle, focusable,
+  draggable, an interactive role), no `<m-for>` row, no bar (two or more controls or rows side by side: the space
+  switcher's gaps, a header's, a favourites grid's); and that nearest holder is the sidebar's own surface, its column
+  (`m-swipe`) or a list (`m-scroll`, `m-drop`). A first version without that last rule found its empty point on the
+  mini player's background in every theme (the theme tests' diagnostic said so): a widget's background isn't the
+  sidebar's, and neither is the decoration beside the space's name or the frame around the page card.
+- **When**: both clicks on empty points, the main button, no modifier, a real press, nothing of Margin's open at the
+  first press (the palette, a menu, the editor, a rename, a prompt, the preview card) nor under way (a drag, a resize,
+  a swipe). It never closes the palette.
+- **The contract**: `m-empty="never"` (its only value; anything else is removed and reported by the sanitizer) marks a
+  decoration as never empty. No theme can make anything empty. themes/README.md says what's empty and why.
+- **The dev hook** `say: spot` and the app's e2e use the same rule (`marginApp.devEmptySpot`, DEV-HOOK).
+- **Tests, each failing first**: tests/theme/empty-dblclick.test.ts (5 themes × WebKit and Chromium, 190 checks: an
+  empty point's double-click opens the palette as the key does; a tab's, a folder's, a pin's, the space's name's, the
+  active chip's, the gap between chips, the address field's, a drag region's, the resize handle's, the mini player's,
+  the decoration beside the space's name, the frame's, the editor's field don't; one click of two on a row doesn't; a
+  menu open at the first click: nothing; the root marked never: nothing). With the behaviour off its 10 opening
+  checks and the marked-root checks failed; with a rule that took everything but the page as empty, 72 failed.
+  tests/theme-sanitize.test.ts (`m-empty` values). e2e-glue.swift: two presses with click counts 1 and 2 on the real
+  page open the palette, its field taking the keys; on the page area nothing (both failed with the behaviour off).
+
+## The screen suite's k1 tightened back, k2 and k3 added (2026-11-24; not run here: Tirth runs it)
+
+- **k1** (tools/screen-tests/suite/Core.swift): a click on an empty spot of the sidebar with the pane active now passes
+  only if the pane's window never resigned key (no `resignedKey` line at all; 2026-11-22's "key again within 0.5 s" is
+  gone), the dev hook says the press was delivered by the tap (`delivered` +1) and nothing was handed back (`keys
+  back` unchanged), AppKit never took Margin for active (`appkit active false`), and as before the pane the front app,
+  the panel's press counted, Margin never made active, a plain key after it reaching the pane.
+- **k2**: a double-click on that spot (two presses, the second with click count 2, Person.swift `doubleClick`): the
+  palette opened by it (Margin's log: "palette opened (a double-click on the sidebar)"), the panel key with its field,
+  the pane still the front app, Margin never made active, the pane's window resigning key once at most (for the
+  palette's field); then Escape, as c2.
+- **k3**: a double-click in the pane's own content: its two clicks (counts 1 and 2) the pane's, no palette.
+- The dev hook's `say: spot` now finds its spot by the double-click's own rule (app/shared/ui/empty.ts), so k1's spot
+  and k2's are the same kind of point. The suite type-checks (`swiftc -typecheck`); it was not run.
+- The tap's own work per event, on the unit checks' stand-in, is printed by panel-press-tests.swift (a sidebar click,
+  a click through the hole, a drag of a press it took).
+
+## The sidebar press delivered as an event made afresh; the split's pane clicks said apart (2026-11-24, after the first screen run)
+
+- **Seen** (core k1, 20261124-232233): the pane never resigned key and nothing was handed back, but after the first
+  delivered press (b2's, on the frame) Margin's dev hook said `panel … key true`, `allow key false`, `appkit active
+  true`, `active false`: AppKit keyed the panel (its `canBecomeKey` false) and took Margin for active while the window
+  server kept the pane the front app, and k1's plain key then went to Margin ("a key reached Margin … (Margin's key
+  window: panel)"), relayed and handed back. A person would have seen the hosted app keep its active look and its menu
+  bar (the window server's front app), Margin's panel drawn as key, and the first key typed after a sidebar click
+  reach the app only through the relay; AppKit's own `didBecomeActive` (which Margin hears: `keepFront`,
+  `tryFullScreen`, the menu bar watch) could fire; NSWorkspace's never did (the front app never changed).
+- **Why, as far as can be seen from here**: an off-screen lab (its own accessory process, a non-activating panel that
+  refuses key, with and without a web view; nothing posted to another process or to the HID stream) delivered a press
+  made afresh three ways (as a record through `SLPSPostEventRecordTo`, through AppKit's queue, `postToPid`): the panel
+  got the press and the page its mousedown and double-click, AppKit stayed inactive and the panel not key every time.
+  So neither the posting nor the panel nor WebKit does it; the real press's own record does (its window server's word
+  on a click, most likely the make-key flag at 0x3a, 0x10, that yabai and AltTab set by hand). No lab here can read a
+  real press's record; the first press's bytes 0x38-0x3b are now said in Margin's log, never posted, and k1's detail
+  shows that line.
+- **Fix**: the tap delivers a press on the panel, and its drags and release, as an event made afresh from its public
+  fields (type, point in the panel, modifiers, event number, click count, pressure, button, movement:
+  `NSEvent.mouseEvent` for the panel, `cgEvent.postToPid` to Margin's own process; PaneClickTap.swift `PanelEvents`).
+  Public calls only: the panel part no longer needs the records' layout (`sidebarTap` is the setting alone). Cut panes
+  keep their records (another app's window, made key first).
+- **Logs**: one tap, two modes said apart. `press tap: on` / `off` is the tap (it runs while a Margin window on the
+  current Space hosts); `pane clicks: on` / `off` is the split's part of it (the tap running and a split's panes in its
+  scene), each said once as it changes, from the tap's own thread or the scene's. The screen suite's split step
+  (PaneClicks.swift `splitWith`, read by pane-clicks, panes-active and cut-panes) still waits for `pane clicks: on`,
+  now meaning exactly that; it was the only suite reader of the tap's lines.
+- **Covers**: a press where another window covers the panel (Notification Center, pid 793, layer 23, in the
+  pane-clicks run) goes as before: the window server's list read for that press, any window above the panel with
+  alpha above 0 below the assistive-technology level counts, as for a pane.
+- **Tests, failing first**: panel-press-tests.swift (5 checks failed with the panel delivered as records again: each
+  press must go out as an event made afresh; `PanelEvents.make` keeps the window, its point, click count, event
+  number, modifiers, button and movement; the `pane clicks` lines said once each way, only while running with a
+  split); e2e-glue.swift (a double-click made afresh and posted to the e2e's own process through the window server
+  reaches the panel and opens the palette, AppKit not active before or after, no `didBecomeActive`, the panel never
+  keyed: the records path can't run in the tests, so this pins the new path, not the old failure); e2e-split.swift (the
+  split over: the tap stays for the panel, told no panes).
+
+## The second screen run: still keyed, a cut pane's click lost; AppKit's queue, and DIAG lines (2026-11-25)
+
+- **Seen** (d1f7ad8c): the first press's own record says 0x38-0x3b `00 00 00 20` (0x3a is 0: no make-key flag), and
+  the panel still went key (`panel … key true`, AppKit active) right after a press made afresh and posted to Margin
+  through the window server: the record theory is wrong. The off-screen lab and the e2e (both off every display) never
+  key the panel, by either way; only the real, on-screen Margin does. cut-panes: the click into the cut pane (its
+  records to Chameleon 1, delivered as before) reached no view, right after two arrow presses on Margin's panel that
+  went out through `postToPid`; in the first run, the same presses as records, it passed. That is the only change on
+  that path (the cut pane's own delivery, its decision and its cover read are the same code; `record(of:)` is read for
+  the first panel press only). The part's exit 6 is the suite's own guard: the Mac was in use before idle-cost
+  ("the Mac is in use before idle cost (idle 1 s)"), so it restored and stopped; not Margin's.
+- **Changed**: a press on the panel is now put in AppKit's own queue in Margin (`PanelEvents.queue`: the event made
+  afresh, handed to the main run loop's common modes in the tap's order, then `NSApp.postEvent`), so the window server
+  hears nothing of Margin's own presses. `MarginSidebarDelivery post` keeps the window-server way for comparison (DIAG:
+  one goes once the runs tell them apart). Both ways pass the e2e off every display; only the real screen decides.
+- **DIAG** (every line marked, to go): each mouse event the panel takes with AppKit's word before and after it
+  handles it; every press AppKit hands Margin and the window it's for; for 200 ms after a press, each `canBecomeKey`
+  asked with its caller and each page op (its name; a focus op's flag); every `allowKey` change, the panel's
+  `becomeKey` and `makeKey`, Margin's windows becoming key or main and AppKit's will/did become active, each with its
+  caller (25 frames). Lines start `DIAG `; nothing at rest, no text, title or address.
+
+## The panel keyed by AppKit's own click handling: the web view now answers whether a click needs the panel key (2026-11-25)
+
+- **Found** (dac51c93's DIAG lines, the core run at 00:35): the press reached the panel as a queued event (`AppKit
+  hands a press … for window 6554 (MarginPanel), appkit active false, key window none`), then AppKit's own
+  left-mouse-down handling of a non-activating panel keyed it (`MarginPanel.becomeKey` ← `_NSShowNonActivatingKeyWindow`
+  ← `-[NSWindow _handleLeftMouseDownEvent:isDelayedEvent:]` ← `_reallySendEvent:` ← `MarginPanel.sendEvent`), and only
+  after that asked `canBecomeKey` (false); a key non-activating panel makes AppKit report the app active. The delivery
+  was never the cause; cut-panes passed with the queue (14/0).
+- **Fix, public API only**: the panel already becomes key only if needed (`becomesKeyOnlyIfNeeded`); "needed" is the hit
+  view's `needsPanelToBecomeKey`, and the hit view at the sidebar is Margin's web view, which WebKit answers yes.
+  OverlayWebView now answers from its window (`needsKeyForPress`): the core's `keys_stay` (an app shown, no field of
+  Margin's) says no; anything else says yes, as before (a field wanting the keys, the launcher, an item loading). A field
+  the press focuses still takes the keys by the page's `focus` (`takeKeys`'s explicit `makeKey`, as k2's palette did).
+- **Removed**: the `postToPid` way and `MarginSidebarDelivery` (the queue stays). The DIAG lines stay for one more run.
+- **Tests, failing first**: e2e-glue.swift, what AppKit asks: the press at the empty spot hits Margin's web view in a
+  panel that becomes key only if needed; while the keys stay, that view doesn't need the panel key (failed before the
+  fix: WebKit's own answer, true); with the palette's field wanting the keys, it does. `_NSShowNonActivatingKeyWindow`
+  itself isn't reproduced in the e2e: it needs a process that was the active app, and making the e2e process active
+  would take the front from the person's own app, which these runs never do.
+
+## M2.9 step 1: a space's background in the library (`feat/space-backgrounds`, 2026-11-24)
+
+- **The value** (docs/SPACE-BACKGROUNDS.md, Part B §1): a space's optional `background`, `{ colors, wheel, intensity,
+  texture, amount, appearance, image? }`, read by one rule in both copies: model.ts `backgroundOf` and margin-core's
+  `state::background_of`. Colours `#rrggbb` (lowercased, the first three); each other field its default when it isn't
+  one of its values; numbers clamped to 0–1 and rounded (intensity to 0.01, amount to 0.05, a picture's focus to
+  0.001, `Math.round`, -0 as 0); a picture only with a lowercase SHA-256 id. Neither a colour nor a picture: none (the
+  theme's own). Written only when there is one, as `theme` is, so data without one is as it was.
+- **Changed** with `renameSpace`'s `background`, `theme`'s three ways: an object sets it (as read: none when it reads
+  as none), null clears it, anything else (left out, a string, an array) leaves it. No new action (`ACTION_NAMES` stays
+  57). A new space has none, whatever the one it's made from has (it does take that one's theme). `setSpaceTheme` keeps
+  it. The extension's copies carry it (data-set.ts both ways, the `renameSpace` handler); the import of each profile's
+  set doesn't (as `theme`).
+- **The vectors re-recorded** (`npm run library:vectors`, the same commit as both copies' change): backgrounds in the
+  generated libraries and renames (drawn from a stream of their own, but a rename that now changes a space moves the
+  library's keys and so later shuffles: most sequences differ from their first such step), an edge for every reading
+  rule, and library.test.ts's new case. JavaScriptCore answers every step as Node does (`jsc: 0`); a second recording is
+  identical.
+- **The core's one decided difference moved** to a hand-written edge (edges.ts, `vectors::KNOWN`): the favorite renamed
+  through an emoji to the name it has (piece 2) was generated-11's sequence 299, which the re-recording no longer draws.
+  As an edge it has an address no re-recording moves. The known `createSpace` gap is 14 steps now (19 before): fewer
+  drawn, the rule unchanged.
+- **Rust on this Mac**: there was no toolchain; rustup's stable (1.100) installed with Tirth's OK (rustfmt, clippy; no
+  Windows targets, so `scripts/rust-test.sh` skips their checks here).
+- Tests: Rust (`state_tests`, `spaces_tests`, `snapshot_tests`: reading, the three ways, the text and the stored value),
+  TS (model, library, data-set), the vectors both sides; `npm run test:rust` green.
+
+## M2.9 step 2: a space's background drawn under every theme (`feat/space-backgrounds`, 2026-11-24)
+
+- **Margin draws it, not the theme** (docs/SPACE-BACKGROUNDS.md Part B §2): `app/shared/ui/background.ts`, one layer,
+  `<margin-background>` (not "backdrop": Margin.app has a `MarginBackdrop` window), fixed over the window at z-index
+  −2147483647, never taking the pointer, cut out of `<m-page>`'s border box and its four corner radii
+  (`View.measurePageOuter`, not in the layout Margin.app is told) with `clip-path: path(evenodd, …)`. Its content is
+  in a closed shadow root, its host pinned with `all: initial !important` (as the theme preview's bar). **Found the
+  first time:** the host's own style attribute can't carry `display` or `clip-path` (the shadow tree's `:host`
+  `!important` beats it): both are a rule inside the shadow root, after the pin. It's put in the container the first
+  time a background shows (before `<body>` in a document; after the theme's root in a shadow root, which stays its
+  container's first element: the theme harness's `rtPageHits` found the theme's root that way, and split view's test
+  caught the layer taking its place).
+- **What it's drawn from** (`background-look.ts`, pure, tested in Node): an underlay (OKLCH 0.975 or 0.17, a touch of
+  the key colour's hue), the colours as drawn (light: lightness at least 0.62; dark: 0.20–0.40, chroma 0.85×) at
+  `0.14 + 0.86 × intensity`, the texture at the amount. One description of the colours' layout gives the CSS and the
+  colour at any point (`groundAt`). The palette: `--m-fg` 4.5:1 against every sampled part of the ground (7:1 where it
+  can; with Increase contrast 7:1), `--m-fg-2` 4.5:1 (7:1), `--m-accent` 3:1; the colours' opacity lowered a twentieth
+  at a time where no text gets there. Margin's colour code: `color.ts` (OKLCH, WCAG luminance and contrast).
+- **What themes read**: `m-background` and `m-appearance` on the root (as `m-page-state`), and `--m-bg`, `--m-fg`,
+  `--m-fg-2`, `--m-accent`, `--m-hover`, `--m-selected` from Margin's own constructed sheet after the theme's settings
+  (each value checked again by `checkCssValue`); none of them while the space has no background. The view model has
+  `space.background`. The themes README's "A space's background" is the contract.
+- **Text colours on the surfaces that lie on the background, not the root** (a choice made while building): until
+  Margin.app sets the web view's appearance per space (step 3), menus and panels are drawn in the system's, which can
+  differ from the background's; Margin's text on the root would reach them (light on light, seen in Material's dark
+  shot). Each theme sets them on its docked sidebar. In Material a role mixed from another at the root comes resolved,
+  so the tonal surfaces are named one by one in the drawer. Liquid Glass needs none: every colour is `light-dark()`,
+  so it sets `color-scheme` from `m-appearance` and all of it follows.
+- **The five themes**: Arcadia and Material (the frame's spread and the docked sidebar clear, Margin's text and
+  translucent fills in the sidebar, the sidebar out over the page a card of `--m-bg`, Material's active indicator its
+  tonal container), Liquid Glass (ground `--m-bg`, lights gone, `color-scheme` followed), Neubrutalism (ink shadow
+  kept, dots gone, the space's name `--m-fg`), Pixel (pixel border kept, dots gone, its dark panel kept). Neubrutalism's
+  and Pixel's own dots become the Dots texture.
+- **A theme without the contract keeps its look**, all but a pixel's worth of the page card's rounded corners' edge
+  (both the cut and the theme's spread are smoothed there): a larger cut would leave a seam of the page round the
+  card in every theme that takes part, so the cut is exact (the test leaves those corners out, as Neubrutalism's own
+  "never paints over the page" test does).
+- **Corner fill**: `cornerFill`'s optional `ground` (the runtime's `backgroundAt`): outside the card a sharp shadow of
+  the theme's first, then Margin's colour there (`rgb(…)`, as `fill.rs` reads), then an ancestor's. The runtime says
+  when the ground changed (`onGround`); the overlay measures again.
+- **Textures**: Margin's own tiles drawn on a canvas from fixed seeds (the same pixels every load), `data:` PNGs (the
+  overlay's `img-src` allows `data:`); dots and grid CSS gradients in `--m-fg`. Two backgrounds cross-fade (0.3 s; at
+  once with reduced motion); to or from none it's at once.
+- **The CI plan**: a theme test that imports `types/margin.d.ts` by its full name reaches the extension's background
+  (the `.d.ts` imports its handlers' types) and so every theme test runs for any change there; `'…/types/margin'`, as
+  the other theme files write it, doesn't. `tests/ci-plan.test.ts` lists the new looping test.
+- **Browsers on this Mac**: Playwright 1.65 wants Chromium 1254 and WebKit 2388; the cache has Chromium 1248 and WebKit
+  2287. Not installed (CLAUDE.md). The theme tests ran in Chromium 1248 through a scratch `PLAYWRIGHT_BROWSERS_PATH`
+  of links; WebKit's halves couldn't launch (2287 hangs under 1.65). CI runs both.
+
+## M2.9 step 3: Margin's window in the space's own light or dark (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: a space's background has an appearance (Arc's ✨ ☀ ☾: automatic, light, dark). Step 2 drew the
+  background and Margin's text colours in it; now Margin.app's whole window does: its web view takes the space's
+  light or dark, so the theme draws in it everywhere (its menus, command bar, panels, Settings), with no CSS of its
+  own for it. Automatic, and a space with no background: the system's, as before. Safari's pages, and every hosted
+  window, keep theirs (Margin can't set a page's appearance per space).
+- **The path**, the per-space theme's: the core's `Library::space_appearance(window)` (the space found as its theme
+  is: the window's, else the first; its background's `light` or `dark`, None otherwise), the FFI's
+  `margin_library_space_appearance` (0 the system's, 1 light, 2 dark), `Library.spaceAppearance` (a `SpaceAppearance`:
+  the library stays Foundation's; what a view draws in is the controller's, AppKit's), the window source's
+  `spaceAppearance(window:)`, and `MarginWindowController.followAppearance`: the web view's `appearance` (`.aqua`,
+  `.darkAqua`, nil) set in `pageHello` (before the page's first frame) and in `stateChanged` before the state is pushed
+  (the two reach the page in order, so the background and the theme change together).
+- **Checked first, on this Mac** (`space-appearance-tests.swift`, a unit check kept): WebKit takes a web view's
+  appearance as the page's `prefers-color-scheme` and `light-dark()`, with its private system appearance off (most
+  themes) and on (Liquid Glass's glass); nil goes back to the window's. End to end (`e2e-glue.swift`): a space given the
+  other appearance than this Mac's turns the window's web view and its page that way, the theme's root marked;
+  automatic, another space with its own, back, and none all follow.
+- **Not yet**: Windows (its app has no library windows or per-space themes yet: its WebView2 `PreferredColorScheme`
+  comes with them), and the extension's overlay over a browser's page (the system's). So the themes still put
+  Margin's text colours on the surfaces that lie on the background, not their root (themes README).
+- **A flaky check that was there before**: "screen: a re-entry held by the loop guard's hold" (a timing check of the
+  hosting's loop guard, untouched here) fails now and then: 1 of 5 runs of the app's unit checks on this branch, 2 of
+  6 on the base (71e11707) on this Mac. The space-appearance checks passed in every run.
+
+## M2.9 step 4: Edit Theme Color, the space background picker (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: Arc's Edit Theme Color in Margin: "Edit Theme Color…" in the space's menu opens Margin's own panel
+  where the menu was (a theme's button may name `space.editBackground` too: the panel opens beside it). Its controls
+  are the prototype's: the appearance (automatic, light, dark), the field with up to three knobs, −/+ and the rule
+  (complementary, analogous), five pages of presets, the wavy slider (the intensity), the dial (the texture and its
+  amount), Use for All Spaces, Done. The picture button is step 7, the panel's glass step 5, its ticks step 6 (an
+  `onTick` hook kept for them).
+- **Three parts**, each tested where it runs: the model (`ui/picker/model.ts`, pure: the field a hidden wheel, the
+  angle the hue and the distance the lightness in OKLCH; each edit a step from one picker state to the next; what's
+  saved the model's own reading, `backgroundOf`), the panel (`ui/picker/panel.ts`: a top-layer popover in a closed
+  shadow root, its style pinned and its words its own, so it's the same in every theme), and the behaviour that saves
+  it (`ui/behaviors/background-picker.ts`).
+- **Saved per gesture, not on close** (the plan said on close): a click, a drag let go, a burst of scrolling or keys at
+  rest (350 ms) is one `space.setBackground {space, background, color}`, sent as `renameSpace` with the key colour as
+  the space's colour. While a gesture runs, Margin's layer is redrawn once a frame (`rt.previewBackground`, held), and
+  nothing is sent. Why per gesture: the window's light or dark follows the state (step 3), so a click on ☾ turns the
+  window at once, and nothing is lost when the window goes. ⌘Z goes back a saved step (saved again); Escape saves what
+  the space had when the panel opened and closes; Done, a press outside, another space shown, or the space gone close
+  it with what's saved kept. Use for All Spaces is one request per space.
+- **Its own action, not `space.update`**: `space.update` is the editor's whole save (a name, an emoji, a colour);
+  the picker knows only the background, and `renameSpace` keeps what it isn't sent. `space.setBackground` is
+  behaviour-only (an object argument: only Margin sends it), checked as the model reads it (a value that reads as none
+  is refused).
+- **No button in the space editor yet**: the editor's save sends the colour it shows and would overwrite the key colour
+  the picker saved. It waits until the editor shows the background's own.
+- **The rule moved to `extension/shared/space-background.ts`**: the picker and its action read `backgroundOf`, and the
+  UI must not load the model (tests/layering.test.ts). `state/model.ts` takes it from there and re-exports it (one copy),
+  as `pinned-rules.ts`.
+- **While it's open**, Margin.app gives the page the keys and is told the panel takes the pointer (`overlay.ts`:
+  `panelOpen`, `panelRect`), as for Margin's menus.
+- **Tests**: the model and actions in Node (`tests/ui-picker.test.ts`); the panel in WebKit and Chromium as a person
+  uses it (`tests/theme/picker.test.ts`): opening from the menu, the field, a drag, −/+, the rule, presets, the
+  slider, the dial (ring, centre, click, scroll, swipe), the appearance, the keys, ⌘Z, Tab kept inside, Use for All
+  Spaces, Escape, the three ways it closes, and every built-in theme opening it.
+
+## M2.9 step 5 spike: the default picker's glass, approach A measured (`feat/space-backgrounds`, 2026-11-24)
+
+Plan Part B §5 left two ways to put real glass behind Margin's default picker: A, WebKit's
+`-apple-visual-effect: -apple-system-glass-material` inside Margin's own web view, with the private system-appearance
+switch on while the picker is open; B, a child `NSPanel` on `NSGlassEffectView` with a second web view. A was measured
+first, as the plan said ("A if its side effect is invisible, else B"). Off screen, on this Mac (macOS 27.2), with
+`tools/glass-shots/shot` and a variant of it (the web view's own appearance; the switch turned on live; an awaited
+script), over pages of the five built-in themes drawn by the real runtime with a background on the space and the picker
+open. The picker's CSS for the run: `@supports (-apple-visual-effect: …) { .panel { background: none; box-shadow:
+none; overflow: hidden; -apple-visual-effect: -apple-system-glass-material } }` (taken out again; it comes with step 5).
+
+- **It works where the picker is.** In a closed shadow root, in the top layer (a manual popover): one glass layer,
+  exactly the panel's box (300×461), in every theme, light and dark; none with the switch off.
+- **Turned on live, then the panel made:** the page knows the property at once (`CSS.supports` true right after the
+  switch), and a panel made after it gets its glass. So the switch goes on as the picker opens and off as it closes,
+  and the panel's sheet is made after it (the order rule from "Liquid Glass").
+- **The side effect, compared pixel by pixel** (3024×1964, switch on vs off; outside the panel and 72 px round it):
+  - every theme's sidebar, with the picker closed and open, light and dark: none. (Arcadia, Material, Neubrutalism:
+    identical, or a strip of 1/255 just past the excluded box, the solid panel's shadow tail. Pixel: 16 to 36 px at
+    its pixelated icons' corners, the same between two pictures with the same setting: noise, not the switch.
+    Liquid Glass: its own glass, its switch already on.)
+  - at the moment of switching, the picker not yet open: identical, except in the next case.
+  - **Margin.app's Settings tab on screen, in a dark appearance:** Neubrutalism's number fields lose their ⌃⌄ steppers
+    (912 px: light-only, so its native steppers are drawn dark on its white field and vanish), and Pixel's select
+    changes in a 119 px sliver at its edge. Arcadia's Settings, which differed in the 2026-11-17 measurement, no
+    longer does. Nothing in light.
+- **Light or dark: the space's.** The glass follows the web view's own appearance (what step 3 sets per space), not
+  the app's: the Mac in Light Mode with the space dark gives the same picture as the Mac in Dark Mode (3 px at 1/255),
+  and the reverse is identical. (This corrects "It's light or dark with the *app's* appearance" in "Liquid Glass",
+  which was found with the app's appearance alone.)
+- **Cost:** none measured. 240 frames, each a new background drawn behind the open picker: frame pacing 17 ms median,
+  18 p95 (an off-screen window's 60 Hz), the same with the switch on and off; the work of a frame, a full state
+  change and redraw (heavier than a drag's preview, which redraws Margin's layer alone), 7 ms median either way.
+- **Unchanged by A:** no second window, so no relay of the live preview, focus and placement as for the menus, and
+  nothing new in full-screen Spaces.
+
+**So: A.** B (a second web view, a relay every frame, a child window in full-screen Spaces) isn't built. The one
+visible effect, Settings' native controls in a dark appearance, is avoided by a rule in step 5: the picker is drawn
+solid (no switch) while Margin's Settings page is on screen. It's solid too where the system has no glass (Windows, the
+extension, the switch's selectors missing, `MarginSystemAppearance` NO) and with more contrast asked for, as Liquid
+Glass's own panels are.
+
+## M2.9 step 5: Margin's default picker on real glass (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: Edit Theme Color's panel on macOS's real glass in Margin.app (macOS 26 and later), in every theme
+  without a picker of its own (all of them until step 5b; Arcadia's stays the default), in the space's own light or
+  dark. Approach A from the spike: WebKit's system appearance turned on for Margin's page while the panel is open.
+- **The switch, in one place** (`app/shared/host/materials.ts`, out of `overlay.ts`, where the theme's ask was): on
+  while the theme drawn says `systemMaterials` or the panel is open. Three rules, each with a Node test:
+  - an ask the same way as one still on its way waits for its answer (before, a second ask returned at once, before
+    the switch was on; only the theme asked then, so it never mattered);
+  - **a theme is never read with the switch on for the panel**: the sanitizer lets `-apple-visual-effect` through in
+    any theme, and only the switch being off as a sheet is read keeps it out of a theme that doesn't say
+    `systemMaterials`. So reading a theme drops the panel's want first (that panel goes with the runtime the theme
+    replaces), and a want the panel says while a theme is being read waits (that panel is drawn solid). Found while
+    building: `mount` asks before it reads the new theme and destroys the old runtime (and its open picker) after.
+  - no app (Windows, the extension, an older Margin.app): nothing turns on, every ask resolves.
+- **The picker** (`ui/behaviors/background-picker.ts`, the runtime's new `materials` option): asks and waits for the
+  answer before it makes the panel (its sheet must be read with the switch on), gives it back as it closes (after the
+  panel's gone), and doesn't ask while Margin's Settings page is shown or with more contrast asked for (drawn solid
+  then). Settings coming while it holds the switch closes it. Every way an open can end while it still waits (a press
+  outside, another space shown, the space gone, closed, opened again, the runtime gone) ends it and gives the switch
+  back; opened again while open it's made at once (the switch held and answered), and opened again before the answer
+  it waits for that same answer (found in review: it was made at once, its sheet read before the switch was on).
+- **The panel's CSS**: the spike's rule, in `@supports (-apple-visual-effect: …)` and `@media not (prefers-contrast:
+  more)`: no fill, no outer shadow (one would grow the glass past the box), `overflow: hidden`.
+- **Swift**: nothing but words (the `appearance` message was already the switch); the log line now says
+  `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): …` (TESTING.md updated).
+- **Tests**:
+  - Node, `tests/host-materials.test.ts`: the switch's rules (each broken on purpose and caught).
+  - Chromium and WebKit, `tests/theme/picker.test.ts`: the harness's host with the materials answering after 250 ms.
+    Asked before the panel is made and not before the answer; given back as it closes; opened again while open, and
+    before the answer; a press
+    outside or another space shown while it waits; Settings shown; Settings come; more contrast; the runtime gone. Four
+    deliberate breaks of the behaviour each caught.
+  - End to end in Margin.app, `e2e-glue.swift`: opened from the space's menu with a real press (a theme's action runs
+    for a trusted event only, so a script's `click()` doesn't open it), the switch on while it's open and the page
+    knowing the property, off when it's closed.
+  - `tools/glass-shots/run.sh <dir> <theme>` has a `picker` state: Arcadia and Liquid Glass photographed with the
+    picker's glass layer exactly the panel's box.
+- **Found on the way, fixed**: `tools/app-tests/run.sh e2e` alone didn't rebuild `dist/app` (only its unit part did),
+  so an e2e run after a page change used the old page (this step's e2e checks failed so, until rebuilt); and the
+  rebuild looked at `.ts` sources only, not the built-in themes' CSS, HTML and JSON it packages. Now one `app_page`
+  step, before either part, over all of them. (`npm run gate` runs unit first, so it was never fooled.)
+- **Not seen on the real screen**: TESTING.md "Edit Theme Color's glass".
+
+## M2.9 step 5b, part 1: a theme may draw Edit Theme Color (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is** (plan decision 10): a theme gives a `background-picker` part and an `<m-picker>` slot, and its picker
+  is drawn in place of Margin's panel; without either, Margin's panel (glass, step 5). The built-in themes get theirs
+  in part 2 (Material, Neubrutalism, Pixel); Arcadia and Liquid Glass keep Margin's.
+- **As the theme language already works** (the menu, Settings): a guarded part, so only Margin's words show
+  (`picker` in the view model, `ui/picker/view.ts`); the theme's buttons run one action with an item's id,
+  `picker.run`, checked against the items the picker shows now (as `menu.run`, `settings.run`); the slot placed by
+  Margin where it was asked from (`--m-picker-x`, `--m-picker-y`, as `--m-menu-x`), given the keys.
+- **Margin's controls as Margin's elements** (as `<m-page>`'s panes are Margin's): `<m-picker-field
+  m-variant="dots|wheel|cells">`, `<m-picker-slider m-value="intensity|amount" m-variant="wave|bar">`,
+  `<m-picker-dial>`. Margin fills and works them; the theme's CSS draws them through attributes (`[m-knob]`,
+  `[m-thumb]`, `[m-face]`…) and variables (`--m-knob-color`, `--m-value`, `--m-face`, `--m-field-wheel`); base rules
+  give each a plain working look under the theme's. The attributes' values are one list (`ui/picker/elements.ts`) for
+  the sanitizer, which drops an unknown one, and for Margin, which then draws the first.
+- **One set of controls**: the field, the slider and the dial came out of the panel into `ui/picker/controls.ts` (the
+  gesture session too: `live`, `commit`, `burst`), used by both the panel and a theme's part. The panel drawn with
+  them was compared with a picture of it from before, pixel by pixel: identical (2 px at 1/255 in dark, the noise seen
+  before). Its words are `ui/picker/words.ts` (pure, for the view model).
+- **The part's driver** (`ui/picker/part.ts`) gives the behaviour what the panel gives it (`set`, `state`, `rect`,
+  `owns`, `parts`, `destroy`, and `run`), so saving, undo, Escape and Use for All Spaces stay one code. The view
+  model's `picker` is kept at each commit, an undo, a page of presets; a gesture's frames are drawn by the controls
+  themselves (a render per frame would cost the frame). A theme's picker asks for no glass.
+- **An element left out isn't shown** (the theme's choice; Escape and a press outside still close it). The plan said
+  "gets Margin's default"; drawing Margin's controls into a theme's layout unasked would break its layout, and a theme
+  that wants Margin's whole panel leaves out the part.
+- **Tests**:
+  - Node, `tests/ui-picker-part.test.ts`: the view model, the items each kind of button may run and what each does
+    (and none for anything else, `__proto__` and `toString` included), the attributes as kept and as read,
+    `picker.run`'s check.
+  - `tests/theme-guard.test.ts`: the part guarded, Margin's elements and their attributes kept.
+  - Chromium and WebKit, `tests/theme/picker-part.test.ts`, over Arcadia given a part: opened from the menu where it
+    was, in the window, the keys in it, no glass asked for; the field (its `wheel`), a drag saved once; every kind of
+    item; both sliders and the dial; a forged item refused; ⌘Z, Use for All Spaces, Escape, Done, a press outside, Tab
+    kept inside; the theme's own words dropped; an element left out, an unknown variant, a part with no slot. Three
+    deliberate breaks of the driver each caught.
+
+## M2.9 step 5b, part 2: Material, Neubrutalism and Pixel draw their own Edit Theme Color (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: each of the three has a `background-picker` part and an `<m-picker>` beside its `<m-menu>`, drawn
+  from its board on the per-theme prototype (the canvas "Edit Theme Color — per-theme pickers"); Arcadia and Liquid
+  Glass keep Margin's panel (Arcadia stays Arc's; Liquid Glass gets the system's glass).
+  - **Material**: an M3 dialog on the high tonal surface: the appearance as a segmented button, the field with the
+    hidden wheel shown (`wheel`), tonal −/+ and an assist chip for the rule, round swatches ringed in the primary
+    colour, both sliders as M3's (a thick track, a bar of a handle with a gap each side: `bar`), the textures as
+    filter chips, a text button and a filled one. In the space's dynamic colour, light and dark.
+  - **Neubrutalism**: the board's cream card, 2.5 px borders and hard shadows, the chosen thing yellow: square
+    appearance buttons (an icon each), the wheel in a thick frame, square −/+ and a yellow tag for the rule, square
+    swatches, a chunky intensity bar (`bar`, filled with the space's accent), texture tiles each with a sample of its
+    pattern (the theme's own CSS), a strip of amounts, two push buttons. Light only, as the theme.
+  - **Pixel**: the board's night dialog, notched borders: appearance tiles, the field as cells (`cells`), pixel −/+
+    and the rule, square swatches, ten blocks for the intensity (`intensity.steps`, lit in the space's accent), a
+    stepper for the texture (`texture.prev`, `texture.next`), blocks for the amount. Dark only, as the theme.
+- **Words**: Margin's only (the part is guarded), so each board's own words ("DAY", "NITE", "POWER") are Margin's
+  labels here, shaped by each theme's CSS (uppercase, its fonts).
+- **Found while drawing them**: a theme's button reset outranks one class (`.m3 button { background: none }`, and
+  each theme's `.btn { all: unset }` pattern), so each part's button rules are under `.picker`, its own reset
+  `.picker button` kept to layout. And `<m-picker>` is placed by Margin's base rule, as `<m-menu>` is (part 1 had left
+  it to the theme; no theme places its menu itself).
+- **Tests**: `tests/theme/picker.test.ts`'s check of each built-in theme (in scope) now asks, in WebKit and Chromium:
+  its own picker or Margin's; in the window; for its own, its field's variant and its sliders, a colour picked on its
+  field, its appearance button saving, its Done closing it. Seen in WebKit through `tools/glass-shots` (`picker`),
+  light and dark: TESTING.md "A theme's own Edit Theme Color".
+
+## M2.9: a review of steps 1 to 5b, and its fixes (`feat/space-backgrounds`, 2026-11-25)
+
+A second reader went through the branch against SPEC.md, the themes README, the plan and these entries, by reading
+the code (no tests run). It found no mismatch between the core's and the TS twin's rules, no stuck state in the glass
+switch, and no layering break. Six things were real, each checked by reading the path and then by a test that fails
+without its fix:
+
+1. **"Edit Theme Color…" on a space not shown closed at once.** Every space's chip has it in its menu, but the picker
+   draws only the shown space's background, so it closed on the next render. Now it switches to that space first (as
+   Arc does) and opens once it's shown (3 s at most); a switch that doesn't happen never opens it.
+2. **Escape and ⌘Z didn't put back the space's own colour.** A save carried the key colour only when there was a
+   background, and `renameSpace` keeps a colour not sent, so Escape to "none" left the last preset as the space's
+   colour. The space's colour is kept as the panel opens; a save with the background it had carries it.
+3. **Closing during a burst or a drag dropped the change.** The session's timer was cleared, never committed. Closing
+   now saves what's drawn and unsaved (`finish`), every way but Escape (which drops it first).
+4. **`-apple-visual-effect` in a `style` attribute.** The sanitizer let it through there for every theme, and an element
+   made while the picker holds the switch would keep it. Now refused in a `style` attribute (no theme used it there);
+   stylesheets keep it, read with the theme's own switch.
+5. **Margin's panel ignored the page's zoom** (the extension's in-page host): its point and the window are now turned
+   into Margin's pixels as the menu's and a theme's picker's are. Both now measure their box with its fractions
+   (`offsetWidth` rounded 461.5 down, half a pixel past the margin).
+6. **`picker.run` from a theme's button outside the picker** (keys moved there by a script, then Return) could run Use
+   for All Spaces, which no undo takes back. Only a button in the picker runs an item now.
+
+Not changed: the two small copies of the background's key (`library.ts bgOf`, `data-set.ts backgroundKey`) are each
+their module's own reading (the library and the data set's comparison), kept as they are.
+
+The full gate's run during the review failed once, in "space swipe: two fingers sideways…" (Liquid Glass, Chromium):
+a timing check that the old space is still drawn while the slide comes in, with the machine under the review's and a
+build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
+
+## M2.9 step 7a: pictures kept and served (`feat/space-backgrounds`, 2026-11-25)
+
+- **The store is the core's** (`data/backgrounds.rs`, margin-ffi's `margin_backgrounds_*`), beside Margin.app's library
+  (`data/app/backgrounds/`): a picture kept as `<sha256>.jpg|png`, content-addressed (the same picture twice is one
+  file, a file never written over), each written as the data sets' files are. What it's given is checked again by its
+  bytes, never a name: a JPEG or a PNG by its signature, at most 10 MB, its sides read from its own header (a PNG's
+  IHDR, a JPEG's first frame header) and at most 3840. No index: a picture's id is its name.
+- **Decoding is the platform's, not a crate's** (the plan left the choice to this step): on the Mac, ImageIO
+  (`BackgroundStore.swift prepare`), which reads HEIC (an iPhone's photos; Rust's `image` crate can't), is the
+  system's own hardened decoder, and leaves the core without an image dependency. What the person chose: one of JPEG,
+  PNG, HEIC, WebP, TIFF by ImageIO's own reading (a GIF, a PDF refused before decoding), at most 40 MB and 200
+  megapixels; made upright by its orientation, at most 3840 on its long side (never made larger), encoded again (JPEG
+  at 0.9; PNG when the file says it has transparency: a decoded HEIC always has an alpha channel, so the decoded image's
+  wasn't used), smaller sides or a lower quality until it's within 10 MB; none of its metadata copied (GPS, the camera,
+  notes: checked). Windows: WIC, with its library windows.
+- **Served by id alone**: `margin-app://app/background/<id>` (`OverlaySchemeHandler`), the id checked by the core and
+  the file looked up there, nothing made of the address (a `..` encoded, a query: not served), the page's policy on it,
+  `nosniff`, cached for good (the id is the bytes' hash). The page's policy already let images come from its own place;
+  nothing new is allowed to a theme (its CSS can name only its own files).
+- **Pruned as the library opens** (`Shell.openBackgrounds`): the pictures no space names removed, and anything a write
+  left there; never as a space changes, so ⌘Z and Escape can bring one back while Margin runs.
+- **What the page asks** (its `send`, through `MarginWindows.background` to `Shell.performBackground`):
+  `backgroundChoose` (the file picker, as a theme's import has it: on the active Space, Margin made active for it and
+  the keys given back after) and `backgroundAdd { bytes }` (a dropped picture, base64, capped before it's decoded),
+  answered `{ id }`, null (cancelled) or words for the page.
+- **The average colour** (the plan: computed at ingest, sent with the snapshot): the page works it out from the
+  picture as it draws it (step 7b), so nothing new goes through the library's snapshot, and it's right wherever the
+  picture can be drawn.
+- **Tests**: Rust (`data::backgrounds`: kinds and sides by the bytes, kept once, refused, found by id alone, pruned with
+  what a write left; the FFI through its calls); Swift (`background-store-tests.swift`: a photo with a place, a
+  camera and a note made a JPEG with none of them, a large one at 3840, a small one as it is, a sideways one upright,
+  transparency a PNG, HEIC read, a GIF and garbage refused, too large refused, kept and found by its hash, near ids
+  not found, pruned; served to a page as an image, a removed one, an encoded `..` and a query not).
+
+## M2.9 step 7b: a space's picture drawn (`feat/space-backgrounds`, 2026-11-25)
+
+- **Drawn by Margin's layer** (`ui/background.ts`), as the colours are: a part under them (underlay, picture, wash,
+  colours, texture), the page card cut out of it the same way. Its CSS is `background` at its fit (`cover`,
+  `contain` at the focus as `background-position` in percent; `tile` at its own size from the corner). The address is
+  the host's (`Host.pictureUrl`): Margin.app's `margin-app://app/background/<id>`; a browser's extension has none, and
+  draws the space's colours without it. An address that isn't one Margin makes is never written into CSS.
+- **Contrast against the picture as drawn**: the page reads a small copy of it (70 px wide, the window's shape, on the
+  underlay, as its fit and focus lay it out) into the 7 × 5 samples the look checks text against, each the average of
+  its 3 × 3 pixels. The copy is laid out against its own sides, not the window's scaled: its rounded height would
+  otherwise leave a sliver of underlay along an edge and the edge's samples lighter than what's drawn (WebKit showed
+  it). What Margin.app is told is on screen at a point (`groundAt`) is the samples between them, the wash over them.
+- **A wash, not a darker picture**: where the text doesn't read, a layer of the underlay rises over the picture (a
+  twentieth at a time, to 0.9), then the colours' opacity is lowered as before. The underlay keeps the space's light or
+  dark, and the picture stays recognisable under it. The colours are a tint over a picture (`0.6 × intensity`, none at
+  0), the whole ground without one.
+- **Until it's loaded** it's drawn as without (the colours, or the underlay alone), then again when it comes;
+  a picture that fails is never drawn (nothing thrown). Eight addresses kept loaded (the spaces switched between),
+  the one used longest ago dropped first; the samples read again only when the picture, its fit, its focus, the
+  window's size or the underlay change (a drag of a slider doesn't).
+- **Average colour**: `--m-bg` is the samples' average with the rest, so nothing went into the library's snapshot
+  (step 7a's note).
+- **Tests**: `tests/theme/background-picture.test.ts` in WebKit and Chromium (a half-black, half-white picture served
+  for every id: drawn as cover, washed until Arcadia's text reads 4.5:1 over both halves on screen, the colour told
+  within 6 of the screenshot's, both halves still showing; contain and tile written so; one that fails to load and a
+  host with no pictures drawn without it, no errors); `tests/ui-background.test.ts` (the samples' grid and wash in the
+  look). Mutation: the wash held at 0 fails the contrast checks in both engines.
+
+## M2.9 step 7c: a picture in Edit Theme Color (`feat/space-backgrounds`, 2026-11-25)
+
+- **Only where the host serves pictures** (`Host.pictureUrl`: Margin.app): there, the behaviour gives both pickers
+  `PictureRequests` (`ui/picker/picture.ts`); a browser's extension gets none, and neither picker shows a picture's
+  controls (a theme's `picker.picture` is null).
+- **Margin's panel**: a row under the presets: Add Picture…, or the picture's thumbnail (Change Picture…), Fill / Fit /
+  Tile, Remove Picture; a line under it for what went wrong. A file dropped anywhere on the panel (on its host: drag
+  events come out of its closed root) is taken: dashed while one is over it.
+- **A theme's picker**: the same as items (`picture:choose`, `picture:fit:<fit>`, `picture:remove`, the last two only
+  with a picture), `note`, `dropping`; a drop on `<m-picker>` taken the same way. Material, Neubrutalism and Pixel draw
+  a row of their own (an assist chip, a push button, a pixel button; the fit as their segmented button or strip).
+- **The edits are the model's** (`setPicture`: fitting as the last one did, at its centre; `setFit`; `removePicture`:
+  with no colours either, the background is none). Each is saved as any edit is (⌘Z takes it back, Escape puts back
+  what the space had).
+- **The requests are the behaviour's** (`background-picker.ts addPicture`): `backgroundChoose` (Margin.app's file
+  picker), or `backgroundAdd` with a dropped file's bytes (base64), checked first by its type, not empty, at most
+  margin-core's 40 MB (`droppedProblem`). One at a time. The answer: an id, saved on the open picker; null (cancelled),
+  nothing; a refusal, Margin.app's words (`takeFailure`), shown in the picker. An answer that comes after the picker
+  closed, or after it opened again, isn't saved (that turn is gone; the file it kept goes as Margin.app next opens).
+- **The keys after the file picker**: the shell gives them back to the shown app as for a theme's import
+  (`keysBackToShown`); the panel stays open and keeps them while it's open, as Margin's fields do (TESTING.md, a
+  manual check).
+- **Tests**: `tests/theme/picker-picture.test.ts` in WebKit and Chromium (none without pictures; Add Picture… → the
+  request, the id saved as Fill at its centre, its thumbnail from the host, drawn; the fit saved and ⌘Z; cancelled;
+  refused with Margin.app's words; a dropped PNG sent as its exact base64 and saved, a text file refused before it's
+  sent; an answer after the panel closed and opened again not saved; Remove Picture: none; each built-in theme's own
+  picker: choose, Tile, remove, a refusal's words, none without pictures); `tests/ui-picker.test.ts` (the edits, the
+  drop's checks); `tests/ui-picker-part.test.ts` (the items, each only when it makes sense); the app's e2e
+  (`e2e-glue.swift`: the page's `backgroundChoose` through the real shell with the store's stand-in picker, cancelled,
+  a drop's bytes, garbage refused, and the picture served, loaded and read by the page: its `--m-bg` the picture's).
+  Mutations: the late answer saved, any file sent, the theme's items left out of `picker.run`'s check, a cancel shown
+  as a refusal: each fails its test.
+
+## M2.9 step 6: Edit Theme Color's ticks, a haptic or a click (`feat/space-backgrounds`, 2026-11-25)
+
+- **The page decides** (`ui/picker/feedback.ts tickPlays`, pure): auto plays Margin.app's haptic where the gesture is
+  a trackpad's and a trackpad that plays haptics is there; anything else gets a click. Haptics plays a haptic where one
+  can play (the setting's point: auto took a trackpad for a mouse), never a click. Sound plays a click. Off plays
+  nothing. With the system's interface sounds off, no click either. A detent, a step and an appearance play the
+  `.alignment` haptic (`haptic.alignment`, the swipe's). A texture plays `.levelChange` (`haptic.level`: the core's
+  `Said::Haptic { level }`, the FFI's `flag`, `PageCore.Said.haptic(level:)`). At most one tick every 20 ms.
+- **The click** is WebAudio's, generated: a sine of about 30 ms dropping away (1.7 kHz, a texture's 1.1 kHz), quiet,
+  with no file. Its audio is started only by the person's gesture (WebKit's rule): as the picker opens (it opens from
+  a click) and at each press in it, and only where a click may play (a trackpad that plays haptics makes none).
+- **The device** (`PointerKind.swift`): a mouse unless proven a trackpad. The evidence is a press whose subtype is a
+  touch, a pressure event (only a Force Touch trackpad sends one), or a scroll with precise deltas and a phase. A
+  press that isn't a touch is a mouse's, and so is a wheel's notch. A precise scroll with no phase says nothing. Each
+  press tells the page (a push before its hello is lost), and so does each scroll's start; anything else tells only a
+  change. With it go whether a trackpad that plays haptics is connected (the IORegistry's multitouch devices with
+  `ActuationSupported`, read again at most every 10 s) and the system's "Play user interface sound effects"
+  (`com.apple.sound.uiaudio.enabled`, on when absent). A local monitor of Margin's windows reads these events and
+  never consumes them, as the wheel phases' does.
+- **Not settled by the spike**: the event log from Tirth's two trackpads (the plan's step 0: a click, tap-to-click, a
+  force click, the dial scrolled) wasn't there when this was built. All three kinds of evidence count, so whichever
+  one a trackpad gives is enough. If tap-to-click gives none, it gets a click, not a haptic. The setting covers that,
+  and the manual check (TESTING.md) asks. A Magic Mouse is unchecked: its precise scrolls with phases would count as
+  a trackpad's, and the haptic would then play to no effect (silence, not a wrong sound).
+- **The setting** `pickerFeedback` (`auto | haptics | sound | off`, default auto) is the profile's, as every setting
+  is (`extension/state/model.ts`, `types/margin.d.ts`). It's read where it's used (`feedbackSetting`: anything else
+  is auto), as `favoritesScope` is. The plan's "core's twin" doesn't exist: the core keeps no setting defaults. In
+  Settings › Appearance, "Haptics only" is offered only where Margin.app plays haptics (its own window on the Mac:
+  `features.haptics`). Elsewhere a click, or nothing.
+- **Elsewhere** (a browser's extension, Windows): the host knows no device and plays no haptics, so the ticks are
+  clicks (or off).
+- **Tests**: `tests/ui-picker-feedback.test.ts` (the table: setting × device × haptics × interface sounds, each tick
+  kind; the setting and the device read; 20 ms; the audio made only where a click plays and started at the gesture;
+  no WebAudio, nothing thrown); `tests/theme/picker-feedback.test.ts` in WebKit and Chromium (the panel's appearance,
+  dial and + through the runtime: the alignment and level haptics on a trackpad, clicks with a mouse or with no
+  haptics there, nothing when off, a click with sound on a trackpad; Material's own picker's buttons the same);
+  `tests/settings-form.test.ts` (the field, its options where haptics play and where they don't, saved); the core
+  (`haptic.level` read); Swift (`pointer-kind-tests.swift`: a mouse's press and wheel notch made as CGEvents and read as
+  a mouse's, a trackpad's scroll as a trackpad's, the classifier's sequence and what it tells, the IORegistry and the
+  interface sounds read, the message); the app's e2e (`haptic.level` reaches Margin.app; a touch's press, then a notch,
+  told to the page, which has the last).
+
+## M2.9: a space's background, where it stands (`feat/space-backgrounds`, 2026-11-25)
+
+Arc's Edit Theme Color in Margin (docs/SPACE-BACKGROUNDS.md, the study and the plan; each step's entry above).
+
+- **Built**:
+  - the value on a space (1);
+  - Margin's layer and palette under every theme (2);
+  - appearance per space on the Mac (3);
+  - the picker (4), on real glass (5), or drawn by a theme (5b: Material, Neubrutalism, Pixel);
+  - ticks, a haptic or a click (6);
+  - pictures: kept and served (7a), drawn (7b), chosen or dropped in every picker (7c).
+- **Left for later, by Tirth's choice**: the Arc import (step 8) comes with the onboarding screen.
+- **Not built on Windows yet**, with its library windows:
+  - appearance per space (`PreferredColorScheme`);
+  - pictures (WIC, `serve.rs`'s `/background/<id>`).
+
+  Until then, Windows draws a space's colours without its picture, and its ticks are clicks.
+- **Still to check by hand** (TESTING.md: "Edit Theme Color's glass", "A theme's own Edit Theme Color", "Edit Theme
+  Color's ticks", "A space's picture"):
+  - the glass and the themes' pickers on the real screen;
+  - the haptics on both trackpads (the spike's event log was never taken: tap-to-click's answer is the manual
+    check's);
+  - a real mouse;
+  - pictures from Photos and Finder.
+- **Merging**: `refactor/hosted-only` has moved on since `71e11707` (link resilience), and 13 files changed on both
+  sides (`MarginWindowController.swift`, `host-app.ts`, `runtime.ts`, `harness.ts`, `tests.swift`, `DECISIONS.md`
+  among them). The branch merges into it, its conflicts resolved, then `npm run gate` runs there before `main`.
+
+## M2.9 merged into `refactor/hosted-only`: the pictures' cleanup by the core's rule, decoding off the main thread (2026-11-25)
+
+- **The merge**: `feat/space-backgrounds` (72dc22f3) into `refactor/hosted-only` after link resilience and the
+  sidebar press. Seven files conflicted, each both sides adding beside each other (both kept): `DECISIONS.md`, the FFI
+  header's `Said` words (focus's `flag2` and haptic's level), `overlay.ts`'s runtime options (`openPalette` and
+  `onGround`, `onPanel`, `materials`), `runtime.ts` (the same options and their imports), the theme harness's runtime
+  (both its records), `ci-plan.test.ts` (both sides' looped theme tests) and `run.sh` (`app_page` and the link e2e
+  sources). Edit Theme Color takes the keys as Margin's menus do (`popupOpen`), so the sidebar press's `keys_stay`
+  turns off while it's open and its panel becomes key.
+- **Found in review, fixed**:
+  - **The cleanup at launch could remove every picture.** Swift built the list of pictures in use from the spaces it
+    read, and pruned the rest. A library the store leaves alone (a later format's data: an older Margin over a newer
+    one's) or whose spaces' file and backup are both unreadable shows no spaces of it, so the list was empty and every
+    picture went, for good. Now margin-core decides (`Library::prune_pictures`, library/object.rs): only when the
+    library's set loaded and its spaces were read, each picture read as the state reads its background
+    (`background_of`); otherwise nothing goes (`PicturesPruned::LeftAlone`, said in the log). The FFI's
+    `margin_backgrounds_prune_unused(store, library)` replaces the JSON `prune { keep }` call (no list made by a
+    caller any more), and Swift only calls it (`BackgroundStore.pruneUnused`). Tests: core (named one kept and the
+    other removed; a later format's set, no set, the spaces' file unreadable: every picture kept), the FFI (the old
+    call refused, no library, no data), Swift (through the library).
+  - **A picture decoded on the main thread.** A dropped or chosen picture is read, decoded and encoded again
+    (ImageIO) in a detached task (`BackgroundStore.kept`); only the core's keep (its hash and write) is on the main
+    thread. The tests' `keep` stays synchronous over the same code.
+- **Left as they are**: the cross-fade's old layer removed after the fade's own time (`background.ts`: cleanup only,
+  and `transitionend` doesn't come in a window that draws no frames); the picture id's check written in the UI twice
+  besides the core's (the transition's TypeScript twin); the light/dark rule's TypeScript copy for the extension.
+
+## Edit Theme Color's ticks: a click when macOS's haptic feedback is off (2026-11-25)
+
+- **What was wrong** (found explaining the ticks to Tirth): with System Settings › Trackpad › Point & Click › "Force
+  Click and haptic feedback" off, macOS plays no haptic an app asks for. Automatic chose a haptic for a finger on the
+  trackpad all the same, so a tick played nothing at all (the setting's "A click" was the only way out).
+- **Where the switch is** (read on this Mac with Tirth turning it off and on again, macOS 27): off, System Settings
+  wrote `com.apple.AppleMultitouchTrackpad` `ActuateDetents` 0 and `ForceSuppressed` 1 (the driver's own
+  `MultitouchPreferences` in the IORegistry the same) and the global `com.apple.trackpad.forceClick` 0, and moved Look
+  Up to a three-finger tap; on again, all back (1, 0, 1). `ActuateDetents` is the haptics one; reading it needs no
+  permission.
+- **The change** (OS mechanism, the Mac's: PointerKind.swift): the page's `haptics` is now `hapticsPlay`, a trackpad
+  that plays them connected and `ActuateDetents` not 0 (absent: on, macOS's default), read afresh
+  (`CFPreferencesAppSynchronize`) at most every 10 s as the devices are. The rule that picks a click without haptics is
+  unchanged and stays the page's (`ui/picker/feedback.ts` `tickPlays`). Windows has no haptics: unchanged.
+- **Tests**: the stored value read (0, false: off; 1, none, not a number: on), the switch read where System Settings
+  keeps it, haptics only with both. The real switch's effect on a tick: TESTING.md's manual check.
+
+## Link resilience and the sidebar press: the merge review's findings, fixed (2026-11-25)
+
+An independent review of both (after their merge into `refactor/hosted-only`) found no architecture breaks: each rule
+in margin-core once, Swift mechanism only, the double-click shared UI. It found these, fixed here, each test written
+failing first (the old code in a copy of the tree):
+
+- **A close at Margin's quit given up on "not acked yet".** `ask_held` took a request not acked by the quit as its copy
+  not reading (`unread_at_quit`), so a close sent a moment before the quit was cancelled though the copy read it the
+  next moment, and its window was left in the marker. Not acked isn't evidence. Now a close at the quit ends on the
+  link's evidence (its answer, the link down, lost: read past twice) or at the engine's own bound, `quitWait` after the
+  quit began (as the approved design had it). A stalled copy holds the quit up to `quitWait` (6 s), no longer. The
+  shell's `linkHeard` (each read of a copy's link told to the session while quitting) only served that judgement and
+  is gone. Tests: requests_tests.rs (a close not acked as the quit comes answered by its copy; a stalled copy's close
+  given up at `quitWait`, not before; one asked during the quit the same).
+- **"Safari is slow" outlived its ask.** The words a slow show put on its window's loader stayed when the show was
+  answered or overtaken, so a next item with the same name and app drew them until its own first look. Now they go
+  with the ask that said them (only the words: the loader's name and app may be a newer pick's by then).
+- **Nothing said while a show waited for its link to come back.** `relinked` waited with no feedback, so a copy that
+  never relinked gave an endless loader. Now, after `slowSay` of waiting, the loader says the copy is slow (feedback
+  only: nothing is decided by it), gone with the show.
+- **The start's deferred preparation ran after a show had made the window.** With an app shown first, the browser's
+  window was left to be made ready once nothing is shown (`later`); a web item of that profile shown meanwhile made the
+  window, and the deferred preparation then found it hosted and said the preparation over a second time. Now a show
+  making the profile's main window clears it (`window_made`, start.rs).
+- **The poll's retry of Safari windows whose close wasn't confirmed held the engine's queue.** It ran in `serial`, so
+  a copy not reading held every open and switch meanwhile (up to the link's 40 s). Now it runs outside the queue, one
+  try at a time; each entry stays in the marker until its copy says it's closed. Tested in host-tests.swift: an open
+  while a stalled copy is asked returns at once (on the old engine it waited past the test's 10 s).
+- **Cleanups:** a stale comment (`behaviors/empty.ts`: the press comes as an event made afresh, not the window
+  server's record) and the private record read for one log line (PaneClickTap's first panel press; PRIVATE-APIS row 41
+  no longer used for it).
+- **Not changed, and why:**
+  - The engine's own close of a hosted Safari window (`HostEngine.close`, a profile's window given back) still waits
+    for its copy in the engine's queue, bounded by the link (40 s of silence) or `quitWait` at the quit. Taking it out of
+    the queue needs the pattern app quits already have (`closeNow(exit: .watched)`: the queue released, the answer heard
+    in the background, the marker keeping it, an open of the same window waiting for it): its own change, designed
+    with Tirth first.
+  - The engine's `quitting` gates (`HostEngine.start`, SafariWaker) stay engine mechanism (the engine's own lifecycle,
+    as recorded with the link resilience): the core takes Margin's quit as an input.
+  - `pressSettle` (the fallback path with the press tap off) and Windows' `MA_NOACTIVATE` on hosting alone: as before,
+    noted in page/press.rs.
+
+## Margin's logo (2026-11-25)
+
+- **The pack** (Tirth's, `margin-logo`): kept in `brand/margin-logo/` as he gave it (its README says which file is for
+  what: printed at 64 px and up, flat below), but for `macos/Margin.icns` (2 MB; the build makes Margin.app's icon from
+  the icon set). Its SVGs checked first: no scripts, no outside references.
+- **Margin.app** (`scripts/make-xcode.sh`): the pack's `macos/AppIcon.appiconset` replaces the one the Safari converter
+  makes from the extension's largest icon, so Finder, the Dock, the set-up window and the quit prompt (both draw
+  `NSApp.applicationIconImage`) show it, flat at 32 px and below. `scripts/safari.sh` makes the Xcode project again
+  when the icon set changes (it's in the project's `.made-from` hash).
+- **The extension** (`extension/icons/icon-<size>.png`, both builds, Safari's and Chrome's extension lists, the
+  converter's `Icon.png`): from the pack's PNGs by `npm run icons` (scripts/make-icons.ts, now copying the logo instead
+  of drawing the old purple square): 16 and 32 flat, 48 the flat drawing scaled, 96 the printed 128 scaled, 128-512
+  printed.
+- **Not yet:** the Windows app has no icon resource (its `.exe` needs one compiled in; with the Windows app's packaging,
+  from `brand/margin-logo/web/favicon.ico` or the PNGs); the Chrome Web Store listing's images (uploaded by hand); the
+  Liquid Glass layers (`macos/icon-composer-layers/`, for Icon Composer, untested by the pack's own note).
+
+## A switch keeps the page drawn longer: no loader flash between open items (2026-11-25)
+
+- **What Tirth saw** (his real use, read in Margin's log of 04:51-04:56): a switch from Safari to Mail "blinks" most
+  times, and between Safari tabs the loader shows for a split second now and then. The blink is the page card's loader:
+  it comes when a show takes longer than the loader's grace, 0.12 s, then is gone 20-60 ms later. Switches to an app
+  whose window is open took 30-190 ms, most of it macOS making that app active (the engine makes it active before its
+  window is revealed, ec13b210, so it's never seen drawn inactive): Notes 30-38 ms, Maps 125-143, Mail 15-142. A tab
+  shown by Safari's copy took 33-60 ms with Safari in front, 150-310 ms (once 1.2 s) with Safari in the background.
+- **The rule** (margin-core, page/mod.rs and the session): a show has a pace, `Pace::Quick` (a switch to an item whose
+  host is open already: an app hosted, parked or shown; a web item whose profile's Safari window is there; a tab
+  switch in the window shown), `Usual` (a first open: its loader soon is the feedback it needs) or `Slow` (no grace, as
+  before). A quick show keeps what's drawn for the switch grace, `SWITCH_GRACE` 0.4 s, before the loader; the others
+  as before (`LOADER_GRACE` 0.12 s). Past the switch grace the loader comes as for any show. The session says the pace
+  (requests.rs `show_app`, `show_web`, the copy's slow words back to the show's own pace); the page decides the grace.
+- **Where it is:** the constants and the rule in margin-core once (page/mod.rs); the session's port `set_showing`
+  carries the pace (typed port: `flag` slow, `c` "quick"); Swift carries it to the page (`ShowPace`, never decided
+  there); `margin_page_configure` takes both graces, negative the core's own (Swift's options `loaderGrace` and
+  `switchGrace` are nil unless a test sets them).
+- **The sidebar's highlight** moves at the press already: the session's live rows mark the requested item active
+  before its show is done (ui.rs `live_plan`, routing_tests.rs), and the press tells the window at once (`changed`).
+- **Tests**, failing when broken on purpose: page/tests.rs (a quick switch's grace the switch grace, shown within it no
+  loader drawn, past it the loader, a first open the loader's grace, slow at once, configured and negative graces);
+  requests_tests.rs (an open app quick, an app not open usual, a web item with its window there quick, without usual).
+- **Still to do** (Tirth asked to consider): a press from an app to a Safari tab that seems not to work: the copy's
+  answer while Safari is in the background (150-310 ms, once 1.2 s) is the wait; the next press overtakes it. Being
+  measured (why the copy is slower with Safari in the background) before its fix.
+
+## A held tab key keeps repeating through a switch between Safari and an app (2026-11-25)
+
+- **What Tirth saw:** holding ⌥⌘↓ (or ↑) flew through the items at first; later holds stopped after a step or two.
+- **Found** (a line per hold in Margin's log, Shortcuts.swift: its repeats and why its repeat ended): the holds that
+  stopped all stopped as the run went from a Safari tab to an app or back, with ⌘⌥ still down and no release. The keys
+  Margin holds depend on the app in front (a browser's ⌘L, ⌘D… only for Safari: shortcuts.rs `held`), so each such
+  switch rebound them (ShellHostedGlue `updateHostedKeys` → `rebind`), and `rebind` let go of every key and took them
+  all again: the held key's repeat ended (`set_active(false)`) and the very key being held was unregistered and
+  registered again under a new id. Holds within Safari's tabs alone ran on (72 and 81 repeats).
+- **The rule** (margin-core shortcuts.rs, `AppShortcuts::rebind`, Mac and Windows alike): each binding keeps its hot
+  key's id across a rebind for the same combination and command; a rebind while held lets go only of the keys it drops
+  and takes only those it adds (a kept one another app held is tried again, as each time the keys are taken); a
+  running repeat goes on if its key is still bound, ends if it's dropped.
+- **Tests** (shortcuts.rs, failing first: 49 registrations, not 31): through a rebind that drops the browser's keys
+  and one that adds them back, nothing kept is registered again, the held key keeps its id and repeats on; a rebind
+  dropping the held key ends its repeat; a kept key another app held is taken again once free.
+- **Diagnostics kept** (development, quiet): one line per hold with repeats (`held next-tab: 72 repeats in 6486 ms
+  (the longest between two 502 ms), ended: its key released`), and the slow lines of 2026-11-25 (a request's ack and
+  answer, a slow tab show's Safari calls).
+
+## Tab switches in a fast run: one at a time in Safari's window, so each is drawn as Safari can (2026-11-25)
+
+- **What Tirth saw:** holding ⌥⌘↓ through Safari's tabs, the page didn't change until he let go ("the tab content
+  section stays where it is").
+- **Measured on the real Mac** (the dev hook's picks every ~110 ms, Margin's log with the copy's own times): every
+  tab show of the run was overtaken by the next pick and cancelled, yet its `tabs.update` was already under way in
+  Safari (a cancel stops a show only before its next Safari call). With switches overlapping in one window, each
+  `tabs.update` took Safari ~210 ms and none was drawn until the run ended; quiet, one at a time, the same tabs took
+  25-40 ms. (A tab not open in the window is made: `create` 200-280 ms; one Safari unloaded is reloaded: `update`
+  ~210 ms. Those are Safari's own.)
+- **The rule:** a window's tab shows run one at a time.
+  - The copy (extension/background/link.ts, its own rule): a newer `hostShow` for a window waits for the one running
+    there to finish; one overtaken while it waits is answered `overtaken`, with no Safari call; a running one is
+    stopped only by the app's cancel (docs/LINK-RESILIENCE.md §1 rule 13).
+  - margin-core (session/requests.rs `paced_by_copy`): a tab show overtaken by another web item of the same profile in
+    the same Margin window is left to its copy, not cancelled; one overtaken by anything else (an app, another
+    profile, a split, its window gone) is cancelled as before. Its answer changes nothing of the newer pick's (its
+    loader's words, its slow words, the item shown); the copy's `overtaken` is said as such in the log.
+- **Tests, failing first:** link.test.ts (the running show finishes, one overtaken while waiting never reaches Safari,
+  the newest runs after it); requests_tests.rs (overtaken by a tab of its profile: not cancelled, the newer asked, the
+  older's answer changes nothing, the copy's `overtaken` said; overtaken by an app: cancelled, as before).
+- **Diagnostics added** (development, quiet unless slow): a reply carries the copy's own time on it (`took`); the
+  link's line for a request over 100 ms says when it was acked and that time.
+
+
+## A tab switch's bookkeeping out of the next switch's way (2026-11-25)
+
+- **Why:** after the switches were paced one at a time per window, the rest of a fast run's lag was the copy's own
+  work per switch (acks read 60-340 ms late). Counted against the real background (a fake Safari, 20-30 tabs), each
+  switch the app made cost, besides its two Safari calls for the show: two reads of the owner record, a write of the
+  whole open-tab record (10 KB there; 15 KB in Tirth's main profile), which every open page takes (the hidden ones as
+  they're shown, on the next switch's way) and Margin.app takes as a delta and as a data-set change it saves to disk
+  and acks (its own storage write again); a window-list report (`windows.getAll` and `tabs.query`), only because the
+  tab in front changed; and, 300 ms later, the page check for each tab shown (`tabs.get`, `permissions.contains`, two
+  scripts run in the page), right in the next switches. Twelve shows 110 ms apart: 13 writes, 48 page-check calls.
+- **The rules** (the extension's own: extension/background.ts, background/link.ts):
+  - The activation of a tab Margin.app's show brought to the front (hosted.ts `raisedByShow`, marked just before its
+    `tabs.update`, as Safari's activation can come first) is in the state at once and written within
+    `ACTIVATION_WRITE_MS` (1 s), or with any write before then (store.ts `within`, as hidden tabs' titles are): the
+    app follows its own record of what it shows, and the background reads the state, not storage. Every other switch
+    is written at once, as before: one made in the browser (its tab bar, a link), whose sidebar follows the stored
+    state (the gate's e2e `one highlight only` caught the first version, which made those wait too: 1.05 s), Margin's
+    own (focusTab, whose asker follows the stored state to see it land), and one in a window that showed a tab away.
+    The same twelve shows: 3 writes. A background stopped within that second loses that switch's last-used time (the
+    next start matches which tab is in front from Safari's own).
+  - The windows report has no tab in front (`activeTabId`): no app read it (margin-core's binder parsed it into a
+    field nothing used, removed). So a tab shown sends no report and asks Safari for nothing, and the report's
+    once-a-second look asks only for the windows (docs/PROTOCOL.md "windows").
+  - A tab's copy of Margin is checked once its window has settled: the tab in front 300 ms after the last switch
+    there, not every tab a run passes (twelve shows: 4 calls, not 48).
+- **Tests, failing first:** quiet-switches.test.ts (a run of the app's shows written once it's over, with the state
+  right at once and the last tab stored in front; a switch made in the browser and Margin's own written at once
+  (the browser's failing on the first version); a write before the wait takes
+  the switch along; the page check the settled tab's only, failing alone with the old timer put back); link.test.ts
+  (a tab shown sends no windows report and asks Safari for no tabs).
+
+## One copy of Margin's extension known to the system (2026-11-25)
+
+- **What Tirth saw:** Margin took longer than usual to open (the start screen's "Try again" at 15 s, Safari shown
+  at 20 s).
+- **Cause, from the logs:** at every Safari launch that day, Safari refused the Margin copy's native messages
+  (`runtime.sendNativeMessage`: "Other version in use", about once a second for 13 s at 12:24), so the copy
+  couldn't ask for its link to Margin.app until Safari settled on one version. Four Margin.app builds left in
+  scratch folders (screen-suite and gate builds) were registered with the system, each with the extension in it
+  (`pluginkit` listed five copies). The same day, at five of nine launches, Safari also deleted and recreated
+  the profile's extension storage while it was open (`file unlinked while open`, `Failed to open extension
+  storage database`); Margin.app put the data back over the link, nothing was lost. Whether that comes from the
+  same duplicate versions is to be seen at the next launches.
+- **The rule** (scripts/safari.sh): an install leaves only the installed copy known: any other registered
+  Margin.app with the extension in it, wherever it is, is unregistered (LaunchServices and its plug-in record),
+  besides Xcode's own build folders as before. The copies stay on disk; opening one makes it known again.
+- Done by hand that day: the four builds unregistered and deleted, and 16 other scratch Margin.app records
+  unregistered; `pluginkit` lists one copy.
+
+## The quit prompt and a Safari start that went wrong (2026-11-25)
+
+What Tirth saw (a screen recording, and Margin's log):
+- **The quit prompt pulled him back.** He pressed ⌘Q, then swiped to another full-screen Space with the prompt up. A
+  second later he was back in Margin.
+- **Mail stayed on screen.** After reopening Margin, he moved from Mail to a Safari tab. Mail stayed for the next
+  presses, another Safari window was made, and after a while it fixed itself.
+
+### Causes
+
+- **The quit prompt.** Margin's keys were let go as another app came to the front, and that took the prompt down as a
+  Cancel. A Cancel gives the keys back to the hosted app (`keysBackToShown`). That activated the hosted app, and macOS
+  brought Margin's Space back over the one he had swiped to.
+- **Safari's start, a chain of three failures.**
+  1. The two Safari links had gone down at 12:35, when Safari unloaded Margin's extension as its other registered
+     copies were removed (see "One copy of Margin's extension known to the system"). So his ⌘Q at 12:44 couldn't
+     have the copies close Margin's two Safari windows, which were left in full screen.
+  2. At the next launch (12:49:39), Safari restored them into a full-screen Space of their own. 3.8 s into waiting
+     for the profile's link, the waker took Safari for quit (`appRuns`: LaunchServices' list missed it at one look,
+     while its process ran on for 39 s) and gave up preparing it.
+  3. The pick of a Safari tab from Mail then waited 14 s for a link, while Mail stayed on screen. Once the profile
+     linked, the poll's sweep closed the restored windows at the same moment Margin asked for its own. Safari opened
+     Margin's window in the restored windows' full-screen Space, which was still there, and it never got a
+     full-screen Space of its own within 6 s. The open failed, and Safari was quit and started again.
+
+### The rules (the Mac's mechanism, in app/platforms/macos/shell; the keys gate stays margin-core's)
+
+- **QuitPrompt** has a fourth choice, `left`: cancelled because something else took the keys or the front. That means
+  a press in another app's window, Margin's keys let go because another app is in front, or the prompt's key taken.
+  Nothing is given back then. A Cancel from the prompt itself gives the keys back as before: its button, Escape, or a
+  press in one of Margin's windows.
+- **HostEngine `appRuns`.** An app Margin started counts as running while its process is there (`processRuns`), even
+  if LaunchServices' list leaves it out. This is the same second read `appQuit` makes before it takes an app for quit.
+- **SafariWaker `linked`.** In a Safari Margin started, when Safari owns a full-screen Space of its own at a profile's
+  link (one with no window Margin hosts), that profile's restored windows are closed before it's said linked. Margin
+  waits until they're gone from its copy's windows and their Space is gone from the window server's list
+  (`restoredWait`, 3 s at most). Only then is Margin's own window asked for. With no such Space, nothing changes: the
+  poll's sweep closes them as before.
+
+### Tests, each failing with the old behaviour put back
+
+- tests.swift: the prompt's key taken gives `left`.
+- host-tests.swift: a Safari missing from LaunchServices' list while its process runs still runs.
+- hosted-tests.swift: restored windows and their full-screen Space are closed and gone before linked; with no such
+  Space, the sweep closes them as before.
+- e2e-glue.swift: another app in front gives `left`; Escape gives a `cancel`.
+
+## Margin's window into full screen with nothing on the Desktop first (2026-11-25)
+
+- **What Tirth saw:** opening Margin, it first showed up in Stage Manager, then slid to full screen. The slide is fine;
+  the Stage Manager step isn't.
+- **Cause.** Margin's first entry into full screen ordered its window in see-through, made Margin the active app, and
+  asked for full screen 50 ms later. Activating an app with a window on the Desktop has Stage Manager move the other
+  apps' windows aside into its strip. A recording showed the Finder window sliding aside before the slide; the see-through
+  window didn't help.
+- **Measured** (a test app recorded on screen with Stage Manager on): asked into full screen before its window is ever
+  ordered in, AppKit takes the ask even before the app is active. This held for an agent app made regular, as Margin
+  is (will-enter 11-25 ms after), and the Desktop is left as it was: no Stage Manager step, straight into the slide.
+  Margin itself, recorded twice: the Desktop as it was, the black slide, then its page, with no white frame (checked
+  frame by frame at 30 fps).
+- **The rule** (app/platforms/macos/shell/MarginWindowController.swift `show`, the Mac's mechanism):
+  - The first entry is asked before the window is ever ordered in.
+  - It's left to arrive: nothing is brought forward or ordered in meanwhile (`askedUnseen`).
+  - Only on evidence it wasn't taken (macOS fails it, or it's not on its way in at the retries' first look,
+    `unseenAskNotTaken`) is the window ordered in see-through and asked as before. The case that needs this: opened
+    while another app's full-screen Space is current.
+- **Tried, not kept:**
+  - Asking as the window is made, before its page is drawn. The slide came about a second sooner, but the page's first
+    frame at its full-screen size showed plain white for 66-100 ms after it. Waiting for WebKit's next presentation
+    update (`_doAfterNextPresentationUpdate:`, once or twice) didn't remove it.
+  - Attaching the panel before the ask. macOS's zoom then drew the panel's fill, so the slide went white.
+  - The click-to-slide time stays about 2 s: the app's start and its page's first draw come first. Making those faster
+    is the way to an earlier slide.

@@ -13,6 +13,8 @@ pub enum Mode {
     App { login: bool },
     /// Started by a browser as its native-messaging host (an older registration): exits.
     NotTheHost,
+    /// `--host-check <program | window>`: the hosted design's Windows mechanism checked on a real PC (hostcheck.rs).
+    HostCheck { target: String },
 }
 
 pub const LOGIN_FLAG: &str = "--login";
@@ -23,6 +25,9 @@ pub fn mode<I: IntoIterator<Item = String>>(args: I) -> Mode {
     let args: Vec<String> = args.into_iter().collect();
     match args.first() {
         Some(first) if first.starts_with(EXTENSION_SCHEME) => Mode::NotTheHost,
+        Some(first) if first == crate::hostcheck::FLAG => {
+            Mode::HostCheck { target: args.get(1).cloned().unwrap_or_default() }
+        }
         _ => Mode::App { login: args.iter().any(|a| a == LOGIN_FLAG) },
     }
 }
@@ -48,6 +53,13 @@ mod tests {
     fn a_browser_starting_it_as_its_host_isnt_the_app() {
         assert_eq!(mode(strings(&[ORIGIN, "--parent-window=132456"])), Mode::NotTheHost);
         assert_eq!(mode(strings(&[ORIGIN])), Mode::NotTheHost);
+    }
+
+    #[test]
+    fn the_host_check_and_its_target() {
+        assert_eq!(mode(strings(&["--host-check", "charmap.exe"])), Mode::HostCheck { target: "charmap.exe".into() });
+        assert_eq!(mode(strings(&["--host-check"])), Mode::HostCheck { target: String::new() });
+        assert_eq!(mode(strings(&["--login", "--host-check", "x"])), Mode::App { login: true }, "only first");
     }
 
     #[test]

@@ -1,14 +1,8 @@
-// The copy's side of Margin.app's profile handoff (docs/HANDOFF.md §1.9, §2.5, §3.3, §6.1), against
-// the real background with a fake of Safari's API: the windows calls (setWindowState, focusWindow,
-// closeWindow) refused past their notAfter and busy while another for the window is pending,
-// setWindowState waiting for the state to land and sending the window list at once; the frame probe
-// (the background's side, the page's own with a fake animation frame, and Margin's new-tab page);
-// the drafts before a close, their answers carrying each page's scroll; the scroll record (written as a
-// page is hidden or left, kept with its Margin tab as its window closes, taken once when it's opened
-// again, and the page's own part); the app's `parked` per epoch (the link's own end, against the fake app);
-// `parkedActivity` for a tab Margin didn't open, for focus that isn't Margin's (and not within 1 s of
-// its own call), and in place of raising a parked window; openPin and a row's tab preferring a window
-// that isn't parked; sleep sparing a parked window's tab in front; openSpaceWindow's bounds.
+// The windows calls Margin.app makes through a copy (background/handoff.ts), against the real background
+// with a fake of Safari's API: setWindowState and closeWindow refused past their notAfter and busy while
+// another for the window is pending, setWindowState waiting for the state to land and sending the window
+// list at once; newWindow; and the scroll record (written as a page is hidden or left, kept with its Margin
+// tab as its window closes, taken once when it's opened again, and the page's own part).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startFakeApp } from './fake-app.ts';
@@ -33,7 +27,7 @@ const pick = (store: Record<string, any>, keys?: string | string[] | Record<stri
 const fake = {
   tabs: new Map<number, BrowserTab>(), windows: new Map<number, BrowserWindow>(), local: {} as Record<string, any>, session: {} as Record<string, any>, // stored JSON
   windowUpdates: [] as ({ id: number } & Record<string, unknown>)[], tabUpdates: [] as ({ id: number } & Record<string, unknown>)[],
-  removedWindows: [] as number[], created: [] as number[], scripts: [] as { tabId: number, args?: any[], allFrames: boolean }[],
+  removedWindows: [] as number[], created: [] as number[], createdWith: [] as any[], scripts: [] as { tabId: number, args?: any[], allFrames: boolean }[],
   landMs: 0, holdUpdate: false, release: (() => {}) as (value?: unknown) => void,
   probe: (_tabId: number, _m: any) => (undefined as any),
   drafts: (_tabId: number) => 'none',
@@ -70,7 +64,8 @@ globalThis.chrome = fakeBrowser({
     },
     create: async (props) => {
       const id = 100 + fake.windows.size;
-      const w = win(id, { state: props.state ?? 'normal', focused: true, left: 10, top: 25, width: 1200, height: 800 });
+      fake.createdWith.push(props);
+      const w = win(id, { state: props.state ?? 'normal', focused: props.focused !== false, left: 10, top: 25, width: 1200, height: 800 });
       fake.windows.set(id, w);
       // (One address, as Margin opens them.)
       const tab = { id: id * 10, windowId: id, url: (props.url ?? 'safari-web-extension://test/newtab/newtab.html') as string, title: '', index: 0, active: true, status: 'loading' };
@@ -151,7 +146,6 @@ const { setHandoffTiming } = await import('../extension/background/handoff.ts');
 const { markMarginOpening, focusTab, resolveTab } = await import('../extension/background/tabs.ts');
 const { sleepIdle, setSleepTiming } = await import('../extension/background/sleep.ts');
 const M = await import('../extension/state/model.ts');
-const { probeFrames, watchVisible } = await import('../extension/shared/frame-probe.ts');
 const { createLink } = await import('../extension/background/link.ts');
 type Said = import('../extension/background/link.ts').Said;
 type FakeApp = Awaited<ReturnType<typeof startFakeApp>>;
@@ -166,18 +160,11 @@ assert.ok(store.isSynced(), 'synced');
 setHandoffTiming({ pollMs: 10, landMs: 300, focusOwnMs: 150 });
 setSleepTiming({ gapMs: 1, askMs: 100 });
 
-// The link's word, as the background's link object would have it: which windows are parked, what
-// it pushes, its notes and its window list sent now.
-const said = { parked: new Set<number | null | undefined>([2]), linked: true, pushes: [] as { windowId: number, why: string, tabId?: number }[], notes: [] as string[], windowsNow: 0 };
-appLink.parked = (w) => said.parked.has(w);
-appLink.parkedActivity = (windowId, why, tabId = null) => {
-  if (!said.linked) return false;
-  said.pushes.push({ windowId, why, ...(tabId != null ? { tabId } : {}) });
-  return true;
-};
+// The link's word, as the background's link object would have it: its notes and its window list sent now.
+const said = { notes: [] as string[], windowsNow: 0 };
 appLink.note = (...args) => { said.notes.push(args.join(' ')); };
 appLink.windowsNow = async () => { said.windowsNow++; };
-const fresh = () => { said.pushes.length = 0; said.notes.length = 0; said.windowsNow = 0; fake.windowUpdates.length = 0; fake.tabUpdates.length = 0; };
+const fresh = () => { said.notes.length = 0; said.windowsNow = 0; fake.windowUpdates.length = 0; fake.tabUpdates.length = 0; };
 
 // ---- the windows calls ------------------------------------------------------------------------
 
@@ -205,6 +192,26 @@ test('setWindowState: past notAfter, refused with nothing called; in time, Safar
   fake.landMs = 0;
 });
 
+test('setWindowState with land: false (a window Margin.app hosts): answered as Safari takes the ask, no wait for a state that never lands there, the window free for the next call at once', async () => {
+  fresh();
+  fake.windows.get(2)!.state = 'normal';
+  fake.landMs = 10_000; // (Safari never says fullscreen for a window the app moves out of its full-screen Space)
+  const started = Date.now();
+  const answer = await handlers.setWindowState({ windowId: 2, state: 'fullscreen', focused: true, notAfter: Date.now() + 1500, land: false });
+  assert.deepEqual(answer, { windowId: 2, state: 'fullscreen', asked: true });
+  assert.ok(Date.now() - started < 200, `answered at once (${Date.now() - started} ms), not after the 3 s (here 300 ms) a state takes to be given up on`);
+  assert.deepEqual(fake.windowUpdates, [{ id: 2, state: 'fullscreen', focused: true }], 'Safari asked once');
+  assert.equal(said.windowsNow, 1, 'the window list sent at once');
+  assert.ok(said.notes.some((n) => /^setWindowState window 2: fullscreen asked \(\d+ ms\)$/.test(n)), `the log: ${said.notes.join(' | ')}`);
+  // (The call before isn't pending any more: the next one for that window is taken, not busy. Before, it was busy for
+  // the whole wait: a placing begun within 3 s of the last one never got its exit asked.)
+  const next = await handlers.setWindowState({ windowId: 2, state: 'normal', notAfter: Date.now() + 1500, land: false });
+  assert.deepEqual(next, { windowId: 2, state: 'normal', asked: true });
+  assert.deepEqual(fake.windowUpdates.map((u) => u.state), ['fullscreen', 'normal']);
+  fake.landMs = 0;
+  fake.windows.get(2)!.state = 'normal';
+});
+
 test('setWindowState: a state that never lands answers timedOut after its 3 s (here shortened); a window gone fails', async () => {
   fresh();
   fake.landMs = 10_000;
@@ -220,7 +227,7 @@ test('setWindowState: a state that never lands answers timedOut after its 3 s (h
   await assert.rejects(handlers.setWindowState({ windowId: 3, state: 'minimized' as string as 'normal', notAfter: Date.now() + 1500 }), /no such window state/); // (one the app may send)
 });
 
-test('one windows call per window: a second setWindowState, focusWindow or closeWindow while one is pending is busy, nothing called; another window\'s runs; late comes before busy', async () => {
+test('one windows call per window: a second setWindowState or closeWindow while one is pending is busy, nothing called; another window\'s runs; late comes before busy', async () => {
   fresh();
   fake.windows.get(2)!.state = 'normal';
   fake.holdUpdate = true;
@@ -228,62 +235,41 @@ test('one windows call per window: a second setWindowState, focusWindow or close
   await sleep(10);
   assert.equal(fake.windowUpdates.length, 1);
   assert.deepEqual(await handlers.setWindowState({ windowId: 2, state: 'normal', notAfter: Date.now() + 5000 }), { busy: true });
-  assert.deepEqual(await handlers.focusWindow({ windowId: 2, notAfter: Date.now() + 5000 }), { busy: true });
   assert.deepEqual(await handlers.closeWindow({ windowId: 2, notAfter: Date.now() + 5000 }), { busy: true });
   assert.equal(((await handlers.closeWindow({ windowId: 2, notAfter: Date.now() - 50 })) as Refused).refused, 'late', 'late, though busy too');
   assert.equal(fake.windowUpdates.length, 1, 'none of them called Safari');
   assert.deepEqual(fake.removedWindows, []);
-  assert.ok(said.notes.some((n) => n === 'focusWindow window 2: busy (a windows call for it is still pending)'));
-  const other = await handlers.focusWindow({ windowId: 3, notAfter: Date.now() + 5000 });
-  assert.deepEqual(other, { windowId: 3, state: 'normal' }, 'another window: not held up');
+  assert.ok(said.notes.some((n) => n === 'closeWindow window 2: busy (a windows call for it is still pending)'));
+  fake.windows.set(3, fake.windows.get(3) ?? win(3, { state: 'normal' }));
+  const other = (await handlers.setWindowState({ windowId: 3, state: 'normal', notAfter: Date.now() + 5000 })) as Refused;
+  assert.ok(!other.busy && !other.refused, 'another window: not held up');
   fake.release();
   assert.equal(((await first) as Landed).state, 'fullscreen');
-  assert.deepEqual(await handlers.focusWindow({ windowId: 2, notAfter: Date.now() + 5000 }), { windowId: 2, state: 'fullscreen' }, 'the first one answered: free again');
+  const again = (await handlers.setWindowState({ windowId: 2, state: 'fullscreen', notAfter: Date.now() + 5000 })) as Refused;
+  assert.ok(!again.busy && !again.refused, 'the first one answered: free again');
 
-  // Today's switch (no notAfter): never busy, as before (its undo's close isn't dropped behind its
-  // own focus), but pending all the same: a handoff's call meanwhile is busy.
+  // A close with no notAfter (the host's): never busy, but pending all the same.
   fresh();
   fake.windows.set(8, win(8, { state: 'normal' }));
   fake.holdUpdate = true;
-  const todays = handlers.focusWindow({ windowId: 8, fullscreen: true });
+  const held = handlers.setWindowState({ windowId: 8, state: 'fullscreen', notAfter: Date.now() + 5000 });
   await sleep(10);
-  assert.deepEqual(await handlers.setWindowState({ windowId: 8, state: 'fullscreen', notAfter: Date.now() + 5000 }), { busy: true });
-  assert.equal(await handlers.closeWindow({ windowId: 8 }), null, 'today\'s close: run');
+  assert.equal(await handlers.closeWindow({ windowId: 8 }), null, 'a close with no notAfter: run');
   assert.ok(!fake.windows.has(8));
-  fake.windows.set(8, win(8, { state: 'normal' })); // (so the held focus can answer)
   fake.release();
-  await todays;
-  fake.windows.delete(8);
+  await held.catch(() => {});
   fake.windows.get(1)!.focused = true;
 });
 
-test('focusWindow and closeWindow: today\'s switch sends no notAfter (never late); past one, nothing called', async () => {
+test('closeWindow: with no notAfter never late; past one, nothing called', async () => {
   fresh();
   fake.windows.set(9, win(9, { state: 'normal' }));
-  assert.equal(((await handlers.focusWindow({ windowId: 9, notAfter: Date.now() - 5 })) as Refused).refused, 'late');
   assert.equal(((await handlers.closeWindow({ windowId: 9, notAfter: Date.now() - 5 })) as Refused).refused, 'late');
   assert.deepEqual(fake.windowUpdates, []);
   assert.ok(fake.windows.has(9), 'not closed');
-  assert.deepEqual(await handlers.focusWindow({ windowId: 9, fullscreen: true }), { windowId: 9, state: 'normal' });
-  assert.deepEqual(fake.windowUpdates, [{ id: 9, focused: true, state: 'fullscreen' }]);
   assert.equal(await handlers.closeWindow({ windowId: 9 }), null);
   assert.ok(!fake.windows.has(9), 'closed');
   await assert.rejects(handlers.closeWindow({} as { windowId: number }), /no window/); // (none said)
-  fake.windows.get(1)!.focused = true;
-});
-
-// ---- openSpaceWindow ---------------------------------------------------------------------------
-
-test('openSpaceWindow: answers the new window\'s bounds as Safari gave them and sends the window list at once; one full-screen request', async () => {
-  fresh();
-  const s = await store.load();
-  const answer = await handlers.openSpaceWindow({ spaceId: s.spaces[0].id, fullscreen: true });
-  assert.equal(answer.state, 'fullscreen');
-  assert.deepEqual(answer.bounds, { left: 10, top: 25, width: 1200, height: 800 });
-  assert.equal(said.windowsNow, 1);
-  assert.deepEqual(fake.windowUpdates, [], 'no second full-screen request');
-  fake.windows.delete(answer.windowId);
-  fake.tabs.delete(answer.tabId);
   fake.windows.get(1)!.focused = true;
 });
 
@@ -314,393 +300,21 @@ test('newWindow from a window: a Margin window of its own in full screen like it
   fake.windows.get(1)!.focused = true;
 });
 
-// ---- the frame probe ---------------------------------------------------------------------------
-
-test('frameProbe (the background): passed to the window\'s tab in front, its answer with its tab; no answer in timeoutMs, or no tab: none', async () => {
+test('newWindow made ready out of sight (Margin.app at its launch): a blank page, focused (a hidden Safari orders no unfocused window in); a split\'s pane window at its web page; any other address ignored', async () => {
   fresh();
-  const asked: [number, Said][] = [];
-  fake.probe = async (tabId, m) => { asked.push([tabId, m]); return { frames: 6, firstAt: 1000, lastAt: 1074, width: 1512, height: 982, hasFocus: true, visible: true, visibleAt: 990 }; };
-  const answer = await handlers.frameProbe({ windowId: 2, width: 1512, height: 982, frames: 6, nudgeMs: 80, timeoutMs: 400 });
-  assert.deepEqual(asked, [[21, { type: 'frameProbe', width: 1512, height: 982, frames: 6, nudgeMs: 80, timeoutMs: 400 }]], 'the parked window\'s tab in front');
-  assert.deepEqual(answer, { tabId: 21, frames: 6, firstAt: 1000, lastAt: 1074, width: 1512, height: 982, hasFocus: true, visible: true, visibleAt: 990 });
-  assert.ok(said.notes.includes('frameProbe tab 21: 6 frames in 74 ms at 1512×982, focused'), 'the log: ids, counts, sizes and times');
-
-  fake.probe = () => new Promise(() => {});
-  const t0 = Date.now();
-  assert.deepEqual(await handlers.frameProbe({ windowId: 2, width: 1512, height: 982, timeoutMs: 100 }), { none: 'no page' });
-  assert.ok(Date.now() - t0 < 400, 'by its timeout (and a moment)');
-  fake.probe = async () => undefined; // no script in that page
-  assert.deepEqual(await handlers.frameProbe({ windowId: 2, width: 1512, height: 982, timeoutMs: 100 }), { none: 'no page' });
-  assert.deepEqual(await handlers.frameProbe({ windowId: 55, width: 1512, height: 982, timeoutMs: 100 }), { none: 'no page' }, 'no tab there');
-  fake.probe = () => undefined;
-});
-
-// A fake page for the probe: its window's size, its animation frames run by hand (`tick`), its clock.
-type FakeNode = { attrs: Record<string, string>, style: { cssText: string, set: Record<string, [string, string]>, setProperty(k: string, v: string, p: string): void }, setAttribute(k: string, v: string): void, remove(): void };
-function fakePage({ width = 1512, height = 982 } = {}) {
-  const page = { clock: 1000, frames: [] as (() => void)[], children: [] as FakeNode[], focus: true, visibility: 'visible', listeners: {} as Record<string, (() => void)[]> };
-  const el = () => {
-    const node: FakeNode = {
-      attrs: {}, style: { cssText: '', set: {}, setProperty(k, v, p) { node.style.set[k] = [v, p]; } },
-      setAttribute(k, v) { node.attrs[k] = v; },
-      remove() { page.children = page.children.filter((c) => c !== node); },
-    };
-    return node;
-  };
-  // A fake document: only what the probe and watchVisible use of one.
-  const doc = {
-    documentElement: { appendChild: (node: FakeNode) => page.children.push(node) },
-    createElement: () => el(),
-    hasFocus: () => page.focus,
-    get visibilityState() { return page.visibility; },
-    addEventListener: (type: string, fn: () => void) => (page.listeners[type] ??= []).push(fn),
-  } as unknown as Document;
-  const winObj = { outerWidth: width, outerHeight: height };
-  const env = {
-    win: winObj, doc, now: () => page.clock,
-    raf: (cb: () => void) => page.frames.push(cb),
-  };
-  // One animation frame `ms` after the last.
-  const tick = (ms = 16) => {
-    page.clock += ms;
-    const run = page.frames.splice(0);
-    for (const cb of run) cb();
-  };
-  return { page, doc, win: winObj, env, tick };
-}
-
-test('the page\'s probe: a 1×1 fixed nudge out of the layout, its alpha 0.01 and 0.02 on alternate frames; frames counted only after nudgeMs and at the full-screen size; answered, and the nudge gone', async () => {
-  const { page, win: w, env, tick } = fakePage({ width: 1200, height: 800 });
-  const done = probeFrames({ width: 1512, height: 982, frames: 3, nudgeMs: 40, timeoutMs: 400 }, env);
-  assert.equal(page.children.length, 1, 'the nudge in the page');
-  const nudge = page.children[0];
-  assert.equal(nudge.attrs['aria-hidden'], 'true');
-  for (const rule of ['position: fixed !important', 'width: 1px !important', 'height: 1px !important', 'pointer-events: none !important', 'all: initial !important']) assert.ok(nudge.style.cssText.includes(rule), rule);
-  tick();
-  const first = nudge.style.set['background-color'];
-  tick();
-  const second = nudge.style.set['background-color'];
-  assert.deepEqual([first, second], [['rgba(128, 128, 128, 0.02)', 'important'], ['rgba(128, 128, 128, 0.01)', 'important']], 'alternate frames');
-  tick(); // 48 ms: past the nudge, but the window isn't full screen yet
-  w.outerWidth = 1513; // within 2 pt
-  w.outerHeight = 982;
-  tick();
-  tick();
-  assert.equal(page.children.length, 1, 'nudging until the count is done');
-  tick();
-  const answer = await done;
-  assert.deepEqual(answer, { frames: 3, firstAt: 1064, lastAt: 1096, width: 1513, height: 982, hasFocus: true, visible: true });
-  assert.equal(page.children.length, 0, 'the nudge gone');
-});
-
-test('the page\'s probe: no frames by timeoutMs (WebKit running none, or never at the size): null, and the nudge gone; its last visibilitychange to visible said', async () => {
-  const a = fakePage({ width: 800 });
-  const timedOut = probeFrames({ width: 1512, height: 982, frames: 6, nudgeMs: 80, timeoutMs: 50 }, a.env);
-  for (let i = 0; i < 4; i++) a.tick();
-  assert.equal(await timedOut, null);
-  assert.equal(a.page.children.length, 0);
-
-  const b = fakePage();
-  const visibleAt = watchVisible({ doc: b.doc, now: b.env.now });
-  b.page.clock = 1234;
-  for (const fn of b.page.listeners.visibilitychange) fn();
-  const shown = probeFrames({ width: 1512, height: 982, frames: 1, nudgeMs: 0, timeoutMs: 400 }, { ...b.env, visibleAt });
-  assert.equal(b.page.children.length, 0, 'no nudge asked: none put in');
-  b.page.focus = false;
-  b.tick();
-  assert.deepEqual(await shown, { frames: 1, firstAt: 1250, lastAt: 1250, width: 1512, height: 982, hasFocus: false, visible: true, visibleAt: 1234 });
-});
-
-// ---- the drafts before a close -------------------------------------------------------------------
-
-test('windowDrafts: every tab of the window asked at once (its drafts only, every frame), 400 ms in all; a draft, unknown (no access, no answer, no script), and tabs with nothing to hold text left out', async () => {
-  fresh();
-  fake.windows.set(5, win(5, { state: 'normal' }));
-  const tabs: Record<number, [string, string]> = {
-    51: ['https://draft.test/', 'draft'], 52: ['https://clean.test/', 'none'], 53: ['https://slow.test/', 'never'],
-    54: ['https://noscript.test/', 'error'], 55: ['https://denied.test/', 'none'], 56: ['safari-web-extension://test/newtab/newtab.html', 'draft'],
-  };
-  for (const [id, [url]] of Object.entries(tabs)) fake.tabs.set(Number(id), { id: Number(id), windowId: 5, url, title: '', index: 0, active: id === '51', status: 'complete' });
-  fake.tabs.set(57, { id: 57, windowId: 5, url: 'https://asleep.test/', title: '', index: 0, active: false, status: 'complete', discarded: true });
-  fake.denied.add('denied.test');
-  fake.drafts = (tabId) => tabs[tabId]?.[1] ?? 'none';
-  fake.scripts.length = 0;
-  const t0 = Date.now();
-  const answer = await handlers.windowDrafts({ windowId: 5 });
-  const took = Date.now() - t0;
-  assert.deepEqual(answer.drafts, [51]);
-  assert.deepEqual([...answer.unknown].sort(), [53, 54, 55], 'no answer in time, no script, no access');
-  assert.ok(took >= 380 && took < 700, `400 ms in all (${took} ms)`);
-  assert.deepEqual([...new Set(fake.scripts.map((s) => s.tabId))].sort(), [51, 52, 53, 54], 'only web pages it may reach, not the asleep one or Margin\'s own');
-  assert.ok(fake.scripts.every((s) => s.args![2] === true), 'drafts only');
-  assert.ok(fake.scripts.some((s) => s.allFrames), 'in every frame');
-  for (const id of [...Object.keys(tabs), 57]) fake.tabs.delete(Number(id));
-  fake.windows.delete(5);
-  fake.denied.clear();
-
-  fake.drafts = () => 'none';
-  fake.windows.set(6, win(6));
-  fake.tabs.set(61, { id: 61, windowId: 6, url: 'https://clean.test/', title: '', index: 0, active: true, status: 'complete' });
-  assert.deepEqual(await handlers.windowDrafts({ windowId: 6 }), { drafts: [], unknown: [] }, 'nothing typed: the window may close');
-  fake.tabs.delete(61);
-  fake.windows.delete(6);
-});
-
-test('the draft check in the page, drafts only: shown, playing or moved don\'t matter then, only what\'s typed', async () => {
-  const { sleepInPage } = await import('../extension/background/sleep.ts');
-  const doc = (typed: boolean) => ({
-    visibilityState: 'visible',
-    querySelectorAll: (sel: string) => (sel.startsWith('audio') ? [{ paused: false, ended: false }] : sel.startsWith('textarea') && typed ? [{ value: 'hello' }] : []),
-  });
-  const run = (typed: boolean, draftsOnly: boolean) => {
-    Object.assign(globalThis, { window: {}, document: doc(typed), location: { href: 'https://elsewhere.test/' } });
-    globalThis.window.top = globalThis.window;
-    try {
-      return sleepInPage('https://a.test/', Date.now() + 1000, draftsOnly);
-    } finally {
-      for (const k of ['window', 'document', 'location']) delete (globalThis as Record<string, unknown>)[k];
-    }
-  };
-  assert.equal(run(false, false).why, 'shown', 'a sleep\'s check: a shown page stays');
-  assert.equal(run(false, true).ok, true, 'drafts only: shown, playing and another address don\'t count');
-  assert.deepEqual([run(true, true).ok, run(true, true).why], [false, 'edited']);
-});
-
-// ---- parkedActivity --------------------------------------------------------------------------
-
-test('a tab made in a parked window that Margin didn\'t open: the app told (tab); Margin\'s own, or in a window not parked: nothing', async () => {
-  fresh();
-  await sleep(2100); // past any tab Margin opened in the tests before
-  await fire('onCreated', { id: 70, windowId: 2, url: 'https://link.test/', active: true, index: 2 });
-  assert.deepEqual(said.pushes, [{ windowId: 2, why: 'tab', tabId: 70 }]);
-  await fire('onCreated', { id: 71, windowId: 1, url: 'https://link.test/', active: true, index: 2 });
-  assert.equal(said.pushes.length, 1, 'not parked');
-  markMarginOpening();
-  await fire('onCreated', { id: 72, windowId: 2, url: 'https://kept.test/', active: false, index: 3 });
-  assert.equal(said.pushes.length, 1, 'Margin opened it');
-});
-
-test('focus landing on a parked window: the app told (focus), unless within 1 s (here shortened) of Margin\'s own windows call for it; a window not parked: nothing', async () => {
-  fresh();
-  await fire('onFocusChanged', 2);
-  assert.deepEqual(said.pushes, [{ windowId: 2, why: 'focus' }], 'the person\'s: Window menu, ⌘`, the Dock');
-  await fire('onFocusChanged', 1);
-  await fire('onFocusChanged', -1);
-  assert.equal(said.pushes.length, 1, 'not parked, or none');
-
-  said.pushes.length = 0;
-  fake.windows.get(2)!.state = 'normal';
-  await handlers.setWindowState({ windowId: 2, state: 'normal', notAfter: Date.now() + 1000 });
-  await fire('onFocusChanged', 2);
-  assert.deepEqual(said.pushes, [], 'Margin\'s own call a moment ago');
-  assert.ok(said.notes.includes('focus heard on parked window 2: Margin\'s own windows call, not told'));
-  await sleep(170);
-  await fire('onFocusChanged', 2);
-  assert.deepEqual(said.pushes, [{ windowId: 2, why: 'focus' }], 'after it: the person\'s');
-
-  said.pushes.length = 0;
-  fake.holdUpdate = true;
-  const pending = handlers.focusWindow({ windowId: 2, notAfter: Date.now() + 5000 });
-  await sleep(200);
-  await fire('onFocusChanged', 2);
-  assert.deepEqual(said.pushes, [], 'while its call is pending: Margin\'s');
-  fake.release();
-  await pending;
-  for (const w of fake.windows.values()) w.focused = w.id === 1;
-});
-
-test('a tab Margin\'s UI asks for in a parked window: shown there, the window not raised, the app asked (raise); not linked, raised as before', async () => {
-  fresh();
-  fake.windows.get(2)!.focused = false;
-  await focusTab(22, { source: 'test' });
-  assert.deepEqual(fake.tabUpdates, [{ id: 22, active: true }], 'in front in its window (shown when the app hands off)');
-  assert.deepEqual(fake.windowUpdates, [], 'not raised');
-  assert.deepEqual(said.pushes, [{ windowId: 2, why: 'raise', tabId: 22 }]);
-
-  fresh();
-  said.linked = false;
-  await focusTab(21, { source: 'test' });
-  assert.deepEqual(fake.windowUpdates, [{ id: 2, focused: true }], 'the app can\'t be told: raised');
-  said.linked = true;
-
-  fresh();
-  await focusTab(2, { source: 'test' });
-  assert.deepEqual(said.pushes, [], 'a window not parked: as ever');
-  for (const w of fake.windows.values()) w.focused = w.id === 1;
-  fake.tabs.get(21)!.active = true;
-  fake.tabs.get(22)!.active = false;
-});
-
-test('openPin and a row\'s tab: a tab in a window that isn\'t parked first; one only in a parked window: the app asked to show it', async () => {
-  fresh();
-  const s0 = await store.load();
-  const spaceId = s0.spaces[0].id;
-  await store.mutate((s) => {
-    let next = s;
-    for (const id of [1, 2, 21, 22, 31]) next = M.upsertTab(next, fake.tabs.get(id)!, Date.now());
-    for (const id of [1, 2, 21, 22, 31]) next = M.moveTab(next, id, spaceId);
-    return { ...next, pins: [...next.pins, { id: 'pin1', url: 'https://pin.test/', title: 'Pin', spaceId, folderId: null as unknown as undefined }] }; // (null: no folder, as stored)
-  });
-  // From window 1 (no such tab there): the person's own window 3's, not the parked one's.
-  const shown = await (handlers as NoSender).openPin({ pinId: 'pin1', windowId: 1 });
-  assert.equal(shown!.shown, 31);
-  assert.deepEqual(said.pushes, []);
-  // A row's tab found by its address: the same.
-  const found = await resolveTab(9999, { url: 'https://pin.test/', index: 1 }, 1);
-  assert.equal(found?.id, 31, 'not the parked window\'s, though nearer its place');
-  // Only in the parked window now.
-  fake.tabs.delete(31);
-  await fire('onRemoved', 31, { windowId: 3, isWindowClosing: false });
-  for (let i = 0; i < 50 && (await store.load()).tabs[31]; i++) await sleep(10);
-  assert.equal((await store.load()).tabs[31], undefined);
-  fresh();
-  const parked = await (handlers as NoSender).openPin({ pinId: 'pin1', windowId: 1 });
-  assert.equal(parked!.shown, 22);
-  assert.deepEqual(said.pushes, [{ windowId: 2, why: 'raise', tabId: 22 }]);
-  assert.deepEqual(fake.windowUpdates, [], 'not raised');
-  fake.tabs.get(21)!.active = true;
-  fake.tabs.get(22)!.active = false;
-});
-
-// ---- sleeping tabs -----------------------------------------------------------------------------
-
-test('sleep: a parked window\'s tab in front never sleeps', async () => {
-  const lines: string[] = [];
-  const { switchLogTo } = await import('../extension/background/switch-log.ts');
-  switchLogTo((line) => lines.push(line));
-  // Margin's record says tab 21 isn't in front (its window's front moved meanwhile); Safari says it is.
-  await store.mutate((s) => {
-    const tabs = { ...s.tabs };
-    for (const id of [21, 22]) if (tabs[id]) tabs[id] = { ...tabs[id], active: false, lastActive: 1, wokeAt: undefined };
-    return { ...s, tabs };
-  });
-  fake.tabs.get(21)!.active = true;
-  fake.tabs.get(22)!.active = false;
-  const pass = await sleepIdle({ afterMs: 1000, max: 0 });
-  assert.ok(pass, 'a pass ran');
-  const second = await sleepIdle({ afterMs: 1000, max: 5 });
-  assert.equal(second!.skipped['in front, parked'], 1, 'its own reason in the log');
-  assert.ok(lines.some((l) => /in front, parked 1/.test(l)));
-});
-
-// ---- the app's `parked`, per epoch (the link's own end) ---------------------------------------------
-
-test('link: parked — kept per window as the app says it, this epoch\'s only; a new link, the link going off and a closed window forget it', async () => {
-  const app = await startFakeApp();
-  const area = () => {
-    const data: Record<string, any> = {}; // stored JSON
-    return { data, get: async (keys?: string | string[] | null) => pick(data, keys), set: async (v: Record<string, any>) => { Object.assign(data, structuredClone(v)); }, remove: async (keys: string | string[]) => { for (const k of ([] as string[]).concat(keys)) delete data[k]; } };
-  };
-  const ports: { deliver: (m: Said) => void }[] = [];
-  const api = {
-    runtime: {
-      getURL: (p: string) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '2.0.0' }),
-      connectNative(): BrowserPort {
-        const cbs: ((m: Said) => void)[] = [];
-        const port = { onMessage: { addListener: (cb: (m: Said) => void) => cbs.push(cb) }, onDisconnect: { addListener() {} }, postMessage() {}, disconnect() {}, deliver: (m: Said) => cbs.forEach((cb) => cb(m)) };
-        ports.push(port);
-        // A port as link.ts uses one (its events' addListener, postMessage, disconnect), with the test's own deliver.
-        return port as unknown as BrowserPort;
-      },
-      async sendNativeMessage(_: string, message: Said) {
-        const open = !!api.app;
-        if (open && message.type === 'wantLink') setTimeout(() => ports.at(-1)?.deliver(api.app!.linkInfo(message.nonce)), 5); // (open: there's an app)
-        return { ok: true, appOpen: open };
-      },
-    },
-    storage: { local: area(), session: area() },
-    windows: { getAll: async () => [{ id: 7, left: 0, top: 0, width: 1280, height: 800, state: 'normal', focused: false }] },
-    tabs: { query: async () => [] },
-    app: app as FakeApp | null,
-  };
-  const link = createLink({
-    api: fakeBrowser(api), isOwner: () => true, copy: () => ({ origin: 'safari-web-extension://test/', since: 1 }), instanceId: 'i1',
-    WebSocket: globalThis.WebSocket, enabled: () => true, canSocket: () => true, data: null,
-    theme: async () => null, commandKeys: () => ({}), log: () => {},
-    timing: { ping: 50, dead: 10_000, check: 50, linkWait: 500, openWait: 500, keptWait: 300, reconnect: [20, 40, 80], ask: [100, 400], gone: 300, windows: 50, layoutWrite: 10, launchAsk: 30, launchAsks: 5 },
-  });
-  const until = async (fn: () => boolean | Promise<boolean>, ms = 2000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(10); } return false; };
-  try {
-    await link.start({ route: async () => ({ ok: true }) });
-    const hello = (await app.next('hello'))!;
-    const told: [number, boolean][] = [];
-    link.onParked((w, on) => told.push([w, on]));
-    assert.equal(link.parked(7), false, 'not said');
-    app.send({ k: 'parked', epoch: hello.epoch, windowId: 7, on: true, at: 5 });
-    app.send({ k: 'parked', epoch: 'old', windowId: 8, on: true, at: 5 });
-    app.send({ k: 'parked', epoch: hello.epoch, windowId: 7, on: true, at: 6 });
-    app.send({ k: 'parked', epoch: hello.epoch, windowId: 'x', on: true, at: 6 });
-    assert.ok(await until(() => link.parked(7)));
-    await sleep(30);
-    assert.equal(link.parked(8), false, 'another epoch\'s');
-    assert.deepEqual(told, [[7, true]], 'a change only');
-    assert.deepEqual(link.parkedWindows(), [7]);
-    app.send({ k: 'parked', epoch: hello.epoch, windowId: 7, on: false, at: 7 });
-    assert.ok(await until(() => !link.parked(7)), 'shown again');
-    // A closed window's goes.
-    app.send({ k: 'parked', epoch: hello.epoch, windowId: 7, on: true, at: 8 });
-    assert.ok(await until(() => link.parked(7)));
-    link.windowClosed(7);
-    assert.equal(link.parked(7), false);
-    // A new link: the epoch before's goes (the app says it again).
-    app.send({ k: 'parked', epoch: hello.epoch, windowId: 7, on: true, at: 9 });
-    assert.ok(await until(() => link.parked(7)));
-    const from = app.received.length;
-    app.drop();
-    await sleep(15);
-    assert.equal(link.parked(7), true, 'reconnecting: still parked (the app may still have it)');
-    const again = (await app.next('hello', { from }))!;
-    assert.notEqual(again.epoch, hello.epoch);
-    assert.ok(await until(() => !link.parked(7)), 'a new epoch: forgotten');
-    app.send({ k: 'parked', epoch: again.epoch, windowId: 7, on: true, at: 10 });
-    assert.ok(await until(() => link.parked(7)));
-    // Off (the app quit): none.
-    api.app = null;
-    app.send({ k: 'bye', why: 'Margin.app quit' });
-    assert.ok(await until(() => !link.parked(7)));
-    assert.deepEqual(told.at(-1), [7, false]);
-  } finally {
-    link.stop();
-    await app.close();
-  }
-});
-
-// ---- Margin's new-tab page answers the probe as web pages do ------------------------------------
-
-test('Margin\'s new-tab page: answers the frame probe as a web page does', async () => {
-  const frames: (() => void)[] = [];
-  const els: Record<string, unknown> = {};
-  const el = () => ({ hidden: true, textContent: '', listeners: {}, addEventListener() {}, focus() {}, setAttribute() {}, style: { cssText: '', setProperty() {} }, remove() {} });
-  for (const id of ['notice', 'title', 'why', 'start', 'retry', 'status', 'go', 'address']) els[id] = el();
-  const added: unknown[] = [];
-  Object.assign(globalThis, {
-    document: {
-      getElementById: (id: string) => els[id] ?? null, addEventListener() {}, visibilityState: 'visible', hasFocus: () => true,
-      documentElement: { appendChild: (n: unknown) => added.push(n) }, createElement: () => el(),
-    },
-    addEventListener() {}, location: { hash: '', search: '', reload() {} }, history: { length: 2 },
-    requestAnimationFrame: (cb: () => void) => frames.push(cb), outerWidth: 1512, outerHeight: 982,
-  });
-  const onMessage: Parameters<MarginBrowserApi['runtime']['onMessage']['addListener']>[0][] = [];
-  globalThis.browser = fakeBrowser({
-    runtime: { getURL: (p) => `safari-web-extension://test/${p}`, sendMessage: async () => ({ ok: true }), onMessage: { addListener: (fn) => onMessage.push(fn) } },
-    storage: { local: { get: async () => ({ appLink: { state: 'linked', layouts: {}, drawn: {} }, settings: {} }) }, onChanged: { addListener() {} } },
-    tabs: { getCurrent: async () => ({ id: 5, windowId: 7 }) },
-  });
-  try {
-    await import('../extension/newtab/newtab.ts?probe' as string); // (a copy of its own: TypeScript doesn't resolve the query)
-    await sleep(20);
-    let answer: { frames?: number, width?: number, visible?: boolean } | undefined;
-    const open = onMessage.map((fn) => fn({ type: 'frameProbe', width: 1512, height: 982, frames: 2, nudgeMs: 0, timeoutMs: 400 }, {}, (a) => { answer = a; }));
-    assert.ok(open.includes(true), 'answered later (the channel kept open)');
-    for (let i = 0; i < 3; i++) for (const cb of frames.splice(0)) cb();
-    await sleep(5);
-    assert.equal(answer?.frames, 2);
-    assert.equal(answer?.width, 1512);
-    assert.equal(answer?.visible, true);
-  } finally {
-    for (const k of ['document', 'addEventListener', 'location', 'history', 'requestAnimationFrame', 'outerWidth', 'outerHeight', 'browser']) delete (globalThis as Record<string, unknown>)[k];
-  }
+  fake.createdWith = [];
+  const blank = (await handlers.newWindow({ fullscreen: false, url: 'about:blank', background: true } as any))!;
+  assert.deepEqual(fake.createdWith[0], { focused: true, url: 'about:blank' }, 'focused, whatever an older app asks');
+  assert.equal(fake.tabs.get(blank.windowId * 10)?.url, 'about:blank', 'nothing loaded in it');
+  const app = { app: true, tab: { windowId: null } } as any;
+  const page = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }, app))!;
+  assert.deepEqual(fake.createdWith[1], { focused: true, url: 'https://a.example/' }, 'a web page: a split\'s pane window or the preview card window opened at its page (docs/PEEK-SPLIT.md §2, §4)');
+  const other = (await handlers.newWindow({ fullscreen: false, url: 'file:///etc/hosts' }, app))!;
+  assert.deepEqual(fake.createdWith[2], { focused: true }, 'any other address ignored');
+  const notApp = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;
+  assert.deepEqual(fake.createdWith[3], { focused: true }, 'a web page only when Margin.app asks');
+  for (const w of [blank, page, other, notApp]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
+  fake.windows.get(1)!.focused = true;
 });
 
 // ---- the scroll record (docs/DATA.md "The scroll record") ------------------------------------------
@@ -777,23 +391,8 @@ test('the scroll record in the background: a page\'s word written to its tab, ke
   await store.mutate((s) => M.removeTab(s, shown));
 });
 
-test('the draft answers: each page\'s scroll with them, written to its tab just before the close they were asked for; the sleep check\'s too', async () => {
-  fake.windows.set(9, win(9));
-  const tabs = [
-    { id: 91, windowId: 9, url: 'https://one.test/', title: '', index: 0, active: true, status: 'complete' },
-    { id: 92, windowId: 9, url: 'https://two.test/', title: '', index: 1, active: false, status: 'complete' },
-  ];
-  for (const t of tabs) fake.tabs.set(t.id, t);
-  await store.mutate((s) => tabs.reduce((st, t) => M.upsertTab(st, t, Date.now()), s));
-  fake.scrollY = { 91: 640 };
-  fake.drafts = (tabId) => (tabId === 92 ? 'draft' : 'none');
-  assert.deepEqual(await handlers.windowDrafts({ windowId: 9 }), { drafts: [92], unknown: [] });
-  await store.mutate((s) => s);
-  const s = await store.load();
-  assert.equal(s.tabs[91].scroll, 640);
-  assert.equal(s.tabs[92].scroll, undefined, 'at the top (said nothing of it): none');
-
-  // The page's own answer: <html>'s place, or <body>'s while Margin's box scrolls it; the top frame only.
+test('the sleep check\'s answer says where the page is scrolled', async () => {
+  // The page's own answer: <html>'s place, or <body>'s where the page scrolls it; the top frame only.
   const { sleepInPage } = await import('../extension/background/sleep.ts');
   const run = (html: number, body: number, top = true): { ok: boolean, scrollY?: number } => {
     const doc = { visibilityState: 'hidden', querySelectorAll: () => [], scrollingElement: { scrollTop: html }, body: { scrollTop: body } };
@@ -801,20 +400,15 @@ test('the draft answers: each page\'s scroll with them, written to its tab just 
     globalThis.window.top = top ? globalThis.window : ({} as Window); // another frame's top
     globalThis.window.frameElement = null;
     try {
-      return sleepInPage('https://a.test/', Date.now() + 1000, true);
+      return sleepInPage('https://a.test/', Date.now() + 1000);
     } finally {
       for (const k of ['window', 'document', 'location']) delete (globalThis as Record<string, unknown>)[k];
     }
   };
   assert.equal(run(320.4, 0).scrollY, 320);
-  assert.equal(run(0, 900).scrollY, 900, 'the box\'s <body>');
+  assert.equal(run(0, 900).scrollY, 900, 'a page that scrolls its <body>');
   assert.equal(run(0, 0).scrollY, undefined, 'at the top: not said');
   assert.equal(run(320, 0, false).scrollY, undefined, 'another frame says nothing of it');
-  for (const t of tabs) fake.tabs.delete(t.id);
-  fake.windows.delete(9);
-  fake.scrollY = {};
-  fake.drafts = () => 'none';
-  await store.mutate((st) => tabs.reduce((x, t) => M.removeTab(x, t.id), st));
 });
 
 test('the page\'s part: its scroll said as it\'s hidden (once a second, the last after that) and as it\'s left, only when it moved; a reopened tab\'s place taken once, until it\'s there or the person moves', async () => {
@@ -838,8 +432,7 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
     return { doc, win, html, body, sent, answers, send, emit, on };
   };
   const p = page();
-  let boxed = false;
-  const rec = startScrollRecord({ send: p.send, retired: () => false, boxed: () => boxed, doc: p.doc, win: p.win, everyMs: 60, restoreMs: 300 });
+  const rec = startScrollRecord({ send: p.send, retired: () => false, doc: p.doc, win: p.win, everyMs: 60, restoreMs: 300 });
   p.doc.visibilityState = 'hidden';
   p.emit('doc:visibilitychange');
   assert.deepEqual(p.sent, [], 'never scrolled: nothing said');
@@ -857,33 +450,29 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
   p.emit('win:pagehide');
   assert.deepEqual(p.sent.at(-1), { type: 'pageScroll', y: 520, url: 'https://page.test/a' }, 'left: at once');
 
-  // Reopened: asked once, set until it's there (the page growing), with the box on: <body>.
+  // Reopened: asked once, set until it's there (the page growing).
   const q = page();
   q.answers.takeScroll = 1800;
-  boxed = true;
-  q.body.scrollTop = 0;
   let tall = false;
-  Object.defineProperty(q.body, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = tall ? v : Math.min(v, 300); }, configurable: true });
-  const rec2 = startScrollRecord({ send: q.send, retired: () => false, boxed: () => boxed, doc: q.doc, win: q.win, everyMs: 60, restoreMs: 1000 });
+  Object.defineProperty(q.html, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = tall ? v : Math.min(v, 300); }, configurable: true });
+  const rec2 = startScrollRecord({ send: q.send, retired: () => false, doc: q.doc, win: q.win, everyMs: 60, restoreMs: 1000 });
   rec2.take(false);
   assert.deepEqual(q.sent, [], 'no place on its record: not asked');
   rec2.take(true);
   rec2.take(true);
   await sleep(5);
   assert.deepEqual(q.sent, [{ type: 'takeScroll', url: 'https://page.test/a' }], 'asked once');
-  assert.equal(q.body.scrollTop, 300, 'as far as the page goes yet');
+  assert.equal(q.html.scrollTop, 300, 'as far as the page goes yet');
   tall = true;
   await sleep(250);
-  assert.equal(q.body.scrollTop, 1800, 'then there');
-  assert.equal(q.html.scrollTop, 0, '<html> left alone under the box');
+  assert.equal(q.html.scrollTop, 1800, 'then there');
   assert.ok((q.on['win:wheel'] ?? []).length === 0, 'done: its listeners gone');
 
   // The person scrolls first: left where they put it.
   const r = page();
   r.answers.takeScroll = 5000;
-  boxed = false;
   Object.defineProperty(r.html, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = Math.min(v, 100); }, configurable: true });
-  const rec3 = startScrollRecord({ send: r.send, retired: () => false, boxed: () => boxed, doc: r.doc, win: r.win, everyMs: 60, restoreMs: 2000 });
+  const rec3 = startScrollRecord({ send: r.send, retired: () => false, doc: r.doc, win: r.win, everyMs: 60, restoreMs: 2000 });
   rec3.take(true);
   await sleep(5);
   r.emit('win:wheel');
@@ -894,10 +483,20 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
   const t = page();
   t.answers.takeScroll = 70;
   t.doc.readyState = 'loading';
-  startScrollRecord({ send: t.send, retired: () => false, boxed: () => false, doc: t.doc, win: t.win }).take(true);
+  startScrollRecord({ send: t.send, retired: () => false, doc: t.doc, win: t.win }).take(true);
   await sleep(5);
   assert.equal(t.html.scrollTop, 0);
   t.emit('doc:DOMContentLoaded');
   assert.equal(t.html.scrollTop, 70);
   void rec;
+});
+
+test('hostFocusWindow (Margin.app bringing a card\'s or pane\'s window in front, docs/PEEK-SPLIT.md): the app\'s request only, that window focused, never past notAfter', async () => {
+  fresh();
+  await assert.rejects(handlers.hostFocusWindow({ windowId: 2, notAfter: Date.now() + 2000 }, {} as any), /the app's request only/);
+  assert.equal(fake.windowUpdates.length, 0, 'not from the app: nothing called');
+  assert.deepEqual(await handlers.hostFocusWindow({ windowId: 2, notAfter: Date.now() + 2000 }, { app: true } as any), { windowId: 2, focused: true });
+  assert.deepEqual(fake.windowUpdates.at(-1), { id: 2, focused: true });
+  assert.equal(((await handlers.hostFocusWindow({ windowId: 2, notAfter: Date.now() - 50 }, { app: true } as any)) as Refused).refused, 'late');
+  assert.equal(fake.windowUpdates.length, 1, 'late: not called');
 });

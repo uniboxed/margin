@@ -37,7 +37,7 @@ struct View<'a> {
 impl View<'_> {
     fn profiles_of(&mut self, browser: &str) -> &mut BrowserProfiles {
         let root = self.root.clone();
-        self.profiles.entry(browser.to_owned()).or_insert_with(|| BrowserProfiles::new(browser, Some(&root)))
+        self.profiles.entry(browser.to_owned()).or_insert_with(|| BrowserProfiles::overlay(browser, Some(&root)))
     }
 }
 
@@ -241,7 +241,7 @@ macro_rules! view {
 impl Shell {
     fn profiles_of(&mut self, browser: &str) -> &mut BrowserProfiles {
         let root = self.data.store().root().to_path_buf();
-        self.profiles.entry(browser.to_owned()).or_insert_with(|| BrowserProfiles::new(browser, Some(&root)))
+        self.profiles.entry(browser.to_owned()).or_insert_with(|| BrowserProfiles::overlay(browser, Some(&root)))
     }
 
     /// The order brought up to date, then every overlay told if its `across` changed (after this input).

@@ -1,7 +1,7 @@
 // shared/space-swipe.ts: the sidebar's swipe between spaces.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSpaceSwipe, settle, rubberBand } from '../extension/shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS } from '../extension/shared/space-swipe.ts';
 
 type Swipe = ReturnType<typeof createSpaceSwipe>;
 
@@ -154,4 +154,106 @@ test('space swipe: an oversized step is reported as not counted (the sidebar sta
   const next = swipe.wheel({ deltaX: -20, time: 16 });
   assert.equal(next.counted, true);
   assert.equal(next.offset, 20);
+});
+
+// ---- Arc's own feel (from Arc 1.174.0's ARCUI.PageSwipeController, 2026-11-20) ----
+
+test('arc: its numbers, as read from Arc: half the distance, 100 ms of speed, 5 px/s, rubber band 0.15 over 255, spring 0.4 s critically damped', () => {
+  assert.deepEqual([ARC.SCALE, ARC.VELOCITY_MS, ARC.COMMIT_SPEED, ARC.RUBBER_COEFFICIENT, ARC.RUBBER_DIMENSION, ARC.RESPONSE, ARC.DAMPING], [0.5, 100, 5, 0.15, 255, 0.4, 1]);
+});
+
+test('arc settle: moving at the lift, its direction decides (toward the neighbour it\'s over, or back); slower than 5 px/s, the nearest; one space, only toward one there is', () => {
+  const w = 260;
+  const go = (offset: number, velocity: number, has: (dir: -1 | 1) => boolean = both) => settleArc({ offset, velocity, width: w, has });
+  // offset < 0: dragged toward the next space (1); velocity signed like the offset.
+  assert.equal(go(-20, -6), 1, 'a short drag still moving toward the next: the next');
+  assert.equal(go(-200, 6), 0, 'far toward the next but moving back at the lift: back');
+  assert.equal(go(40, 30), -1, 'toward the previous, moving that way: the previous');
+  assert.equal(go(40, -30), 0, 'toward the previous, moving back: back');
+  assert.equal(go(-140, -4), 1, 'barely moving: the nearest, past half the width: the next');
+  assert.equal(go(-120, 4.9), 0, 'barely moving, short of half: back');
+  assert.equal(go(-20, -6, (d: -1 | 1) => d === -1), 0, 'no next space: back');
+  assert.equal(settleArc({ offset: -200, velocity: -100, width: w, has: both, cancelled: true }), 0, 'cancelled by the trackpad: back');
+  assert.equal(settleArc({ offset: -200, velocity: -100, width: w, has: both, events: 2 }), 0, 'a notch or two never switches');
+});
+
+test('arc rubber band: Motion\'s, coefficient 0.15 over 255 pt: small at first, never 255', () => {
+  assert.equal(rubberBandArc(0), 0);
+  assert.ok(Math.abs(rubberBandArc(100) - 255 * (1 - 1 / (100 * 0.15 / 255 + 1))) < 1e-9);
+  assert.ok(Math.abs(rubberBandArc(-100) + rubberBandArc(100)) < 1e-9, 'both ways alike');
+  assert.ok(rubberBandArc(100) < 15 && rubberBandArc(10000) < 255 && rubberBandArc(10000) > rubberBandArc(1000));
+});
+
+test('arc spring: critically damped from where it\'s drawn: at rest at the target, no overshoot from rest, the lift\'s speed carried', () => {
+  const still = springArc(-120, 0, -260);
+  assert.equal(still.at(0).x, -120);
+  assert.ok(Math.abs(still.at(still.duration).x + 260) < ARC.REST_PX, 'at rest at the target');
+  const xs = Array.from({ length: 200 }, (_, i) => still.at(i / 240).x);
+  assert.ok(xs.every((x, i) => i === 0 || x <= xs[i - 1] + 1e-9) && xs.every((x) => x >= -260 - 1e-9), 'from rest: straight there, never past it');
+  assert.ok(still.duration > 0.3 && still.duration < 0.8, `about half a second for 140 px (${still.duration})`);
+  const fast = springArc(-120, -2000, -260);
+  assert.ok(Math.abs(fast.at(0).v + 2000) < 1e-6, 'starts at the lift\'s speed');
+  assert.ok(fast.at(1 / 60).x < still.at(1 / 60).x, 'a flick carries it on faster at first');
+  assert.ok(springArc(0, 0, 0).duration === 0, 'nothing to do: at rest at once');
+});
+
+test('arc tracking: the speed over the last 100 ms, from the lift; none once the fingers rested', () => {
+  const swipe = createSpaceSwipe();
+  feed(swipe, [-10, -10, -10, -10, -10, -10, -10, -10]); // 16 ms apart from 1000: 10 px a step, right to left
+  const last = 1000 + 7 * 16;
+  assert.ok(Math.abs(swipe.velocity(last, 100) - 10 / 16) < 1e-9, 'offset px per ms over the window');
+  assert.equal(swipe.velocity(last + 300, 100), 0, 'lifted 300 ms after the last move: no speed');
+  const lift = swipe.lift(last + 5);
+  assert.equal(lift.phase, 'release');
+  assert.equal((lift as { time?: number }).time, last + 5);
+  assert.equal(swipe.lift(last + 6).phase, 'idle', 'once');
+  assert.ok(swipe.isSwipe(), 'the gesture let go is still the swipe (its momentum)');
+});
+
+test('arc tracking, the trackpad\'s phases known: fingers resting mid-swipe keep the gesture; a touch starts a new one; never let go by momentum', () => {
+  const swipe = createSpaceSwipe();
+  const step = (dx: number, time: number, fresh?: boolean) => swipe.wheel({ deltaX: dx, time, fresh, decay: false });
+  step(-10, 1000, true);
+  for (let i = 1; i < 6; i++) step(-10, 1000 + i * 16, false);
+  const rested = step(-10, 1000 + 6 * 16 + 400, false); // 400 ms still, fingers down
+  assert.equal(rested.phase, 'tracking', 'the same gesture after a rest');
+  assert.ok(rested.offset > 40, 'its offset carried on');
+  const decaying = Array.from({ length: 10 }, (_, i) => step(-20 * 0.9 ** i, 1500 + i * 16, false));
+  assert.ok(decaying.every((r) => r.phase === 'tracking'), 'a steady decay with the fingers down is still the fingers');
+  const fresh = step(-10, 1700, true);
+  assert.equal(fresh.phase, 'release', 'a touch while one was tracked: that one let go first');
+});
+
+test('arc tracking without phases: momentum told by its decay gives back what it added, and the lift\'s time', () => {
+  const swipe = createSpaceSwipe();
+  const momentum = Array.from({ length: 12 }, (_, i) => -20 * 0.92 ** (i + 1));
+  const out = feed(swipe, [-8, -14, -20, -20, ...momentum]);
+  const r = out.find((x) => x.phase === 'release') as any;
+  assert.ok(r, 'released by the decay');
+  assert.ok(Math.sign(r.overrun) === Math.sign(r.offset) && Math.abs(r.overrun) < Math.abs(r.offset), `the run's own offset, the same way (${r.overrun} of ${r.offset})`);
+  assert.ok(r.lifted < r.time, 'the lift: the run\'s first event, before its last');
+});
+
+// ---- Dia's (1.58.0, the same controller, 2026-11-20): its haptic on, its settle 0.25 s as 240 Hz keyframes ----
+
+test('feels: Arc\'s 0.4 s and no haptic (it never turns it on); Dia\'s 0.25 s and the detent tick', () => {
+  assert.deepEqual(FEELS.arc, { response: 0.4, haptics: false });
+  assert.deepEqual(FEELS.dia, { response: 0.25, haptics: true });
+  assert.ok(springArc(-120, 0, -260, FEELS.dia.response).duration < springArc(-120, 0, -260, FEELS.arc.response).duration, 'Dia\'s settles sooner');
+});
+
+test('keyframes: the spring every 1/240 s as progress from where it\'s drawn (0) to where it goes (1); nothing to move, none', () => {
+  const spring = springArc(-120, 0, -260, 0.25);
+  const k = springKeyframes(spring, -120, -260)!;
+  assert.equal(k.length, Math.round(spring.duration * 240) + 1, 'one per 1/240 s, both ends');
+  assert.deepEqual([k[0], k.at(-1)], [0, 1]);
+  assert.ok(k.every((p, i) => i === 0 || p >= k[i - 1]), 'from rest: always onward');
+  assert.ok(Math.abs(k[24] - (spring.at(0.1).x + 120) / -140) < 1e-4, 'the spring\'s own position at 0.1 s');
+  const flick = springKeyframes(springArc(-120, -3000, -260, 0.25), -120, -260)!;
+  assert.ok(flick[6] > k[6], 'a flick: further at first');
+  assert.equal(springKeyframes(springArc(0, 0, 0), 0, 0), null);
+});
+
+test('arc rubber band\'s inverse: the overflow a drawn place stands for (a settle caught past an end, the band not applied twice)', () => {
+  for (const v of [0, 1, 40, 300, -120, 5000]) assert.ok(Math.abs(rubberBandArcInverse(rubberBandArc(v)) - v) < 1e-6 * Math.max(1, Math.abs(v)), `${v}`);
 });

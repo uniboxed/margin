@@ -1,0 +1,579 @@
+<div class="nb" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-style:--space="{{space.color}}">
+
+  <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
+
+  <nav class="sidebar" aria-label="Sidebar">
+    <div class="column" m-swipe="spaces">
+
+      <div class="window-bar">
+        <m-window-controls class="window-controls"></m-window-controls>
+        <m-drag-region class="drag-region"></m-drag-region>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn push sq" aria-label="Toggle sidebar" m-attr:aria-pressed="{{window.sidebarOpen}}" m-action="sidebar.toggle">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15"></rect><path d="M9.5 4.5v15"></path></svg>
+        </button>
+        <div class="grow"></div>
+        <button class="btn push sq" aria-label="Back" m-action="nav.back">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+        </button>
+        <button class="btn push sq" aria-label="Forward" m-action="nav.forward">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+        </button>
+        <button class="btn push sq" aria-label="Reload" m-class:loading="{{tab.loading}}" m-action="nav.reload">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
+        </button>
+      </div>
+
+      <button class="btn push address" aria-label="Address: {{tab.url}}. Open command bar" m-action="palette.open">
+        <svg class="ico lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="10.5" width="13" height="9"></rect><path d="M8.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5"></path></svg>
+        <span class="ellipsis">{{tab.host}}</span>
+      </button>
+
+      <m-if test="favorites.hasItems">
+        <div class="favorites" role="list" aria-label="Favorites" m-drop="favorites" m-style:--fav-cols="{{favorites.columns}}">
+          <m-for each="favorites.items" as="fav">
+            <a class="btn push favorite-tile" data-favorite-id="{{fav.id}}" title="{{fav.title}}" aria-label="{{fav.title}}" m-class:on="{{fav.active}}" m-class:open="{{fav.open}}" m-class:drifted="{{fav.drifted}}" m-class:audible="{{fav.audible}}" m-class:muted="{{fav.muted}}" m-action="favorite.open" m-arg="{{fav.id}}" m-drag="favorite">
+              <m-if test="fav.icon">
+                <img class="fav" alt="" m-class:app="{{fav.isApp}}" m-icon="{{fav.icon}}">
+                <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{fav.color}}">{{fav.letter}}</span></m-else>
+              </m-if>
+              <m-if test="fav.drifted"><span class="drift-dot" aria-hidden="true"></span></m-if>
+            </a>
+          </m-for>
+        </div>
+        <!-- No favorites yet: an empty drop target, drawn only while a tab or pin is dragged (nothing at rest). -->
+        <m-else><div class="favorites-drop" aria-hidden="true" m-drop="favorites"><span class="favorites-drop-zone"></span></div></m-else>
+      </m-if>
+
+      <div class="space-head swipes">
+        <h2 class="space-name" m-rename="space">{{space.name}}</h2>
+        <span class="pill">{{space.tabCount}} TABS</span>
+      </div>
+
+      <div class="tabs swipes" m-scroll="tabs">
+        <div class="folders" m-drop="pins">
+          <m-for each="space.pinned" as="g">
+            <m-if test="g.isFolder">
+              <div class="folder" m-class:open="{{g.open}}" m-drop="folder">
+                <button class="btn row folder-head" m-attr:aria-expanded="{{g.open}}" m-action="folder.toggle" m-arg="{{g.id}}" m-drag="folder">
+                  <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                  <span class="folder-name" m-rename="folder">{{g.name}}</span>
+                </button>
+                <m-if test="g.hasShown">
+                  <div class="folder-tabs">
+                    <m-for each="g.shownFlat" as="t">
+                      <m-if test="t.isFolder">
+                        <button class="btn row folder-head nested" m-class:open="{{t.open}}" m-style:--depth="{{t.depth}}" m-attr:aria-expanded="{{t.open}}" m-action="folder.toggle" m-arg="{{t.id}}" m-drag="folder" m-drop="folder">
+                          <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                          <span class="folder-name" m-rename="folder">{{t.name}}</span>
+                        </button>
+                        <m-else>
+                          <a class="btn row tab pin" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:away="{{t.away}}" m-class:drifted="{{t.drifted}}" m-class:muted="{{t.muted}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:open="{{t.open}}" m-style:--depth="{{t.depth}}" m-action="pin.open" m-arg="{{t.id}}" m-drag="pin">
+                            <m-if test="t.icon">
+                              <img class="fav" alt="" m-class:app="{{t.isApp}}" m-icon="{{t.icon}}">
+                              <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                            </m-if>
+                            <span class="title" m-rename="pin">{{t.title}}</span>
+                            <m-if test="t.drifted">
+                              <button class="btn reset" title="Reset to pinned URL" aria-label="Reset to pinned URL" m-action="pin.reset" m-arg="{{t.id}}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 1 2.2 5.3M4.5 4.5v4h4"></path></svg></button>
+                            </m-if>
+                            <m-if test="t.audible"><svg class="ico audible" viewBox="0 0 24 24" role="img" aria-label="Playing audio"><path class="speaker" d="M3.5 9h4l5-4v14l-5-4h-4Z"></path><path d="M16 9a4.2 4.2 0 0 1 0 6M18.8 6.2a8.2 8.2 0 0 1 0 11.6"></path></svg></m-if>
+                            <m-if test="t.open">
+                              <button class="btn close" aria-label="Close tab (stays pinned)" m-action="tab.close" m-arg="{{t.tabId}}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg></button>
+                            </m-if>
+                          </a>
+                        </m-else>
+                      </m-if>
+                    </m-for>
+                  </div>
+                </m-if>
+              </div>
+              <m-else>
+                <!-- A pin outside the folders: the board's folder row, in a card of its own (one card for pins side by side). -->
+                <div class="loose-card">
+                  <a class="btn row tab pin" title="{{g.title}}" m-class:on="{{g.active}}" m-class:behind="{{g.behind}}" m-class:away="{{g.away}}" m-class:drifted="{{g.drifted}}" m-class:muted="{{g.muted}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" m-class:open="{{g.open}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
+                    <m-if test="g.icon">
+                      <img class="fav" alt="" m-class:app="{{g.isApp}}" m-icon="{{g.icon}}">
+                      <m-else><span class="fav letter" m-style:--fav="{{g.color}}">{{g.letter}}</span></m-else>
+                    </m-if>
+                    <span class="title" m-rename="pin">{{g.title}}</span>
+                    <m-if test="g.drifted">
+                      <button class="btn reset" title="Reset to pinned URL" aria-label="Reset to pinned URL" m-action="pin.reset" m-arg="{{g.id}}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 1 2.2 5.3M4.5 4.5v4h4"></path></svg></button>
+                    </m-if>
+                    <m-if test="g.audible"><svg class="ico audible" viewBox="0 0 24 24" role="img" aria-label="Playing audio"><path class="speaker" d="M3.5 9h4l5-4v14l-5-4h-4Z"></path><path d="M16 9a4.2 4.2 0 0 1 0 6M18.8 6.2a8.2 8.2 0 0 1 0 11.6"></path></svg></m-if>
+                    <m-if test="g.open">
+                      <button class="btn close" aria-label="Close tab (stays pinned)" m-action="tab.close" m-arg="{{g.tabId}}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg></button>
+                    </m-if>
+                  </a>
+                </div>
+              </m-else>
+            </m-if>
+          </m-for>
+        </div>
+
+        <div class="today-zone" m-drop="tabs">
+          <div class="divider">
+            <span class="dash"></span>
+            <m-if test="space.hasToday">
+              <button class="btn push clear" m-action="today.clear">CLEAR ↓</button>
+            </m-if>
+          </div>
+
+          <button class="btn push new-tab" m-class:on="{{space.newTab.active}}" m-action="tab.new">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            <span class="grow left">NEW TAB</span>
+            <kbd class="kbd">⌘T</kbd>
+          </button>
+
+          <div class="today">
+            <m-if test="space.hasSplits">
+              <m-for each="space.splits" as="sp">
+                <div class="split-row" data-split-id="{{sp.id}}" m-class:on="{{sp.active}}">
+                  <m-for each="sp.panes" as="pane">
+                    <button class="btn split-pane-btn" m-class:on="{{pane.active}}" title="{{pane.title}}" m-action="split.focus" m-arg="{{pane.tabId}}">
+                      <m-if test="pane.icon">
+                        <img class="fav" alt="" m-class:app="{{pane.isApp}}" m-icon="{{pane.icon}}">
+                        <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{pane.color}}">{{pane.letter}}</span></m-else>
+                      </m-if>
+                      <span class="title">{{pane.title}}</span>
+                    </button>
+                  </m-for>
+                  <button class="btn split-swap" title="Swap split panes" aria-label="Swap split panes" m-action="split.swap" m-arg="{{sp.id}}">
+                    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16M15 4l5 5-5 5M20 15H4M9 20l-5-5 5-5"></path></svg>
+                  </button>
+                </div>
+              </m-for>
+            </m-if>
+            <m-for each="space.today" as="t">
+              <a class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:away="{{t.away}}" m-class:muted="{{t.muted}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+                <m-if test="t.icon">
+                  <img class="fav" alt="" m-class:app="{{t.isApp}}" m-icon="{{t.icon}}">
+                  <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                </m-if>
+                <span class="title" m-rename="tab">{{t.title}}</span>
+                <m-if test="t.audible"><svg class="ico audible" viewBox="0 0 24 24" role="img" aria-label="Playing audio"><path class="speaker" d="M3.5 9h4l5-4v14l-5-4h-4Z"></path><path d="M16 9a4.2 4.2 0 0 1 0 6M18.8 6.2a8.2 8.2 0 0 1 0 11.6"></path></svg></m-if>
+                <button class="btn close" aria-label="Close tab" m-action="tab.close" m-arg="{{t.id}}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg></button>
+              </a>
+            </m-for>
+          </div>
+        </div>
+      </div>
+
+      <m-if test="media">
+        <div class="mini-player" m-class:paused="{{media.paused}}">
+          <button class="btn mini-info" title="{{media.title}}" aria-label="Jump to playing media" m-action="media.focus">
+            <m-if test="media.artwork">
+              <img class="mini-art" alt="" m-icon="{{media.artwork}}">
+              <m-else>
+                <m-if test="media.icon">
+                  <img class="mini-art" alt="" m-icon="{{media.icon}}">
+                  <m-else><span class="mini-art letter" aria-hidden="true" m-style:--fav="{{media.color}}">{{media.letter}}</span></m-else>
+                </m-if>
+              </m-else>
+            </m-if>
+            <span class="mini-text">
+              <span class="mini-title">{{media.title}}</span>
+              <m-if test="media.subtitle"><span class="mini-sub">{{media.subtitle}}</span></m-if>
+            </span>
+          </button>
+          <div class="mini-controls">
+            <m-if test="media.canPrev">
+              <button class="btn push sq mini-btn" aria-label="Previous track" m-action="media.prev"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6v12M18 7l-8 5 8 5Z"></path></svg></button>
+            </m-if>
+            <button class="btn push sq mini-btn" aria-label="Play or pause" m-action="media.toggle">
+              <m-if test="media.playing">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"></path></svg>
+                <m-else><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l10 6-10 6Z"></path></svg></m-else>
+              </m-if>
+            </button>
+            <m-if test="media.canNext">
+              <button class="btn push sq mini-btn" aria-label="Next track" m-action="media.next"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6v12M6 7l8 5-8 5Z"></path></svg></button>
+            </m-if>
+            <button class="btn push sq mini-btn" aria-label="Mute or unmute" m-class:muted="{{media.muted}}" m-action="media.mute"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9h4l5-4v14l-5-4h-4Z"></path><path d="M16 9a4.2 4.2 0 0 1 0 6"></path></svg></button>
+          </div>
+        </div>
+      </m-if>
+
+      <div class="spaces">
+        <button class="btn push sq big" aria-label="Archive and library" m-action="archive.open">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5"></rect><path d="M5 9v11h14V9M10 13h4"></path></svg>
+        </button>
+        <div class="chips" role="group" aria-label="Spaces">
+          <m-for each="spaces" as="s">
+            <button class="btn chip" aria-label="Switch to {{s.label}} space" title="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.abbr}}</button>
+          </m-for>
+        </div>
+        <button class="btn push sq big" aria-label="New folder or space" m-action="menu.open" m-arg="add">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </div>
+
+    </div>
+    <div class="resizer" m-resize="sidebar" title="Drag to resize · double-click to reset" aria-hidden="true"></div>
+  </nav>
+
+  <m-page class="page"></m-page>
+
+  <!-- The page card while an item opens (Margin.app: m-page-state="loading"
+       on the root): opaque, inside the card's border, with the "page-loader"
+       part in it. Empty, and drawing nothing, otherwise. -->
+  <m-page-loader class="page-loader"></m-page-loader>
+
+  <!-- The page loading (the tab in front: its load, the page being left, a
+       site's own navigation): a marching stripe in the gutter above the page,
+       seen with the sidebar hidden too. -->
+  <div class="load-bar" m-class:on="{{tab.loading}}" aria-hidden="true"></div>
+
+  <!-- Margin's trackpad gestures on the page (pull to refresh, swipe back
+       and forward): a badge over the page that comes in with the fingers and
+       fills once letting go would do it. Never takes the pointer. -->
+  <div class="page-over" aria-hidden="true">
+    <m-if test="gesture.pull">
+      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-class:leaving="{{gesture.leaving}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
+      </div>
+    </m-if>
+    <m-if test="gesture.swipe">
+      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-class:leaving="{{gesture.leaving}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
+      </div>
+    </m-if>
+  </div>
+
+  <m-if test="palette.open">
+    <div class="palette-layer">
+      <button class="btn scrim" aria-label="Close command bar" m-action="palette.close"></button>
+      <div class="palette" role="dialog" aria-label="New tab">
+        <label class="palette-label" for="palette-input">SEARCH OR TYPE A URL</label>
+        <input id="palette-input" class="palette-input" m-input="palette" placeholder="Go anywhere…" autocomplete="off" spellcheck="false">
+        <!-- At most eight rows show; the rest scroll (Margin keeps the selected one in view). -->
+        <div class="palette-rows" m-scroll="palette">
+          <m-for each="palette.rows" as="r">
+            <!-- A run of rows from one place (iCloud Tabs: "On Nora's iPhone"): its heading. -->
+            <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
+            <button class="btn row palette-row" m-class:on="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
+              <!-- The board's tag (TAB, ASK): here the row's badge (its space, Archived, Search…), in that space's color, one width for all. -->
+              <m-if test="r.badge"><span class="tag" m-style:--tag="{{r.spaceColor}}">{{r.badge}}</span></m-if>
+              <m-if test="r.isSearch">
+                <span class="fav glyph" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path></svg></span>
+                <m-else>
+              <m-if test="r.isOpen">
+                <span class="fav glyph" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><path d="M8 16 17 7M9 7h8v8"></path></svg></span>
+                <m-else>
+              <m-if test="r.emoji">
+                <span class="fav emoji" aria-hidden="true">{{r.emoji}}</span>
+                <m-else>
+                  <m-if test="r.icon">
+                    <img class="fav" alt="" m-class:app="{{r.isApp}}" m-icon="{{r.icon}}">
+                    <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{r.color}}">{{r.letter}}</span></m-else>
+                  </m-if>
+                </m-else>
+              </m-if>
+                </m-else>
+              </m-if>
+                </m-else>
+              </m-if>
+              <span class="grow left ellipsis">{{r.title}}</span>
+              <span class="enter">↵</span>
+            </button>
+          </m-for>
+        </div>
+      </div>
+    </div>
+  </m-if>
+
+  <m-launcher class="launcher-slot"></m-launcher>
+  <m-menu class="menu-slot"></m-menu>
+  <m-picker class="picker-slot"></m-picker>
+
+  <!-- Edit Theme Color (Margin's <m-picker>, the "background-picker" part): the board's card. Square appearance
+       buttons, the colours' field with the hidden wheel shown, square −/+ and a tag for the rule, square swatches,
+       a chunky bar for the intensity, tiles for the textures and a strip of amounts, then two push buttons. Every
+       word is Margin's. -->
+  <template m-part="background-picker">
+    <div class="picker" role="dialog" m-attr:aria-label="{{picker.title}}" m-class:picker-dropping="{{picker.picture.dropping}}">
+      <div class="picker-head">
+        <h2 class="picker-title">{{picker.title}}</h2>
+        <div class="picker-looks" role="radiogroup" m-attr:aria-label="{{picker.appearanceLabel}}">
+          <m-for each="picker.appearances" as="a" key="id">
+            <button class="picker-look" role="radio" m-action="picker.run" m-arg="{{a.id}}" m-attr:aria-checked="{{a.selected}}" m-attr:aria-label="{{a.label}}" m-attr:title="{{a.label}}" data-look="{{a.value}}"><svg class="look look-auto" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="6.2"></circle><path class="fill" d="M9 2.8a6.2 6.2 0 0 1 0 12.4z"></path></svg><svg class="look look-light" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="3.2"></circle><path d="M9 1.8v1.8M9 14.4v1.8M1.8 9h1.8M14.4 9h1.8M3.9 3.9l1.3 1.3M12.8 12.8l1.3 1.3M3.9 14.1l1.3-1.3M12.8 5.2l1.3-1.3"></path></svg><svg class="look look-dark" viewBox="0 0 18 18" aria-hidden="true"><path d="M15 10.5A6.3 6.3 0 1 1 7.5 3a5 5 0 0 0 7.5 7.5z"></path></svg></button>
+          </m-for>
+        </div>
+      </div>
+      <m-picker-field class="picker-field" m-variant="wheel"></m-picker-field>
+      <div class="picker-row">
+        <button class="picker-square" m-action="picker.run" m-arg="{{picker.colors.remove.id}}" m-attr:disabled="{{picker.colors.remove.disabled}}" m-attr:aria-label="{{picker.colors.remove.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 9h10"></path></svg></button>
+        <button class="picker-square" m-action="picker.run" m-arg="{{picker.colors.add.id}}" m-attr:disabled="{{picker.colors.add.disabled}}" m-attr:aria-label="{{picker.colors.add.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 9h10M9 4v10"></path></svg></button>
+        <m-if test="picker.colors.hasRule">
+          <button class="picker-tag" m-action="picker.run" m-arg="{{picker.colors.rule.id}}" m-attr:title="{{picker.colors.rule.label}}">{{picker.colors.rule.text}}</button>
+        </m-if>
+      </div>
+      <div class="picker-presets" role="radiogroup" m-attr:aria-label="{{picker.presetsLabel}}">
+        <button class="picker-page" m-action="picker.run" m-arg="{{picker.prev.id}}" m-attr:aria-label="{{picker.prev.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M11 4.5 6.5 9l4.5 4.5"></path></svg></button>
+        <m-for each="picker.presets" as="p" key="id">
+          <button class="picker-swatch" role="radio" m-action="picker.run" m-arg="{{p.id}}" m-style:--swatch="{{p.color}}" m-attr:aria-checked="{{p.selected}}" m-attr:aria-label="{{p.label}}"></button>
+        </m-for>
+        <button class="picker-page" m-action="picker.run" m-arg="{{picker.next.id}}" m-attr:aria-label="{{picker.next.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7 4.5 11.5 9 7 13.5"></path></svg></button>
+      </div>
+      <m-if test="picker.picture">
+        <div class="picker-row" role="group" m-attr:aria-label="{{picker.picture.label}}">
+          <button class="picker-push picker-pic" m-action="picker.run" m-arg="{{picker.picture.choose.id}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 4h12v10H3z"></path><path d="M3 12l3.5-3.5 3 3 2-2L15 13"></path></svg>{{picker.picture.choose.label}}</button>
+          <m-if test="picker.picture.has">
+            <button class="picker-square" m-action="picker.run" m-arg="{{picker.picture.remove.id}}" m-attr:aria-label="{{picker.picture.remove.label}}" m-attr:title="{{picker.picture.remove.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M5 5l8 8M13 5l-8 8"></path></svg></button>
+          </m-if>
+        </div>
+        <m-if test="picker.picture.has">
+          <div class="picker-amounts picker-fits" role="radiogroup" m-attr:aria-label="{{picker.picture.fitLabel}}">
+            <m-for each="picker.picture.fits" as="f" key="id">
+              <button class="picker-amount" role="radio" m-action="picker.run" m-arg="{{f.id}}" m-attr:aria-checked="{{f.selected}}">{{f.label}}</button>
+            </m-for>
+          </div>
+        </m-if>
+        <m-if test="picker.picture.hasNote"><span class="picker-note" role="status">{{picker.picture.note}}</span></m-if>
+      </m-if>
+      <span class="picker-label">{{picker.intensity.label}}</span>
+      <m-picker-slider class="picker-bar" m-value="intensity" m-variant="bar"></m-picker-slider>
+      <span class="picker-label">{{picker.texture.label}}</span>
+      <div class="picker-tiles">
+        <m-for each="picker.textures" as="t" key="id">
+          <button class="picker-tile" m-action="picker.run" m-arg="{{t.id}}" m-attr:aria-pressed="{{t.selected}}" data-texture="{{t.value}}"><span class="picker-sample"></span><span class="picker-tile-name">{{t.label}}</span></button>
+        </m-for>
+      </div>
+      <div class="picker-amounts" role="radiogroup" m-attr:aria-label="{{picker.texture.amountLabel}}">
+        <m-for each="picker.amounts" as="m" key="id">
+          <button class="picker-amount" role="radio" m-action="picker.run" m-arg="{{m.id}}" m-attr:aria-checked="{{m.selected}}">{{m.label}}</button>
+        </m-for>
+      </div>
+      <div class="picker-foot">
+        <button class="picker-push" m-action="picker.run" m-arg="{{picker.all.id}}">{{picker.all.label}}</button>
+        <button class="picker-push picker-done" m-action="picker.run" m-arg="{{picker.done.id}}">{{picker.done.label}}</button>
+      </div>
+    </div>
+  </template>
+  <m-editor class="editor-slot"></m-editor>
+  <m-notice class="notice-slot"></m-notice>
+  <m-prompt class="prompt-slot"></m-prompt>
+  <m-preview class="preview-slot"></m-preview>
+  <m-toast class="toast-slot"></m-toast>
+
+  <template m-part="toast">
+    <div class="toast-pill" role="status" aria-live="polite">{{toast.text}}</div>
+  </template>
+
+  <template m-part="preview">
+    <div class="preview-backdrop" m-class:loading="{{preview.loading}}" m-class:ready="{{preview.ready}}" m-class:closing="{{preview.closing}}" m-class:quick-tab="{{preview.isQuickTab}}">
+      <button class="btn scrim" m-attr:aria-label="{{preview.labels.close}}" m-action="preview.close"></button>
+      <div class="preview-dim" aria-hidden="true"></div>
+      <div class="preview-card" role="dialog" m-attr:aria-label="{{preview.title}}">
+        <div class="preview-bar">
+          <m-if test="preview.isQuickTab">
+            <input class="preview-field" type="text" m-input="preview" m-attr:placeholder="{{preview.labels.search}}" m-attr:aria-label="{{preview.labels.search}}" spellcheck="false" autocomplete="off">
+            <m-else>
+              <button class="btn push sq preview-btn" m-attr:aria-label="{{preview.labels.back}}" m-action="preview.back"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button>
+              <button class="btn push sq preview-btn" m-attr:aria-label="{{preview.labels.forward}}" m-action="preview.forward"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button>
+              <span class="preview-host ellipsis">{{preview.host}}</span>
+              <button class="btn push small preview-btn" m-attr:title="{{preview.labels.copyUrl}}" m-attr:aria-label="{{preview.labels.copyUrl}}" m-action="preview.copyUrl">{{preview.labels.copyUrl}}</button>
+              <button class="btn push small primary preview-btn" m-action="preview.expand">{{preview.labels.expand}}</button>
+            </m-else>
+          </m-if>
+          <button class="btn push sq preview-btn preview-close" m-attr:aria-label="{{preview.labels.close}}" m-action="preview.close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg></button>
+        </div>
+        <m-preview-page class="preview-page"></m-preview-page>
+      </div>
+    </div>
+  </template>
+
+  <!-- The page card's loader: the opening app's icon in a bordered square
+       (Safari's for a web item) beside Margin's words in the heavy type
+       ("OPENING SAFARI…"), over a chunky bar, a striped block running along it. -->
+  <template m-part="page-loader">
+    <div class="opening" role="status">
+      <span class="opening-head">
+        <m-if test="pageLoader.icon"><span class="opening-tile" aria-hidden="true"><img class="opening-icon" alt="" m-icon="{{pageLoader.icon}}"></span></m-if>
+        <span class="opening-label">{{pageLoader.label}}</span>
+      </span>
+      <span class="opening-bar" aria-hidden="true"></span>
+      <span class="opening-run" aria-hidden="true"></span>
+    </div>
+  </template>
+
+  <template m-part="notice">
+    <div class="notice" role="status">
+      <span class="text">{{notice.text}}</span>
+      <m-for each="notice.actions" as="a">
+        <button class="btn push small" m-class:primary="{{a.primary}}" m-action="notice.run" m-arg="{{a.id}}">{{a.label}}</button>
+      </m-for>
+    </div>
+  </template>
+
+  <template m-part="prompt">
+    <div class="prompt-layer">
+      <div class="prompt" role="alertdialog" m-attr:aria-label="{{prompt.title}}">
+        <div class="prompt-title">{{prompt.title}}</div>
+        <div class="prompt-text">{{prompt.text}}</div>
+        <div class="prompt-actions">
+          <m-for each="prompt.actions" as="a">
+            <button class="btn push small" m-class:primary="{{a.primary}}" m-class:danger="{{a.danger}}" m-action="prompt.run" m-arg="{{a.id}}">{{a.label}}</button>
+          </m-for>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template m-part="launcher">
+    <!-- Settings as its own page (Margin.app's Settings tab, margin://settings; the new-tab page's #settings): as
+         macOS's System Settings, its categories in a sidebar and the one chosen beside it. Every word is Margin's. -->
+    <m-if test="settingsTab">
+      <main class="settings-page">
+        <nav class="settings-nav" aria-label="{{settingsTab.title}}">
+          <h1 class="settings-title">{{settingsTab.title}}</h1>
+          <ul class="settings-categories">
+            <m-for each="settingsTab.categories" as="c">
+              <li>
+                <button class="settings-category" m-class:selected="{{c.selected}}" m-attr:aria-current="{{c.selected}}" m-attr:data-category="{{c.id}}" m-action="settings.category" m-arg="{{c.id}}">
+                  <span class="category-icon" aria-hidden="true">
+                    <m-if test="c.isAppearance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"></circle><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"></path></svg></m-if>
+                    <m-if test="c.isTabs"><svg viewBox="0 0 24 24"><rect x="4" y="8.5" width="12" height="11" rx="2"></rect><path d="M8 5h9a3 3 0 0 1 3 3v8"></path></svg></m-if>
+                    <m-if test="c.isBrowsing"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"></circle><path d="M4.5 12h15M12 4.5c2.1 2.1 3.2 4.6 3.2 7.5s-1.1 5.4-3.2 7.5c-2.1-2.1-3.2-4.6-3.2-7.5s1.1-5.4 3.2-7.5z"></path></svg></m-if>
+                    <m-if test="c.isKeyboard"><svg viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"></rect><path d="M7 10.5h.01M10.3 10.5h.01M13.7 10.5h.01M17 10.5h.01M8 14h8"></path></svg></m-if>
+                  </span>
+                  <span class="category-label">{{c.label}}</span>
+                </button>
+              </li>
+            </m-for>
+          </ul>
+        </nav>
+        <section class="settings-pane" m-attr:data-category="{{settingsTab.current.id}}">
+          <header class="pane-head">
+            <h2 class="pane-title">{{settingsTab.current.label}}</h2>
+            <p class="pane-help">{{settingsTab.current.help}}</p>
+          </header>
+          <m-settings class="settings-slot"></m-settings>
+        </section>
+      </main>
+    <m-else>
+    <main class="launcher">
+      <m-if test="launcher.canSearch"><input class="launcher-query" m-input="launcher" placeholder="Go anywhere…" aria-label="Search or enter address" spellcheck="false" autocomplete="off"></m-if>
+      <m-if test="launcher.hasPins">
+        <section>
+          <h2>Pinned</h2>
+          <ul class="pin-tiles">
+            <m-for each="launcher.pins" as="p">
+              <li>
+                <a class="tile" title="{{p.url}}" m-action="pin.open" m-arg="{{p.id}}">
+                  <m-if test="p.icon">
+                    <img class="fav" alt="" m-class:app="{{p.isApp}}" m-icon="{{p.icon}}">
+                    <m-else><span class="fav letter" m-style:--fav="{{p.color}}">{{p.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{p.title}}</span>
+                </a>
+              </li>
+            </m-for>
+          </ul>
+        </section>
+      </m-if>
+      <m-if test="launcher.hasArchive">
+        <section>
+          <h2>Recently archived</h2>
+          <ul class="archive-list">
+            <m-for each="launcher.archive" as="a">
+              <li>
+                <a class="archive-row" title="{{a.url}}" m-action="archive.restore" m-arg="{{a.id}}">
+                  <m-if test="a.icon">
+                    <img class="fav" alt="" m-class:app="{{a.isApp}}" m-icon="{{a.icon}}">
+                    <m-else><span class="fav letter" m-style:--fav="{{a.color}}">{{a.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{a.title}}</span>
+                  <span class="when">{{a.ago}}</span>
+                </a>
+              </li>
+            </m-for>
+          </ul>
+          <m-if test="launcher.more">
+            <button class="btn push small" m-action="launcher.more">{{launcher.moreLabel}}</button>
+          </m-if>
+        </section>
+      </m-if>
+      <!-- Settings under the search field: not in Margin.app's window, where Settings is its own tab. -->
+      <m-if test="launcher.hasSettings">
+        <section>
+          <m-if test="launcher.settingsPage"><h1>Settings</h1></m-if>
+          <m-if test="launcher.canSearch"><button class="btn push small" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></m-if>
+          <m-settings></m-settings>
+        </section>
+      </m-if>
+    </main>
+    </m-else>
+    </m-if>
+  </template>
+
+  <template m-part="settings">
+    <div class="settings-form">
+      <m-for each="settingsForm.fields" as="f">
+        <m-if test="f.isGroup"><div class="setting-group" role="heading" aria-level="3">{{f.label}}</div></m-if>
+        <m-if test="f.isInfo"><p class="help">{{f.label}}</p></m-if>
+        <m-if test="f.isNumber"><label class="setting"><span>{{f.label}}</span><input class="number" m-input="setting-number"></label></m-if>
+        <m-if test="f.isToggle"><label class="setting" m-class:disabled="{{f.disabled}}"><span>{{f.label}}</span><input class="toggle" m-input="setting-toggle"></label></m-if>
+        <m-if test="f.isChoice">
+          <label class="setting"><span>{{f.label}}</span><select m-input="setting-choice"></select></label>
+          <m-if test="f.hasStatus"><p class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</p></m-if>
+        </m-if>
+        <m-if test="f.isList"><label class="setting stacked"><span>{{f.label}}</span><textarea m-input="setting-list" rows="3" spellcheck="false"></textarea></label></m-if>
+        <m-if test="f.isColor"><label class="setting" m-class:theme-own="{{f.fromTheme}}"><span>{{f.label}}</span><input class="color" m-input="setting-color"></label></m-if>
+        <m-if test="f.isShortcut"><label class="setting"><span>{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label></m-if>
+        <m-if test="f.isButton">
+          <div class="actions">
+            <button class="btn push small" m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button>
+            <m-if test="f.hasStatus"><span class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</span></m-if>
+          </div>
+        </m-if>
+      </m-for>
+    </div>
+  </template>
+
+  <template m-part="menu">
+    <div class="menu" role="menu" m-attr:aria-label="{{menu.label}}">
+      <m-for each="menu.items" as="i">
+        <m-if test="i.separator">
+          <div class="menu-sep" role="separator"></div>
+          <m-else>
+            <button class="btn menu-item" role="menuitem" m-class:danger="{{i.danger}}" m-class:confirming="{{i.confirming}}" m-action="menu.run" m-arg="{{i.id}}">{{i.label}}</button>
+          </m-else>
+        </m-if>
+      </m-for>
+    </div>
+  </template>
+
+  <template m-part="space-editor">
+    <div class="editor-layer">
+      <button class="btn scrim" m-attr:aria-label="{{editor.labels.cancel}}" m-action="editor.cancel"></button>
+      <div class="editor" role="dialog" m-attr:aria-label="{{editor.labels.title}}">
+        <div class="editor-title">{{editor.labels.title}}</div>
+        <div class="editor-row">
+          <input class="editor-emoji" m-input="space-emoji" maxlength="8" m-attr:aria-label="{{editor.labels.emoji}}" autocomplete="off" spellcheck="false">
+          <input class="editor-name" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="swatches" role="radiogroup" m-attr:aria-label="{{editor.labels.colors}}">
+          <m-for each="editor.colors" as="c">
+            <button class="btn swatch" role="radio" m-attr:aria-checked="{{c.selected}}" m-class:on="{{c.selected}}" m-style:--swatch="{{c.color}}" m-action="editor.color" m-arg="{{c.id}}"></button>
+          </m-for>
+        </div>
+        <m-if test="editor.hasThemes">
+          <div class="theme-choices" role="radiogroup" m-attr:aria-label="{{editor.labels.theme}}">
+            <m-for each="editor.themes" as="t">
+              <button class="btn theme-choice" role="radio" m-attr:aria-checked="{{t.selected}}" m-class:on="{{t.selected}}" m-action="editor.theme" m-arg="{{t.id}}">{{t.name}}</button>
+            </m-for>
+          </div>
+        </m-if>
+        <div class="editor-row actions">
+          <button class="btn push small danger" title="{{editor.deleteTitle}}" m-attr:disabled="{{editor.cannotDelete}}" m-class:confirming="{{editor.confirmDelete}}" m-action="editor.delete">{{editor.deleteLabel}}</button>
+          <div class="grow"></div>
+          <button class="btn push small" m-action="editor.cancel">{{editor.labels.cancel}}</button>
+          <button class="btn push small primary" m-action="editor.save">{{editor.labels.save}}</button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

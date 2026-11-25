@@ -1,0 +1,1675 @@
+/* Material: Google's Material 3 (Material You, and the Expressive look of
+   recent Pixel phones), as a theme package on Arcadia's template. Dynamic
+   colour: every colour role is worked out from the space's colour as the
+   seed (primary, the containers, the tonal surfaces), light and dark as the
+   system is. The sidebar is a navigation drawer on a tonal surface: a
+   rounded search bar for the address, "New Tab" as an extended FAB, rows
+   as full pills with the secondary container as the active indicator, state
+   layers under the pointer; the page a large rounded card. Menus, the
+   command bar (a search view) and dialogs at Material's elevations and
+   corners, notices as snackbars, M3 switches in Settings, and Material 3
+   Expressive's shape-morphing loading indicator. Google Sans Flex (SIL Open
+   Font License, fonts/). Colours are sRGB mixes, so Margin.app can read the
+   ground for the page card's corners. */
+
+.m3 {
+  --space-color: #6750a4;
+  /* The tonal surfaces (M3 surface, surface-container-…): neutral, a little of the seed in them. */
+  --surface: color-mix(in srgb, var(--space-color) 4%, #fdfbff);
+  --sc-lowest: #ffffff;
+  --sc-low: color-mix(in srgb, var(--space-color) 6%, #f8f5fb);
+  --sc: color-mix(in srgb, var(--space-color) 9%, #f3eff6);
+  --sc-high: color-mix(in srgb, var(--space-color) 11%, #ede9f0);
+  --sc-highest: color-mix(in srgb, var(--space-color) 13%, #e7e3ea);
+  --on-surface: color-mix(in srgb, var(--space-color) 8%, #1b1a1f);
+  --on-surface-variant: color-mix(in srgb, var(--space-color) 10%, #47454d);
+  --outline: color-mix(in srgb, var(--space-color) 10%, #78767e);
+  --outline-variant: color-mix(in srgb, var(--space-color) 12%, #c9c5cf);
+  /* The accent roles: the seed darkened (primary, tone 40) and lightened (its container, tone 90). */
+  --primary: color-mix(in srgb, var(--space-color) 72%, #16141c);
+  --on-primary: #ffffff;
+  --primary-container: color-mix(in srgb, var(--space-color) 30%, #fbf8ff);
+  --on-primary-container: color-mix(in srgb, var(--space-color) 42%, #0d0b12);
+  --secondary-container: color-mix(in srgb, var(--space-color) 24%, #ebe7f0);
+  --on-secondary-container: color-mix(in srgb, var(--space-color) 22%, #19171e);
+  --inverse-surface: color-mix(in srgb, var(--space-color) 6%, #313036);
+  --inverse-on-surface: color-mix(in srgb, var(--space-color) 4%, #f4eff6);
+  --inverse-primary: color-mix(in srgb, var(--space-color) 45%, #ffffff);
+  --error: #b3261e;
+  --scrim: rgba(0, 0, 0, 0.32);
+  /* Elevation (M3's two-shadow levels). */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --elev-3: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+  /* Motion: emphasized, and the Expressive spring for small things. */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --font: "Google Sans Flex", "Google Sans", Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+  /* Arcadia's names for the same roles (the template's rules read these). */
+  --frame: var(--sc);
+  /* The sidebarWidth setting (a length), 200–420. */
+  --width: var(--m-sidebar-width, 280px);
+  --pad: 12px;
+  --fg: var(--on-surface);
+  --muted: var(--on-surface-variant);
+  --ink: var(--on-surface);
+  --icon: var(--on-surface-variant);
+  /* State layers: the content colour at 8 % (hover) and 10 % (pressed) over the surface. */
+  --hover: color-mix(in srgb, var(--on-surface) 8%, var(--frame));
+  --press: color-mix(in srgb, var(--on-surface) 10%, transparent);
+  --field: var(--sc-highest);
+  --field-hover: color-mix(in srgb, var(--on-surface) 8%, var(--sc-highest));
+  --input: var(--sc-lowest);
+  --active: var(--secondary-container);
+  --active-shadow: none;
+  --behind: color-mix(in srgb, var(--secondary-container) 55%, var(--frame));
+  --border: var(--outline-variant);
+  --cover: var(--surface);
+  --panel: var(--sc);
+  --panel-fg: var(--on-surface);
+  --panel-muted: var(--on-surface-variant);
+  --panel-line: var(--outline-variant);
+  --panel-hover: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  --panel-edge: transparent;
+  --accent: var(--primary);
+  --on-accent: var(--on-primary);
+  --drop: var(--primary);
+  --danger: var(--error);
+  /* The page card: inside the frame, right of the sidebar when it's docked; Material's large corner. */
+  --card-left: var(--width);
+  --card-inset: 8px;
+  --card-radius: 16px;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--fg);
+  font: 14px/1.43 var(--font);
+  letter-spacing: 0.1px;
+  color-scheme: light dark;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+@media (prefers-color-scheme: dark) {
+  .m3 {
+    --surface: color-mix(in srgb, var(--space-color) 6%, #131217);
+    --sc-lowest: color-mix(in srgb, var(--space-color) 4%, #0e0d12);
+    --sc-low: color-mix(in srgb, var(--space-color) 7%, #1b1a1f);
+    --sc: color-mix(in srgb, var(--space-color) 8%, #1f1e24);
+    --sc-high: color-mix(in srgb, var(--space-color) 9%, #2a292f);
+    --sc-highest: color-mix(in srgb, var(--space-color) 10%, #35343a);
+    --on-surface: color-mix(in srgb, var(--space-color) 6%, #e6e1e8);
+    --on-surface-variant: color-mix(in srgb, var(--space-color) 8%, #c9c5cf);
+    --outline: color-mix(in srgb, var(--space-color) 8%, #938f99);
+    --outline-variant: color-mix(in srgb, var(--space-color) 10%, #48464e);
+    --primary: color-mix(in srgb, var(--space-color) 55%, #ffffff);
+    --on-primary: color-mix(in srgb, var(--space-color) 40%, #0b0a10);
+    --primary-container: color-mix(in srgb, var(--space-color) 46%, #1a1820);
+    --on-primary-container: color-mix(in srgb, var(--space-color) 22%, #ffffff);
+    --secondary-container: color-mix(in srgb, var(--space-color) 26%, #3a3840);
+    --on-secondary-container: color-mix(in srgb, var(--space-color) 14%, #f0ebf3);
+    --inverse-surface: color-mix(in srgb, var(--space-color) 6%, #e6e1e8);
+    --inverse-on-surface: color-mix(in srgb, var(--space-color) 6%, #313036);
+    --inverse-primary: color-mix(in srgb, var(--space-color) 72%, #16141c);
+    --error: #f2b8b5;
+    --scrim: rgba(0, 0, 0, 0.5);
+    --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+    --elev-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
+    --elev-3: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 8px 3px rgba(0, 0, 0, 0.3);
+  }
+}
+/* Material's tones, exactly where the browser can (relative colours): each accent role at its own lightness whatever
+   the seed's (primary at tone 40 light, 80 dark; the containers at 90 and 30), the seed's hue and at most its chroma,
+   so a light seed (yellow) still gives a dark, readable primary. (The surfaces stay sRGB mixes: Margin.app reads the
+   ground's colour.) */
+@supports (color: oklch(from red l c h)) {
+  .m3 {
+    --primary: oklch(from var(--space-color) 0.45 min(c, 0.17) h);
+    --primary-container: oklch(from var(--space-color) 0.91 min(c, 0.08) h);
+    --on-primary-container: oklch(from var(--space-color) 0.27 min(c, 0.12) h);
+    --secondary-container: oklch(from var(--space-color) 0.91 min(c, 0.045) h);
+    --on-secondary-container: oklch(from var(--space-color) 0.26 min(c, 0.04) h);
+    --inverse-primary: oklch(from var(--space-color) 0.82 min(c, 0.12) h);
+  }
+  @media (prefers-color-scheme: dark) {
+    .m3 {
+      --primary: oklch(from var(--space-color) 0.82 min(c, 0.12) h);
+      --on-primary: oklch(from var(--space-color) 0.3 min(c, 0.12) h);
+      --primary-container: oklch(from var(--space-color) 0.36 min(c, 0.12) h);
+      --on-primary-container: oklch(from var(--space-color) 0.92 min(c, 0.06) h);
+      --secondary-container: oklch(from var(--space-color) 0.34 min(c, 0.04) h);
+      --on-secondary-container: oklch(from var(--space-color) 0.9 min(c, 0.035) h);
+      --inverse-primary: oklch(from var(--space-color) 0.45 min(c, 0.17) h);
+    }
+  }
+}
+/* More contrast: Material's high-contrast scheme, roughly: stronger content colours and outlines. */
+@media (prefers-contrast: more) {
+  .m3 { --on-surface-variant: var(--on-surface); --outline-variant: var(--outline); --outline: var(--on-surface); --active-shadow: inset 0 0 0 1px var(--on-surface); }
+}
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows, m-appearance its light or dark). The drawer's surface gives way to it: the frame's
+   spread and the docked drawer are clear. The frame's colour is the background as one colour (--m-bg), for what lies
+   over the page (the drawer out as a card, a divider, the page's picture, Clear's patch) and the state layers mixed
+   from it. In the docked drawer, on the background, the content colours are Margin's palette and its surfaces (the
+   tonal containers: the search bar, the mini player, the editor; the state layers) translucent whites over it, in
+   the background's light or dark (a role mixed from another at the root comes resolved: each one named here). The
+   active indicator keeps its tonal container, its own content colour with it. Menus, the command bar and dialogs
+   keep their surfaces, drawn in the page's appearance (the background's in Margin.app's window, the
+   system's in the extension's overlay). */
+.m3[m-background] { --frame: var(--m-bg); }
+.m3[m-background] .margin-sidebar {
+  --on-surface: var(--m-fg);
+  --on-surface-variant: var(--m-fg-2);
+  --fg: var(--m-fg);
+  --ink: var(--m-fg);
+  --muted: var(--m-fg-2);
+  --icon: var(--m-fg-2);
+  --hover: var(--m-hover);
+  --surface: rgba(255, 255, 255, 0.35);
+  --sc-lowest: rgba(255, 255, 255, 0.7);
+  --sc-low: rgba(255, 255, 255, 0.3);
+  --sc: rgba(255, 255, 255, 0.4);
+  --sc-high: rgba(255, 255, 255, 0.5);
+  --sc-highest: rgba(255, 255, 255, 0.55);
+  --input: rgba(255, 255, 255, 0.7);
+  --field: rgba(255, 255, 255, 0.55);
+  --field-hover: rgba(255, 255, 255, 0.7);
+  --behind: rgba(255, 255, 255, 0.5);
+}
+.m3[m-background][m-appearance="dark"] .margin-sidebar {
+  --surface: rgba(255, 255, 255, 0.06);
+  --sc-lowest: rgba(255, 255, 255, 0.14);
+  --sc-low: rgba(255, 255, 255, 0.05);
+  --sc: rgba(255, 255, 255, 0.08);
+  --sc-high: rgba(255, 255, 255, 0.1);
+  --sc-highest: rgba(255, 255, 255, 0.12);
+  --input: rgba(0, 0, 0, 0.22);
+  --field: rgba(255, 255, 255, 0.12);
+  --field-hover: rgba(255, 255, 255, 0.17);
+  --behind: rgba(255, 255, 255, 0.1);
+}
+.m3 *, .m3 *::before, .m3 *::after { box-sizing: border-box; }
+.m3 img { -webkit-user-drag: none; }
+.m3 :is(input, textarea) { -webkit-user-select: text; user-select: text; cursor: auto; }
+.m3 button { font: inherit; color: inherit; background: none; border: 0; cursor: default; }
+.m3 a { color: inherit; text-decoration: none; cursor: default; }
+.m3 ul { list-style: none; margin: 0; padding: 0; }
+.m3 .spacer { flex: 1; }
+
+/* Hidden: the page in the frame (8 px all round), or, with the frame off,
+   the whole window. */
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 8px; }
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 0px; --card-inset: 0px; --card-radius: 0px; }
+/* The new-tab page: the sidebar always beside the launcher. */
+.m3.newtab { --card-left: var(--width); --card-inset: 8px; --card-radius: 10px; }
+
+/* ---- The frame and the page card ------------------------------------------- */
+
+/* The page's place. Its spread shadow is the frame around it; the card
+   itself stays clear (the page shows through). */
+.page, .card-edge, .launcher-slot, .page-loader {
+  position: absolute;
+  top: var(--card-inset);
+  right: var(--card-inset);
+  bottom: var(--card-inset);
+  left: var(--card-left);
+  border-radius: var(--card-radius);
+}
+.page { box-shadow: 0 0 0 100vmax var(--frame); }
+.m3[m-background] .page { box-shadow: none; }
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
+/* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
+.card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .card-edge { box-shadow: none; }
+
+/* The page card while an item opens (Margin.app: the root's m-page-state):
+   opaque, exactly over the page's place with the card's corners, whatever
+   the app behind it is doing. A soft tile in the space's colour, a thin ring
+   turning in it, Margin's words under it. It's there (see-through, the
+   pointer let through) in every other state, so it can fade out over the
+   window that's shown: the part in it goes at once, the card in 120 ms.
+   Starting (m-starting, before the first data): the same card, no words. */
+.m3 .page-loader {
+  --load-bg: #fff;
+  --load-tile: color-mix(in srgb, var(--space-color) 24%, #fff);
+  --load-ring: color-mix(in srgb, var(--space-color) 58%, #26252b);
+  --load-arc: conic-gradient(transparent 12%, var(--load-ring));
+  --load-edge: 0 0 0 0 transparent;
+  --load-fg: rgba(0, 0, 0, 0.5);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--load-bg);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms linear, visibility 0s linear 120ms;
+}
+.m3:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Margin's start (m-startup: Margin.app's own window while its default browser gets ready): the loader's card over the
+   whole window, the tile and its ring alone (no app's icon, no words); held up, what's wrong under it with two choices. */
+.m3 > m-startup {
+  --load-bg: #fff;
+  --load-tile: color-mix(in srgb, var(--space-color) 24%, #fff);
+  --load-ring: color-mix(in srgb, var(--space-color) 58%, #26252b);
+  --load-arc: conic-gradient(transparent 12%, var(--load-ring));
+  --load-edge: 0 0 0 0 transparent;
+  --load-fg: rgba(0, 0, 0, 0.5);
+  background: var(--load-bg);
+  color: var(--load-fg);
+}
+.m3 > m-startup > [m-startup-spin] { display: none; }
+.m3 > m-startup [m-startup-action] { padding: 7px 16px; border: 0; border-radius: 10px; background: var(--load-tile); box-shadow: inset var(--load-edge); color: var(--load-ring); font-weight: 600; }
+/* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still, its words ("… is in
+   another window. Click to show it here."); in front again, or clicked, the window takes the item back. */
+.m3[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
+.m3[m-page-state="elsewhere"] .opening-mark::after { animation: none; opacity: 0; }
+/* A web item's picture over it (m-page-picture, Margin's): the page faded into the frame, the words on a chip. */
+.m3 > m-page-picture { background: var(--frame); }
+.m3 > m-page-picture > [m-picture-label] { background: var(--active); color: var(--fg); }
+.opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
+/* The tile, and the ring in it (the slot's own two boxes while starting: it has no part then). */
+.opening-mark, .m3[m-starting][m-page-state="empty"] .page-loader::before, .m3 > m-startup::before { content: ""; grid-area: 1 / 1; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--load-tile); box-shadow: inset var(--load-edge); }
+.opening-mark::after, .m3[m-starting][m-page-state="empty"] .page-loader::after, .m3 > m-startup::after {
+  content: "";
+  grid-area: 1 / 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--load-arc);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  animation: m3-spin 900ms linear infinite;
+}
+/* With the app's icon: the icon in the tile (32 pt: the 64 px icon at 2x), the ring around it. */
+.opening-mark.with-icon::after { width: 46px; height: 46px; }
+.opening-icon { grid-area: 1 / 1; width: 32px; height: 32px; object-fit: contain; }
+.opening-label { position: absolute; top: calc(100% + 14px); max-width: min(420px, 100% - 48px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--load-fg); font-size: 13px; }
+@media (prefers-color-scheme: dark) {
+  :is(.m3 .page-loader, .m3 > m-startup) { --load-bg: #1b1b1f; --load-tile: color-mix(in srgb, var(--space-color) 26%, #1b1b1f); --load-ring: color-mix(in srgb, var(--space-color) 72%, #fff); --load-fg: rgba(255, 255, 255, 0.55); }
+}
+/* More contrast: black on white (white on black), the tile outlined, the ring's arc solid. */
+@media (prefers-contrast: more) {
+  :is(.m3 .page-loader, .m3 > m-startup) { --load-tile: var(--load-bg); --load-ring: #000; --load-fg: #000; --load-arc: conic-gradient(transparent 25%, var(--load-ring) 0); --load-edge: 0 0 0 2px var(--load-ring); }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :is(.m3 .page-loader, .m3 > m-startup) { --load-bg: #000; --load-ring: #fff; --load-fg: #fff; }
+}
+
+/* Starting (m-starting: the theme's first frame, before its data): the
+   sidebar's shapes with nothing in them yet. The space's name as a bar,
+   three rows under "New Tab" fading down the list, three chips; they breathe,
+   softly. Drawn on what's already there, and gone with the attribute. */
+.m3[m-starting] .space-title .emoji { height: 16px; border-radius: 5px; background: var(--press); }
+.m3[m-starting] .space-title .title { flex: none; width: 76px; height: 8px; border-radius: 4px; background: var(--press); }
+.m3[m-starting] .tabs::after { content: ""; flex: none; height: 36px; margin-bottom: 80px; border-radius: 10px; background: var(--field); box-shadow: 0 40px 0 color-mix(in srgb, var(--field) 62%, var(--frame)), 0 80px 0 color-mix(in srgb, var(--field) 30%, var(--frame)); animation: m3-breathe 1.2s ease-in-out infinite alternate; }
+.m3[m-starting] .spaces::before { content: ""; flex: none; width: 14px; height: 14px; margin: 6px 58px 6px 6px; border-radius: 5px; background: var(--press); box-shadow: 26px 0 0 var(--press), 52px 0 0 var(--press); }
+@keyframes m3-breathe { to { opacity: 0.45; } }
+
+/* Page-load indicator: a small pill centered over the page, in the frame's
+   8 px top strip (at the top of the page with no frame). Fades and widens
+   in, pulses gently while loading, fades out. */
+.loader {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 48px;
+  height: 4px;
+  transform: translateX(-50%) scaleX(0.85);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease), visibility 0s linear 200ms;
+}
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .loader { top: 2px; }
+.m3.loading .loader { opacity: 1; visibility: visible; transform: translateX(-50%) scaleX(1); transition: opacity 200ms var(--ease), transform 200ms var(--ease); }
+.loader-bar { width: 100%; height: 100%; border-radius: 2px; background: var(--ink); opacity: 0.6; }
+.m3.loading .loader-bar { animation: m3-pulse 1.2s ease-in-out 200ms infinite; }
+@keyframes m3-pulse { 50% { opacity: 0.3; } }
+@keyframes m3-spin { to { transform: rotate(360deg); } }
+/* Margin's trackpad gestures on the page (pull to refresh, swipe back and
+   forward): a round badge over the page card. --g is how far the fingers
+   have gone, eased every frame by Margin.app (--gesture-live), so the badge
+   follows them; it grows in from the edge, its ring fills, and once letting
+   go would do it, it takes the space's color. Done: a pull's arrow spins as
+   the page reloads, a swipe's badge slides on the way it went; let go too
+   soon: it slides back out. Per frame only transform and opacity change. */
+.gesture { --gesture: 0; --g: var(--gesture-live, var(--gesture)); position: absolute; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: #242427; color: #fff; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 4px 14px rgba(0, 0, 0, 0.28); pointer-events: none; opacity: min(1, calc(var(--g) * 2.5)); will-change: transform, opacity; transition: background-color 180ms var(--ease); }
+.gesture::before { content: ''; position: absolute; inset: 2px; border-radius: 50%; background: conic-gradient(rgba(255, 255, 255, 0.92) calc(var(--g) * 360deg), rgba(255, 255, 255, 0.14) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); }
+.gesture .line-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--g) - 1) * 40px)) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.pull .line-icon { transform: rotate(calc(var(--g) * 300deg)); }
+.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--g) - 1) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--g)) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.swipe.forward .line-icon { scale: -1 1; }
+.gesture.armed { background: var(--space-color, #242427); }
+.gesture.armed::before { background: rgba(255, 255, 255, 0.92); }
+.gesture.done { opacity: 0; transition: opacity 200ms var(--ease) 160ms, translate 300ms var(--ease); }
+.gesture.pull.done .line-icon { animation: m3-spin 520ms linear infinite; }
+.gesture.swipe.back.done { translate: 28px 0; }
+.gesture.swipe.forward.done { translate: -28px 0; }
+.gesture.leaving { transition: opacity 160ms var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  .gesture, .gesture .line-icon { animation: none !important; transition: none; translate: none; }
+  .margin-sidebar .spinner { animation: none; }
+  .loader { transition: opacity 150ms linear, visibility 0s linear 150ms; }
+  .m3.loading .loader { transition: opacity 150ms linear; }
+  .m3.loading .loader-bar { animation: none; }
+  /* The page card's ring stands still (an arc in its tile), the skeleton doesn't breathe, the card goes at once. */
+  .opening-mark::after, .m3[m-starting][m-page-state="empty"] .page-loader::after, .m3 > m-startup::after, .m3[m-starting] .tabs::after { animation: none; }
+  .m3 .page-loader { transition: none; }
+}
+
+/* ---- The sidebar ----------------------------------------------------------- */
+
+.margin-sidebar {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: var(--width);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--pad);
+  background: var(--frame);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+/* Hidden or out over the page: a floating card inset from the edges, which
+   never moves the page. */
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar {
+  top: 8px;
+  left: 8px;
+  height: calc(100% - 16px);
+  border-radius: 10px; /* the page card's */
+  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 12px 40px rgba(0, 0, 0, 0.22);
+  transform: translateX(calc(-100% - 16px));
+  visibility: hidden;
+  transition: transform 180ms var(--ease), visibility 0s linear 180ms;
+}
+.m3[data-sidebar="peek"]:not(.newtab) .margin-sidebar {
+  transform: none;
+  visibility: visible;
+  transition: transform 180ms var(--ease);
+}
+.m3.m-resizing .margin-sidebar, .m3.m-resizing .margin-sidebar * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .margin-sidebar { transition: none !important; } }
+
+/* The hover zone that brings a hidden sidebar out (Margin's m-peek). */
+.peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); }
+.m3[data-sidebar="hidden"]:not(.newtab) .peek-zone { display: block; }
+
+/* The icons, one flat tone: drawn in the ink and faded as a whole, so
+   overlapping strokes don't come out darker. */
+.margin-sidebar .line-icon { display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.margin-sidebar .fill-icon { display: block; fill: currentColor; }
+.margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: var(--ink); }
+.margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 0.6; }
+
+/* The top: a slim row. The window's buttons' room (windowed), the sidebar
+   toggle (Keep open / Auto-hide), and back, forward, reload at the right.
+   It wraps and shows one line, so in a narrow sidebar the last buttons
+   give way instead of squeezing. */
+.margin-sidebar .top { flex: none; display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; height: 28px; margin: 8px 0 6px; overflow: hidden; }
+.margin-sidebar :is(.keep-open, .bar-button) {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.margin-sidebar .top .spacer { align-self: stretch; height: 28px; }
+.margin-sidebar .toggle-icon { width: 18.5px; height: 14.5px; }
+.margin-sidebar .nav-icon { width: 16px; height: 16px; }
+.margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
+.margin-sidebar :is(.keep-open, .bar-button):active { background: var(--field-hover); }
+.margin-sidebar :is(.keep-open, .bar-button, .address, .clear):focus-visible { outline: 2px solid var(--drop); outline-offset: -2px; }
+.m3.newtab .keep-open { display: none; }
+/* Windowed: the window's buttons go at the row's start. Not in full screen. */
+.window-controls { display: none; }
+.m3[data-mode="windowed"] .window-controls { display: block; flex: none; width: 54px; height: 14px; margin: 0 8px 0 2px; }
+
+/* The address pill: the site of the tab in front, on a translucent lighter
+   fill; a click opens the command bar. */
+.margin-sidebar .address {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  margin-bottom: 6px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--field);
+  font-weight: 500;
+  text-align: left;
+}
+.margin-sidebar .address:hover { background: var(--field-hover); }
+.margin-sidebar .address .host { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.8; }
+.margin-sidebar .address .hint { color: var(--muted); font-weight: 400; opacity: 1; }
+
+/* The space's name: its emoji and name, small and muted. */
+.margin-sidebar .space-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin-bottom: 2px;
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.margin-sidebar .space-title .emoji { flex: none; width: 16px; font-size: 14px; line-height: 16px; text-align: center; color: initial; }
+
+/* The space's part (name, editor, list), which a sideways swipe drags
+   (Margin's m-swipe). */
+.margin-sidebar .space-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.margin-sidebar.m-swiping { overflow: clip; }
+.margin-sidebar.m-swiping .space-pane { will-change: transform; transform: translateX(var(--m-swipe-offset, 0px)); }
+.margin-sidebar.m-settling .space-pane { transform: translateX(var(--m-swipe-offset, 0px)); transition: transform 200ms var(--ease); }
+@media (prefers-reduced-motion: reduce) { .margin-sidebar.m-settling .space-pane { transition: none; } }
+
+/* One list for the pinned area and the tabs; it scrolls under the top and
+   the bottom bar, never the page. The one place that rubber-bands. */
+.margin-sidebar .tabs-section { flex: 1; min-height: 0; margin: 0 calc(-1 * var(--pad)); padding: 0 var(--pad) 8px; overflow-y: auto; overscroll-behavior: contain; }
+.margin-sidebar :is(.pins, .tabs) { display: flex; flex-direction: column; gap: 4px; }
+.margin-sidebar .pins { position: relative; }
+.margin-sidebar .pins:not(.has) { display: none; }
+.margin-sidebar .divider { height: 1px; margin: 10px 10px; background: var(--border); }
+/* The line above today's tabs; "Clear" shows on it under the pointer. */
+.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; height: 21px; padding: 0 10px; }
+.margin-sidebar .today-split .rule { flex: 1; height: 1px; background: var(--border); }
+.margin-sidebar .clear { position: absolute; top: 2px; right: 6px; height: 17px; padding: 0 4px 0 8px; border-radius: 4px; background: var(--frame); color: var(--muted); font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 150ms var(--ease); }
+.margin-sidebar .today-split:hover .clear, .margin-sidebar .clear:focus-visible { opacity: 1; }
+.margin-sidebar .clear:hover { color: var(--fg); }
+
+/* Rows: 36 high, 4 apart, radius 10; icon 16, 10 before the 13 px title. */
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--row, none);
+  font-weight: 500;
+  outline: none;
+}
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):hover { --row: var(--hover); }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):focus-visible { box-shadow: inset 0 0 0 2px var(--drop); }
+/* A press (Margin's m-pressed): the row shrinks a little while the button
+   is down, and eases back as it comes up. */
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { transition: transform 180ms var(--ease); }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder).m-pressed { transform: scale(0.98); transition: transform 100ms var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder).m-pressed { transform: none; }
+}
+/* The tab shown: a clearly lighter pill (near-white, a soft shadow under it). */
+.margin-sidebar :is(.tab, .pin, .new-tab-row).active { --row: var(--active); box-shadow: var(--active-shadow); }
+/* While a new tab is being chosen (⌘T, "+ New Tab"): the tab whose page is
+   still on screen under the palette, softly; "+ New Tab" fully. */
+.margin-sidebar :is(.tab, .pin, .new-tab-row).behind { --row: var(--behind); box-shadow: none; }
+/* Chosen here, live in another window (docs/BROWSER-WINDOWS.md §9): still highlighted, faded. */
+.margin-sidebar :is(.tab, .pin).away { opacity: 0.55; }
+
+/* A folder: its glyph (a line drawing in the row's colour), then its name;
+   its pins indented beneath. */
+.margin-sidebar .folder-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; }
+.margin-sidebar .folder-icon { flex: none; width: 16px; height: 16px; overflow: visible; fill: none; stroke: var(--ink); stroke-opacity: 0.62; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.margin-sidebar .folder-icon .folder-front { fill: var(--ink); fill-opacity: 0.14; }
+.margin-sidebar .pin.nested { margin-left: 16px; }
+/* A name edited in place (Margin's m-rename): a field. */
+.margin-sidebar .m-renaming {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  line-height: 26px;
+  margin-right: 2px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--fg);
+  outline: 2px solid var(--drop);
+  text-overflow: clip;
+  cursor: auto;
+}
+
+/* "+ New Tab", the first row of the tab list, muted. */
+.margin-sidebar .new-tab-row { color: var(--muted); }
+.margin-sidebar .new-tab-row.active { color: var(--fg); }
+.margin-sidebar .new-tab-row .plus { flex: none; display: grid; place-items: center; width: 16px; height: 16px; }
+.margin-sidebar .new-tab-row .plus-icon { width: 12px; height: 12px; stroke-width: 1.75; }
+.margin-sidebar .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.m3 .avatar { flex: none; width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+/* An installed app's icon in a row (Margin.app, the view model's isApp): macOS draws app icons with transparent room
+   inside their image, so the app's glyph would look smaller than a site's icon at the same size. Drawn bigger, in
+   its own shape (no tile or frame), the negative margin keeping the row's height and the title where they were. */
+.m3 img.avatar.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; }
+.m3 .avatar.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--letter, #636e72);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+/* A tab loading: a small spinner in its icon's place (the tab in front also
+   has the pill), no hover needed. */
+.margin-sidebar .spinner { flex: none; width: 14px; height: 14px; margin: 1px; border: 1.75px solid var(--border); border-top-color: var(--fg); border-radius: 50%; animation: m3-spin 800ms linear infinite; }
+.margin-sidebar :is(.tab, .pin).busy .avatar { display: none; }
+/* A tab asleep (it gave its memory back): its icon faded. One playing sound:
+   a small speaker. */
+.margin-sidebar :is(.tab, .pin).asleep .avatar { opacity: 0.45; }
+/* A tab that isn't open (its window closed, Safari didn't restore it, or it
+   was put to sleep): still in its space, drawn as any tab (2026-11-08); a click opens it. */
+.margin-sidebar .audible-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
+.margin-sidebar .audible-icon .speaker { fill: currentColor; stroke: none; }
+.margin-sidebar :is(.tab, .pin):hover .audible-icon { visibility: hidden; }
+/* × on a row: shown on hover, at the right, over the title's end (on the
+   row's own colour, fading in from the left), so showing it lays nothing out. */
+.margin-sidebar .icon {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  background: var(--row);
+  box-shadow: -6px 0 6px var(--row);
+  visibility: hidden;
+}
+.margin-sidebar .icon .close-icon { width: 10px; height: 10px; stroke-width: 1.75; }
+.margin-sidebar :is(.tab, .pin):hover .icon { visibility: visible; }
+.margin-sidebar .icon:hover { background-image: linear-gradient(var(--press), var(--press)); }
+
+/* Drag and drop (Margin's m-drag and m-drop): a copy of the row follows the
+   pointer (the row stays), and glides into its new place once dropped.
+   Where it goes: a line in the space's color, a ring at its start, between
+   the rows (2 px, an 8 px ring 8 px in from the row's edge, out to the
+   sidebar's edge); a folder it goes into; the tabs while a pin dropped
+   there unpins. An empty pinned area shows where a tab can go. */
+.m-drag-ghost.tab, .m-drag-ghost.pin, .m-drag-ghost.folder {
+  opacity: 0.92;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: none;
+  will-change: transform;
+}
+.m-drag-ghost:not(.active) { background: var(--field-hover); }
+.m-drag-ghost .icon { visibility: hidden; }
+.margin-sidebar .m-landing { visibility: hidden; }
+.m3.m-dragging .margin-sidebar :is(.tab, .pin, .folder, .new-tab-row):hover:not(.active) { background: none; }
+.margin-sidebar .m-drop-before::before, .margin-sidebar .m-drop-after::after, .margin-sidebar .pins.m-drop-end::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 8px;
+  right: calc(-1 * var(--pad));
+  height: 8px;
+  background:
+    radial-gradient(circle at 4px 50%, transparent 2px, var(--space-color) 2.4px, var(--space-color) 3.6px, transparent 4px) no-repeat 0 0 / 8px 8px,
+    linear-gradient(var(--space-color), var(--space-color)) no-repeat 7.5px 50% / calc(100% - 7.5px) 2px;
+  pointer-events: none;
+}
+.margin-sidebar .m-drop-before::before { top: -6px; }
+.margin-sidebar .pins > .m-drop-before:first-child::before { top: -2px; } /* the list's top edge would clip it */
+.margin-sidebar .m-drop-after::after { bottom: -6px; }
+.margin-sidebar .pins.m-drop-end::after { bottom: -6px; }
+.margin-sidebar .folder.m-drop-into { background: var(--field-hover); box-shadow: inset 0 0 0 2px var(--drop); }
+.margin-sidebar .tabs.m-drop-into { border-radius: 10px; box-shadow: 0 0 0 2px var(--drop); }
+.margin-sidebar .chip.m-drop-into { outline: 2px dashed var(--chip-color); }
+.margin-sidebar .drop-hint { display: none; }
+.m3.m-drag-tab .margin-sidebar .pins:not(.has) {
+  display: block;
+  height: 36px;
+  border: 1.5px dashed var(--muted);
+  border-radius: 10px;
+}
+.m3.m-drag-tab .margin-sidebar .pins:not(.has) .drop-hint { display: block; line-height: 33px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* The bottom bar: archive at the left, the spaces in the middle (the
+   current one strong, the others faded), "+" at the right. */
+.margin-sidebar .bar {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  column-gap: 4px;
+  align-items: center;
+  height: 44px;
+  margin: 0 calc(-1 * var(--pad));
+  padding: 0 var(--pad);
+}
+.margin-sidebar .bar .archive { justify-self: start; }
+.margin-sidebar .bar .add { justify-self: end; }
+.margin-sidebar .bar .archive-icon { width: 16px; height: 16px; }
+.margin-sidebar .bar .plus-icon { width: 13px; height: 13px; stroke-width: 1.6; }
+.margin-sidebar .spaces { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overscroll-behavior: none; scrollbar-width: none; }
+.margin-sidebar .chip {
+  flex: none;
+  position: relative;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 26px;
+  text-align: center;
+  opacity: 0.42;
+}
+.margin-sidebar .chip:hover { opacity: 0.8; background: var(--hover); }
+.margin-sidebar .chip.active { opacity: 1; }
+
+/* The space editor (Margin's <m-editor>, the "space-editor" part), under the space's name. */
+.margin-sidebar .editor {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--field);
+}
+.margin-sidebar .editor .row { display: flex; gap: 6px; align-items: center; }
+.margin-sidebar .editor input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--input);
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+.margin-sidebar .editor input:focus { border-color: var(--space-color); }
+.margin-sidebar .editor .emoji { width: 40px; flex: none; text-align: center; font-size: 15px; }
+.margin-sidebar .editor .name { flex: 1; }
+.margin-sidebar .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.margin-sidebar .swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; background: var(--chip-color); }
+.margin-sidebar .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--frame), 0 0 0 4px var(--chip-color); }
+.margin-sidebar .theme-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.margin-sidebar .theme-choice { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 500; color: var(--muted); background: var(--hover); }
+.margin-sidebar .theme-choice:hover { color: var(--fg); background: var(--field-hover); }
+.margin-sidebar .theme-choice[aria-checked="true"] { color: #fff; background: var(--space-color); }
+.margin-sidebar .editor .actions button { height: 26px; padding: 0 10px; border-radius: 7px; color: var(--muted); }
+.margin-sidebar .editor .actions button:hover { background: var(--hover); color: var(--fg); }
+.margin-sidebar .editor .actions .primary { background: var(--space-color); color: #fff; }
+.margin-sidebar .editor .actions .delete, .margin-sidebar .editor .actions .delete:hover { color: var(--danger); }
+.margin-sidebar .editor .delete:disabled { opacity: 0.4; }
+
+/* Resize handle: on hover or while dragging, a soft light pill runs the
+   height of the page card, just inside the sidebar's edge, 2 px from the
+   page. The hit area (12 px) straddles the edge. */
+.resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.resizer::after {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  right: 6px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--ink);
+  opacity: 0;
+  transition: opacity 150ms var(--ease);
+}
+.resizer:hover::after, .resizer.m-resizing::after { opacity: 0.22; }
+.m3.m-resizing { cursor: col-resize; }
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .resizer { display: none; }
+
+/* ---- Right-click menus (Margin's <m-menu>, the "menu" part) ----------------- */
+
+/* A small rounded panel; the row under the pointer (or the arrow keys) is
+   filled with the accent. */
+.tab-menu {
+  min-width: 190px;
+  max-width: calc(100vw - 8px);
+  /* Many folders, many items: it scrolls, its last ones stay reachable. */
+  max-height: calc(100vh - 8px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 10px 30px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.08);
+  color: var(--panel-fg);
+  -webkit-font-smoothing: antialiased;
+}
+.menu-slot:focus { outline: none; }
+.tab-menu .menu-item {
+  display: block;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 400;
+  outline: none;
+}
+.tab-menu .menu-item:focus { background: var(--accent); color: var(--on-accent); }
+.menu-separator { height: 1px; margin: 5px 10px; background: var(--panel-line); }
+
+/* ---- Edit Theme Color (Margin's <m-picker>, the "background-picker" part) -------- */
+
+/* A Material 3 dialog on the high tonal surface, 28 px corners, elevation 3. Margin places the slot and works the
+   field and the sliders; the rest are buttons. The key colour is seen through the field's knobs and the swatches. */
+.picker {
+  width: 332px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: none;
+  box-sizing: border-box;
+  padding: 20px;
+  border-radius: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  font: 14px/1.3 var(--font);
+  box-shadow: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+  -webkit-font-smoothing: antialiased;
+}
+.picker-slot:focus { outline: none; }
+/* (Over the theme's button reset, `.m3 button`: each button's own rules are under `.picker`.) */
+.picker button { box-sizing: border-box; margin: 0; font: inherit; cursor: pointer; }
+.picker svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.picker-title { margin: 0; font-size: 22px; line-height: 28px; font-weight: 400; }
+.picker-label { font-weight: 500; color: var(--on-surface-variant); }
+/* The appearance: a segmented button, the one chosen in the secondary container with a check. */
+.picker-segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.picker .picker-segment { display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; margin-left: -1px; border: 1px solid var(--outline); background: transparent; font-weight: 500; }
+.picker .picker-segment:first-child { margin-left: 0; border-radius: 20px 0 0 20px; }
+.picker .picker-segment:last-child { border-radius: 0 20px 20px 0; }
+.picker .picker-segment[aria-checked="true"] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.picker .picker-segment:not([aria-checked="true"]) .picker-check { display: none; }
+/* The field: the hidden wheel shown (Margin's own colours), its knobs at elevation 1. */
+.picker-field { height: 176px; border-radius: 16px; color: var(--on-surface-variant); }
+.picker-field [m-knob] { box-shadow: 0 2px 6px 2px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.3); }
+.picker-row { display: flex; align-items: center; gap: 8px; }
+.picker-row .picker-label { margin-right: auto; }
+.picker .picker-assist { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px; border-radius: 8px; border: 1px solid var(--outline-variant); background: transparent; font-weight: 500; }
+.picker .picker-assist svg { color: var(--primary); }
+.picker .picker-tonal { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 20px; background: var(--secondary-container); color: var(--on-secondary-container); }
+.picker .picker-tonal:disabled { opacity: 0.38; cursor: default; }
+/* The presets: round swatches, the one shown ringed in the primary colour. */
+.picker-presets { display: flex; align-items: center; gap: 3px; }
+.picker .picker-page { display: grid; place-items: center; width: 24px; height: 32px; flex: none; border: 0; border-radius: 16px; background: transparent; color: var(--on-surface-variant); }
+.picker .picker-swatch { display: grid; place-items: center; flex: 1 1 0; min-width: 0; height: 26px; border: 0; border-radius: 13px; background: var(--swatch); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.picker .picker-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sc-high), 0 0 0 4px var(--primary); }
+.picker .picker-swatch .picker-check { width: 14px; height: 14px; color: #fff; stroke-width: 2.6; }
+.picker .picker-swatch:not([aria-checked="true"]) .picker-check { display: none; }
+/* The picture (Margin.app): an assist chip to choose one, the fit as a segmented button; a file dropped on the dialog
+   outlined in the primary colour. */
+.picker-note { color: var(--on-surface-variant); font-size: 12px; }
+.picker.picker-dropping { outline: 2px dashed var(--primary); outline-offset: -6px; }
+/* The sliders: M3's, a thick track, the active part in the primary colour, a bar of a handle with a gap each side. */
+.picker-slider { height: 44px; color: var(--primary); }
+.picker-slider [m-track] { height: 16px; border-radius: 8px; background: var(--secondary-container); }
+.picker-slider [m-fill] { border-radius: 8px 2px 2px 8px; background: var(--primary); }
+.picker-slider [m-thumb] { width: 4px; height: 44px; border-radius: 2px; background: var(--primary); box-shadow: 0 0 0 6px var(--sc-high); }
+/* The textures: filter chips, the one showing in the secondary container with a check. */
+.picker-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker .picker-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--outline-variant); background: transparent; color: var(--on-surface-variant); font-weight: 500; }
+.picker .picker-chip[aria-pressed="true"] { padding-left: 8px; border-color: transparent; background: var(--secondary-container); color: var(--on-secondary-container); }
+.picker .picker-chip:not([aria-pressed="true"]) .picker-check { display: none; }
+.picker-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.picker .picker-text, .picker .picker-filled { height: 40px; padding: 0 12px; border: 0; border-radius: 20px; background: transparent; color: var(--primary); font-weight: 500; }
+.picker .picker-filled { padding: 0 24px; background: var(--primary); color: var(--on-primary); }
+.picker button:focus-visible, .picker [m-knob="key"]:focus-visible, .picker m-picker-slider:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .picker .picker-segment, .picker .picker-chip, .picker .picker-swatch, .picker .picker-tonal { transition: background-color 150ms var(--ease), box-shadow 150ms var(--ease); }
+}
+
+/* ---- Notices and prompts (Margin's <m-notice> and <m-prompt>) --------------- */
+
+/* A notice near the left edge (e.g. "Margin works in full screen"), above
+   the page, never in the way for long. */
+.notice {
+  position: absolute; top: 12px; left: 12px; z-index: 3;
+  display: flex; align-items: center; gap: 8px; max-width: min(420px, calc(100% - 24px));
+  /* As wide as its words, up to the cap (it's placed in a box of no size, so min-content went a word per line). */
+  width: max-content;
+  padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: #242427; color: #fff; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 8px 28px rgba(0, 0, 0, 0.28); pointer-events: auto;
+}
+.notice .text { flex: 1; }
+.notice button { height: 26px; padding: 0 10px; border-radius: 7px; color: #fff; background: rgba(255, 255, 255, 0.12); white-space: nowrap; }
+.notice button:hover { background: rgba(255, 255, 255, 0.2); }
+.notice button.primary, .prompt button.primary { background: var(--accent); color: var(--on-accent); }
+
+/* A prompt: the notice's dark card, centered, a question and its buttons. */
+.prompt-layer { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(0, 0, 0, 0.12); }
+.prompt {
+  width: min(380px, calc(100% - 32px));
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 16px; border-radius: 14px;
+  background: #242427; color: #fff; font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.2), 0 18px 50px rgba(0, 0, 0, 0.4);
+  -webkit-font-smoothing: antialiased;
+}
+.prompt-title { font-size: 14px; font-weight: 600; }
+.prompt-text { color: rgba(255, 255, 255, 0.75); }
+.prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.prompt button { height: 28px; padding: 0 12px; border-radius: 7px; color: #fff; background: rgba(255, 255, 255, 0.12); white-space: nowrap; }
+.prompt button:hover { background: rgba(255, 255, 255, 0.2); }
+.prompt button.danger { background: #d63031; }
+
+/* ---- The command bar ------------------------------------------------------- */
+
+/* A floating panel centered on the window, a third of the way down: a large
+   field, then one-line rows (icon, title, a muted detail, where it is, an
+   arrow); the selected row takes the current space's color. Light or dark
+   as the system is, opaque (no blur). Laid out left-to-right in any
+   language. */
+.palette-layer { position: absolute; inset: 0; z-index: 5; }
+/* Catches clicks outside; the page isn't dimmed. */
+.palette-layer .backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; background: transparent; }
+.palette {
+  --rows: 5;
+
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(680px, calc(100% - 32px));
+  /* Five rows (the field, list padding, rows and the gaps between them);
+     more scroll, the selection followed. */
+  max-height: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
+  direction: ltr;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  color: var(--panel-fg);
+  border-radius: 16px;
+  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 30px 80px rgba(0, 0, 0, 0.34), 0 6px 18px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+/* Short windows: higher up, then fewer whole rows (never half of one). */
+@media (max-height: 507px) { .palette { top: 18%; } }
+@media (max-height: 418px) { .palette { --rows: 4; } }
+@media (max-height: 357px) { .palette { --rows: 3; } }
+
+/* 60 high above a hairline; the magnifier centered on the row icons'
+   column, the text where the titles start. */
+.palette .search {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 61px;
+  padding: 0 18px 1px 21px;
+  border-bottom: 1px solid var(--panel-line);
+}
+.palette .search-icon { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--panel-muted); stroke-width: 2; stroke-linecap: round; }
+.palette .query {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--panel-fg);
+  font: inherit;
+  font-size: 20px;
+  outline: none;
+}
+.palette .query::placeholder { color: var(--panel-muted); }
+.palette .results {
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  scroll-padding: 8px 0; /* the selection scrolled into view keeps the padding */
+}
+.palette .result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 10px 0 11px;
+  border-radius: 10px;
+}
+.palette .result + .result { margin-top: 2px; }
+/* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */
+.palette .result-section { padding: 12px 10px 5px; color: var(--panel-muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette .result:hover { background: var(--panel-hover); }
+.palette .result[aria-selected="true"] { background: color-mix(in srgb, var(--space-color) 84%, #000); color: #fff; }
+.palette .result.empty { color: var(--panel-muted); justify-content: center; }
+/* Each icon fills a 24 px slot: favicons 16 px in it (on a white tile when
+   selected), letters on a 16 px tile, emoji at 15 px. */
+.palette .avatar { width: 24px; height: 24px; }
+.palette img.avatar { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 6px; }
+.palette [aria-selected="true"] img.avatar { background: #fff; }
+.palette .avatar.letter { width: 16px; height: 16px; margin: 0 4px; }
+.palette .avatar.emoji { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+/* An installed app's icon (Margin.app): its own shape, no tile behind it. */
+.palette img.avatar.app, .palette [aria-selected="true"] img.avatar.app { width: 22px; height: 22px; margin: 0; padding: 1px; border-radius: 0; background: none; }
+/* The title keeps its room; the detail after it gives way first. */
+.palette .title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
+.palette .detail { flex: 0 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--panel-muted); font-size: 13px; }
+.palette .spacer { flex: 1 0 0; }
+.palette .badge { flex: none; color: var(--panel-muted); font-size: 12px; font-weight: 500; }
+.palette [aria-selected="true"] :is(.badge, .detail) { color: rgba(255, 255, 255, 0.8); }
+.palette .go-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--panel-hover);
+}
+.palette .arrow-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.palette [aria-selected="true"] .go-button { background: rgba(255, 255, 255, 0.22); }
+
+/* ---- The new-tab launcher (Margin's <m-launcher>, the "launcher" part) ------- */
+
+/* In the page card, beside the sidebar: the search field, the space's pins
+   as tiles, recently archived tabs, and Settings. Light or dark, as the
+   system is. */
+.launcher-slot {
+  --bg: #f7f7f9;
+  --fg: #1d1b26;
+  --muted: #6e6a7c;
+  --card: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: var(--fg);
+}
+@media (prefers-color-scheme: dark) {
+  .launcher-slot { --bg: #1b1b1f; --fg: #ecebf2; --muted: #9a97a8; --card: #28282d; --border: rgba(255, 255, 255, 0.09); }
+}
+.launcher {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 18vh 32px 48px;
+  background: var(--bg);
+}
+.launcher > * { width: min(640px, 100%); flex: none; }
+.launcher .launcher-query {
+  width: 100%;
+  height: 52px;
+  padding: 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 17px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  outline: none;
+}
+.launcher .launcher-query:focus { border-color: var(--space-color); }
+.launcher h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.launcher .pin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.launcher .tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px 12px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.launcher .tile:hover { border-color: var(--space-color); }
+.launcher .tile .avatar { width: 32px; height: 32px; border-radius: 8px; }
+.launcher .tile img.avatar.app { width: 40px; height: 40px; margin: -4px; border-radius: 0; }
+.launcher .tile .avatar.letter { font-size: 16px; }
+.launcher .tile .title { width: 100%; text-align: center; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.launcher .archive-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.launcher .archive-row:hover { background: var(--card); }
+.launcher .archive-row .title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.launcher .archive-row .when { color: var(--muted); font-size: 12px; }
+.launcher .archive-more { margin-top: 6px; padding: 4px 10px; border-radius: 8px; color: var(--muted); font-size: 13px; }
+.launcher .archive-more:hover { background: var(--card); color: var(--fg); }
+.launcher .settings { color: var(--muted); font-size: 13px; }
+.launcher .settings-summary { display: list-item; list-style: disclosure-closed inside; }
+.launcher .settings-summary button { padding: 0; font-size: 13px; color: var(--muted); }
+.launcher .settings.open .settings-summary { list-style-type: disclosure-open; }
+/* The Settings form (Margin's `settings` part). */
+.settings-form label.setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
+.settings-form label.setting.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+.settings-form label.setting.disabled { opacity: 0.55; }
+.settings-form :is(select, input, textarea) { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+.settings-form input.number { width: 6em; flex: none; }
+.settings-form input.color { flex: none; width: 44px; height: 26px; padding: 2px; border-radius: 6px; cursor: default; }
+.settings-form input.toggle { flex: none; width: auto; padding: 0; margin: 0; accent-color: var(--accent); cursor: default; }
+.settings-form input.shortcut { width: 9em; flex: none; cursor: default; }
+.settings-form input.shortcut.recording { border-color: var(--accent); }
+.settings-form textarea { resize: vertical; }
+.settings-form .help { margin: 6px 0 0; font-size: 12px; }
+.settings-form .help.error { color: var(--danger); }
+.settings-form .setting-group { margin-top: 18px; }
+.settings-form .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.settings-form .actions button { flex: none; white-space: nowrap; font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; }
+.settings-form .actions .help { margin: 0; }
+
+@media print { .page, .card-edge { box-shadow: none !important; } }
+
+/* ---- Settings as its own page (Margin.app's Settings tab, margin://settings) ---- */
+
+/* As macOS's System Settings: the categories in a sidebar, each with a
+   coloured tile and a white glyph, the chosen one lit in the space's colour;
+   beside it the category's settings in one rounded group, a hairline
+   between rows. Light or dark, as the system is (the launcher's colours). */
+.settings-page {
+  height: 100%;
+  display: grid;
+  grid-template-columns: clamp(160px, 30%, 228px) minmax(0, 1fr);
+  background: var(--bg);
+}
+.settings-nav {
+  overflow-y: auto;
+  overscroll-behavior: none;
+  padding: 22px 10px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+}
+.settings-title { margin: 0 8px 14px; font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.settings-categories { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.settings-category {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  text-align: left;
+  cursor: default;
+}
+.settings-category:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+/* (A tint of the space's colour, the text as it is: a light space colour stays readable.) */
+.settings-category.selected { background: color-mix(in srgb, var(--space-color) 24%, transparent); font-weight: 600; }
+.category-icon { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #8e8e93; }
+.category-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.settings-category[data-category="appearance"] .category-icon { background: #5e5ce6; }
+.settings-category[data-category="tabs"] .category-icon { background: #0a84ff; }
+.settings-category[data-category="browsing"] .category-icon { background: #30b0c7; }
+.settings-category[data-category="keyboard"] .category-icon { background: #8e8e93; }
+.category-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-pane { overflow-y: auto; overscroll-behavior: none; padding: 24px 32px 48px; }
+.settings-pane > * { max-width: 640px; margin-inline: auto; }
+.pane-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.pane-help { margin: 4px 0 18px; font-size: 13px; color: var(--muted); }
+.settings-page .settings-form { padding: 2px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 13px; color: var(--fg); }
+.settings-page .settings-form label.setting { margin-top: 0; padding: 10px 0; min-height: 26px; }
+.settings-page .settings-form label.setting.stacked { gap: 8px; }
+.settings-page .settings-form .actions { margin-top: 0; padding: 10px 0; flex-wrap: wrap; }
+.settings-page .settings-form :is(label.setting, .actions, .setting-group):not(:first-child) { border-top: 1px solid var(--border); }
+.settings-page .settings-form > .help { margin: -4px 0 10px; color: var(--muted); }
+.settings-page .settings-form > .help:first-child { margin: 10px 0; }
+.settings-page .settings-form .actions .help { color: var(--muted); }
+.settings-page .settings-form .setting-group { margin-top: 0; padding: 16px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.settings-page .settings-form .actions button:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 5%, transparent); }
+
+/* ======================================================================
+   Material 3: the components, over the template's rules above.
+   ====================================================================== */
+
+/* ---- Type: Google Sans Flex everywhere (the panels set their own font above). */
+.m3 :is(.notice, .prompt, .palette, .launcher-slot, .tab-menu) { font-family: var(--font); }
+
+/* ---- The page card and its loader ---------------------------------------- */
+.card-edge { box-shadow: none; }
+/* Material 3 Expressive's loading indicator: a soft, many-lobed shape in the
+   primary colour turning and breathing in a round container (transform
+   only: the loader animates nothing else); with the app's icon, a circular
+   progress arc around it. */
+.m3 .page-loader, .m3 > m-startup {
+  --load-bg: var(--surface);
+  --load-tile: var(--primary-container);
+  --load-ring: var(--primary);
+  --load-fg: var(--on-surface-variant);
+  --load-edge: 0 0 0 0 transparent;
+}
+.m3 > m-startup [m-startup-action] { height: 40px; padding: 0 24px; border-radius: 20px; background: var(--primary); color: var(--on-primary); font-weight: 500; }
+.opening-mark, .m3[m-starting][m-page-state="empty"] .page-loader::before, .m3 > m-startup::before { width: 64px; height: 64px; border-radius: 50%; }
+.opening-mark::after, .m3[m-starting][m-page-state="empty"] .page-loader::after, .m3 > m-startup::after {
+  width: 38px;
+  height: 38px;
+  border-radius: 42% 58% 46% 54% / 56% 44% 56% 44%;
+  background: var(--load-ring);
+  -webkit-mask: none;
+  mask: none;
+  animation: m3-morph 1.6s var(--ease) infinite;
+}
+.opening-mark.with-icon { background: var(--sc-high); }
+.opening-mark.with-icon::after {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: conic-gradient(var(--load-ring) 0 28%, transparent 28%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  animation: m3-spin 1s linear infinite;
+}
+.opening-label { top: calc(100% + 16px); font-size: 14px; letter-spacing: 0.25px; }
+@keyframes m3-morph {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(0.84); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+}
+.m3[m-page-state="elsewhere"] .opening-mark::after { animation: none; }
+.m3 > m-page-picture > [m-picture-label] { background: var(--inverse-surface); color: var(--inverse-on-surface); }
+/* The page's loading bar: Material's linear indicator, in the primary colour. */
+.loader { width: 64px; }
+.loader-bar { background: var(--primary); opacity: 1; }
+/* A gesture's badge: the inverse surface, the primary colour once armed. */
+.gesture { background: var(--inverse-surface); color: var(--inverse-on-surface); box-shadow: var(--elev-2); }
+.gesture::before { background: conic-gradient(var(--inverse-primary) calc(var(--g) * 360deg), color-mix(in srgb, var(--inverse-on-surface) 16%, transparent) 0); }
+.gesture.armed { background: var(--primary); color: var(--on-primary); }
+.gesture.armed::before { background: var(--on-primary); }
+/* The skeleton while starting: rows as pills. */
+.m3[m-starting] .tabs::after { height: 44px; margin-bottom: 96px; border-radius: 22px; box-shadow: 0 48px 0 color-mix(in srgb, var(--field) 62%, var(--frame)), 0 96px 0 color-mix(in srgb, var(--field) 30%, var(--frame)); }
+
+/* ---- The navigation drawer ------------------------------------------------- */
+.margin-sidebar { background: var(--frame); }
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { border-radius: 16px; background: var(--sc-low); box-shadow: var(--elev-3); }
+/* A space's background: the docked drawer on it, clear; out over the page, a card of its one colour (--frame). */
+.m3[m-background] .margin-sidebar { background: transparent; }
+.m3[m-background]:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { background: var(--frame); }
+.margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: var(--on-surface-variant); }
+.margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 1; }
+.margin-sidebar .line-icon { stroke-width: 1.7; }
+/* Icon buttons: round, 36, a state layer. */
+.margin-sidebar .top { height: 40px; margin: 8px 0 8px; }
+.margin-sidebar .top .spacer { height: 40px; }
+.margin-sidebar :is(.keep-open, .bar-button) { width: 36px; height: 36px; border-radius: 50%; transition: background-color 150ms var(--ease); }
+.margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
+.margin-sidebar :is(.keep-open, .bar-button):active { background: color-mix(in srgb, var(--on-surface) 12%, var(--frame)); }
+.margin-sidebar .nav-icon { width: 18px; height: 18px; }
+/* The address: Material's search bar (a full pill on the highest container, a search icon leading). */
+.margin-sidebar .address { gap: 12px; height: 48px; margin-bottom: 12px; padding: 0 20px 0 16px; border-radius: 24px; background: var(--sc-highest); font-weight: 400; letter-spacing: 0.25px; transition: background-color 150ms var(--ease); }
+.margin-sidebar .address:hover { background: var(--field-hover); }
+.margin-sidebar .address .search-icon { flex: none; width: 20px; height: 20px; color: var(--on-surface-variant); stroke-width: 2; }
+.margin-sidebar .address .host { opacity: 1; color: var(--on-surface); }
+.margin-sidebar .address .hint { color: var(--on-surface-variant); }
+/* The space's name: the drawer's section heading (title small). */
+.margin-sidebar .space-title { height: 36px; padding-left: 16px; color: var(--on-surface-variant); font-size: 14px; font-weight: 500; letter-spacing: 0.1px; }
+.margin-sidebar .space-title .emoji { font-size: 16px; }
+.margin-sidebar .divider { margin: 8px 16px; background: var(--outline-variant); }
+.margin-sidebar .today-split { height: 25px; padding: 0 16px; }
+.margin-sidebar .today-split .rule { background: var(--outline-variant); }
+.margin-sidebar .clear { top: 3px; right: 8px; height: 19px; padding: 0 10px; border-radius: 10px; background: var(--secondary-container); color: var(--on-secondary-container); font-size: 12px; font-weight: 500; }
+/* Rows: full pills, 44 high; the active indicator is the secondary container, its text on it. */
+.margin-sidebar :is(.pins, .tabs) { gap: 2px; }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { gap: 12px; height: 44px; padding: 0 16px; border-radius: 22px; font-weight: 500; letter-spacing: 0.1px; transition: transform 250ms var(--spring), background-color 150ms var(--ease); }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder).m-pressed { transform: scale(0.97); transition: transform 100ms var(--ease); }
+.margin-sidebar :is(.tab, .pin).active { color: var(--on-secondary-container); font-weight: 600; }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):focus-visible { box-shadow: inset 0 0 0 2px var(--primary); }
+.margin-sidebar .pin.nested { margin-left: 20px; }
+.m3 .avatar { width: 18px; height: 18px; border-radius: 5px; }
+.m3 img.avatar.app { width: 22px; height: 22px; margin: -2px; }
+.m3 .avatar.letter { border-radius: 50%; font-size: 10px; font-weight: 600; }
+.margin-sidebar .folder-icon { width: 18px; height: 18px; stroke: var(--on-surface-variant); stroke-opacity: 1; stroke-width: 1.5; }
+.margin-sidebar .folder-icon .folder-front { fill: var(--on-surface-variant); fill-opacity: 0.16; }
+.margin-sidebar .m-renaming { height: 32px; line-height: 32px; padding: 0 12px; border-radius: 4px 4px 0 0; background: var(--sc-highest); outline: none; box-shadow: inset 0 -2px 0 var(--primary); }
+/* × on a row: a round icon button over the title's end. */
+.margin-sidebar .icon { top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; }
+.margin-sidebar .icon:hover { background-image: linear-gradient(var(--press), var(--press)); }
+/* A tab loading: Material's circular indicator, in the primary colour. */
+.margin-sidebar .spinner { width: 16px; height: 16px; margin: 1px; border: 2px solid color-mix(in srgb, var(--primary) 22%, transparent); border-top-color: var(--primary); }
+/* "New Tab": the drawer's extended FAB (the primary container, Material's
+   16 corner, a soft shadow), as wide as its words. */
+.margin-sidebar .new-tab-row {
+  align-self: flex-start;
+  height: 48px;
+  margin: 4px 0 8px;
+  padding: 0 20px 0 16px;
+  border-radius: 16px;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  box-shadow: var(--elev-1);
+}
+.margin-sidebar .new-tab-row:hover { --row: none; background: color-mix(in srgb, var(--on-primary-container) 8%, var(--primary-container)); box-shadow: var(--elev-2); }
+.margin-sidebar .new-tab-row .plus { width: 20px; height: 20px; color: var(--on-primary-container); }
+.margin-sidebar .new-tab-row .plus-icon { width: 14px; height: 14px; stroke-width: 2; }
+.margin-sidebar .new-tab-row .title { flex: none; }
+.margin-sidebar .new-tab-row:is(.active, .behind) { color: var(--on-primary-container); background: color-mix(in srgb, var(--on-primary-container) 12%, var(--primary-container)); box-shadow: var(--elev-2); }
+/* Drag and drop: the line and ring in the primary colour, a lifted row. */
+.margin-sidebar .m-drop-before::before, .margin-sidebar .m-drop-after::after, .margin-sidebar .pins.m-drop-end::after {
+  background:
+    radial-gradient(circle at 4px 50%, transparent 2px, var(--primary) 2.4px, var(--primary) 3.6px, transparent 4px) no-repeat 0 0 / 8px 8px,
+    linear-gradient(var(--primary), var(--primary)) no-repeat 7.5px 50% / calc(100% - 7.5px) 2px;
+}
+.m-drag-ghost.tab, .m-drag-ghost.pin, .m-drag-ghost.folder { box-shadow: var(--elev-3); }
+.m3.m-drag-tab .margin-sidebar .pins:not(.has) { height: 44px; border-radius: 22px; border-color: var(--outline); }
+.m3.m-drag-tab .margin-sidebar .pins:not(.has) .drop-hint { line-height: 41px; }
+.margin-sidebar .tabs.m-drop-into { border-radius: 22px; }
+/* The bottom bar: the spaces as the rail's destinations (the current one on its active indicator). */
+.margin-sidebar .bar { height: 56px; }
+.margin-sidebar .spaces { gap: 4px; }
+.margin-sidebar .chip { width: 40px; height: 32px; border-radius: 16px; font-size: 15px; line-height: 32px; opacity: 0.7; transition: background-color 150ms var(--ease), opacity 150ms var(--ease); }
+.margin-sidebar .chip:hover { opacity: 1; background: var(--hover); }
+.margin-sidebar .chip.active { opacity: 1; background: var(--secondary-container); }
+/* The space editor: a filled card, filled text fields, a filled button. */
+.margin-sidebar .editor { gap: 12px; padding: 16px; border-radius: 16px; background: var(--sc-high); }
+.margin-sidebar .editor input { height: 40px; padding: 0 12px; border: 0; border-radius: 4px 4px 0 0; background: var(--sc-highest); box-shadow: inset 0 -1px 0 var(--on-surface-variant); }
+.margin-sidebar .editor input:focus { box-shadow: inset 0 -2px 0 var(--primary); }
+.margin-sidebar .editor .emoji { width: 48px; }
+.margin-sidebar .swatch { width: 24px; height: 24px; }
+.margin-sidebar .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sc-high), 0 0 0 4px var(--chip-color); }
+.margin-sidebar .editor .actions button { height: 36px; padding: 0 14px; border-radius: 18px; color: var(--primary); font-weight: 500; }
+.margin-sidebar .editor .actions button:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); color: var(--primary); }
+.margin-sidebar .editor .actions .primary, .margin-sidebar .editor .actions .primary:hover { padding: 0 20px; background: var(--primary); color: var(--on-primary); }
+.resizer::after { background: var(--outline); }
+
+/* ---- Menus: Material's menu (a surface container, rounded, elevation 2) ---- */
+.tab-menu { padding: 6px; border-radius: 16px; background: var(--sc); box-shadow: var(--elev-2); }
+.tab-menu .menu-item { height: 36px; padding: 0 14px; border-radius: 10px; font-size: 14px; letter-spacing: 0.1px; }
+.tab-menu .menu-item:focus { background: var(--secondary-container); color: var(--on-secondary-container); }
+.menu-separator { margin: 6px 8px; background: var(--outline-variant); }
+
+/* ---- Notices: snackbars; prompts: dialogs ---------------------------------- */
+.notice {
+  top: auto;
+  bottom: 16px;
+  left: calc(var(--card-left) + 16px);
+  gap: 4px;
+  min-height: 48px;
+  padding: 6px 8px 6px 16px;
+  border-radius: 8px;
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  font-size: 14px;
+  letter-spacing: 0.25px;
+  box-shadow: var(--elev-3);
+}
+.notice button, .notice button.primary { height: 36px; padding: 0 12px; border-radius: 18px; background: none; color: var(--inverse-primary); font-weight: 500; }
+.notice button:hover { background: color-mix(in srgb, var(--inverse-primary) 10%, transparent); }
+.prompt-layer { background: var(--scrim); }
+.prompt {
+  width: min(400px, calc(100% - 48px));
+  gap: 16px;
+  padding: 24px;
+  border-radius: 28px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  font-size: 14px;
+  letter-spacing: 0.25px;
+  box-shadow: var(--elev-3);
+}
+.prompt-title { font-size: 24px; font-weight: 400; line-height: 32px; }
+.prompt-text { color: var(--on-surface-variant); line-height: 20px; }
+.prompt-actions { gap: 8px; margin-top: 8px; }
+.prompt button { height: 40px; padding: 0 12px; border-radius: 20px; background: none; color: var(--primary); font-weight: 500; }
+.prompt button:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.prompt button.primary { padding: 0 24px; background: var(--primary); color: var(--on-primary); }
+.prompt button.danger { padding: 0 24px; background: var(--error); color: #fff; }
+
+/* ---- The command bar: Material's search view ------------------------------- */
+.palette {
+  max-height: calc(65px + 8px + var(--rows) * 48px + (var(--rows) - 1) * 2px + 8px);
+  border-radius: 28px;
+  background: var(--sc-high);
+  box-shadow: var(--elev-3);
+  font-size: 14px;
+}
+.palette .search { gap: 16px; height: 65px; padding: 0 20px 1px 24px; border-bottom-color: var(--outline-variant); }
+.palette .search-icon { width: 22px; height: 22px; stroke: var(--on-surface-variant); }
+.palette .query { font-size: 18px; letter-spacing: 0; }
+.palette .results { scroll-padding: 8px 0; }
+.palette .result { gap: 14px; height: 48px; padding: 0 12px 0 14px; border-radius: 24px; }
+.palette .result:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.palette .result[aria-selected="true"] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.palette [aria-selected="true"] :is(.badge, .detail) { color: color-mix(in srgb, var(--on-secondary-container) 72%, transparent); }
+.palette [aria-selected="true"] img.avatar { background: var(--sc-lowest); }
+.palette .go-button { width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.palette [aria-selected="true"] .go-button { background: var(--primary); color: var(--on-primary); }
+.palette .result-section { padding: 12px 14px 6px; font-size: 12px; font-weight: 500; letter-spacing: 0.5px; }
+
+/* ---- The launcher: a search bar, cards, a list ------------------------------ */
+.launcher-slot { --bg: var(--surface); --fg: var(--on-surface); --muted: var(--on-surface-variant); --card: var(--sc-low); --border: var(--outline-variant); font-size: 14px; }
+.launcher { gap: 32px; }
+.launcher .launcher-query { height: 56px; padding: 0 24px; border: 0; border-radius: 28px; background: var(--sc-high); color: var(--on-surface); font-size: 16px; letter-spacing: 0.5px; box-shadow: none; transition: box-shadow 150ms var(--ease); }
+.launcher .launcher-query:focus { box-shadow: var(--elev-1), inset 0 0 0 2px var(--primary); }
+.launcher .launcher-query::placeholder { color: var(--on-surface-variant); }
+.launcher h2 { margin-bottom: 12px; color: var(--on-surface-variant); font-size: 14px; font-weight: 500; letter-spacing: 0.1px; }
+.launcher .tile { gap: 10px; padding: 18px 10px 14px; border: 0; border-radius: 16px; background: var(--sc-low); transition: background-color 150ms var(--ease); }
+.launcher .tile:hover { border: 0; background: color-mix(in srgb, var(--on-surface) 8%, var(--sc-low)); }
+.launcher .tile .avatar { width: 36px; height: 36px; border-radius: 12px; }
+.launcher .archive-row { height: 48px; padding: 0 16px; border-radius: 24px; }
+.launcher .archive-row:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.launcher .archive-more { height: 40px; padding: 0 16px; border-radius: 20px; color: var(--primary); font-weight: 500; }
+.launcher .archive-more:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); color: var(--primary); }
+.launcher .settings-summary button { color: var(--primary); font-weight: 500; }
+
+/* ---- Settings: Material's fields, switches and buttons --------------------- */
+.settings-form :is(select, input, textarea) { min-height: 40px; padding: 8px 12px; border: 1px solid var(--outline); border-radius: 4px; background: transparent; color: var(--on-surface); }
+.settings-form :is(select, input, textarea):focus { outline: none; border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.settings-form input.shortcut.recording { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
+/* Material's switch: a 52 × 32 track; off, outlined with a small thumb; on, the primary colour with a large one. */
+.settings-form input.toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  width: 52px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: radial-gradient(circle at 16px 50%, var(--outline) 7.5px, transparent 8px), var(--sc-highest);
+  box-shadow: inset 0 0 0 2px var(--outline);
+  cursor: default;
+}
+.settings-form input.toggle:checked { background: radial-gradient(circle at calc(100% - 16px) 50%, var(--on-primary) 11.5px, transparent 12px), var(--primary); box-shadow: none; }
+.settings-form input.toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; box-shadow: inset 0 0 0 2px var(--outline); }
+.settings-form input.toggle:checked:focus-visible { box-shadow: none; }
+.settings-form input.toggle:disabled { opacity: 0.38; }
+.settings-form input.color { min-height: 0; border-radius: 8px; }
+.settings-form .actions button { height: 40px; padding: 0 24px; border: 0; border-radius: 20px; background: var(--secondary-container); color: var(--on-secondary-container); font-weight: 500; }
+.settings-form .actions button:hover { background: color-mix(in srgb, var(--on-secondary-container) 8%, var(--secondary-container)); color: var(--on-secondary-container); }
+.settings-form .help.error { color: var(--error); }
+/* Settings as its own page: the drawer of categories (pills, plain icons), the category's settings in a rounded list. */
+.settings-page { background: var(--surface); }
+.settings-nav { padding: 24px 12px; border-right: 0; background: var(--sc-low); }
+.settings-title { margin: 4px 16px 20px; font-size: 22px; font-weight: 400; line-height: 28px; letter-spacing: 0; }
+.settings-categories { gap: 2px; }
+.settings-category { gap: 12px; height: 48px; padding: 0 16px; border-radius: 24px; font-size: 14px; font-weight: 500; letter-spacing: 0.1px; color: var(--on-surface-variant); transition: background-color 150ms var(--ease); }
+.settings-category:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.settings-category.selected { background: var(--secondary-container); color: var(--on-secondary-container); font-weight: 600; }
+.settings-category .category-icon, .settings-category[data-category] .category-icon { width: 24px; height: 24px; border-radius: 0; background: none; color: inherit; }
+.category-icon svg { width: 22px; height: 22px; stroke-width: 1.7; }
+.settings-pane { padding: 28px 32px 48px; }
+.pane-title { font-size: 28px; font-weight: 400; line-height: 36px; letter-spacing: 0; }
+.pane-help { margin: 4px 0 20px; font-size: 14px; letter-spacing: 0.25px; color: var(--on-surface-variant); }
+.settings-page .settings-form { padding: 4px 20px; border: 0; border-radius: 24px; background: var(--sc-low); font-size: 14px; }
+.settings-page .settings-form label.setting { padding: 12px 0; }
+.settings-page .settings-form .actions { padding: 12px 0; }
+.settings-page .settings-form :is(label.setting, .actions, .setting-group):not(:first-child) { border-top-color: var(--outline-variant); }
+.settings-page .settings-form .setting-group { padding: 20px 0 8px; color: var(--primary); font-size: 14px; font-weight: 500; }
+.settings-page .settings-form .actions button:hover { color: var(--on-secondary-container); }
+
+@media (prefers-reduced-motion: reduce) {
+  .opening-mark::after, .m3[m-starting][m-page-state="empty"] .page-loader::after, .m3 > m-startup::after { animation: none; }
+  .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { transition: none; }
+}
+
+/* ---- Track 2: Favorites, nested folders, sticky pin reset, split rows, mini player, preview, toast ---- */
+.favorites {
+  display: grid;
+  grid-template-columns: repeat(var(--fav-cols, 3), minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px var(--pad) 8px;
+  flex: none;
+}
+.favorite-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: 16px;
+  background: var(--sc-low);
+  color: var(--on-surface);
+  text-decoration: none;
+  cursor: default;
+  transition: background-color 150ms var(--ease), border-radius 150ms var(--ease);
+}
+.favorite-tile:hover { background: var(--sc-high); }
+.favorite-tile.active { background: var(--secondary-container); color: var(--on-secondary-container); border-radius: 22px; }
+.favorite-tile.open:not(.active) { box-shadow: inset 0 0 0 1px var(--outline-variant); }
+.favorite-tile .avatar { width: 18px; height: 18px; border-radius: 4px; }
+.favorite-tile .avatar.app { width: 22px; height: 22px; border-radius: 0; }
+.favorite-tile .drift-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.favorites.m-drop-into { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 16px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; }
+.favorites-drop-zone { position: absolute; left: var(--pad); right: var(--pad); top: 2px; height: 44px; box-sizing: border-box; border: 2px dashed var(--outline); border-radius: 16px; background: var(--sc-low); }
+.favorites-drop.m-drop-into .favorites-drop-zone { border-color: var(--primary); background: var(--sc-high); }
+
+/* Nested folders: each level indents by the step a folder's pins have (.pin.nested, 20 px), the rows as they were up to depth 1. */
+.margin-sidebar .pins :is(.pin.nested, .folder) { margin-left: calc(var(--depth, 0) * 20px); }
+.pin .icon.reset {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  flex: none;
+  opacity: 0.78;
+  cursor: default;
+}
+.pin .icon.reset:hover { opacity: 1; background: color-mix(in srgb, var(--on-surface) 10%, transparent); color: var(--on-surface); }
+.pin.muted .avatar, .tab.muted .avatar, .favorite-tile.muted .avatar { opacity: 0.6; }
+
+.split-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--sc-low);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+}
+.split-row.active { background: var(--secondary-container); color: var(--on-secondary-container); box-shadow: none; }
+.split-pane-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+}
+.split-pane-btn + .split-pane-btn { box-shadow: -1px 0 0 var(--outline-variant); border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.split-pane-btn:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.split-pane-btn.active { background: color-mix(in srgb, var(--primary) 16%, transparent); font-weight: 500; }
+.split-pane-btn .avatar { width: 15px; height: 15px; flex: none; }
+.split-pane-btn .title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.split-row .split-swap {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  opacity: 0;
+  cursor: default;
+}
+.split-row:hover .split-swap, .split-row:focus-within .split-swap { opacity: 0.85; }
+.split-row .split-swap:hover { opacity: 1; background: color-mix(in srgb, var(--on-surface) 10%, transparent); }
+
+.mini-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 var(--pad) 8px;
+  padding: 8px 10px;
+  border-radius: 20px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  flex: none;
+}
+.mini-player.paused { opacity: 0.72; }
+.mini-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.mini-art { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; flex: none; display: grid; place-items: center; }
+.mini-art.letter { background: var(--letter, var(--primary)); color: var(--on-primary); font-size: 13px; font-weight: 600; }
+.mini-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mini-title { font-size: 13px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-sub { font-size: 11.5px; color: var(--on-surface-variant); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-controls { display: flex; align-items: center; gap: 2px; flex: none; }
+.mini-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: default;
+}
+.mini-btn:hover { background: color-mix(in srgb, var(--on-surface) 10%, transparent); color: var(--on-surface); }
+.mini-btn.muted { opacity: 0.45; }
+
+.toast-slot { position: fixed; top: 16px; right: 16px; z-index: 60; pointer-events: none; }
+.toast-pill {
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  box-shadow: var(--elev-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ---- The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3) ---------------------------------------
+   Laid over the page area alone (Margin's --m-page-* while a card is up): the page dimmed around the card (main shows
+   through, dimmed), the card's page (<m-preview-page>, where Margin.app puts the card's Safari window) clear once that
+   window is in place (.ready), covered while it loads and as it goes. Open: the dim fades in and the card comes from
+   0.96 and nothing in 150 ms; close: the reverse. Transform and opacity only; Reduce Motion: a fade. Once the window is
+   in place the dimmed page never takes the pointer (Margin.app catches a press there and closes the card); while it
+   loads, and for Quick Tab's field alone, the scrim does (a click there closes it). */
+.preview-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --preview-dim: color-mix(in srgb, var(--scrim) 70%, transparent); }
+@media (prefers-color-scheme: dark) { .preview-slot { --preview-dim: color-mix(in srgb, var(--scrim) 90%, transparent); } }
+.preview-backdrop { position: absolute; inset: 0; pointer-events: none; }
+.preview-backdrop > .preview-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
+.preview-backdrop:is(.loading, .quick-tab) > .preview-scrim { pointer-events: auto; }
+.preview-dim, .preview-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 28px; }
+.preview-backdrop.quick-tab :is(.preview-dim, .preview-card) { bottom: auto; height: 48px; }
+.preview-dim { box-shadow: 0 0 0 100vmax var(--preview-dim); pointer-events: none; animation: m3-preview-fade-in 150ms ease-out both; }
+.preview-backdrop.closing .preview-dim { animation: m3-preview-fade-out 150ms ease-in both; }
+.preview-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: m3-preview-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--on-surface); box-shadow: var(--elev-3); }
+.preview-backdrop.closing .preview-card { animation: m3-preview-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
+.preview-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 52px; gap: 8px; padding: 0 14px; background: var(--sc-low); color: var(--on-surface); border-bottom: 1px solid var(--outline-variant); }
+.preview-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--on-surface-variant); }
+.preview-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--sc-high); color: var(--on-surface); }
+.preview-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
+.preview-backdrop:not(.ready) .preview-page { background: var(--sc-low); pointer-events: auto; }
+.preview-backdrop.quick-tab .preview-page { display: none; }
+.preview-backdrop.loading .preview-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--primary) 22%, transparent); border-top-color: var(--primary); animation: m3-spin 0.9s linear infinite; }
+@keyframes m3-preview-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes m3-preview-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes m3-preview-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes m3-preview-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .preview-card { animation-name: m3-preview-fade-in; }
+  .preview-backdrop.closing .preview-card { animation-name: m3-preview-fade-out; }
+  .preview-backdrop.loading .preview-page::after { animation: none; }
+}
+.preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+}
+.preview-btn:hover { background: var(--sc-highest); }
+.preview-btn.primary { background: var(--primary); color: var(--on-primary); }
+.preview-btn .line-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
+   each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
+   divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+.m3 { --m-split-gap: 8px; }
+.m3 m-divider { background: var(--frame); }
+.m3 m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 48px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 28%, transparent); transition: background-color .15s cubic-bezier(.2, 0, 0, 1), transform .15s cubic-bezier(.2, 0, 0, 1); }
+.m3 m-page[m-split="column"] > m-divider::after { width: 48px; height: 4px; }
+.m3 m-divider:is(:hover, :focus-visible)::after { background: var(--accent); }
+.m3 m-page[m-split="row"] > m-divider:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleY(1.34); }
+.m3 m-page[m-split="column"] > m-divider:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleX(1.34); }
+.m3 m-page[m-split="row"] > m-divider[m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.5, 1.34); }
+.m3 m-page[m-split="column"] > m-divider[m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.34, 1.5); }
+.m3 m-pane[m-focused] { border-radius: 12px; box-shadow: 0 0 0 2px var(--accent); }
+@media (prefers-reduced-motion: reduce) { .m3 m-divider::after { transition: none; } }

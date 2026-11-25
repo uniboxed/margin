@@ -1,0 +1,195 @@
+// Checks of Margin.app's library (Library.swift over margin-core's library object, ShellLibrary.swift), part of
+// tests.swift's run: the library's files in a temporary folder (flat: data/app/set.json), times and merges, the
+// delegate and the recorded requests, the observers (called back during the core's calls), the import of every
+// profile's set (once, namespaced, in the person's order, the profiles' files left as they were), and the shell's.
+// The rules themselves: the core's (app/shared/core/src/library, the shared vectors tests/fixtures/library).
+import Foundation
+import MarginCore
+
+// Entries (`{ collection, id, value }` or `{ …, deleted: true }`) stored as given at `at` (ms), no rule run, no observer
+// told: the core's `apply` call (a test's only, so the app has no way past the rules): a library made for a check or a
+// measure, in shapes the rules may never write (an older Margin's, odd values), or of 2,000 items at once.
+extension Library {
+  func store(_ entries: [Any], at: Double) {
+    let request = KeysCore.json(["type": "apply", "entries": entries, "at": at] as JSONObject)
+    _ = KeysCore.bytes(request) { p, n in KeysCore.answer { margin_library_call(corePointer, p, n, $0) } }
+  }
+}
+
+final class RecordingLibraryDelegate: LibraryDelegate {
+  var asked: [LibraryRequest] = []
+  func library(_ library: Library, wants request: LibraryRequest) { asked.append(request) }
+}
+
+// Every file under a folder, by its path from there, with its bytes (the profiles' files, before and after).
+func filesUnder(_ root: URL) -> [String: Data] {
+  var out: [String: Data] = [:]
+  for path in (try? FileManager.default.subpathsOfDirectory(atPath: root.path)) ?? [] {
+    var folder: ObjCBool = false
+    let full = root.appendingPathComponent(path).path
+    if FileManager.default.fileExists(atPath: full, isDirectory: &folder), !folder.boolValue { out[path] = FileManager.default.contents(atPath: full) }
+  }
+  return out
+}
+
+extension Tests {
+  static func libraryTests() {
+    let echo = Diagnostics.echo
+    Diagnostics.echo = { _ in }
+    defer { Diagnostics.echo = echo }
+    let dataRoot = tempFolder("library")
+    defer { try? FileManager.default.removeItem(at: dataRoot) }
+    var clock: Double = 5000
+    var n = 0
+    func make() -> Library {
+      let lib = Library.open(dataRoot: dataRoot, background: false)
+      lib.now = { clock }
+      lib.randomIds = { (0..<4).map { _ in n += 1; return "id\(n)x" } }
+      return lib
+    }
+    let lib = make()
+    check("library: the rules' actions", Set(lib.actions).isSuperset(of: [
+      "setSpace", "createSpace", "renameSpace", "deleteSpace", "orderSpaces", "moveTabToSpace", "moveTab", "pinTab", "unpin", "openPin",
+      "movePin", "createFolder", "renameFolder", "setFolderOpen", "deleteFolder", "moveFolder", "activateTab", "newTab", "closeTab",
+      "clearToday", "restoreArchive", "addItem", "updateItem", "itemClosed", "removeItem", "setSpaceProfile", "forgetWindow",
+    ]) && lib.actions.count == 57)
+    check("library: empty at first, not imported", lib.spaces().isEmpty && lib.items().isEmpty && !lib.isImported)
+    var told: [Set<String>] = []
+    // (Each observer reads the library again, as Margin's window does during the core's call.)
+    var seenInside: [Int] = []
+    let token = lib.observe { told.append($0); seenInside.append(lib.spaces().count) }
+
+    // ---- spaces, in files of their own ----
+    let made = lib.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠", "profile": "s-default"])
+    let home = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
+    check("library: a space made", made.ok && home == "sp-id1x" && made.changed == ["spaces", "windows"], "\(made)")
+    check("library: its profile, and the window shows it", lib.spaces().first?.value["profile"] as? String == "s-default" && lib.space(ofWindow: 1) == home)
+    check("library: the observers told what changed, reading it again inside", told == [["spaces", "windows"]] && seenInside == [1])
+    check("library: a payload that isn't JSON: refused, said", !lib.perform("renameSpace", ["spaceId": home, "name": Date()]).ok && lib.spaces().first?.value["name"] as? String == "Home")
+    let dir = Library.folder(in: dataRoot)
+    check("library: one flat set in data/app", FileManager.default.fileExists(atPath: dir.appendingPathComponent("set.json").path)
+      && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items/spaces.json").path)
+      && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items/x-windows.json").path))
+    clock += 10
+    let work = (lib.perform("createSpace", ["windowId": 2, "name": "Work"]).result as? JSONObject)?["spaceId"] as? String ?? ""
+    check("library: a second space after the first", lib.spaces().map(\.id) == [home, work])
+    check("library: a refused action changes nothing", !lib.perform("deleteSpace", ["spaceId": "nope"]).ok && lib.spaces().count == 2)
+    check("library: an action it doesn't know", lib.perform("updateSettings", ["patch": [:] as JSONObject]).error == "unsupported")
+
+    // ---- items, and what the hosting is asked ----
+    let opened = lib.perform("newTab", ["windowId": 1, "url": "https://example.com/"])
+    let page = (opened.result as? JSONObject)?["tabId"] as? String ?? ""
+    check("library: newTab: an item, asked of the hosting (none yet: recorded)", opened.ok && page.hasPrefix("t-") && opened.requests.first?.type == "newTab"
+      && lib.requests.last?.item == page && lib.requests.last?.target == .web(browser: "safari", profile: "s-default") && lib.requests.last?.windowId == 1)
+    let delegate = RecordingLibraryDelegate()
+    lib.delegate = delegate
+    let app = lib.perform("addItem", ["windowId": 1, "target": ["kind": "app", "bundleId": "com.apple.Notes", "name": "Notes"] as JSONObject])
+    let notes = (app.result as? JSONObject)?["tabId"] as? String ?? ""
+    check("library: an app item", lib.target(ofItem: notes) == .app(bundleId: "com.apple.Notes", name: "Notes") && app.requests.isEmpty)
+    lib.perform("activateTab", ["windowId": 1, "tabId": notes])
+    check("library: activateTab given to the delegate, with its target", delegate.asked.map(\.type) == ["activateTab"]
+      && delegate.asked.first?.target == .app(bundleId: "com.apple.Notes", name: "Notes") && delegate.asked.first?.item == notes)
+    lib.perform("closeTab", ["tabId": page])
+    check("library: closeTab: archived, the delegate asked to close it", delegate.asked.last?.type == "closeTab" && delegate.asked.last?.url == "https://example.com/"
+      && lib.liveValues("archive").count == 1 && lib.items().map(\.id) == [notes])
+    lib.perform("moveTabToSpace", ["tabId": notes, "spaceId": work])
+    check("library: an item moved to another space", lib.items(space: work).map(\.id) == [notes])
+    check("library: deleting a space takes its items to the first space", lib.perform("deleteSpace", ["spaceId": work]).ok && lib.items(space: home).map(\.id) == [notes] && lib.space(ofWindow: 2) == home)
+
+    // ---- times: always newer than the item's own ----
+    // (The item's time as its file has it: the library's store writes at once here.)
+    func stored(_ id: String) -> JSONObject? {
+      ((object(FileManager.default.contents(atPath: dir.appendingPathComponent("items/tabs.json").path))?["items"] as? JSONObject)?[id] as? JSONObject)
+    }
+    let before = num(stored(notes)?["updatedAt"]) ?? 0
+    clock = 100 // a clock that went back
+    lib.perform("updateItem", ["tabId": notes, "title": "My notes"])
+    let after = stored(notes)
+    check("library: a change after the item's own time, whatever the clock", before > 100 && num(after?["updatedAt"]) == before + 1
+      && (after?["value"] as? JSONObject)?["title"] as? String == "My notes" && (lib.liveValues("tabs")[notes] as? JSONObject)?["title"] as? String == "My notes")
+    clock = 9000
+
+    // ---- the snapshot ----
+    let snap = lib.snapshot()
+    let kept = (snap["openTabs"] as? JSONObject)?["keptTabs"] as? JSONObject
+    check("library: the snapshot in the UI's stored shape", (snap["spaces"] as? [Any])?.count == 1 && kept?[notes] != nil
+      && ((kept?[notes] as? JSONObject)?["target"] as? JSONObject)?["kind"] as? String == "app" && (snap["library"] as? JSONObject)?["imported"] as? Bool == false)
+
+    // ---- kept on disk ----
+    lib.stopObserving(token)
+    let count = told.count
+    lib.perform("renameSpace", ["spaceId": home, "name": "House"])
+    check("library: an observer stopped isn't told", told.count == count)
+    let again = make()
+    check("library: read back from its files", again.spaces().map { $0.value["name"] as? String } == ["House"] && again.items().map(\.id) == [notes]
+      && again.target(ofItem: notes) == .app(bundleId: "com.apple.Notes", name: "Notes"))
+    for _ in 0..<(Library.requestsKept + 5) { lib.perform("setSpace", ["windowId": 1, "spaceId": home]) }
+    check("library: the requests recorded, the last ones only", lib.requests.count == Library.requestsKept && lib.requests.last?.type == "setSpace")
+
+    importChecks()
+    shellChecks()
+  }
+
+  // Two Safari profiles' sets (both with a `personal` space and the same tab id) and browser.json's order.
+  static func importChecks() {
+    let root = tempFolder("library-import")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let profiles = DataSync(root: root, background: false)
+    profiles.testClock(1000)
+    func put(_ profile: String, _ items: [String: [String: Any]]) {
+      profiles.seed(DataProfile(browser: "safari", profile: profile), items.flatMap { c, list in list.map { change(c, $0.key, 10, $0.value) } })
+    }
+    let tab: (String, String, Double) -> JSONObject = { url, space, order in ["url": url, "title": "", "icon": "", "spaceId": space, "order": order, "lastUsed": 1, "selected": false] }
+    put("s-default", [
+      "spaces": ["personal": space("Personal", 0), "work": space("Work", 1)],
+      "pins": ["p-1": ["spaceId": "work", "url": "https://mail.example/", "title": "Mail", "folderId": NSNull(), "pos": 0]],
+      "tabs": ["t-same": tab("https://a.example/", "personal", 1)],
+      "settings": ["theme": "arcadia"],
+    ])
+    put("s-OTHER", ["spaces": ["personal": space("Home", 0)], "tabs": ["t-same": tab("https://b.example/", "personal", 1)]])
+    let browserJSON = root.appendingPathComponent("safari/browser.json")
+    let order: JSONObject = ["format": 1, "browser": "safari", "order": [["s-default", "personal"], ["s-OTHER", "personal"], ["s-default", "work"]],
+                             "profiles": ["s-default": ["name": "Default", "firstSeen": 1], "s-OTHER": ["name": "Other", "firstSeen": 2]], "savedAt": 1]
+    try? FileManager.default.createDirectory(at: browserJSON.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? JSONSerialization.data(withJSONObject: order).write(to: browserJSON, options: .atomic)
+    let filesBefore = filesUnder(root)
+    let lib = Library.open(dataRoot: root, background: false)
+    lib.now = { 777 }
+    check("library import: runs once", lib.importOnce(from: profiles) && lib.isImported)
+    check("library import: every space, namespaced, in the person's order",
+          lib.spaces().map(\.id) == ["safari:s-default:personal", "safari:s-OTHER:personal", "safari:s-default:work"], "\(lib.spaces().map(\.id))")
+    check("library import: a space keeps its profile", lib.spaces().dropFirst().first?.value["profile"] as? String == "s-OTHER")
+    let items = lib.items()
+    check("library import: the same tab id in two profiles is two items, each in its profile", items.count == 2 && Set(items.map(\.id)).count == 2
+      && Set(items.compactMap { lib.target(ofItem: $0.id) }) == [.web(browser: "safari", profile: "s-default"), .web(browser: "safari", profile: "s-OTHER")])
+    check("library import: pins with their space and target", (lib.liveValues("pins")["safari:s-default:p-1"] as? JSONObject)?["spaceId"] as? String == "safari:s-default:work")
+    check("library import: no settings", lib.liveValues("settings").isEmpty)
+    check("library import: its marker", ((lib.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-OTHER", "safari:s-default"]
+      || ((lib.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-default", "safari:s-OTHER"])
+    check("library import: never twice", !lib.importOnce(from: profiles))
+    let reopened = Library.open(dataRoot: root, background: false)
+    check("library import: never twice, after a relaunch too", reopened.isImported && !reopened.importOnce(from: profiles))
+    let filesAfter = filesUnder(root).filter { !$0.key.hasPrefix("app/") }
+    check("library import: the profiles' files left as they were", filesAfter == filesBefore, "\(Set(filesAfter.keys).symmetricDifference(filesBefore.keys))")
+
+    // Nothing to import: the marker alone, and the library empty for the create-spaces step.
+    let bare = tempFolder("library-bare")
+    defer { try? FileManager.default.removeItem(at: bare) }
+    let none = Library.open(dataRoot: bare, background: false)
+    check("library import: no profiles: marked, empty", none.importOnce(from: DataSync(root: bare, background: false)) && none.isImported && none.spaces().isEmpty)
+  }
+
+  // The shell's: the library opened and imported at its start.
+  static func shellChecks() {
+    let appRoot = URL(fileURLWithPath: "../../dist/app")
+    let root = tempFolder("library-shell")
+    defer { try? FileManager.default.removeItem(at: root) }
+    var options = Shell.Options()
+    options.harness = true
+    options.dataRoot = root
+    options.root = appRoot
+    let shell = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+    let made = FileManager.default.fileExists(atPath: Library.folder(in: root).path)
+    check("library: opened and imported with the shell", shell.library.isImported && made)
+  }
+}

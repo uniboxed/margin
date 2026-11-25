@@ -6,10 +6,9 @@
 // (a changed tab is a new record, the rest the same), and builds the theme
 // view model from it with ui/view-model.ts, passing the last model so that
 // what didn't change is shared. Runs in Node and in pages.
-import { buildViewModel } from '../../extension/ui/view-model.ts';
-import type { UiState, ViewModel, ViewModelInput } from '../../extension/ui/view-model.ts';
-import type { CloudTabs } from '../../extension/shared/cloud-tabs.ts';
-import type { Across } from '../../extension/shared/across.ts';
+import { buildViewModel } from '../../app/shared/ui/view-model.ts';
+import { backgroundOf } from '../../extension/state/model.ts';
+import type { UiState, ViewModel, ViewModelInput } from '../../app/shared/ui/view-model.ts';
 import type { Owner } from '../../extension/shared/owner.ts';
 import type { ArchiveEntry, Favicon, Folder, Pin, Settings, Space, TabRecord } from '../../types/margin';
 
@@ -21,8 +20,7 @@ export type MockTab = TabRecord & { audible?: boolean, loading?: boolean };
 
 /**
  * Margin's stored state as a page reads it (shared/stored.ts fromStorage), as these fixtures have it: the settings
- * only the ones they set (the view model reads each with its default), and iCloud Tabs and the other profiles
- * as the theme harness adds them.
+ * only the ones they set (the view model reads each with its default).
  */
 export type MockStored = {
   spaces: Space[], activeSpaceByWindow: Record<number, string>, tabSpace: Record<number, string>,
@@ -30,7 +28,6 @@ export type MockStored = {
   settings: Partial<Settings>, favicons: Record<string, Favicon>,
   openTabsBy: { origin: string, since: number, synced: boolean } | null,
   faviconsMark?: string, owner?: Owner | null,
-  cloudTabs?: CloudTabs | null, across?: Across | null,
 };
 type Rgb = [number, number, number];
 
@@ -257,8 +254,29 @@ export class MockState {
     this.state = { ...this.state, folders: this.state.folders.map((f) => (f.id === id ? { ...f, open: !f.open } : f)) };
     return this.build();
   }
+  // A folder inside `parentId` (nested folders), open, holding the parent's last `count` pins.
+  nestFolder(parentId: string, id: string, name: string, count: number) {
+    const parent = this.state.folders.find((f) => f.id === parentId)!;
+    const moved = new Set(this.state.pins.filter((p) => p.folderId === parentId).slice(-count).map((p) => p.id));
+    this.state = {
+      ...this.state,
+      folders: [...this.state.folders, { id, spaceId: parent.spaceId, name, open: true, pos: 99, parentId }],
+      pins: this.state.pins.map((p) => (moved.has(p.id) ? { ...p, folderId: id } : p)),
+    };
+    return this.build();
+  }
   switchSpace(id: string) {
     this.state = { ...this.state, activeSpaceByWindow: { ...this.state.activeSpaceByWindow, [WINDOW]: id } };
+    return this.build();
+  }
+  /** A space's background (M2.9), as the model reads it (null: none, the theme's own). */
+  setBackground(id: string, background: Record<string, unknown> | null) {
+    const read = background ? backgroundOf(background) : null;
+    this.state = { ...this.state, spaces: this.state.spaces.map((s) => {
+      if (s.id !== id) return s;
+      const { background: _old, ...rest } = s as Space & { background?: unknown };
+      return read ? { ...rest, background: read } : rest;
+    }) };
     return this.build();
   }
   setSidebar(sidebar: UiState['sidebar']) { this.ui = { ...this.ui, sidebar }; return this.build(); }

@@ -1,10 +1,10 @@
-// The theme view model (extension/ui/view-model.ts): today's sidebar's
+// The theme view model (app/shared/ui/view-model.ts): today's sidebar's
 // sections and order (shared/view.ts sidebar), the fields PLAN.md §3 and §14
 // list, and structural sharing: what didn't change is the same object.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as V from '../extension/shared/view.ts';
-import { buildViewModel, paletteItems, abbreviate, VM_VERSION, type FolderRow, type UiState, type ViewModel, type ViewModelInput } from '../extension/ui/view-model.ts';
+import { buildViewModel, paletteItems, abbreviate, VM_VERSION, type FolderRow, type UiState, type ViewModel, type ViewModelInput } from '../app/shared/ui/view-model.ts';
 import { smallState, icon, W } from './ui/fixtures.ts';
 import type { ArchiveEntry, State } from '../types/margin.d.ts';
 import { bigState, WINDOW, type MockStored } from './theme/view-model.ts';
@@ -62,7 +62,7 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
   assert.equal(row(14).letter, 'N');
   assert.match(row(14).color, /^hsl\(\d+ 55% 48%\)$/);
   assert.equal(row(15).title, 'https://shop.example/', 'no title: its address (as Arcadia)');
-  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'host', 'icon', 'id', 'kind', 'letter', 'loading', 'notOpen', 'open', 'pinned', 'title', 'url']);
+  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'hasCustomTitle', 'host', 'icon', 'id', 'isApp', 'kind', 'letter', 'loading', 'muted', 'notOpen', 'open', 'pinned', 'title', 'url']);
   assert.deepEqual([pin('pa').open, pin('pa').tabId, pin('pa').asleep, pin('pa').nested], [true, 11, true, true], 'a pin open in a sleeping tab');
   assert.deepEqual([pin('pb').open, pin('pb').tabId, pin('pb').active], [false, null, false], 'a pin not open');
   assert.deepEqual([pin('pc').active, pin('pc').folderId], [true, 'f2']);
@@ -85,7 +85,7 @@ test('spaces, the active tab, the window, the archive', () => {
   assert.equal(buildViewModel({ state: null, ui: {}, platform: PLATFORM, settings: {} }).space.number, 1, 'before the state: 1, never 0');
   // The window has a tab in front.
   assert.deepEqual([vm.tab!.id, vm.tab!.host, vm.tab!.pinned, vm.tab!.asleep, vm.tab!.newTab], [13, 'docs.example', true, false, false], 'the window\'s active tab');
-  assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, frameWhenHidden: true });
+  assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, pageOutside: false, frameWhenHidden: true });
   assert.deepEqual(ids(vm.archive), ['ar1', 'ar2'], 'newest first, as stored');
   assert.equal(vm.archive[1].title, 'https://news.example/b');
   assert.equal(vm.archive[0].icon, smallState().favicons['https://gone.example'].data);
@@ -100,7 +100,7 @@ test('spaces, the active tab, the window, the archive', () => {
   assert.equal(inPage.space.folders[1].hasShown, false, 'the closed folder\'s tab isn\'t in front now: it shows nothing');
   // The sidebar: the setting, unless the UI says (peek).
   assert.equal(build({ ...smallState(), settings: { sidebarPinnedOpen: true } }).window.sidebar, 'open');
-  assert.deepEqual(build(smallState(), { sidebar: 'peek', mode: 'fullscreen' }).window, { id: W, mode: 'fullscreen', focused: true, sidebar: 'peek', sidebarOpen: false, peek: true, pinnedOpen: false, frameWhenHidden: true });
+  assert.deepEqual(build(smallState(), { sidebar: 'peek', mode: 'fullscreen' }).window, { id: W, mode: 'fullscreen', focused: true, sidebar: 'peek', sidebarOpen: false, peek: true, pinnedOpen: false, pageOutside: false, frameWhenHidden: true });
 });
 
 test('the palette: shared/search.ts ranks its rows; ids, the selection, no actions in the model', () => {
@@ -249,7 +249,7 @@ test('Margin\'s own words: the menu\'s and the editor\'s labels, a notice\'s and
     prompt: { id: 'app', title: 'Install Margin.app', text: 'Margin needs its app on the Mac.', actions: [{ id: 'ok', label: 'Install', primary: true }] } });
   // Each asked for in the UI: there.
   assert.equal(vm.menu!.label, 'Tab');
-  assert.deepEqual(vm.editor!.labels, { title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel', note: '' });
+  assert.deepEqual(vm.editor!.labels, { title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', theme: 'Space theme', save: 'Save', cancel: 'Cancel' });
   assert.deepEqual(vm.notice, { id: 'fs', text: 'Margin works in full screen.', hasActions: true, actions: [{ id: 'go', label: 'Full screen', primary: true, danger: false }, { id: 'no', label: 'Not now', primary: false, danger: false }] });
   assert.deepEqual([vm.prompt!.title, vm.prompt!.text, vm.prompt!.actions.map((a) => a.label)], ['Install Margin.app', 'Margin needs its app on the Mac.', ['Install']]);
   const plain = build(state, { notice: { id: 'n', text: 'Hi' } });
@@ -310,4 +310,72 @@ test('dedicated Settings shows its controls without start-page sections in every
   assert.equal(vm.launcher?.hasPins, false);
   assert.equal(vm.launcher?.settingsOpen, true);
   assert.ok(vm.settingsForm?.fields.length);
+});
+
+// Margin.app's app items (app/shared/library/library.ts: `target: { kind: 'app', bundleId }`, address app://<bundle id>):
+// each row's icon the installed app's, from the app's list (the state's `apps`, ui/host-app.ts), by bundle id.
+test('app items: the installed app\'s icon wherever a row or tile shows one; no icon: its name\'s letter; web items as before', () => {
+  const notes = icon([250, 200, 40]).data, calc = icon([60, 60, 60]).data, safari = icon([20, 120, 240]).data;
+  const state = smallState();
+  const app = (bundleId: string, name: string) => ({ url: `app://${bundleId}`, title: name, target: { kind: 'app', bundleId, name } });
+  Object.assign(state.tabs, {
+    31: { ...state.tabs[14], id: 31, index: 6, ...app('com.apple.Notes', 'Notes'), favIconUrl: '' },
+    32: { ...state.tabs[14], id: 32, index: 7, ...app('com.example.Gone', 'Gone App'), favIconUrl: '' },
+    33: { ...state.tabs[14], id: 33, index: 8, ...app('com.apple.Maps', 'Maps'), favIconUrl: '' },
+    // (No target: the address alone says it's an app item; a bundle id's case as macOS takes it.)
+    34: { ...state.tabs[14], id: 34, index: 9, url: 'app://com.apple.notes', title: 'Notes again', favIconUrl: '' },
+  });
+  Object.assign(state.tabSpace, { 31: 'home', 32: 'home', 33: 'home', 34: 'home' });
+  state.pins = [...state.pins, { id: 'pcalc', spaceId: 'home', pos: 3, ...app('com.apple.calculator', 'Calculator') } as any];
+  const withApps = { ...state, apps: [
+    { bundleId: 'com.apple.Notes', name: 'Notes', icon: notes },
+    { bundleId: 'com.apple.calculator', name: 'Calculator', icon: calc },
+    { bundleId: 'com.apple.Maps', name: 'Maps', icon: null },
+    { bundleId: 'com.apple.Safari', name: 'Safari', icon: safari },
+  ] };
+  const vm = build(withApps);
+  const row = (id: number) => vm.space.today.find((t) => t.id === id)!;
+  assert.deepEqual([row(31).icon, row(34).icon], [notes, notes], 'an app tab: the installed app\'s icon (by its target, or its address alone)');
+  const pin = vm.space.pins.find((p) => p.id === 'pcalc')!;
+  assert.equal(pin.icon, calc, 'an app pin: its app\'s icon');
+  assert.deepEqual([row(32).icon, row(32).letter], [null, 'G'], 'an app not installed: its name\'s letter (not its bundle id\'s "C")');
+  assert.deepEqual([row(33).icon, row(33).letter], [null, 'M'], 'an installed app with no icon: the letter');
+  assert.equal(row(12).icon, state.favicons['https://mail.example'].data, 'a web item: its site\'s icon, as before');
+  assert.equal(row(14).icon, null, 'a web item with none: as before');
+  const before = build(state).space.today;
+  assert.deepEqual([31, 32, 33, 34].map((id) => before.find((t) => t.id === id)).map((t) => [t?.icon, t?.letter]), [[null, 'N'], [null, 'G'], [null, 'M'], [null, 'N']], 'no apps listed (before the first scan): letters');
+  // The tab in front, the launcher's tiles, the palette's open-tab rows.
+  const front = build({ ...withApps, tabs: { ...withApps.tabs, 13: { ...withApps.tabs[13], active: false }, 31: { ...(withApps.tabs as Record<number, any>)[31], active: true } } });
+  assert.equal(front.tab?.icon, notes, 'the tab in front');
+  assert.deepEqual([front.tab?.host, row(33).host, row(12).host], ['Notes', 'Maps', 'mail.example'], 'the address pill: an app item\'s name (never its bundle id); a web item\'s site as before');
+  assert.equal(buildViewModel({ state: withApps, ui: { windowId: W, inNewTab: true }, platform: PLATFORM }).launcher!.pins.find((p) => p.id === 'pcalc')!.icon, calc, 'the launcher\'s tile');
+  const palette = build(withApps, { palette: { open: true, query: 'notes', selected: 0 } });
+  const open = palette.palette.rows.filter((r) => r.title === 'Notes' && r.kind !== 'app');
+  assert.ok(open.length >= 1 && open.every((r) => r.icon === notes), `the palette's open-tab row (${JSON.stringify(palette.palette.rows.map((r) => [r.kind, r.title, !!r.icon]))})`);
+  assert.ok(open.every((r) => r.isApp), 'an app item\'s palette row: drawn as an app\'s icon too');
+  // Drawn as an app's icon (bigger, its own shape: the themes' `.app`) only where the app's own icon is shown.
+  assert.deepEqual([31, 32, 33, 34, 12].map((id) => row(id).isApp), [true, false, false, true, false], 'apps with their icon; not installed, no icon, a web item: not');
+  assert.equal(pin.isApp, true, 'an app pin');
+  // A bad icon in the list never reaches a theme.
+  const bad = build({ ...withApps, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'https://evil.example/x.png' }] });
+  assert.equal(bad.space.today.find((t) => t.id === 31)!.icon, null, 'only data: images, as every row icon');
+});
+
+test('the page card\'s loader: the opening item\'s icon (the app\'s, Safari\'s for a web item) from the installed apps, by the bundle id the app names', () => {
+  const notes = icon([250, 200, 40]).data, safari = icon([20, 120, 240]).data;
+  const state = { ...smallState(), apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: notes }, { bundleId: 'com.apple.Safari', name: 'Safari', icon: safari }, { bundleId: 'com.apple.Maps', name: 'Maps', icon: null }] };
+  const loader = (pageOpening: UiState['pageOpening'], s: ViewModelInput['state'] = state) => build(s, { pageOpening }).pageLoader;
+  assert.deepEqual(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }), { name: 'Notes', label: 'Opening Notes…', icon: notes }, 'an app: its icon');
+  assert.deepEqual(loader({ name: 'Example', bundleId: 'com.apple.Safari' }), { name: 'Example', label: 'Opening Example…', icon: safari }, 'a web item: Safari\'s');
+  assert.equal(loader({ name: 'Maps', bundleId: 'com.apple.Maps' })?.icon, null, 'an app with no icon: none');
+  assert.equal(loader({ name: 'Gone', bundleId: 'com.example.Gone' })?.icon, null, 'an app not installed: none');
+  assert.equal(loader({ name: 'Notes', bundleId: '../x' })?.icon, null, 'not a bundle id: none');
+  assert.equal(loader({ name: 'Notes' })?.icon, null, 'no bundle id said: none');
+  assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, smallState())?.icon, null, 'no apps listed: none');
+  assert.equal(loader(null), null, 'not loading: no loader');
+  assert.deepEqual(loader({ name: 'Getting you started', bundleId: 'com.apple.Safari', starting: true }), { name: 'Getting you started', label: 'Getting you started…', icon: safari },
+    'Margin\'s start (its default browser first): its own words, the browser\'s icon');
+  assert.deepEqual(loader({ name: 'Notes', bundleId: 'com.apple.Notes', elsewhere: true }), { name: 'Notes', label: 'Notes is in another window. Click to show it here.', icon: notes },
+    'its item in another Margin window: its card\'s words, the app\'s icon');
+  assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, { ...state, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'data:text/html;base64,PHA+' }] })?.icon, null, 'never anything but a data: image');
 });

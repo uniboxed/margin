@@ -15,16 +15,28 @@
 //! with `owner` false is closed (1008, "not the copy in charge"), the profile's link kept; a newer hello for the
 //! same `browser:profile` replaces the older link (closed 1000 "replaced"); while any link is up the app ticks
 //! every 5 s, the copy answers `tock`, and a link not heard from for 40 s is closed (1001); requests (`req`) are
-//! numbered per link and time out after 15 s, answered by `reply`; a `bye` is passed on, then the link closed
-//! ("bye"); stopping says `bye` on every link and closes it (1001). A new copy (another `instanceId`) is the
-//! shell's to notice ([`Hello::copy_id`], for the window binder).
+//! numbered per link, answered by `reply`; a `bye` is passed on, then the link closed ("bye"); stopping says `bye` on
+//! every link and closes it (1001). A new copy (another `instanceId`) is the shell's to notice ([`Hello::copy_id`],
+//! for the window binder).
+//!
+//! A request ends only on evidence (docs/LINK-RESILIENCE.md §1, rules 1–6), never after a fixed time: its `reply`
+//! (answered `Ok`); the link going down (closed, replaced, or 40 s of total silence: answered [`LinkError::Down`]);
+//! [`Link::cancel`] (no answer at all: the copy is told `cancel { id }`, and a later reply is left); or lost (answered
+//! [`LinkError::Lost`]). Lost: ticks are numbered (`tick { seq }`) and a new copy echoes the number (`tock { seq }`)
+//! and acks each request it reads before running it (`ack { id }`), all from its socket's handler, in order. So a
+//! tock of a tick sent after a request, with no ack for it, says the copy read past the request without taking it:
+//! it's sent once more (the same id: the copy dedupes), and lost a second time. Signs of life are kept apart: any
+//! bytes are *alive* (the 40 s rule only); an ack, a reply or a numbered tock are *reading*. A copy alive but not
+//! reading is slow, not gone: its requests wait, and [`Link::slow`] says for how long. An older copy (no acks, tocks
+//! without a number) is life only, never lost. A new link (a new epoch) starts with nothing waiting: the link never
+//! sends an old id into it (the session decides what's still wanted).
 //!
 //! Left out here, and where it is:
 //! - The RFC 6455 framing, the HTTP upgrade and its refusals, the token's check and the `Origin`'s, the secrets
 //!   and their rotation, Safari's and the relays' `wantLink` answered with `link`: [`crate::socket`] and
 //!   [`crate::websocket`].
-//! - Safari's way in (`SafariDispatch`, the distributed notification `com.unibox.margin.setup`, `appUp` once Safari
-//!   has run 2 s): Safari's, on the Mac only.
+//! - Safari's way in (the distributed notification `com.unibox.margin.setup`'s `wantLink`, `appUp` once Safari has
+//!   run 2 s, the link note): [`crate::socket`]; `SFSafariApplication.dispatchMessage` itself is the Mac's transport.
 //! - The listener and its upkeep (`NWListener`, 127.0.0.1 only, no Nagle, `waiting` 5 s made again on a new
 //!   port, `retryListen`) and `stop`'s 0.3 s wait for the `bye`s to be written before quitting: the transport's.
 //!
@@ -49,23 +61,21 @@ pub struct Timing {
     pub dead: Secs,
     /// An opened connection's time to say hello: 5 s.
     pub hello: Secs,
-    /// A request's time to be answered: 15 s.
-    pub request: Secs,
 }
 
 impl Default for Timing {
     fn default() -> Self {
-        Self { tick: 5.0, dead: 40.0, hello: 5.0, request: 15.0 }
+        Self { tick: 5.0, dead: 40.0, hello: 5.0 }
     }
 }
 
-/// `LinkError`: why a request got no answer, or a message wasn't sent.
+/// `LinkError`: why a request got no answer, or a message wasn't sent. (No time-out: a request ends on evidence only.)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkError {
-    /// The link is down (or went down while the request waited).
+    /// The link is down (or went down while the request waited: closed, replaced, 40 s of total silence).
     Down,
-    /// No reply within [`Timing::request`].
-    TimedOut,
+    /// The copy read past it twice without taking it (a numbered tock after it, no ack): it won't run.
+    Lost,
     /// Not JSON, or over 1 MB ([`crate::protocol::MAX_APP_MESSAGE`]): refused rather than sent.
     NotJson,
 }
@@ -104,9 +114,29 @@ pub struct Connection {
     conn: ConnId,
     last_heard: Secs,
     next_id: i64,
-    /// Each request waiting for its reply, and when it times out.
-    waiting: BTreeMap<i64, Secs>,
+    /// Each request waiting for its reply.
+    waiting: BTreeMap<i64, Waiting>,
     refused: usize,
+    /// The last tick's number sent on this link (0: none yet).
+    tick_seq: i64,
+}
+
+/// A request waiting for its reply.
+#[derive(Clone, Debug)]
+struct Waiting {
+    kind: String,
+    /// When it was sent: its age is how slow the copy is while it isn't acked.
+    asked: Secs,
+    /// The number of the last tick sent before it (sent again: before that): a tock with a later one means the copy
+    /// read past it.
+    after_tick: i64,
+    acked: bool,
+    /// When its ack came (said with a slow reply: read late, or worked on long).
+    acked_at: Option<Secs>,
+    /// Sent a second time already.
+    again: bool,
+    /// Its text, to send again.
+    text: String,
 }
 
 impl Connection {
@@ -131,10 +161,18 @@ impl Connection {
     pub fn waiting(&self) -> usize {
         self.waiting.len()
     }
+    /// The oldest request not acked yet: how long it has waited at `now` (none: every request waiting was taken).
+    pub fn slow(&self, now: Secs) -> Option<Secs> {
+        self.waiting.values().filter(|w| !w.acked).map(|w| (now - w.asked).max(0.0)).reduce(Secs::max)
+    }
     pub fn last_heard(&self) -> Secs {
         self.last_heard
     }
 }
+
+/// A reply this late is said in the log with when its request was acked (feedback for the app's log only: nothing is
+/// decided by it).
+const SLOW_REPLY: Secs = 0.1;
 
 /// `SocketLink`, without the socket.
 #[derive(Clone, Debug)]
@@ -150,6 +188,9 @@ pub struct Link {
     /// The ticker's next time, while any link is up.
     next_tick: Option<Secs>,
     stopped: bool,
+    /// Added to `now` for the messages' `at` (the wall clock's, `Date.now()`), for a caller whose `now` is a
+    /// monotonic clock (the Mac's `systemUptime`: a sleep never reads as 40 s of silence). 0: `now` is the wall's.
+    wall: Secs,
 }
 
 fn whole(s: Secs) -> i64 {
@@ -167,11 +208,22 @@ impl Link {
             ended: BTreeSet::new(),
             next_tick: None,
             stopped: false,
+            wall: 0.0,
         }
     }
 
     pub fn timing(&self) -> &Timing {
         &self.timing
+    }
+
+    /// `now` plus this is the wall clock's time (seconds since 1970), for the messages' `at`.
+    pub fn set_wall_offset(&mut self, offset: Secs) {
+        self.wall = if offset.is_finite() { offset } else { 0.0 };
+    }
+
+    /// The messages' `at` for `now`: the wall clock's milliseconds.
+    pub fn at_ms(&self, now: Secs) -> f64 {
+        (now + self.wall) * 1000.0
     }
 
     /// The key the next connections' `welcome` carries (the secrets changed: [`crate::socket::SocketLink`]).
@@ -231,7 +283,7 @@ impl Link {
         }
         self.opening.insert(conn, accepted);
         note(&mut out, "socket open".into());
-        if let Some(text) = (AppMessage::Welcome { key: self.welcome_key.clone() }).encode(now * 1000.0) {
+        if let Some(text) = (AppMessage::Welcome { key: self.welcome_key.clone() }).encode(self.at_ms(now)) {
             out.push(Action::Send { conn, text });
         }
         out
@@ -252,7 +304,7 @@ impl Link {
         }
         self.heard(conn, now);
         if text.len() > MAX_INCOMING {
-            // (LinkSocket.swift's FrameReader: Failure.tooBig, closed 1002.)
+            // (The frame reader's `TooBig`, closed 1002.)
             self.close_conn(conn, 1002, format!("a message over {MAX_INCOMING} bytes"), now, &mut out);
             return out;
         }
@@ -272,12 +324,35 @@ impl Link {
         };
         match message {
             LinkMessage::Reply { id, body } => {
-                let waited = self.links.get_mut(&key).is_some_and(|l| l.waiting.remove(&id).is_some());
-                if waited {
+                let waited = self.links.get_mut(&key).and_then(|l| l.waiting.remove(&id));
+                if let Some(w) = waited {
+                    // (A slow one said, where its time went: the copy reading it late, or working on it long.)
+                    if now - w.asked >= SLOW_REPLY {
+                        let ms = |s: Secs| (s * 1000.0).round() as i64;
+                        let read =
+                            w.acked_at.map_or("not acked".to_string(), |a| format!("acked at {} ms", ms(a - w.asked)));
+                        // (The copy's own time on it, read to reply, when it says: the rest is the way there and back.)
+                        let read = match crate::json::num(body.get("took")) {
+                            Some(took) => format!("{read}, the copy's own {} ms", took.round() as i64),
+                            None => read,
+                        };
+                        note(
+                            &mut out,
+                            format!("{key}: request {id} ({}) answered in {} ms ({read})", w.kind, ms(now - w.asked)),
+                        );
+                    }
                     out.push(Action::Answer { conn, key, id, answer: Ok(body) });
                 }
             }
-            LinkMessage::Tock => {}
+            LinkMessage::Ack { id } => {
+                if let Some(w) = self.links.get_mut(&key).and_then(|l| l.waiting.get_mut(&id)) {
+                    w.acked = true;
+                    w.acked_at.get_or_insert(now);
+                }
+            }
+            LinkMessage::Tock { seq: Some(seq) } => self.read_past(&key, seq, &mut out),
+            // (An older copy's, or the copy's probe after a pause: alive, nothing more.)
+            LinkMessage::Tock { seq: None } => {}
             LinkMessage::Bye { ref why } => {
                 note(&mut out, format!("{key} said goodbye: {why}"));
                 // Before it's down: nothing to wait for.
@@ -321,12 +396,36 @@ impl Link {
                 next_id: 1,
                 waiting: BTreeMap::new(),
                 refused: 0,
+                tick_seq: 0,
             },
         );
         if self.next_tick.is_none() {
             self.next_tick = Some(now + self.timing.tick);
         }
         out.push(Action::Up { conn, hello });
+    }
+
+    /// A numbered tock: the copy read that tick, so everything sent before it. A request sent before the tick and not
+    /// acked was read past without being taken (never by a correct copy): sent once more with its id, then lost.
+    fn read_past(&mut self, key: &str, seq: i64, out: &mut Vec<Action>) {
+        let Some(link) = self.links.get_mut(key) else { return };
+        let conn = link.conn;
+        let past: Vec<i64> =
+            link.waiting.iter().filter(|(_, w)| !w.acked && seq > w.after_tick).map(|(&id, _)| id).collect();
+        for id in past {
+            let Some(w) = link.waiting.get_mut(&id) else { continue };
+            if w.again {
+                let kind = w.kind.clone();
+                link.waiting.remove(&id);
+                warn(out, format!("{key}: request {id} ({kind}) lost twice: the copy read past it without taking it"));
+                out.push(Action::Answer { conn, key: key.to_owned(), id, answer: Err(LinkError::Lost) });
+            } else {
+                w.again = true;
+                w.after_tick = link.tick_seq;
+                warn(out, format!("{key}: request {id} ({}) read past without being taken: sent again", w.kind));
+                out.push(Action::Send { conn, text: w.text.clone() });
+            }
+        }
     }
 
     /// `closed(_:_:)`: the transport says the connection ended (the copy closed it, the TCP connection went), and why.
@@ -373,8 +472,9 @@ impl Link {
         out.push(Action::Down { conn, key, why: why.into() });
     }
 
-    /// The time: hellos not said within 5 s closed, requests not answered within 15 s given up, and every 5 s while
-    /// a link is up, each link ticked or (silent for 40 s) closed. Call it at [`Link::next_deadline`], or often.
+    /// The time: hellos not said within 5 s closed, and every 5 s while a link is up, each link ticked (its next
+    /// number) or (silent for 40 s) closed, its requests answered `Down`. Requests have no time of their own. Call it at
+    /// [`Link::next_deadline`], or often.
     pub fn tick(&mut self, now: Secs) -> Vec<Action> {
         let mut out = Vec::new();
         if self.stopped {
@@ -385,23 +485,21 @@ impl Link {
         for conn in late {
             self.close_conn(conn, 1008, format!("no hello within {} s", whole(hello)), now, &mut out);
         }
-        for (key, link) in &mut self.links {
-            let expired: Vec<i64> = link.waiting.iter().filter(|&(_, &at)| now >= at).map(|(&id, _)| id).collect();
-            for id in expired {
-                link.waiting.remove(&id);
-                out.push(Action::Answer { conn: link.conn, key: key.clone(), id, answer: Err(LinkError::TimedOut) });
-            }
-        }
         if let Some(due) = self.next_tick.filter(|&due| now >= due) {
             let dead = self.timing.dead;
+            let at = self.at_ms(now);
             let links: Vec<(String, ConnId, Secs)> =
                 self.links.iter().map(|(k, l)| (k.clone(), l.conn, l.last_heard)).collect();
             for (key, conn, last_heard) in links {
                 if now - last_heard > dead {
                     warn(&mut out, format!("no word from {key} for {} s", whole(dead)));
                     self.close_conn(conn, 1001, format!("no word for {} s", whole(dead)), now, &mut out);
-                } else if let Some(text) = AppMessage::Tick.encode(now * 1000.0) {
-                    out.push(Action::Send { conn, text });
+                } else if let Some(link) = self.links.get_mut(&key) {
+                    let seq = link.tick_seq + 1;
+                    if let Some(text) = (AppMessage::Tick { seq }).encode(at) {
+                        link.tick_seq = seq;
+                        out.push(Action::Send { conn, text });
+                    }
                 }
             }
             // A repeating timer: on from the last time, skipping any missed.
@@ -415,16 +513,16 @@ impl Link {
     /// When [`Link::tick`] next has something to do, if ever.
     pub fn next_deadline(&self) -> Option<Secs> {
         let hellos = self.opening.values().map(|&at| at + self.timing.hello);
-        let requests = self.links.values().flat_map(|l| l.waiting.values().copied());
-        self.next_tick.into_iter().chain(hellos).chain(requests).reduce(f64::min)
+        self.next_tick.into_iter().chain(hellos).reduce(f64::min)
     }
 
     /// `LinkConnection.send`: a message to the link on `conn`, as the text to send. `Err(Down)` if it isn't up,
     /// `Err(NotJson)` if it isn't JSON or is over 1 MB (counted in [`Connection::refused`]; the caller logs it:
     /// "not sent to KEY: not JSON, or over 1000000 bytes").
     pub fn send(&mut self, conn: ConnId, message: &AppMessage, now: Secs) -> Result<Action, LinkError> {
+        let at = self.at_ms(now);
         let link = self.links.values_mut().find(|l| l.conn == conn).ok_or(LinkError::Down)?;
-        match message.encode(now * 1000.0) {
+        match message.encode(at) {
             Some(text) => Ok(Action::Send { conn, text }),
             None => {
                 link.refused += 1;
@@ -434,7 +532,8 @@ impl Link {
     }
 
     /// `LinkConnection.request`: a `req` to the link on `conn`, its id and the text to send. Its answer comes as an
-    /// [`Action::Answer`] with that id: the reply, or `TimedOut` after 15 s, or `Down` if the link goes first.
+    /// [`Action::Answer`] with that id, on evidence only: the reply, `Down` if the link goes first, `Lost` if the copy
+    /// read past it twice; none once [`Link::cancel`]led. It has no time-out.
     pub fn request(
         &mut self,
         conn: ConnId,
@@ -443,14 +542,39 @@ impl Link {
         window_id: Option<i64>,
         now: Secs,
     ) -> Result<(i64, Action), LinkError> {
-        let timeout = self.timing.request;
+        let at = self.at_ms(now);
         let link = self.links.values_mut().find(|l| l.conn == conn).ok_or(LinkError::Down)?;
         let id = link.next_id;
         link.next_id += 1;
         let req = AppMessage::Req { id, epoch: link.hello.epoch.clone(), window_id, kind: kind.into(), payload };
-        let text = req.encode(now * 1000.0).ok_or(LinkError::NotJson)?;
-        link.waiting.insert(id, now + timeout);
+        let text = req.encode(at).ok_or(LinkError::NotJson)?;
+        let waiting = Waiting {
+            kind: kind.into(),
+            asked: now,
+            after_tick: link.tick_seq,
+            acked: false,
+            acked_at: None,
+            again: false,
+            text: text.clone(),
+        };
+        link.waiting.insert(id, waiting);
         Ok((id, Action::Send { conn, text }))
+    }
+
+    /// The session no longer waits for request `id` on `conn` (the pick it was for was overtaken): it's no longer
+    /// waiting (no answer comes for it, a later reply is left) and the copy is told (`cancel { id }`, the text to send).
+    /// `None`: nothing waits for it there (answered already, cancelled, or the link is down).
+    pub fn cancel(&mut self, conn: ConnId, id: i64) -> Option<Action> {
+        let link = self.links.values_mut().find(|l| l.conn == conn)?;
+        link.waiting.remove(&id)?;
+        let text = (AppMessage::Cancel { id }).encode(0.0)?;
+        Some(Action::Send { conn, text })
+    }
+
+    /// How slow the copy on `conn` is at `now`: the age of its oldest request not acked yet, for the session's
+    /// feedback only ("Safari is slow"). `None`: nothing waits unread (or no such link).
+    pub fn slow(&self, conn: ConnId, now: Secs) -> Option<Secs> {
+        self.connection_on(conn)?.slow(now)
     }
 
     /// `stop(why:then:)`: the app is going. Connections not linked yet are closed (1001); each link is told `bye`
@@ -468,7 +592,7 @@ impl Link {
         }
         let links: Vec<ConnId> = self.links.values().map(|l| l.conn).collect();
         for conn in links {
-            if let Some(text) = (AppMessage::Bye { why: why.into() }).encode(now * 1000.0) {
+            if let Some(text) = (AppMessage::Bye { why: why.into() }).encode(self.at_ms(now)) {
                 out.push(Action::Send { conn, text });
             }
             out.push(Action::Close { conn, code: 1001, reason: why.into() });
@@ -666,6 +790,25 @@ mod tests {
     }
 
     #[test]
+    fn at_is_the_wall_clocks_with_a_monotonic_now() {
+        let mut link = linked();
+        link.set_wall_offset(1_800_000_000.0);
+        let ticks = sends(&link.tick(5.0));
+        assert_eq!(ticks[0].1["at"], json!(1_800_000_005_000_i64));
+        let Ok((_, Action::Send { text, .. })) = link.request(1, "x", Object::new(), None, 6.0) else {
+            panic!("a send")
+        };
+        assert_eq!(
+            serde_json::from_str::<Value>(&text).ok().map(|v| v["at"].clone()),
+            Some(json!(1_800_000_006_000_i64))
+        );
+        // The deadlines stay on `now`'s clock: a sleep (no `now` passing) is never 40 s of silence.
+        assert_eq!(link.next_deadline(), Some(10.0));
+        link.set_wall_offset(f64::NAN);
+        assert_eq!(sends(&link.tick(10.0))[0].1["at"], json!(10_000), "not a number: none added");
+    }
+
+    #[test]
     fn silent_for_40_s_is_closed_1001() {
         let mut link = linked();
         for t in [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0] {
@@ -723,23 +866,188 @@ mod tests {
         assert_eq!(link.connection("chrome:P1").map(Connection::waiting), Some(1));
     }
 
+    /// The copy saying something now and then (a windows report: alive), never an ack, a reply or a tock with a seq.
+    fn alive(link: &mut Link, now: Secs) -> Vec<Action> {
+        link.on_text(1, r#"{"k":"windows","epoch":"ep-A","seq":1,"list":[]}"#, now)
+    }
+
     #[test]
-    fn a_request_times_out_after_15_s() {
+    fn a_request_to_a_copy_alive_but_not_reading_keeps_waiting() {
         let mut link = linked();
-        let id = link.request(1, "x", Object::new(), None, 3.0).map(|r| r.0).unwrap_or(0);
-        assert_eq!(link.next_deadline(), Some(5.0), "the ticker first");
-        link.tick(5.0);
-        link.tick(10.0);
-        assert_eq!(link.next_deadline(), Some(15.0));
-        let at_15 = link.tick(15.0);
-        assert!(answers(&at_15).is_empty());
-        assert_eq!(link.next_deadline(), Some(18.0));
-        assert!(answers(&link.tick(17.9)).is_empty());
-        assert_eq!(answers(&link.tick(18.0)), vec![(id, Err(LinkError::TimedOut))]);
-        assert!(
-            link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 19.0).is_empty(),
-            "a late reply: left"
+        let id = link.request(1, "hostShow", Object::new(), None, 1.0).map(|r| r.0).unwrap_or(0);
+        let mut answered = Vec::new();
+        let mut t = 5.0;
+        while t <= 600.0 {
+            answered.extend(answers(&alive(&mut link, t - 0.5)));
+            answered.extend(answers(&link.tick(t)));
+            if [15.0, 60.0, 600.0].contains(&t) {
+                assert_eq!(link.connection("chrome:P1").map(Connection::waiting), Some(1), "still waiting at {t} s");
+            }
+            t += 5.0;
+        }
+        assert!(answered.is_empty(), "no answer while the copy is alive: {answered:?}");
+        assert!(link.is_up(1));
+        assert_eq!(link.next_deadline(), Some(605.0), "only the ticker: a request has no time of its own");
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 601.0);
+        assert_eq!(answers(&out).len(), 1, "its reply, whenever it comes, ends it");
+    }
+
+    #[test]
+    fn a_waiting_request_ends_down_on_40_s_of_silence() {
+        let mut link = linked();
+        let id = link.request(1, "x", Object::new(), None, 1.0).map(|r| r.0).unwrap_or(0);
+        let mut before = Vec::new();
+        for t in [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0] {
+            before.extend(answers(&link.tick(t)));
+        }
+        assert!(before.is_empty(), "nothing before the link is dead: {before:?}");
+        let out = link.tick(45.0);
+        assert_eq!(answers(&out), vec![(id, Err(LinkError::Down))]);
+        assert_eq!(downs(&out), vec![(1, "chrome:P1".into(), "no word for 40 s".into())]);
+    }
+
+    #[test]
+    fn an_old_copys_tock_without_a_seq_is_life_only() {
+        let mut link = linked();
+        link.request(1, "x", Object::new(), None, 1.0).map(|r| r.0).unwrap_or(0);
+        let mut out = Vec::new();
+        for t in (1..=30).map(|n| f64::from(n) * 5.0) {
+            out.extend(link.tick(t));
+            out.extend(link.on_text(1, r#"{"k":"tock","at":1}"#, t + 0.1));
+        }
+        assert!(answers(&out).is_empty(), "never lost, never timed out: {:?}", answers(&out));
+        assert!(sends(&out).iter().all(|(_, m)| m["k"] == "tick"), "never sent again");
+        assert!(link.is_up(1) && link.connection("chrome:P1").map(Connection::waiting) == Some(1));
+    }
+
+    #[test]
+    fn cancel_ends_a_request_with_no_answer_and_tells_the_copy() {
+        let mut link = linked();
+        let id = link.request(1, "hostShow", Object::new(), Some(4), 1.0).map(|r| r.0).unwrap_or(0);
+        let Some(Action::Send { conn: 1, text }) = link.cancel(1, id) else { panic!("a cancel sent") };
+        assert_eq!(serde_json::from_str::<Value>(&text).ok(), Some(json!({"k":"cancel","id":id})));
+        assert_eq!(link.connection("chrome:P1").map(Connection::waiting), Some(0), "no longer waiting");
+        let late = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 3.0);
+        assert!(late.is_empty(), "a later reply: dropped");
+        assert_eq!(link.cancel(1, id), None, "once: nothing waits for it now");
+        assert_eq!(link.cancel(9, 1), None, "no such link");
+        let id2 = link.request(1, "x", Object::new(), None, 3.0).map(|r| r.0).unwrap_or(0);
+        assert_eq!(
+            answers(&link.on_closed(1, "gone", 4.0)),
+            vec![(id2, Err(LinkError::Down))],
+            "the cancelled one: no Down"
         );
+    }
+
+    #[test]
+    fn a_request_the_copy_read_past_without_taking_is_sent_again_then_lost() {
+        let mut link = linked();
+        let Ok((id, Action::Send { text: first, .. })) = link.request(1, "hostShow", Object::new(), None, 1.0) else {
+            panic!("a request")
+        };
+        let ticks = sends(&link.tick(5.0));
+        assert_eq!(ticks, vec![(1, json!({"k":"tick","at":5000,"seq":1}))], "ticks carry a number");
+        let out = link.on_text(1, r#"{"k":"tock","at":5100,"seq":1}"#, 5.1);
+        let again = serde_json::from_str::<Value>(&first).unwrap_or(Value::Null);
+        assert_eq!(sends(&out), vec![(1, again)], "sent once more, the same id");
+        assert!(logged(&out, &format!("chrome:P1: request {id} (hostShow) read past without being taken: sent again")));
+        assert!(answers(&out).is_empty());
+        let out = link.on_text(1, r#"{"k":"tock","at":5200,"seq":1}"#, 5.2);
+        assert!(out.is_empty(), "a tock of a tick sent before the second send: nothing yet");
+        link.tick(10.0);
+        let out = link.on_text(1, r#"{"k":"tock","at":10100,"seq":2}"#, 10.1);
+        assert_eq!(answers(&out), vec![(id, Err(LinkError::Lost))], "lost a second time: Lost");
+        assert!(logged(&out, &format!("chrome:P1: request {id} (hostShow) lost twice")));
+        assert_eq!(link.connection("chrome:P1").map(Connection::waiting), Some(0));
+    }
+
+    #[test]
+    fn an_acked_request_waits_for_its_reply_through_later_tocks() {
+        let mut link = linked();
+        let id = link.request(1, "x", Object::new(), None, 1.0).map(|r| r.0).unwrap_or(0);
+        let acked = link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 1.1);
+        assert!(acked.is_empty(), "an ack is the link's own: not passed on");
+        assert!(link.on_text(1, r#"{"k":"ack","id":99}"#, 1.1).is_empty(), "one for nothing waiting: left");
+        let mut out = Vec::new();
+        for n in 1..=4 {
+            let t = f64::from(n) * 5.0;
+            out.extend(link.tick(t));
+            out.extend(link.on_text(1, &format!(r#"{{"k":"tock","at":1,"seq":{n}}}"#), t + 0.1));
+        }
+        assert!(answers(&out).is_empty(), "not lost");
+        assert!(sends(&out).iter().all(|(_, m)| m["k"] == "tick"), "never sent again");
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 21.0);
+        assert_eq!(answers(&out).len(), 1);
+    }
+
+    #[test]
+    fn a_slow_reply_is_said_with_when_it_was_acked() {
+        // (Where a slow request's time went, for the app's log: read late (acked late), or worked on long.)
+        let lines = |out: &[Action]| -> Vec<String> {
+            out.iter()
+                .filter_map(|a| if let Action::Log { text, .. } = a { Some(text.clone()) } else { None })
+                .collect()
+        };
+        let mut link = linked();
+        let id = link.request(1, "hostShow", Object::new(), None, 1.0).map(|r| r.0).unwrap_or(0);
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 1.25);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 1.3);
+        let said = lines(&out);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0].ends_with(&format!("request {id} (hostShow) answered in 300 ms (acked at 250 ms)")),
+            "{said:?}"
+        );
+        assert_eq!(answers(&out).len(), 1);
+        // The copy's own time said too, when its reply has it (`took`): the rest is the way there and back.
+        let id = link.request(1, "hostShow", Object::new(), None, 4.0).map(|r| r.0).unwrap_or(0);
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 4.02);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true,"took":61}}"#), 4.2);
+        assert!(
+            lines(&out)[0].ends_with("answered in 200 ms (acked at 20 ms, the copy's own 61 ms)"),
+            "{:?}",
+            lines(&out)
+        );
+        // A quick one: nothing said.
+        let id = link.request(1, "hostShow", Object::new(), None, 2.0).map(|r| r.0).unwrap_or(0);
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 2.01);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 2.05);
+        assert!(lines(&out).is_empty());
+        // An older copy's (no ack): said so.
+        let id = link.request(1, "x", Object::new(), None, 3.0).map(|r| r.0).unwrap_or(0);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 3.2);
+        assert!(lines(&out)[0].ends_with("answered in 200 ms (not acked)"), "{:?}", lines(&out));
+    }
+
+    #[test]
+    fn slow_is_the_oldest_unacked_requests_age() {
+        let mut link = linked();
+        assert_eq!(link.slow(1, 1.0), None, "nothing waiting");
+        let a = link.request(1, "x", Object::new(), None, 2.0).map(|r| r.0).unwrap_or(0);
+        let b = link.request(1, "y", Object::new(), None, 4.0).map(|r| r.0).unwrap_or(0);
+        assert_eq!(link.slow(1, 10.0), Some(8.0));
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{a}}}"#), 10.0);
+        assert_eq!(link.slow(1, 10.0), Some(6.0), "the oldest not acked");
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{b}}}"#), 10.0);
+        assert_eq!(link.slow(1, 12.0), None, "acked, only its answer to come: not slow");
+        let c = link.request(1, "z", Object::new(), None, 12.0).map(|r| r.0).unwrap_or(0);
+        link.cancel(1, c);
+        assert_eq!(link.slow(1, 20.0), None, "a cancelled one isn't waited for");
+        assert_eq!(link.slow(9, 20.0), None, "no such link");
+    }
+
+    #[test]
+    fn each_link_numbers_its_ticks() {
+        let mut link = linked();
+        link.on_open(2, 1.0);
+        link.on_text(2, &hello("P2", "B"), 1.0);
+        let seqs = |out: &[Action], conn: ConnId| -> Vec<Value> {
+            sends(out).into_iter().filter(|(c, _)| *c == conn).map(|(_, m)| m["seq"].clone()).collect()
+        };
+        let a = link.tick(5.0);
+        let b = link.tick(10.0);
+        assert_eq!((seqs(&a, 1), seqs(&b, 1)), (vec![json!(1)], vec![json!(2)]));
+        assert_eq!((seqs(&a, 2), seqs(&b, 2)), (vec![json!(1)], vec![json!(2)]), "its own count");
     }
 
     #[test]
@@ -751,7 +1059,7 @@ mod tests {
         assert_eq!(downs(&out), vec![(1, "chrome:P1".into(), "the relay went".into())]);
         assert!(logged(&out, "link down (chrome:P1): the relay went"));
         assert_eq!(link.request(1, "x", Object::new(), None, 2.0).map(|r| r.0), Err(LinkError::Down));
-        assert_eq!(link.send(1, &AppMessage::Tick, 2.0), Err(LinkError::Down));
+        assert_eq!(link.send(1, &AppMessage::Tick { seq: 1 }, 2.0), Err(LinkError::Down));
         assert!(link.on_closed(1, "again", 2.0).is_empty());
     }
 

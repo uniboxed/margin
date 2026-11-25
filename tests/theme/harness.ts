@@ -1,22 +1,20 @@
 // The browser side of the theme tests and the benchmark, bundled into one
 // script (tests/theme/package.ts harnessScript) and added to a blank page.
 // Node drives it with page.evaluate through `window.T`.
-import { sanitizeCss } from '../../extension/ui/sanitize.ts';
-import { buildTemplate, View } from '../../extension/ui/render.ts';
-import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
-import { createRuntime } from '../../extension/ui/runtime.ts';
-import { createMockHost } from '../../extension/ui/host.ts';
-import { createDispatcher, contextFromState } from '../../extension/ui/actions.ts';
+import { sanitizeCss } from '../../app/shared/ui/sanitize.ts';
+import { buildTemplate, View } from '../../app/shared/ui/render.ts';
+import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../app/shared/ui/theme-loader.ts';
+import { createRuntime } from '../../app/shared/ui/runtime.ts';
+import { createMockHost } from '../../app/shared/ui/host.ts';
+import { cornerFill, hitRects, sidebarFixed } from '../../app/shared/ui/host-app.ts';
+import { createDispatcher, contextFromState } from '../../app/shared/ui/actions.ts';
 import { MockState } from './view-model.ts';
 import { auditDom } from './audit.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, CSS_TARGET, EVIL_VM, wrap } from './payloads.ts';
-import { cloudOf } from '../../extension/shared/cloud-tabs.ts';
-import { acrossOf } from '../../extension/shared/across.ts';
-import { cloudFixture } from '../fixtures/cloud-tabs.ts';
-import type { LoadedTheme, ThemePackage } from '../../extension/ui/theme-loader.ts';
-import type { Layout } from '../../extension/ui/render.ts';
-import type { CleanNode } from '../../extension/ui/sanitize.ts';
-import type { UiState, ViewModel } from '../../extension/ui/view-model.ts';
+import type { LoadedTheme, ThemePackage } from '../../app/shared/ui/theme-loader.ts';
+import type { Layout } from '../../app/shared/ui/render.ts';
+import type { CleanNode } from '../../app/shared/ui/sanitize.ts';
+import type { UiState, ViewModel } from '../../app/shared/ui/view-model.ts';
 import type { MockTab } from './view-model.ts';
 
 // A theme package as Node hands it over (tests/theme/package.ts themeForPage): its files in base64.
@@ -325,7 +323,26 @@ const T = {
 
 // `host`, `mock`, `target` and `warnings` are set by mountRuntime and `theme` by loadBuiltin or loadPackage,
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
-const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null! };
+const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[], paletteOpens: [string, boolean][], materials: boolean[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [], paletteOpens: [], materials: [] };
+
+const starting = () => rt.runtime!.view.rootElement()?.hasAttribute('m-starting') ?? false;
+function startEmpty(pageState: 'empty' | 'loading' | 'shown', name: string | null) {
+  (T as typeof T & { unmountRuntime(): void }).unmountRuntime();
+  const mock = new MockState();
+  const hosted = pageState !== 'empty';
+  const host = Object.assign(createMockHost({ state: null as any, windowId: 1, platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen' }),
+    { appWindow: true, launcher: !hosted, pageHosted: hosted, sidebarDocked: hosted, inNewTab: false, pageState, pageOpening: pageState === 'loading' ? name : null });
+  document.documentElement.style.cssText = 'margin:0;height:100%';
+  document.body.style.cssText = 'margin:0;height:100%';
+  const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: document });
+  Object.assign(rt, { runtime, host, mock, el: null, target: document });
+  w.__rt = rt;
+  return starting();
+}
+function arrive() {
+  rt.host.setState(rt.mock.state);
+  return starting();
+}
 
 // (Named, the same object as T, for its type: Harness below.)
 const withRuntime = Object.assign(T, {
@@ -343,18 +360,56 @@ const withRuntime = Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false }: {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false, materials = null, pictures = false }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
     platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
     focusLauncherAtMount?: boolean, warnings?: unknown,
     staysOnScreen?: boolean,
+    // Margin.app's own window with nothing hosted beside it (ui/host-app.ts): its page area is the launcher.
+    appWindow?: boolean,
+    // Margin.app's own window hosting another app's window in its page area (`pageHosted`): the sidebar docked, no
+    // launcher, the theme's root marked as the app's page marks it (app/shared/host/overlay.ts followOutside), the
+    // page card `shown` (ui/host-app.ts pageState: `rtPageState` changes it).
+    hosted?: boolean,
+    // A host with the system's materials (Margin.app's, for Edit Theme Color's glass): it answers each ask after this
+    // many ms (no glass here: Playwright's browsers don't know the property); the asks, in order: `rtMaterials`.
+    materials?: number | null,
+    // A host that serves spaces' pictures (Margin.app's, M2.9 step 7): every id is the page's `__testPicture` (a data:
+    // URL the test made); without, none is served (a browser's extension). It answers `backgroundChoose` and
+    // `backgroundAdd` with the page's `__pictureReply` (a value, or a function of the type and payload: a promise
+    // waits), and says why one failed with `__pictureFailure` (taken once, as Margin.app's `takeFailure`).
+    pictures?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
     if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
     const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
-    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen });
+    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen }, hosted ? { appWindow: true, pageHosted: true, pageOutside: false, sidebarDocked: true, launcher: false, inNewTab: false, pageState: 'shown' as const, pageOpening: null }
+      : appWindow ? { appWindow: true, launcher: true, inNewTab: false, pageState: 'empty' as const, pageOpening: null } : {});
+    // (Each word of a width change to the host, with the page's left inset it had last been told by then.)
+    const perform = host.perform;
+    host.perform = (name: string, arg?: any) => { if (name === 'sidebar.resizing') rt.resizing.push([arg?.on === true, host.layouts.at(-1)?.insets.left ?? null]); return perform(name, arg); };
+    rt.resizing = [];
+    // (Margin.app's log lines from the page, `note`: as said, in order.)
+    rt.notes = [];
+    Object.assign(host, { note: (text: string) => { rt.notes.push(text); } });
+    // (The device Margin.app says the gestures come from, M2.9 step 6: the page's `__feedbackDevice`, none unless set.)
+    Object.defineProperty(host, 'feedbackDevice', { get: () => (window as unknown as { __feedbackDevice?: unknown }).__feedbackDevice ?? null, configurable: true });
+    if (pictures) {
+      const w = window as unknown as { __testPicture?: string, __pictureReply?: unknown, __pictureFailure?: { type: string, error: string } | null };
+      const send = host.send;
+      Object.assign(host, {
+        pictureUrl: () => w.__testPicture ?? null,
+        async send(type: string, payload: any = {}) {
+          if (type !== 'backgroundChoose' && type !== 'backgroundAdd') return send(type, payload);
+          host.sent.push({ type, payload });
+          const r = w.__pictureReply;
+          return typeof r === 'function' ? r(type, payload) : r;
+        },
+        takeFailure() { const f = w.__pictureFailure ?? null; w.__pictureFailure = null; return f; },
+      });
+    }
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {
@@ -368,8 +423,16 @@ const withRuntime = Object.assign(T, {
     }
     rt.warnings = [];
     // (A theme that loaded: the tests check that first.)
-    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m) });
+    // (What the UI opens as the palette's key does, said as the overlay's host hears it: ui/behaviors/empty.ts.)
+    rt.paletteOpens = [];
+    rt.materials = [];
+    const runtime = createRuntime({
+      host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m),
+      openPalette: (options, by) => { rt.paletteOpens.push([by, options.newTab]); rt.runtime!.openPalette(options); },
+      ...(materials == null ? {} : { materials: (on: boolean) => { rt.materials.push(on); return new Promise<void>((done) => setTimeout(done, materials)); } }),
+    });
     Object.assign(rt, { runtime, host, mock, el, target });
+    if (hosted) runtime.view.rootElement()?.toggleAttribute('m-sidebar-fixed', sidebarFixed(host as { pageOutside?: boolean }));
     w.__rt = rt;
     return true;
   },
@@ -398,27 +461,6 @@ const withRuntime = Object.assign(T, {
     rt.host.setState(rt.mock.state);
   },
   rtSent() { return rt.host.sent.map((s): [string, any] => [s.type, s.payload]); }, // (a request's type and payload, as the host has it)
-  // iCloud Tabs as Margin.app's host keeps them (shared/cloud-tabs.ts cloudOf):
-  // the fixture's (tests/fixtures/cloud-tabs.ts), or `raw`; with every DOM
-  // mutation the change made. `edit(raw)` changes the fixture first.
-  rtCloud(raw: unknown = null, edit: string | null = null) {
-    const data = raw ?? cloudFixture(Date.now());
-    if (edit) new Function('raw', edit)(data);
-    const root = rt.target.nodeType === 9 ? (rt.target as Document).body : rt.target;
-    const mo = new MutationObserver(() => {});
-    mo.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
-    rt.mock.state = { ...rt.mock.state, cloudTabs: cloudOf(data) };
-    rt.host.setState(rt.mock.state);
-    const records = mo.takeRecords();
-    mo.disconnect();
-    return { records: records.length, added: records.reduce((n, r) => n + r.addedNodes.length, 0), text: records.filter((r) => r.type === 'characterData').length };
-  },
-  // Spaces across profiles as Margin.app's host keeps them (shared/across.ts acrossOf), or none.
-  rtAcross(raw: unknown) {
-    rt.mock.state = { ...rt.mock.state, across: raw ? acrossOf(raw) : null };
-    rt.host.setState(rt.mock.state);
-    return !!rt.mock.state.across;
-  },
   // What's drawn at a point of the window: the element's classes, and its ancestors'.
   rtHitClasses(x: number, y: number) {
     let el = rt.target.elementFromPoint(x, y);
@@ -426,6 +468,11 @@ const withRuntime = Object.assign(T, {
     for (; el && out.length < 12; el = el.parentElement ?? (el.getRootNode() as Partial<ShadowRoot>)?.host ?? null) out.push(el.localName + (el.className && typeof el.className === 'string' ? `.${el.className.split(/\s+/).join('.')}` : ''));
     return out;
   },
+  // Every element at a point that takes it (elementsFromPoint: what paints there and isn't pointer-events: none), by name.
+  rtElementsAt(x: number, y: number) { return (rt.target as Document | ShadowRoot).elementsFromPoint(x, y).map((e) => e.localName); },
+  // `<m-page>` (and so all it draws: a split's dividers and bands, a pane's loader) hidden or shown again, for a picture
+  // of what the rest of the page paints.
+  rtPageHidden(on: boolean) { const p = rt.target.querySelector('m-page') as HTMLElement | null; if (p) { if (on) p.style.setProperty('visibility', 'hidden'); else p.style.removeProperty('visibility'); } },
   rtOrder(a: string, b: string) { const x = rt.target.querySelector(a); const y = rt.target.querySelector(b); return x && y ? x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? 'before' : 'after' : null; },
   rtClosest(selector: string, ancestor: string) { return [...rt.target.querySelectorAll(selector)].some((el) => el.closest(ancestor)); },
   rtSetScroll(selector: string, px: number) { const el = rt.target.querySelector(selector)!; el.scrollTop = px; return el.scrollTop; },
@@ -466,8 +513,225 @@ const withRuntime = Object.assign(T, {
     return result;
   },
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
+  // Margin.app's own window: what's drawn around <m-page>'s rounded corners (ui/host-app.ts cornerFill), and each corner's inner radius.
+  rtCornerFill() { return cornerFill(rt.target.querySelector('m-page')); },
+  // A space's background (M2.9): what Margin's layer has drawn, the page's corners as Margin.app is told them (with
+  // its ground), the variables as the theme's root computes them.
+  rtBackground() { return rt.runtime!.backgroundDrawn(); },
+  rtCornerFillGround() { return cornerFill(rt.target.querySelector('m-page'), { ground: rt.runtime!.backgroundAt }); },
+  rtBackgroundAt(x: number, y: number) { return rt.runtime!.backgroundAt(x, y); },
+  // Edit Theme Color (M2.9 step 4): its parts (boxes and states: its content is closed), whether it's open and where.
+  rtPicker() { return rt.runtime!.pickerParts(); },
+  rtPickerTicks() { return rt.runtime!.pickerTicks(); }, // (how many of its ticks played a haptic or a click)
+  // … and what it asked of a host with the system's materials (mountRuntime's `materials`): true on, false off, in order.
+  rtMaterials() { return [...rt.materials]; },
+  rtPanel() { return { open: rt.runtime!.panelOpen, rect: rt.runtime!.panelRect() }; },
+  rtVars(names: string[]) {
+    const root = rt.runtime!.view.rootElement();
+    if (!root) return null;
+    const cs = getComputedStyle(root);
+    return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(n).trim()]));
+  },
+  // Margin.app's own window: the page card's state as the app says it (ui/host-app.ts pageState), drawn again.
+  // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`; `bundleId`: the app whose icon the
+  // loader shows, looked up in the state's `apps`: rtApps); `shown`: a hosted window shows through.
+  rtPageState(state: 'empty' | 'loading' | 'shown' | 'elsewhere', name: string | null = null, bundleId: string | null = null) {
+    const named = state === 'loading' || state === 'elsewhere';
+    // (`elsewhere`: not hosting, its item in another Margin window: its card, the sidebar still docked, no launcher.)
+    Object.assign(rt.host, { pageState: state, pageOpening: named ? name : null, pageOpeningBundleId: named ? bundleId : null, pageHosted: state !== 'empty', sidebarDocked: state !== 'empty', launcher: state === 'empty' });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement();
+    const loader = root?.querySelector('m-page-loader');
+    return { attr: root?.getAttribute('m-page-state') ?? null, starting: root?.hasAttribute('m-starting') ?? null, loader: loader ? { own: !loader.hasAttribute('m-default'), text: loader.textContent ?? '' } : null };
+  },
+  // Margin's start screen (ui/runtime.ts followStartup): the page `loading` as Margin starts (host.pageStarting), held
+  // up with `stuck` (host.pageStuck; null: not), drawn again. Answers `<m-startup>`'s box, what's on top at a few points
+  // (whether each is it or inside it), its words, its buttons' labels and boxes, the root's `m-startup`, its own
+  // spinner's display, and whether its `::before` and `::after` draw (a theme's marks); null for the element if none.
+  rtStartup(stuck: string | null) {
+    Object.assign(rt.host, { pageState: 'loading', pageOpening: 'Getting you started', pageOpeningBundleId: 'com.apple.Safari', pageStarting: true, pageStuck: stuck, pageHosted: true, sidebarDocked: true, launcher: false });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement() as HTMLElement | null;
+    const el = root?.querySelector(':scope > m-startup') as HTMLElement | null;
+    if (!el) return { el: null, attr: root?.hasAttribute('m-startup') ?? null };
+    const r = el.getBoundingClientRect();
+    const doc = el.ownerDocument;
+    const at = (x: number, y: number) => { const top = (doc.elementFromPoint(x, y) as Element | null); return !!top && (top === el || el.contains(top)); };
+    const w = doc.documentElement.clientWidth, h = doc.documentElement.clientHeight;
+    const draws = (pseudo: string) => { const c = getComputedStyle(el, pseudo); return c.content !== 'none' && c.content !== 'normal' && c.display !== 'none'; };
+    const spin = el.querySelector('[m-startup-spin]');
+    return {
+      el: { left: r.left, top: r.top, width: r.width, height: r.height },
+      attr: root?.hasAttribute('m-startup') ?? null,
+      onTop: [[40, h / 2], [w / 2, h / 2], [w - 10, 10], [10, h - 10], [w - 10, h - 10]].map(([x, y]) => at(x, y)),
+      text: (el.querySelector('[m-startup-text]')?.textContent ?? '').trim(),
+      allText: (el.textContent ?? '').trim(),
+      buttons: [...el.querySelectorAll('[m-startup-action]')].map((b) => { const br = b.getBoundingClientRect(); return { label: (b.textContent ?? '').trim(), action: b.getAttribute('m-startup-action'), x: br.left + br.width / 2, y: br.top + br.height / 2, inside: br.left >= 0 && br.top >= 0 && br.right <= w && br.bottom <= h && br.width > 0 && br.height > 0 }; }),
+      spin: spin ? getComputedStyle(spin).display : null,
+      before: draws('::before'),
+      after: draws('::after'),
+    };
+  },
+  // The page `loading` an item whose browser copy is slow (host.pageSlow, ui/runtime.ts followSlow; `on` false: not,
+  // `starting`: Margin's start instead), drawn again. Answers Margin's <m-page-slow>: its box, its words, whether its
+  // words' middle is on top there (nothing of the theme's over it), and the root's `m-page-slow`; null for the element
+  // when there's none.
+  rtPageSlow(on: boolean, starting = false) {
+    Object.assign(rt.host, { pageState: 'loading', pageOpening: starting ? 'Getting you started' : 'Docs', pageOpeningBundleId: 'com.apple.Safari', pageStarting: starting, pageStuck: null, pageSlow: on, pageHosted: true, sidebarDocked: true, launcher: false });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement() as HTMLElement | null;
+    const el = root?.querySelector(':scope > m-page-slow') as HTMLElement | null;
+    if (!el) return { el: null, attr: root?.hasAttribute('m-page-slow') ?? null };
+    const r = el.getBoundingClientRect();
+    const words = el.querySelector('[m-slow-label]') as HTMLElement | null;
+    const wr = words?.getBoundingClientRect();
+    // (It never takes the pointer: hit-tested with it taken for the look, to see what's drawn on top there.)
+    const was = el.style.pointerEvents;
+    el.style.pointerEvents = 'auto';
+    if (words) words.style.pointerEvents = 'auto';
+    const top = wr ? el.ownerDocument.elementFromPoint(wr.left + wr.width / 2, wr.top + wr.height / 2) : null;
+    el.style.pointerEvents = was;
+    if (words) words.style.pointerEvents = '';
+    const takes = getComputedStyle(el).pointerEvents;
+    return {
+      el: { left: r.left, top: r.top, width: r.width, height: r.height },
+      attr: root?.hasAttribute('m-page-slow') ?? null,
+      text: (words?.textContent ?? '').trim(),
+      shown: !!wr && wr.width > 0 && wr.height > 0 && getComputedStyle(words!).visibility !== 'hidden' && getComputedStyle(words!).display !== 'none',
+      onTop: !!top && (top === words || !!words?.contains(top)),
+      role: el.getAttribute('role'),
+      pointer: takes,
+    };
+  },
+  // `elsewhere` with a web item's picture (host.pagePicture, ui/host-app.ts): a solid red picture (made here, a PNG
+  // data URL; null: none), drawn again. Answers Margin's <m-page-picture>: its box, how it's drawn, its image's and its
+  // words', and whether the root says `m-page-picture`; null for the element when there's none.
+  async rtPagePicture(on: boolean) {
+    let data: string | null = null;
+    if (on) {
+      const c = document.createElement('canvas');
+      c.width = 160; c.height = 100;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#e00000';
+      g.fillRect(0, 0, c.width, c.height);
+      data = c.toDataURL('image/png');
+    }
+    Object.assign(rt.host, { pagePicture: data });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement() as HTMLElement | null;
+    const el = root?.querySelector('m-page-picture') as HTMLElement | null;
+    const img = el?.querySelector('img') as HTMLImageElement | null;
+    await img?.decode().catch(() => undefined);
+    const label = el?.querySelector('[m-picture-label]') as HTMLElement | null;
+    const box = (n: Element) => { const b = n.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; };
+    return {
+      attr: root?.hasAttribute('m-page-picture') ?? false,
+      el: el ? {
+        box: box(el), zIndex: getComputedStyle(el).zIndex, pointer: getComputedStyle(el).pointerEvents, last: root?.lastElementChild === el,
+        img: img ? { src: img.getAttribute('src') === data, complete: img.complete, opacity: Number(getComputedStyle(img).opacity), box: box(img) } : null,
+        label: label ? { text: label.textContent ?? '', font: getComputedStyle(label).fontFamily, visible: getComputedStyle(label).display !== 'none' && label.getBoundingClientRect().width > 0, box: box(label) } : null,
+        moving: el.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length,
+      } : null,
+    };
+  },
+  // A runtime mounted in the whole window with no state yet (a hello without one): the root says `m-starting`, and
+  // the theme draws its skeleton. `pageState`: the page card's then (`empty`: nothing hosted yet). `rtArrive` gives
+  // it its state. Both answer whether the root says `m-starting`.
+  rtStartEmpty(pageState: 'empty' | 'loading' | 'shown' = 'empty', name: string | null = null) { return startEmpty(pageState, name); },
+  rtArrive() { return arrive(); },
+  // … then the state: whether the root says `m-starting` before the data, in the frame it's drawn, and a frame after.
+  async rtStartLate() {
+    const before = startEmpty('empty', null);
+    const drawn = arrive();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 150));
+    return { before, drawn, after: starting() };
+  },
+  // The default loader's box and how it's drawn now (null: none in the tree).
+  // Margin.app's installed apps, as its hello gives them (ui/host-app.ts: the state's `apps`), drawn again.
+  rtApps(apps: { bundleId: string, name: string, icon: string | null }[] | null) {
+    rt.mock.state = { ...rt.mock.state, apps } as MockState['state'];
+    rt.host.setState(rt.mock.state);
+    rt.runtime!.render();
+    return true;
+  },
+  // The images in the page loader, once each is decoded: its address, its natural and drawn size, how it's scaled, and
+  // whether it or anything around it in the loader moves.
+  async rtLoaderIcons() {
+    const loader = rt.runtime!.view.rootElement()?.querySelector('m-page-loader');
+    const imgs = [...(loader?.querySelectorAll('img') ?? [])] as HTMLImageElement[];
+    await Promise.all(imgs.map((i) => i.decode().catch(() => undefined)));
+    return imgs.map((i) => {
+      const b = i.getBoundingClientRect(), cs = getComputedStyle(i);
+      return { src: i.getAttribute('src'), complete: i.complete, natural: [i.naturalWidth, i.naturalHeight], size: [b.width, b.height], rendering: cs.imageRendering, visible: cs.visibility === 'visible' && Number(cs.opacity) > 0 && b.width > 0, at: [b.left, b.top, b.right, b.bottom] };
+    });
+  },
+  rtLoader() {
+    const el = rt.runtime!.view.rootElement()?.querySelector('m-page-loader') as HTMLElement | null;
+    if (!el) return null;
+    const b = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    return { left: b.left, top: b.top, width: b.width, height: b.height, opacity: Number(cs.opacity), visibility: cs.visibility, pointer: cs.pointerEvents, background: cs.backgroundColor, radius: cs.borderTopLeftRadius, transition: cs.transitionDuration, own: !el.hasAttribute('m-default'), text: el.textContent ?? '' };
+  },
+  rtRadii() { return rt.host.layouts.at(-1)?.radii ?? null; },
+  // The animations and transitions under way in the document: each one's name (a transition's: its property), whether
+  // its element is the page loader's slot or in it (`pseudo`: one of the element's own boxes), what it changes, and
+  // whether it's running.
+  rtAnimations() {
+    const meta = new Set(['offset', 'easing', 'composite', 'computedOffset']);
+    return document.getAnimations().map((a) => {
+      const effect = a.effect as KeyframeEffect | null;
+      const css = a as Animation & { animationName?: string, transitionProperty?: string };
+      return {
+        name: css.animationName ?? `transition:${css.transitionProperty ?? ''}`,
+        loader: !!effect?.target?.closest('m-page-loader'),
+        pseudo: effect?.pseudoElement ?? null,
+        props: [...new Set((effect?.getKeyframes() ?? []).flatMap((k) => Object.keys(k)))].filter((k) => !meta.has(k)).sort(),
+        running: a.playState === 'running',
+      };
+    });
+  },
+  // One of an element's own boxes (`::before`, `::after`): whether it's drawn (its `content`), its size and its animation.
+  rtPseudo(selector: string, pseudo: string) {
+    const el = rt.target.querySelector(selector);
+    if (!el) return null;
+    const cs = getComputedStyle(el, pseudo);
+    return { content: cs.content, width: parseFloat(cs.width) || 0, height: parseFloat(cs.height) || 0, animation: cs.animationName, background: cs.backgroundColor };
+  },
   rtRefused() { return rt.runtime!.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
+  // A trackpad's phase told while reading the swipe's moving part just before and just after, in one task (the browser's
+  // animation time is the same for both reads): where it's drawn, whether it's settling, and the space shown.
+  // The phase sent `frames` frames from now (in that frame's callback), read before and after, each read with its time
+  // (`at`, ms); `prev`, the same read a frame earlier. WebKit reads a running transition at the moment it's read, so
+  // the behavior's own read (inside the dispatch) is a little further on than `before` on a busy machine (1.65 px in
+  // the gate of 2026-11-22): a test allows the settle's speed (prev to before) over the time the dispatch took.
+  rtPhaseRead(selector: string, phase: string, frames = 1) {
+    const el = rt.target.querySelector(selector) as HTMLElement;
+    const read = () => {
+      const pane = el.querySelector('.space-pane:not(.m-swipe-ghost)');
+      const m = pane ? /matrix\(([^)]+)\)/.exec(getComputedStyle(pane).transform) : null;
+      return { drawn: m ? parseFloat(m[1].split(',')[4]) : 0, at: performance.now(), settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping'), space: (rt.runtime!.vm as any)?.space?.id as string };
+    };
+    type Read = ReturnType<typeof read>;
+    return new Promise<{ prev: Read, before: Read, after: Read }>((done) => {
+      let prev = read();
+      const frame = (k: number) => requestAnimationFrame(() => {
+        if (k > 1) { prev = read(); return frame(k - 1); }
+        const before = read();
+        document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
+        done({ prev, before, after: read() });
+      });
+      frame(Math.max(1, frames));
+    });
+  },
+  // Wheel events over `selector` all in one task (no frame between them), the haptic ticks asked for by its end.
+  rtTrackpadNow(selector: string, deltas: number[]) {
+    const el = rt.target.querySelector(selector)!;
+    const t0 = performance.now();
+    for (const dx of deltas) el.dispatchEvent(new WheelEvent('wheel', { deltaX: dx, deltaY: 0, deltaMode: 0, bubbles: true, cancelable: true, composed: true }));
+    return { ticks: rt.host.performed.filter((p) => p.name === 'haptic.alignment').length, ms: performance.now() - t0 };
+  },
+  rtFrames(n: number) { return new Promise<void>((done) => { const f = (k: number) => (k ? requestAnimationFrame(() => f(k - 1)) : done()); f(n); }); },
   rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime!.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },
   // --- The behaviors (tests/theme/behaviors.test.ts) ---
   rtPointer(x: number, y: number) { rt.runtime!.pointer({ x, y }); },
@@ -505,9 +769,40 @@ const withRuntime = Object.assign(T, {
   rtStyle(selector: string, prop: string) { const el = rt.target.querySelector<HTMLElement>(selector); return el ? el.style.getPropertyValue(prop) : null; },
   rtSentClear() { rt.host.sent.length = 0; rt.host.layouts.length = 0; },
   rtLayoutsAll() { return rt.host.layouts.map((l) => l.insets.left); },
+  // The host told a change of the sidebar's width began (true) or is over (false), each with the last left inset reported by then.
+  rtResizing() { return rt.resizing.slice(); },
+  rtDisplay(selector: string) { const el = rt.target.querySelector(selector); return el ? getComputedStyle(el).display : null; },
   rtState() { return rt.mock.state; },
   // A trackpad's sideways scroll over an element: `count` wheel events of
   // `dx` px, 16 ms apart (Playwright's own wheel is a mouse's).
+  // A trackpad's phase as Margin.app tells it (app/shared/host/overlay.ts `m-wheel-phase`).
+  rtWheelPhase(phase: string) { document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } })); },
+  // Wheel events of these deltas over `selector`, `gap` ms apart.
+  async rtTrackpadRun(selector: string, deltas: number[], gap = 16) {
+    const el = rt.target.querySelector(selector)!;
+    for (const dx of deltas) {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaX: dx, deltaY: 0, deltaMode: 0, bubbles: true, cancelable: true, composed: true }));
+      await new Promise((r) => setTimeout(r, gap));
+    }
+  },
+  // The swipe's part each frame for `ms`: its offset (px) and whether it's settling, and the moving part's transition.
+  async rtSwipeTrace(selector: string, ms: number) {
+    const el = rt.target.querySelector(selector) as HTMLElement;
+    // `drawn`: where the moving part is on screen (its computed transform's x: mid-transition, the browser's own value).
+    const out: { t: number, offset: number | null, drawn: number | null, transition: string, settling: boolean, swiping: boolean }[] = [];
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const frame = () => {
+        const v = el.style.getPropertyValue('--m-swipe-offset');
+        const pane = el.querySelector('.space-pane:not(.m-swipe-ghost)');
+        const m = pane ? /matrix\(([^)]+)\)/.exec(getComputedStyle(pane).transform) : null;
+        out.push({ t: performance.now() - t0, offset: v ? parseFloat(v) : null, drawn: m ? parseFloat(m[1].split(',')[4]) : null, transition: el.style.getPropertyValue('--m-swipe-transition'), settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping') });
+        if (performance.now() - t0 < ms) requestAnimationFrame(frame); else done();
+      };
+      requestAnimationFrame(frame);
+    });
+    return out;
+  },
   async rtTrackpad(selector: string, dx: number, count: number) {
     const el = rt.target.querySelector(selector)!;
     for (let i = 0; i < count; i++) {
@@ -543,11 +838,287 @@ const withRuntime = Object.assign(T, {
     return r.width > 0 && r.height > 0 && s.visibility === 'visible' && Number(s.opacity) > 0 && s.display !== 'none';
   },
   rtFolderRename(folderId: string, name: string) { rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) }; rt.host.setState(rt.mock.state); },
+  // The tab in front, the space's tabs, and the mini player the view model has (mini-player.test.ts).
+  // The preview card (ui/behaviors/card.ts): the app's word on it, as the overlay passes it on; where its page is measured.
+  rtCard(peek: unknown) { return rt.runtime!.card.show(peek); },
+  rtPeekPage() { return rt.runtime!.measurePeekPage(); },
+  rtPeekVm() { const p = rt.runtime!.vm!.preview; return p ? { loading: p.loading, ready: p.ready, closing: p.closing, quickTab: p.quickTab, host: p.host, url: p.url } : null; },
+  rtMedia() { const vm = rt.runtime!.vm!; return { front: vm.tab?.id ?? null, today: vm.space.today.map((t) => t.id), media: vm.media ? { tabId: vm.media.tabId, title: vm.media.title, paused: vm.media.paused } : null }; },
+  // No tab audible (as Margin.app's state has none: its mini player is the copies' `media` push only).
+  rtSilence() {
+    rt.mock.state = { ...rt.mock.state, tabs: Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([k, t]) => [k, { ...t, audible: false }])) };
+    rt.host.setState(rt.mock.state);
+  },
+  // Split View (split-view.test.ts): a split of these tabs (the browser's ids, as a pane can be named), the first in
+  // front; what Margin laid out in <m-page> (its panes, by id, with their boxes; the dividers) and the last layout's
+  // panes as the host was told them; the panes' windows' minimums as Margin.app says them (`paneMin`).
+  rtSplit(tabs: number[], { axis = 'horizontal', ratios = null as number[] | null, id = 'spv-1' } = {}) {
+    const front = tabs[0];
+    rt.mock.state = {
+      ...rt.mock.state,
+      tabs: Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([k, t]) => [k, { ...t, active: Number(k) === front ? true : (t.windowId === 1 ? false : t.active) }])),
+      splits: [{ id, spaceId: rt.mock.state.tabSpace[front], axis, panes: tabs.map(String), ratios: ratios ?? tabs.map(() => 1 / tabs.length) }],
+    } as typeof rt.mock.state;
+    rt.host.setState(rt.mock.state);
+    return rt.runtime!.vm!.split ? { id: rt.runtime!.vm!.split.id, panes: rt.runtime!.vm!.split.panes.map((p) => p.id) } : null;
+  },
+  rtNoSplit() { rt.mock.state = { ...rt.mock.state, splits: [] } as typeof rt.mock.state; rt.host.setState(rt.mock.state); },
+  rtPanes() {
+    const page = rt.target.querySelector('m-page');
+    const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    return {
+      axis: page?.getAttribute('m-split') ?? null,
+      split: page?.getAttribute('m-split-id') ?? null,
+      panes: [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => ({ id: p.getAttribute('m-pane-id'), focused: p.hasAttribute('m-focused'), ...box(p), ring: getComputedStyle(p).boxShadow })),
+      dividers: [...(page?.querySelectorAll(':scope > m-divider') ?? [])].map((d) => ({ ...box(d), background: getComputedStyle(d).backgroundColor, cursor: getComputedStyle(d).cursor, grip: `${getComputedStyle(d, '::after').backgroundColor}|${getComputedStyle(d, '::after').backgroundImage}`, role: d.getAttribute('role'),
+        band: d.hasAttribute('m-band'), label: d.querySelector('m-band-title')?.textContent ?? null, labelBox: (() => { const l = d.querySelector('m-band-title'); return l ? box(l) : null; })(), labelColor: (() => { const l = d.querySelector('m-band-title'); return l ? getComputedStyle(l).color : null; })() })),
+      layout: (rt.host.layouts.at(-1) as { split?: string, panes?: { id: string, rect: number[] }[] } | undefined)?.panes ?? null,
+      layoutSplit: (rt.host.layouts.at(-1) as { split?: string } | undefined)?.split ?? null,
+    };
+  },
+  rtPaneMin(items: Record<string, readonly [number, number]>) { Object.assign(rt.host, { paneMinimums: items }); rt.host.setState(rt.mock.state); },
+  // Every app's windows' known minimum as Margin.app says them (`appMin`: `web` for the web pages Safari hosts), whether
+  // a window of it is open or not.
+  rtAppMin(apps: Record<string, readonly [number, number]>) { Object.assign(rt.host, { appMinimums: apps }); rt.host.setState(rt.mock.state); },
+  // Stacked ⇄ side by side (the UI's `split.toggleAxis`) with the page area as Margin.app last measured it: what was sent,
+  // and the toast shown.
+  rtSplitAxis(splitId: string, width: number, height = 800) {
+    Object.assign(rt.host, { layout: { container: { width, height }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
+    rt.host.sent.length = 0;
+    rt.runtime!.dispatch('split.toggleAxis', splitId, 'behavior');
+    return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null };
+  },
+  // A split pane's window opening (Margin.app's `paneLoading`): its item (the pane's id) and name; null: none. What each
+  // pane draws then: whether it's loading, its loader's box, words and spinner.
+  // A split's cut panes as Margin.app says them (`paneCut`: docs/PEEK-SPLIT.md §4b), and the one the pointer is over
+  // (`paneHover`: its window, null: none).
+  rtPaneCuts(cuts: Record<string, any>) { Object.assign(rt.host, { paneCuts: cuts }); rt.host.setState(rt.mock.state); },
+  // What takes the pointer over the page's place, as Margin.app is told it (host-app.ts hitRects over m-page's box).
+  rtPageHits() {
+    const root = rt.target.querySelector('m-page')?.closest('[m-theme-root], .m-root') ?? rt.target.firstElementChild ?? rt.target;
+    const p = rt.target.querySelector('m-page')!.getBoundingClientRect();
+    return hitRects(root as Element, { left: p.left, top: p.top, right: p.right, bottom: p.bottom }).rects;
+  },
+  rtPaneHover(window: number | null) { Object.assign(rt.host, { paneHover: window }); rt.host.setState(rt.mock.state); },
+  // Each pane's arrows: side, mode, label, whether it's shown and takes the pointer, its box and colours.
+  rtPaneArrows() {
+    return [...rt.target.querySelectorAll('m-page > m-pane')].map((p) => ({
+      id: p.getAttribute('m-pane-id'), lit: p.hasAttribute('m-cut-hover'),
+      arrows: [...p.querySelectorAll(':scope > m-pane-arrow')].map((a) => {
+        const st = getComputedStyle(a), b = a.getBoundingClientRect(), pb = p.getBoundingClientRect();
+        return { side: a.getAttribute('m-side'), mode: a.getAttribute('m-mode'), label: a.getAttribute('aria-label'), shown: st.visibility === 'visible' && Number(st.opacity) > 0.5,
+          pointer: st.pointerEvents, inside: b.left >= pb.left && b.right <= pb.right && b.top >= pb.top && b.bottom <= pb.bottom, x: b.left + b.width / 2, y: b.top + b.height / 2,
+          left: b.left - pb.left, right: pb.right - b.right, color: st.color, background: st.backgroundColor };
+      }),
+    }));
+  },
+  rtPaneLoading(pane: { item: string, name: string } | null) { Object.assign(rt.host, { paneLoading: pane ? { ...pane, bundleId: null } : null }); rt.host.setState(rt.mock.state); },
+  rtPaneLoaders() {
+    const page = rt.target.querySelector('m-page');
+    return [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => {
+      const l = p.querySelector('m-pane-loader');
+      const b = (l ?? p).getBoundingClientRect(), pb = p.getBoundingClientRect();
+      const spin = l?.querySelector('m-pane-spinner');
+      return { id: p.getAttribute('m-pane-id'), loading: p.hasAttribute('m-loading'), text: l?.textContent ?? null, inside: !!l && b.left >= pb.left - 0.5 && b.right <= pb.right + 0.5 && b.top >= pb.top - 0.5 && b.bottom <= pb.bottom + 0.5,
+        visible: !!l && b.width > 0 && b.height > 0 && getComputedStyle(l).visibility !== 'hidden' && getComputedStyle(l).display !== 'none', spinning: !!spin && getComputedStyle(spin).animationName !== 'none', color: l ? getComputedStyle(l).color : null, background: l ? getComputedStyle(l).backgroundColor : null };
+    });
+  },
+  // Add to Split View (the UI's `split.add`) with the page area `width` wide as Margin.app last measured it: what was
+  // sent, and the toast shown.
+  rtSplitAdd(tabId: number | string, width: number, height = 800) {
+    Object.assign(rt.host, { layout: { container: { width, height }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
+    rt.host.sent.length = 0;
+    rt.notes.length = 0;
+    rt.runtime!.dispatch('split.add', tabId, 'behavior');
+    return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null, note: rt.notes.at(-1) ?? null };
+  },
+  // A kept item (Margin.app's library: a web page's, or an app's `app://<bundle id>`) in the state, in the front tab's
+  // space, used last at `lastActive` (the selected one: `wasActive`).
+  // `row`: open in Margin's window, as a row of that number (`tabs[row]`, its `mid` the item) instead.
+  rtKept(id: string, url: string, { lastActive = 0, wasActive = false, name = '', row = null as number | null } = {}) {
+    const s = rt.mock.state as any;
+    const front = Object.values(s.tabs as Record<string, any>).find((t) => t.active)?.id;
+    const app = /^app:\/\/([^/?#]+)/.exec(url)?.[1];
+    // (Open: a row, no longer among the kept ones, as Margin.app puts it (HostedSession `liveTab`).)
+    if (row == null) s.keptTabs = { ...(s.keptTabs ?? {}), [id]: { id, url, title: name || url, spaceId: s.tabSpace[front], lastActive, wasActive, target: app ? { kind: 'app', bundleId: app, name } : { kind: 'web', browser: 'safari', profile: null } } };
+    else {
+      s.tabs = { ...s.tabs, [row]: { ...(s.tabs[front] ?? {}), id: row, url, title: name || url, active: wasActive, lastActive, mid: id } };
+      s.tabSpace = { ...s.tabSpace, [row]: s.tabSpace[front] };
+    }
+    rt.host.setState(rt.mock.state);
+  },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector: string) { return rt.target.querySelectorAll(selector).length; },
+  // The page's box (<m-page>) and the launcher's, with the launcher's background (Margin.app's empty window).
+  rtEmptyPage() {
+    const box = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? [r.left, r.top, r.width, r.height] : null; };
+    const launcher = rt.target.querySelector('.launcher');
+    return { page: box(rt.target.querySelector('m-page')), launcher: box(launcher), background: launcher ? getComputedStyle(launcher).backgroundColor : null };
+  },
   rtText(selector: string) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent!.trim()); },
   rtTodayIds(n = 3) { return rt.runtime!.vm!.space.today.slice(0, n).map((t) => t.id); },
   rtDispatch(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg); },
+  // --- The sidebar's empty part (ui/empty.ts, ui/behaviors/empty.ts: a double-click there opens the palette) ---
+  // An empty point of the sidebar, by the rule; what's at a point as the dev hook's old selector saw it (an independent
+  // look: inside a control or one of Margin's slots); the palette closed; the centre of every element a selector finds,
+  // and the gaps between the first ones side by side (a bar's).
+  rtEmptySpot() { return rt.runtime!.emptySpot(); },
+  rtBusyAt(x: number, y: number) {
+    const el = rt.target.elementFromPoint(x, y);
+    const busy = 'a, button, input, textarea, select, [contenteditable], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], m-drag-region, m-window-controls, m-page, m-palette, m-menu, m-editor, m-notice, m-prompt, [draggable="true"], [role="button"], [tabindex]';
+    return { at: el ? el.localName + (el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : '') : null, busy: !el || !!el.closest(busy) };
+  },
+  rtClosePalette() { rt.runtime!.closePalette(); },
+  // Each palette the UI opened as the palette's key does (what opened it, and whether for a new tab), taken.
+  rtPaletteOpens() { return rt.paletteOpens.splice(0); },
+  rtCentres(selector: string) {
+    return [...rt.target.querySelectorAll(selector)].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2, left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+  },
+  // As Margin's own behaviors run it (the overlay's keys): its answer, awaited when it's a request's.
+  rtBehavior(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg, 'behavior'); },
+  // --- Rows by what they are (every theme: their classes differ), for the pending intents and the rows' motion ----
+  // A tab's or a pin's row: the element whose click activates or opens it (tab.activate, pin.open) with this id.
+  rtRow(id: number | string) { return rowEl(id); },
+  rtRowActive(id: number | string) { const el = rowEl(id); return el ? el.classList.contains('active') || el.classList.contains('on') : null; },
+  // Where to click a row (scrolled to the middle of its list first), and its close button (shown under the pointer).
+  rtRowBox(id: number | string) {
+    const el = rowEl(id);
+    if (!el) return null;
+    el.scrollIntoView({ block: 'center' });
+    const r = el.getBoundingClientRect();
+    const close = el.querySelector('[aria-label^="Close"], .close');
+    const c = close?.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top, height: r.height, close: c && c.width ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : { x: r.right - 14, y: r.top + r.height / 2 } };
+  },
+  // Each row's top, by id, in the order drawn (today's tabs).
+  rtTodayTops() { return rt.runtime!.vm!.space.today.map((t) => [t.id, rowEl(t.id)?.getBoundingClientRect().top ?? null] as const); },
+  // Today's rows' transform this instant (a slide under way: not 'none').
+  rtTodayTransforms(from = 0, count = 10) { return rt.runtime!.vm!.space.today.slice(from, from + count).map((t) => { const el = rowEl(t.id); return el ? getComputedStyle(el).transform : null; }); },
+  // The host answering the switch, open and close requests `ms` later, with the state of what they did (as
+  // Margin.app does: the state, then the answer); `fail`: those requests' types answered undefined, nothing done.
+  // Every request's time is kept (`rtSlowSent`).
+  rtSlowHost(ms: number, { fail = [] as string[] } = {}) {
+    const host = rt.host;
+    const sent: [string, any, number][] = [];
+    (T as any).__slowSent = sent;
+    host.send = (type: string, payload: any = {}) => {
+      host.sent.push({ type, payload });
+      sent.push([type, payload, performance.now()]);
+      return new Promise((resolve) => setTimeout(() => {
+        if (fail.includes(type)) return resolve(undefined);
+        const m = rt.mock;
+        if (type === 'activateTab') { m.activate(payload.tabId); host.setState(m.state); return resolve({ shown: payload.tabId }); }
+        if (type === 'closeTab') { m.tabs((tabs) => { delete tabs[payload.tabId]; return tabs; }); m.build(); host.setState(m.state); return resolve(null); }
+        if (type === 'openPin') {
+          const pin = m.state.pins.find((p) => p.id === payload.pinId)!;
+          const id = m.nextId++;
+          const tabs = { ...m.state.tabs };
+          for (const t of Object.values(tabs)) if (t.active) tabs[t.id] = { ...t, active: false };
+          tabs[id] = { id, windowId: 1, index: 9999, title: pin.title, url: pin.url, favIconUrl: '', active: true, lastActive: 99999 };
+          m.state = { ...m.state, tabs, tabSpace: { ...m.state.tabSpace, [id]: pin.spaceId } };
+          m.build();
+          host.setState(m.state);
+          return resolve({ shown: id });
+        }
+        resolve(true);
+      }, ms));
+    };
+    return true;
+  },
+  // From the next `event` (pointerdown, click) on the theme: how many frames, and ms, until row `id` is drawn `want`
+  // (active, gone); every frame's answer is kept too, up to `ms` (a flicker shows as a change back). `rtWatched` waits.
+  rtWatch(event: string, id: number | string, want: 'active' | 'gone', ms = 1500) {
+    const test = () => { const el = rowEl(id); return want === 'gone' ? el == null : !!el && (el.classList.contains('active') || el.classList.contains('on')); };
+    let t0 = 0;
+    const seen: boolean[] = [];
+    (T as any).__watched = new Promise((done) => {
+      let frames = 0;
+      let at: { frames: number, ms: number } | null = null;
+      const tick = () => {
+        if (t0) {
+          frames++;
+          const ok = test();
+          seen.push(ok);
+          if (ok && !at) at = { frames, ms: performance.now() - t0 };
+          if (performance.now() - t0 > ms) return done({ ...(at ?? { frames: -1, ms: -1 }), seen });
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    rt.target.addEventListener(event, () => { t0 = performance.now(); }, { capture: true, once: true });
+    return true;
+  },
+  rtWatched() { return (T as any).__watched as Promise<{ frames: number, ms: number, seen: boolean[] }>; },
+  // How long one action takes to run and draw (its click's work, the rows' slide set up included), in ms.
+  rtTimed(name: string, arg?: unknown) { const t = performance.now(); rt.runtime!.dispatch(name, arg); return performance.now() - t; },
+  // The frames drawn over the next `ms`: each one's time since the last.
+  rtFrameGaps(ms: number) {
+    return new Promise<number[]>((done) => {
+      const gaps: number[] = [];
+      const start = performance.now();
+      let last = start;
+      const tick = (t: number) => { gaps.push(t - last); last = t; if (t - start > ms) done(gaps.slice(1)); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+  },
+  rtSlowSent() { return ((T as any).__slowSent as [string, any, number][]).map(([type, payload, at]) => ({ type, payload, at })); },
+  // A pin's tab closed (the pin stays, not open), in the stored state: the pin's id.
+  rtUnopenPin(nth = 1) {
+    const m = rt.mock;
+    const pin = m.state.pins.filter((p) => p.spaceId === 'personal')[nth];
+    const tab = Object.values(m.state.tabs).find((t) => t.url === pin.url)!;
+    m.tabs((tabs) => { delete tabs[tab.id]; return tabs; });
+    m.build();
+    rt.host.setState(m.state);
+    return pin.id;
+  },
+  // Some rows made installed apps' items (Margin.app): today's 2nd and 4th tabs and the first folder's 2nd pin, with
+  // an icon drawn as macOS draws app icons (its glyph 52 of 64 px, transparent room around it). Their ids, and a
+  // site's row beside them.
+  rtAppRows() {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d')!;
+    g.fillStyle = '#2f7cf6';
+    g.beginPath(); g.roundRect(6, 5, 52, 52, 12); g.fill();
+    const icon = canvas.toDataURL('image/png');
+    const apps = ['Notes', 'Music', 'Maps'].map((n) => ({ bundleId: `com.example.${n}`, name: n, icon }));
+    const m = rt.mock;
+    const today = rt.runtime!.vm!.space.today.map((t) => t.id as number);
+    const tabs = { ...m.state.tabs };
+    tabs[today[1]] = { ...tabs[today[1]], url: 'app://com.example.Notes', title: 'Notes' };
+    tabs[today[3]] = { ...tabs[today[3]], url: 'app://com.example.Music', title: 'Music' };
+    const pin = m.state.pins.filter((p) => p.folderId === 'personal-f0')[1];
+    const pinTab = Object.values(tabs).find((t) => t.url === pin.url)!;
+    tabs[pinTab.id] = { ...pinTab, url: 'app://com.example.Maps', title: 'Maps' };
+    const pins = m.state.pins.map((p) => (p === pin ? { ...p, url: 'app://com.example.Maps', title: 'Maps' } : p));
+    m.state = { ...m.state, tabs, pins, apps } as typeof m.state;
+    m.build();
+    rt.host.setState(m.state);
+    return { apps: [today[1], today[3]], site: today[2], pin: pin.id };
+  },
+  // A row's icon, its title's left edge and the row's height.
+  rtRowParts(id: number | string) {
+    const el = rowEl(id);
+    if (!el) return null;
+    const icon = el.querySelector('img, .letter');
+    const title = [...el.querySelectorAll('span, div')].find((e) => e.childElementCount === 0 && /\S/.test(e.textContent ?? '') && !e.classList.contains('letter'));
+    const r = (x: Element | null | undefined) => { const b = x?.getBoundingClientRect(); return b ? { left: b.left, top: b.top, width: b.width, height: b.height } : null; };
+    // (The icon's drawn size: its computed width, inside any padding a theme gives it.)
+    return { row: r(el), icon: r(icon), size: icon ? parseFloat(getComputedStyle(icon).width) : null, app: !!icon?.classList.contains('app'), title: r(title) };
+  },
+  // A folder's row (its folder.toggle control), its glyph and its name: where each is drawn.
+  rtFolderParts(id: string) {
+    const view = rt.runtime!.view;
+    const el = [...rt.target.querySelectorAll<HTMLElement>('[m-drag], a, button')].find((e) => { const a = view.actionOf(e); return a?.name === 'folder.toggle' && a.arg === id; });
+    if (!el) return null;
+    const icon = el.querySelector('svg:not(.chev):not(.arrow), .folder-icon, .folder-ico') ?? el.querySelector('svg');
+    const title = [...el.querySelectorAll('span, div')].find((e) => e.childElementCount === 0 && /\S/.test(e.textContent ?? ''));
+    const r = (x: Element | null | undefined) => { const b = x?.getBoundingClientRect(); return b ? { left: b.left, top: b.top, width: b.width, height: b.height } : null; };
+    return { row: r(el), icon: r(icon), title: r(title) };
+  },
   // Where to click an element (the shadow root is closed: clicks go by
   // position), scrolled into view in its list first.
   rtBox(selector: string, nth = 0) {
@@ -560,6 +1131,16 @@ const withRuntime = Object.assign(T, {
 });
 
 function hostElement(width: number, height: number) { return host(width, height); }
+
+// The row whose click activates the tab or opens the pin `id` (its <a>, or the element with the action).
+function rowEl(id: number | string): HTMLElement | null {
+  const view = rt.runtime!.view;
+  for (const el of rt.target.querySelectorAll<HTMLElement>('[m-drag], a, button')) {
+    const a = view.actionOf(el);
+    if (a && (a.name === 'tab.activate' || a.name === 'pin.open') && a.arg === id && el.closest('.launcher, .tile') == null) return el;
+  }
+  return null;
+}
 
 // The CSS payloads' target, built with DOM APIs.
 function target() {

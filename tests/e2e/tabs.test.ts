@@ -7,7 +7,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { sidebar, palette, drag, tabRow, pageBox, slot } from './harness/ui.ts';
+import { sidebar, palette, drag, tabRow } from './harness/ui.ts';
 import type { Page } from 'playwright';
 import type { ArchiveEntry } from '../../types/margin.d.ts';
 
@@ -37,10 +37,6 @@ test('a click in the overlay shows that tab; a switch in the browser moves the h
   await ui.click(tabRow(ids.shop));
   await m.until(async () => (await frontId()) === ids.shop, { what: 'the shop in front' });
   await m.until(async () => (await activeRows()).join() === String(ids.shop), { what: 'the shop highlighted' });
-  // The page in front is in the slot.
-  const page = (await m.pageOf(ids.shop))!;
-  const box = (await pageBox(page))!;
-  assert.deepEqual({ left: box.left, top: box.top, right: box.right, bottom: box.bottom }, await slot(ui));
   await m.shoot(t, 'shop-clicked');
 
   await m.bg((id) => chrome.tabs.update(id, { active: true }), ids.article);

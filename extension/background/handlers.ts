@@ -1,4 +1,4 @@
-import { makeKeptBehind, openKept } from './kept.ts';
+import { openKept } from './kept.ts';
 // What pages ask the background for: runtime messages { type, ...payload },
 // answered { ok, result } or { ok: false, error } (background.ts routes
 // them). types/margin.d.ts derives the protocol's types from this object.
@@ -8,27 +8,30 @@ import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import * as S from '../shared/search.ts';
 import { api, load, mutate, newId, now, thisCopy } from './store.ts';
-import { focusTab, inParkedWindow, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.ts';
-import { sleepIdle, wakeAll, windowDrafts } from './sleep.ts';
-import { probeWindow, setWindowState, windowCall } from './handoff.ts';
-import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
-import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.ts';
+import { focusTab, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.ts';
+import { sleepIdle, wakeAll } from './sleep.ts';
+import { setWindowState, windowCall } from './handoff.ts';
+import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
+import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.ts';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.ts';
-import { THEMES } from '../themes/index.ts';
+import { THEMES } from '../../app/shared/ui/themes/index.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
 import { getScroll, setScroll } from './scroll.ts';
 import { keepScroll, takeScroll } from './scroll-record.ts';
 import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
-import { isAwayPage } from '../shared/away.ts';
 import { appLink } from './app-link.ts';
-import { createSheetWalks } from './sheet-walks.ts';
+import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
+import { createMediaHub, type MediaReportInput } from './media.ts';
+import { createPeekAnswers } from './peek.ts';
+import { matchAirTrafficRule } from '../shared/air-traffic.ts';
+import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
 import * as pageLoads from './page-loads.ts';
-import { moveIndex } from '../ui/behaviors/drop-rules.ts';
-import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME_ID, plainSetting } from '../themes/packages.ts';
+import { moveIndex } from '../../app/shared/ui/behaviors/drop-rules.ts';
+import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME_ID, plainSetting } from '../../app/shared/ui/themes/packages.ts';
 
 // The tab a nav request is for: the one named, the page's own, or the one
 // in front of the window.
@@ -76,99 +79,6 @@ async function updatePackageThemeSettings(themeId: string, patch: object) {
 // not linked): the new-tab page stays (linked, the app's palette opens over
 // it; not linked, it says the app isn't running: newtab/newtab.ts).
 const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
-let devProbing = false; // DEV-HOOK: devTabMoveProbe running
-// Windows where Margin.app couldn't show the palette ⌘T was handed off to (no overlay shown there:
-// its window not bound yet, or its binding just gone, before the app said it draws nothing there):
-// window id → when the app said so. ⌘T there keeps Safari's new tab for PALETTE_DROPPED_MS.
-const paletteDroppedAt = new Map();
-const PALETTE_DROPPED_MS = 10_000;
-const paletteDroppedRecently = (windowId: number) => Date.now() - (paletteDroppedAt.get(windowId) ?? -Infinity) < PALETTE_DROPPED_MS;
-// The app saying it draws over the window again (its `drawn`, background.ts): ⌘T goes to its palette
-// again, unless that came within a second of the drop (a binding that holds while its overlay can't
-// show yet says drawn at once: it mustn't start the hand-off and its drop over again).
-export function drawnChanged(windowId: number, on: boolean) {
-  if (on && Date.now() - (paletteDroppedAt.get(windowId) ?? Infinity) >= 1000) paletteDroppedAt.delete(windowId);
-}
-
-// The zoom each site was last seen at, so its pages place their box at its
-// size before they've asked (content/core.ts); Safari
-// and Chrome keep a site's zoom across its pages. Storage `pageZoom`:
-// origin → [zoom, when], only sites zoomed away from the browser's default
-// zoom (Chrome's setting; 100% where unknown), which is kept once as '*';
-// the ZOOM_CAP most recently changed. Written only when it changes (every
-// write redraws Margin's pages); one at a time.
-const ZOOM_CAP = 150;
-let zoomWrites = Promise.resolve();
-// Pages ask for their zoom as they start, on every resize and every time
-// they're shown, and it seldom changes: what's stored and each tab's default
-// zoom are kept here between asks, so an unchanged zoom costs only the
-// browser's answer. Forgotten when the browser says a zoom changed
-// (zoomChanged), when `pageZoom` is written (zoomStored), and after
-// ZOOM_KEEP_MS (on a clock that only runs forward): copies of Margin don't
-// hear each other's writes. Only to tell that nothing changed: a write reads
-// storage first.
-const ZOOM_KEEP_MS = 60000;
-const zoomClock = () => performance.now();
-let storedZoom: { pageZoom: any; at: number; } | null = null; // { pageZoom, at }
-let zoomReads = 0; // a read that started before a write is not kept
-const tabZoomBase = new Map(); // tab id → { base, at }
-async function zoomBase(tabId: number) {
-  const known = tabZoomBase.get(tabId);
-  if (known && zoomClock() - known.at < ZOOM_KEEP_MS) return known.base;
-  const settings = await api.tabs.getZoomSettings?.(tabId).catch(() => null);
-  // (Finite: settings and its factor are there.)
-  const base = Number.isFinite(settings?.defaultZoomFactor) && settings!.defaultZoomFactor! > 0 ? settings!.defaultZoomFactor! : 1;
-  if (tabZoomBase.size > 2 * ZOOM_CAP) tabZoomBase.clear();
-  tabZoomBase.set(tabId, { base, at: zoomClock() });
-  return base;
-}
-async function readStoredZoom() {
-  if (storedZoom && zoomClock() - storedZoom.at < ZOOM_KEEP_MS) return storedZoom.pageZoom;
-  const reads = zoomReads;
-  const { pageZoom = {} } = await api.storage.local.get('pageZoom');
-  if (reads === zoomReads) storedZoom = { pageZoom, at: zoomClock() };
-  return pageZoom;
-}
-// background.ts: tabs.onZoomChange (a tab's zoom changed, or the browser's
-// default, which every tab's answer gives) and storage.onChanged with
-// `pageZoom` (written here, or cleared).
-export const zoomChanged = () => tabZoomBase.clear();
-export function zoomStored() {
-  zoomReads++;
-  storedZoom = null;
-}
-function rememberZoom(tab: BrowserTab, url: string | undefined, zoom: number) {
-  let origin;
-  try {
-    origin = new URL(url as string).origin; // (none: it throws, and that's caught)
-  } catch {
-    return;
-  }
-  if (!Number.isFinite(zoom) || zoom <= 0 || origin === 'null') return;
-  zoomWrites = zoomWrites.then(async () => {
-    const base = await zoomBase(tab.id);
-    // (`stored`: origin → [zoom, when], '*' the browser's default.)
-    const unchanged = (stored: Record<string, [number, number] | undefined>) => ((stored[origin] ?? stored['*'])?.[0] ?? 1) === zoom && (stored['*']?.[0] ?? 1) === base;
-    if (unchanged(await readStoredZoom())) return;
-    // A write is built from what's stored now, not what's kept: another
-    // copy's writes reach storage, never this copy's events, and would be lost.
-    zoomStored();
-    const pageZoom = await readStoredZoom();
-    if (unchanged(pageZoom)) return;
-    const next = { ...pageZoom };
-    if (base === 1) delete next['*'];
-    else next['*'] = [base, Date.now()];
-    if (zoom === base) delete next[origin];
-    else next[origin] = [zoom, Date.now()];
-    const sites = Object.keys(next).filter((key) => key !== '*');
-    if (sites.length > ZOOM_CAP) {
-      sites.sort((a, b) => next[a][1] - next[b][1]);
-      for (const old of sites.slice(0, sites.length - ZOOM_CAP)) delete next[old];
-    }
-    zoomStored(); // whatever its storage event does, the next ask reads it again
-    await api.storage.local.set({ pageZoom: next });
-  }).catch(() => {});
-}
 // The tab the user was on: the window's active one (Chrome reports the new
 // tab before activating it), else the one most recently left. Not by
 // lastActive alone: a switch gives both its tabs the same one.
@@ -197,7 +107,6 @@ async function handOff(tab: BrowserTab) {
   // Linked, but the app draws nothing over this window (`drawn`: not in full screen, or not found
   // among the window server's yet): no palette to hand off to there either.
   if (!appLink.drawsWindow(tab.windowId)) return log('kept', 'Margin.app draws nothing over this window: no palette there'), false;
-  if (paletteDroppedRecently(tab.windowId)) return log('kept', 'Margin.app couldn\'t show its palette over this window a moment ago'), false;
   handingOff.add(tab.id);
   // The app's palette opens over the page the user was on, in the window's
   // overlay.
@@ -226,36 +135,6 @@ async function handOff(tab: BrowserTab) {
   noteClosing([tab.id], 'done');
   await api.tabs.remove(tab.id).catch(() => {});
   return true;
-}
-
-// A space's window made by Margin.app's switch: the tabs that were open with
-// its front tab open behind it, one at a time, in their old order, each as
-// its Margin tab (fresh: no Back history). One gone meanwhile is left.
-const SPACE_WINDOW_REST_MS = 1200;
-const SPACE_WINDOW_STEP_MS = 150;
-async function openKeptBehind(windowId: number, spaceId: string, keptIds: string[]) {
-  for (const keptId of keptIds) {
-    const s = await load();
-    const kept = s.keptTabs?.[keptId];
-    if (!kept || kept.spaceId !== spaceId) continue;
-    const win = await api.windows.get(windowId).catch(() => null);
-    if (!win) return; // the window closed meanwhile
-    markMarginOpening();
-    noteReopened(kept.url);
-    // Linked before it's shared, so a click on its row meanwhile (restoreKept) gets this tab, linked.
-    const tab = await makeKeptBehind(keptId, async () => {
-      const made = await api.tabs.create({ windowId, url: kept.url, active: false }).catch(() => null);
-      if (!made) return null;
-      await mutate((st) => {
-        let next = M.upsertTab(st, made, now());
-        if (next.keptTabs?.[keptId]) next = M.linkKept(next, made.id, keptId, now());
-        return M.moveTab(next, made.id, spaceId);
-      });
-      return made;
-    });
-    if (!tab) continue;
-    await new Promise<any>((resolve) => setTimeout(resolve, SPACE_WINDOW_STEP_MS));
-  }
 }
 
 // ⌘T as Margin's own shortcut (Safari's manifest `new-tab`, with Safari's
@@ -287,27 +166,42 @@ export async function newTabKey(tabArg: { windowId: number | undefined; } | Brow
   await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
 }
 
-// What the page box's walks of a site's style sheets found (keepSheetWalk: shared/sheet-walk.ts).
-const sheetWalks = createSheetWalks(() => api.storage.local);
 
-// Style sheets fetched for pages (fetchStyle), the latest few.
-const styleCache = new Map();
-const STYLE_CACHE_SIZE = 50;
-const STYLE_CACHE_CHARS = 8_000_000; // and no more than this in all
-const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
-const STYLE_MAX_CHARS = 8_000_000;
-
-
-// Whether Margin.app draws the UI for a page's window, and where its box goes
-// (background/link.ts): in `hello`, so a page knows before it draws.
+// Whether Margin.app draws the UI for a page's window (background/link.ts):
+// in `hello`, so a page knows at once.
 // `drawn`: whether the app said it draws over the window (left out: not said).
 const appState = (windowId: number | null) => {
   if (appLink.pageState() === 'off') return null;
   const drawn = appLink.drawn(windowId);
-  return { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null, ...(typeof drawn === 'boolean' ? { drawn } : {}) };
+  return { state: appLink.pageState(), ...(typeof drawn === 'boolean' ? { drawn } : {}) };
 };
 
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
+// Whether a page's window is in full screen for Chrome's "only in full screen" (content/core.ts): a window Margin.app
+// hosts is the app's to place, whatever its state (Windows holds a normal one at the page area too), so it counts.
+const marginsFullscreen = async (windowId: number | null) => (windowId != null && capabilities?.marginFullscreen && engine.fullscreen
+  ? hostedTabs.isHosted(windowId) || await engine.fullscreen.isFullscreen(windowId) : false);
+// A window's mark (newWindow's `mark`): what Windows finds a window made for the app by, in its title.
+const WINDOW_MARK = /^[A-Za-z0-9]{8,40}$/;
+// Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
+export const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture, (windowId, msg) => appLink.push(windowId, msg));
+// A page's preview clicks waiting for Margin.app's word (background/peek.ts).
+const peekAnswers = createPeekAnswers();
+// The background mini player's sources (background/media.ts): each tab's, told to Margin.app for its window.
+export const mediaHub = createMediaHub({ push: (windowId, msg) => appLink.push(windowId, msg), itemOf: (tabId) => hostedTabs.itemOf(tabId) });
+
+// A favorite's tab (openFavorite): the open one bound to it (in `windowId` first), else an open one at its address no
+// pin or other favorite has; if none is open, its kept one (bound to it: asleep, or lost with its window; else one of
+// the window's space at its address no other has), which it opens again: one tab per favorite, never a pile of them.
+function favoriteTabs(s: State, fav: NonNullable<State['favorites']>[number], windowId: number | undefined) {
+  const key = M.normalizeUrl(fav.url);
+  const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
+  const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && !M.boundElsewhere(s, t, s.tabSpace[t.id], { favoriteId: fav.id }));
+  const open = matches.find((t) => t.windowId === windowId) ?? matches[0] ?? null;
+  const spaceId = V.activeSpaceId(s, windowId as number);
+  const kept = M.keptOfFavorite(s, fav.id)[0] ?? M.keptForUrl(s, fav.url, spaceId, { favoriteId: fav.id });
+  return { open, kept };
+}
 
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
@@ -315,9 +209,12 @@ export const handlers = {
   async hello(_message: object, sender: BrowserMessageSender) {
     engine.onboarding?.pageLoaded();
     const windowId = sender.tab?.windowId ?? null;
-    const fullscreen = windowId != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
+    const fullscreen = await marginsFullscreen(windowId);
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.ts).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since };
+    // `card`: its window is the preview card window in Margin.app (background/hosted.ts): its Esc and ⌘↩ are the card's.
+    // `pinned`: Margin.app shows a pin's or favorite's item in it (auto-preview).
+    const tabId = sender.tab?.id;
+    return { tabId: tabId ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since, ...(windowId != null && hostedTabs.isCard(windowId) ? { card: true } : {}), ...(tabId != null && hostedTabs.isPinned(tabId) ? { pinned: true } : {}) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.ts), after checking the stored owner again.
@@ -379,14 +276,22 @@ export const handlers = {
   },
   // Closing from Margin archives the tab, like Arc. One that isn't open (a
   // string id: state/model.ts keptTabs) goes to the archive as it is.
+  // A sticky-pinned tab unloads & resets without archiving (its pin, or favorite, stays: not open). Only a pin of the
+  // tab's own space counts (a tab moved to another space is no pin's: it's archived as any).
   async closeTab({ tabId }: { tabId: number | string }) {
     if (typeof tabId === 'string') {
-      await mutate((s) => M.archiveKept(s, tabId, { id: newId(), closedAt: now() }));
+      await mutate((s) => {
+        const k = s.keptTabs[tabId];
+        if (k && M.boundElsewhere(s, k, k.spaceId)) return M.forgetKept(s, tabId);
+        return M.archiveKept(s, tabId, { id: newId(), closedAt: now() });
+      });
       return;
     }
     await mutate((s) => {
       const tab = s.tabs[tabId];
-      return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
+      if (!tab) return s;
+      if (M.boundElsewhere(s, tab, s.tabSpace[tabId])) return s;
+      return /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
     });
     const closing = await api.tabs.get(tabId).catch(() => null);
     // The tab in front: the space's most recent other tab comes to the front
@@ -413,46 +318,6 @@ export const handlers = {
       const tab = await openTab({ windowId, url: entry.url, spaceId });
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
-  },
-  // Page zoom (the browser's own, like ⌘+): for the page's box (in the
-  // page's zoomed pixels); remembered per site.
-  // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
-  // Inspector: content/core.ts viewportNow), for Margin.app's overlay (background/link.ts viewport).
-  // `measured`: the page found where its area starts from a pointer event (else it's a guess).
-  // `resizedAt`, `at`: when the page was resized and when it said so (its Date.now()), passed on with when this
-  // copy heard it, so Margin.app's log says where the time went (2026-11-07: the layout late beside the inspector).
-  async viewport({ viewport = null, resizedAt, at }: { viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null, resizedAt?: number, at?: number } = {}, sender: BrowserMessageSender) {
-    const tab = sender?.tab;
-    if (!tab || tab.active === false || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) return;
-    const ok = (v: number) => Number.isFinite(v) && v >= 0 && v < 100_000;
-    const rect = viewport && ok(viewport.x) && ok(viewport.y) && ok(viewport.width) && ok(viewport.height) && viewport.width > 0 && viewport.height > 0
-      ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, ...(viewport.measured === true ? { measured: true } : {}) } : null;
-    const time = (v: number | undefined) => Number.isFinite(v) && (v as number) > 0;
-    const times = { ...(time(resizedAt) ? { resized: resizedAt } : {}), ...(time(at) ? { said: at } : {}), heard: Date.now() };
-    appLink.viewport(tab.windowId, tab.id, rect, times);
-  },
-  // A page gone into full screen or back (content/core.ts: its own, or Safari's video full screen), for Margin.app to
-  // take its layout off that window meanwhile (background/link.ts pageFullscreen).
-  async pageFullscreen({ on }: { on?: boolean } = {}, sender: BrowserMessageSender) {
-    const tab = sender?.tab;
-    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof on !== 'boolean') return;
-    appLink.pageFullscreen(tab.windowId, tab.id, on);
-  },
-  // A page saying whether it's shown (content/core.ts and the new-tab page: document.visibilityState,
-  // at a change, at its start and when asked), for Margin.app to tell same-bounds windows of different
-  // profiles apart (background/link.ts visibility).
-  // `from`: which said it ('page': a web page's content script, 'newtab': Margin's new-tab page), for the log.
-  async visibility({ visible, at, from }: { visible?: boolean, at?: number, from?: string } = {}, sender: BrowserMessageSender) {
-    const tab = sender?.tab;
-    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof visible !== 'boolean') return;
-    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : from === 'away' ? 'stand-in page' : 'unknown';
-    appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? (at as number) : Date.now(), source);
-  },
-  async getZoom(_: object, sender: BrowserMessageSender) {
-    if (!sender.tab) return null;
-    const zoom = await api.tabs.getZoom(sender.tab.id);
-    rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
-    return zoom;
   },
   // Search with the browser's engine: in `tabId`, else in a new tab (from a
   // page: behind it until the results have loaded, tabs.ts openBehind).
@@ -494,8 +359,14 @@ export const handlers = {
   // openBehind). Margin's new-tab page, or a space's start page, at once.
   async newTab({ windowId, url, spaceId, deadline }: { windowId?: number, url?: string, spaceId?: string, deadline?: number }, sender: BrowserMessageSender) {
     if (/^margin:\/\/settings\/?$/i.test(url ?? '')) return handlers.openLauncher({ windowId: windowId ?? sender?.tab?.windowId, settings: true });
-    if (url && !spaceId && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
-    const tab = await openTab({ windowId, url, spaceId, deadline });
+    let routedSpace = spaceId;
+    if (!routedSpace && url) {
+      const s = await load();
+      const matched = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
+      if (matched) routedSpace = matched.spaceId;
+    }
+    if (url && !routedSpace && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
+    const tab = await openTab({ windowId, url, spaceId: routedSpace, deadline });
     return { tabId: tab.id };
   },
   // `folderId`/`beforeId`: where the pin goes (a folder of the tab's space,
@@ -514,9 +385,15 @@ export const handlers = {
       // A tab Margin hasn't placed in a space yet goes to its window's space.
       // (Not a kept tab: an open one, with its window.)
       const spaceId = kept ? kept.spaceId : st.tabSpace[tabId as number] ?? V.activeSpaceId(st, (tab as TabRecord).windowId);
-      const next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
-      if (next === st) result = 'not pinned (already pinned in that space, or no space)';
-      return kept && next !== st ? M.forgetKept(next, kept.id) : next;
+      let next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
+      if (next === st) {
+        result = 'not pinned (already pinned in that space, or no space)';
+        return st;
+      }
+      if ((tab as TabRecord).customTitle) next = M.renamePin(next, id, (tab as TabRecord).customTitle!);
+      if (kept) return M.forgetKept(next, kept.id);
+      if (typeof tabId === 'number') next = M.bindTabToPin(next, tabId, id);
+      return next;
     });
     console.info(`[margin] pin tab ${tabId}: ${result}`);
     return result === 'pinned' ? id : null;
@@ -527,24 +404,31 @@ export const handlers = {
   // `beforeId` (else in the place of the first pin it takes, else the end).
   // Returns its id.
   /** @param message `tabId` a string: a tab that isn't open (pinned into it, it's the pin from then on) */
-  async createFolder({ windowId, spaceId, name, pinIds = [], tabId, beforeId = null }: { windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number | string, beforeId?: string | null }, sender: BrowserMessageSender) {
+  async createFolder({ windowId, spaceId, name, pinIds = [], tabId, parentId = null, beforeId = null }: { windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number | string, parentId?: string | null, beforeId?: string | null }, sender: BrowserMessageSender) {
     const id = newId();
     const pinFromTab = Number.isInteger(tabId) || typeof tabId === 'string' ? newId() : null;
     const s = pinFromTab ? await load() : null;
     const kept = typeof tabId === 'string' ? s?.keptTabs?.[tabId] ?? null : null;
     // (A number that isn't a whole one names no tab: `s` wasn't read for it.)
     const tab = kept ?? (typeof tabId === 'number' && s ? (s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null);
+    let created = false;
     await mutate((st) => {
-      const space = spaceId ?? (kept ? kept.spaceId : tab ? st.tabSpace[tab.id as number] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
+      const parent = parentId ? (st.folders ?? []).find((f) => f.id === parentId) : null;
+      const space = spaceId ?? parent?.spaceId ?? (kept ? kept.spaceId : tab ? st.tabSpace[tab.id as number] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
       const firstPin = st.pins.find((p) => p.id === pinIds[0] && p.spaceId === space);
       // In the place of the first pin it takes, if that's at the top level.
       const before = beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
-      let next = M.createFolder(st, { id, spaceId: space, name, pinIds, beforeId: before });
+      let next = M.createFolder(st, { id, spaceId: space, name, pinIds, parentId: parent?.id ?? null, beforeId: before });
+      if (next === st) return st;
+      created = true;
       // (A tab is found only when one was asked for: then the pin has its id.)
-      if (tab?.url) next = M.addPin(next, { id: pinFromTab!, spaceId: space, url: tab.url, title: tab.title, folderId: id });
+      if (tab?.url) {
+        next = M.addPin(next, { id: pinFromTab!, spaceId: space, url: tab.url, title: tab.title, folderId: id });
+        if (typeof tabId === 'number') next = M.bindTabToPin(next, tabId, pinFromTab!);
+      }
       return kept ? M.forgetKept(next, kept.id) : next;
     });
-    return id;
+    return created ? id : null;
   },
   async renameFolder({ folderId, name }: { folderId: string, name: string }) {
     await mutate((s) => M.renameFolder(s, folderId, name));
@@ -559,8 +443,11 @@ export const handlers = {
   async movePin({ pinId, folderId = null, beforeId = null }: { pinId: string, folderId?: string | null, beforeId?: string | null }) {
     await mutate((s) => M.movePin(s, pinId, { folderId, beforeId }));
   },
-  async moveFolder({ folderId, beforeId = null }: { folderId: string, beforeId?: string | null }) {
-    await mutate((s) => M.moveFolder(s, folderId, { beforeId }));
+  async moveFolder({ folderId, parentId = null, beforeId = null }: { folderId: string, parentId?: string | null, beforeId?: string | null }) {
+    await mutate((s) => M.moveFolder(s, folderId, { parentId, beforeId }));
+  },
+  async nestFolder({ folderId, parentId = null, beforeId = null }: { folderId: string, parentId?: string | null, beforeId?: string | null }) {
+    await mutate((s) => M.moveFolder(s, folderId, { parentId, beforeId }));
   },
   // A tab dragged in the sidebar's list, next to another (`side`: above it,
   // 'before', or below, 'after', as the list shows them: newest at the top,
@@ -673,23 +560,199 @@ export const handlers = {
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
     if (Number.isFinite(sidebarTop) && windowId != null) void setScroll(windowId, sidebarTop as number); // (finite: checked)
-    // Only a tab of the pin's space (as the sidebar shows it): one elsewhere
-    // would switch the window to that space.
+    // Only a tab of the pin's space (as the sidebar shows it): sticky pinnedBy match first, then normalized URL fallback.
     const key = M.normalizeUrl(pin.url);
-    const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
-    // The window asking first, then one that isn't parked (out of sight: docs/HANDOFF.md §2.5); a tab
-    // only in a parked window is shown by the app's handoff to it (focusTab).
-    const existing = matches.find((t) => t.windowId === windowId) ?? matches.find((t) => !inParkedWindow(t)) ?? matches[0];
+    const bound = Object.values(s.tabs).filter((t) => t.pinnedBy === pin.id && s.tabSpace[t.id] === pin.spaceId);
+    // (Never a tab another pin or a favorite has, at the same address.)
+    const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId && !M.boundElsewhere(s, t, pin.spaceId, { pinId: pin.id }));
+    // The window asking first.
+    const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
+      if (existing.pinnedBy !== pin.id) await mutate((st) => M.bindTabToPin(st, existing.id, pin.id));
       // In another window of the profile: it comes here (docs/BROWSER-WINDOWS.md §9).
       await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openPin', deadline });
       return { shown: existing.id };
     }
     // Its tab that isn't open, if the space has one (kept from before it was
     // pinned): opened as that Margin tab.
-    const kept = M.keptForUrl(s, pin.url, pin.spaceId);
-    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    const kept = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? M.keptForUrl(s, pin.url, pin.spaceId, { pinId: pin.id });
+    const tab = await openTab({ windowId, url: kept?.url ?? pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    if (tab?.id != null) await mutate((st) => M.bindTabToPin(st, tab.id, pin.id));
     return { shown: tab.id };
+  },
+  async resetPin({ pinId, windowId, deadline }: { pinId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const pin = s.pins.find((p) => p.id === pinId);
+    if (!pin) return null;
+    const bound = Object.values(s.tabs).filter((t) => t.pinnedBy === pin.id && s.tabSpace[t.id] === pin.spaceId);
+    const existing = bound.find((t) => t.windowId === windowId) ?? bound[0];
+    if (existing) {
+      await api.tabs.update(existing.id, { url: pin.url, active: true }).catch(() => null);
+      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'resetPin', deadline });
+      return { shown: existing.id };
+    }
+    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline });
+    if (tab?.id != null) await mutate((st) => M.bindTabToPin(st, tab.id, pin.id));
+    return { shown: tab.id };
+  },
+  async renamePin({ pinId, title }: { pinId: string, title: string }) {
+    await mutate((s) => M.renamePin(s, pinId, title));
+  },
+  async renameTab({ tabId, title }: { tabId: number | string, title: string }) {
+    await mutate((s) => M.renameTab(s, tabId, title));
+  },
+  async addFavorite({ tabId, pinId, windowId, beforeId = null }: { tabId?: number | string, pinId?: string, windowId?: number, beforeId?: string | null }, sender: BrowserMessageSender) {
+    const s = await load();
+    const kept = typeof tabId === 'string' ? s.keptTabs?.[tabId] : null;
+    const tab = kept ?? (typeof tabId === 'number' ? s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null)) : null);
+    const pin = !tab && typeof pinId === 'string' ? s.pins.find((p) => p.id === pinId) : null;
+    const url = tab?.url ?? pin?.url;
+    if (!url) return null;
+    const id = newId();
+    let added = false;
+    await mutate((st) => {
+      const spaceId = kept ? kept.spaceId : pin ? pin.spaceId : typeof tabId === 'number' ? st.tabSpace[tabId] : V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
+      const scope = M.favoriteScopeOf(st, spaceId);
+      let next = M.addFavorite(st, { id, scope, url, title: tab?.title ?? pin?.title ?? url, customTitle: (tab as TabRecord | undefined)?.customTitle ?? pin?.customTitle, beforeId });
+      if (next === st) return st;
+      added = true;
+      if (pin) next = M.removePin(next, pin.id);
+      if (kept) next = M.bindTabToFavorite(next, kept.id, id);
+      else if (typeof tabId === 'number') next = M.bindTabToFavorite(next, tabId, id);
+      return next;
+    });
+    return added ? id : null;
+  },
+  async removeFavorite({ favoriteId }: { favoriteId: string }) {
+    await mutate((s) => M.removeFavorite(s, favoriteId));
+  },
+  async openFavorite({ favoriteId, windowId, deadline }: { favoriteId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const fav = (s.favorites ?? []).find((f) => f.id === favoriteId);
+    if (!fav) return null;
+    const win = windowId ?? sender?.tab?.windowId;
+    const { open: existing, kept } = favoriteTabs(s, fav, win);
+    if (existing) {
+      await mutate((st) => M.settleFavorite(existing.favoriteId === fav.id ? st : M.bindTabToFavorite(st, existing.id, fav.id), fav.id, st.tabs[existing.id]?.mid));
+      await away.showTab(existing.id, win, { source: 'openFavorite', deadline });
+      return { shown: existing.id };
+    }
+    // Its tab asleep or lost with its window (kept, not open): opened again as that Margin tab, in the space the window
+    // shows (a favorite is no space's), never a new tab beside it.
+    const spaceId = V.activeSpaceId(s, win);
+    const tab = await openTab({ windowId: win, url: kept?.url ?? fav.url, spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    if (tab?.id != null) await mutate((st) => M.settleFavorite(M.bindTabToFavorite(st, tab.id, fav.id), fav.id, st.tabs[tab.id]?.mid ?? kept?.id));
+    return { shown: tab.id };
+  },
+  async resetFavorite({ favoriteId, windowId, deadline }: { favoriteId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const fav = (s.favorites ?? []).find((f) => f.id === favoriteId);
+    if (!fav) return null;
+    const win = windowId ?? sender?.tab?.windowId;
+    const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
+    const existing = bound.find((t) => t.windowId === win) ?? bound[0];
+    if (existing) {
+      await api.tabs.update(existing.id, { url: fav.url, active: true }).catch(() => null);
+      await away.showTab(existing.id, win, { source: 'resetFavorite', deadline });
+      return { shown: existing.id };
+    }
+    // Its kept tab, if it has one, opened at the favorite's address (as that Margin tab).
+    const kept = M.keptOfFavorite(s, fav.id)[0] ?? null;
+    const spaceId = V.activeSpaceId(s, win);
+    const tab = await openTab({ windowId: win, url: fav.url, spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    if (tab?.id != null) await mutate((st) => M.settleFavorite(M.bindTabToFavorite(st, tab.id, fav.id), fav.id, st.tabs[tab.id]?.mid ?? kept?.id));
+    return { shown: tab.id };
+  },
+  async renameFavorite({ favoriteId, title }: { favoriteId: string, title: string }) {
+    await mutate((s) => M.renameFavorite(s, favoriteId, title));
+  },
+  async moveFavorite({ favoriteId, beforeId = null }: { favoriteId: string, beforeId?: string | null }) {
+    await mutate((s) => M.moveFavorite(s, favoriteId, { beforeId }));
+  },
+  async addAirTrafficRule({ pattern, spaceId, windowId }: { pattern: string, spaceId?: string, windowId?: number }, sender: BrowserMessageSender) {
+    const id = newId();
+    let added = false;
+    await mutate((s) => {
+      const targetSpace = spaceId && s.spaces.some((sp) => sp.id === spaceId) ? spaceId : V.activeSpaceId(s, windowId ?? sender?.tab?.windowId);
+      const next = M.addAirTrafficRule(s, { id, pattern, spaceId: targetSpace });
+      if (next !== s) added = true;
+      return next;
+    });
+    return added ? id : null;
+  },
+  async removeAirTrafficRule({ ruleId }: { ruleId: string }) {
+    await mutate((s) => M.removeAirTrafficRule(s, ruleId));
+  },
+  async toggleAirTrafficRule({ ruleId, enabled }: { ruleId: string, enabled?: boolean }) {
+    await mutate((s) => M.toggleAirTrafficRule(s, ruleId, enabled));
+  },
+  async routeUrl({ url }: { url: string }) {
+    const s = await load();
+    const rule = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
+    return rule ? { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId } : null;
+  },
+  async createSplit({ panes, axis = 'horizontal', spaceId, windowId }: { panes: (number | string)[], axis?: 'horizontal' | 'vertical', spaceId?: string, windowId?: number }, sender: BrowserMessageSender) {
+    const id = newId();
+    await mutate((s) => {
+      const targetSpace = spaceId && s.spaces.some((sp) => sp.id === spaceId) ? spaceId : V.activeSpaceId(s, windowId ?? sender?.tab?.windowId);
+      return M.createSplit(s, { id, spaceId: targetSpace, panes, axis });
+    });
+    return { splitId: id };
+  },
+  async addToSplit({ tabId, splitId, windowId }: { tabId: number | string, splitId?: string, windowId?: number }, sender: BrowserMessageSender) {
+    const id = newId();
+    await mutate((s) => {
+      if (splitId) return M.addToSplit(s, splitId, tabId);
+      const win = windowId ?? sender?.tab?.windowId;
+      const spaceId = typeof tabId === 'string' ? s.keptTabs[tabId]?.spaceId : s.tabSpace[tabId];
+      if (!spaceId) return s;
+      const active = Object.values(s.tabs).find((t) => (win == null || t.windowId === win) && t.active && t.id !== tabId && s.tabSpace[t.id] === spaceId);
+      if (!active) return s;
+      const existing = M.splitForItem(s, active.id);
+      if (existing) return M.addToSplit(s, existing.id, tabId);
+      return M.createSplit(s, { id, spaceId, panes: [active.id, tabId], axis: 'horizontal' });
+    });
+    return { ok: true };
+  },
+  async openSplit({ splitId, windowId }: { splitId: string, windowId?: number }) {
+    const s = await load();
+    const g = (s.splits ?? []).find((x) => x.id === splitId);
+    if (!g) return null;
+    // Its first pane's Margin tab (state/model.ts "split view"): its open tab (in this window first), else the kept one.
+    const first = g.panes.find((p) => s.keptTabs?.[p] || Object.values(s.tabs).some((t) => t.mid === p));
+    if (!first) return null;
+    const open = Object.values(s.tabs).filter((t) => t.mid === first);
+    const tab = open.find((t) => t.windowId === windowId) ?? open[0];
+    return handlers.activateTab({ tabId: tab ? tab.id : first, windowId }, {} as BrowserMessageSender);
+  },
+  async breakOutSplit({ tabId }: { tabId: number | string }) {
+    await mutate((s) => {
+      const g = M.splitForItem(s, tabId);
+      return g ? M.removeFromSplit(s, g.id, tabId) : s;
+    });
+  },
+  // (Margin.app's library shows the rest of the split; here, as breakOutSplit: the browser's own tabs stay as they are.)
+  async removeFromSplit({ tabId }: { tabId: number | string }) {
+    await mutate((s) => {
+      const g = M.splitForItem(s, tabId);
+      return g ? M.removeFromSplit(s, g.id, tabId) : s;
+    });
+  },
+  async closeSplitPane({ tabId }: { tabId: number | string }) {
+    await mutate((s) => {
+      const g = M.splitForItem(s, tabId);
+      return g ? M.removeFromSplit(s, g.id, tabId) : s;
+    });
+    return handlers.closeTab({ tabId });
+  },
+  async swapSplit({ splitId, a = 0, b = 1 }: { splitId: string, a?: number, b?: number }) {
+    await mutate((s) => M.swapSplitPanes(s, splitId, a, b));
+  },
+  async resizeSplit({ splitId, ratios }: { splitId: string, ratios: number[] }) {
+    await mutate((s) => M.resizeSplit(s, splitId, ratios));
+  },
+  async toggleSplitAxis({ splitId }: { splitId: string }) {
+    await mutate((s) => M.toggleSplitAxis(s, splitId));
   },
   // A space shown in the window (its tab most used there to the front); `bringTab: false`: only
   // the sidebar's space, the page in front stays. Answers which tab is in front now.
@@ -699,16 +762,22 @@ export const handlers = {
     const result = await showSpace(win, spaceId, { bringTab, deadline });
     return { shown: result?.tab?.id ?? null };
   },
-  async createSpace({ windowId, name, emoji, color }: { windowId?: number, name?: string, emoji?: string, color?: string }) {
+  async createSpace({ windowId, name, emoji, color, theme }: { windowId?: number, name?: string, emoji?: string, color?: string, theme?: string | null }) {
     const id = newId();
     await mutate((s) => {
-      const next = M.createSpace(s, { id, name, emoji, color });
+      // (Its theme: as asked, else that of the space the window shows: the library's rule, app/shared/library.)
+      const from = windowId == null ? null : s.spaces.find((sp) => sp.id === s.activeSpaceByWindow?.[windowId]);
+      const next = M.createSpace(s, { id, name, emoji, color, theme: M.themeIdOk(theme) ? theme : from?.theme ?? null });
       return windowId == null ? next : M.setActiveSpace(next, windowId, id);
     });
     return { spaceId: id };
   },
-  async renameSpace({ spaceId, name, emoji, color }: { spaceId: string, name?: string, emoji?: string, color?: string }) {
-    await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color }));
+  async renameSpace({ spaceId, name, emoji, color, theme, background }: { spaceId: string, name?: string, emoji?: string, color?: string, theme?: string | null, background?: unknown }) {
+    await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color, ...(theme !== undefined ? { theme } : {}), ...(background !== undefined ? { background } : {}) }));
+  },
+  async setSpaceTheme({ spaceId, theme }: { spaceId: string, theme: string | null }) {
+    if (theme !== null && !M.themeIdOk(theme)) throw new Error('not a theme id');
+    await mutate((s) => M.updateSpace(s, spaceId, { theme }));
   },
   async deleteSpace({ spaceId }: { spaceId: string }) {
     await mutate((s) => M.deleteSpace(s, spaceId));
@@ -757,137 +826,43 @@ export const handlers = {
     try { return await opening; } finally { if (launcherOpening.get(key) === opening) launcherOpening.delete(key); }
   },
 
-  // DEV-HOOK: a one-shot probe for tabs following the window in front (docs/BROWSER-WINDOWS.md), asked only by the
-  // app's dev hook, which asks only Safari's Test A (DevHooks.swift checks the name). One test tab and one
-  // full-screen window made, the tab moved there and back; after each move, whether its page survived (a
-  // marker in its memory, its scroll, a typed field) and how long the move took; one picture of it timed
-  // and dropped. Then exactly what it made closed. Its answer: numbers and booleans only.
-  /** @param message the page to open, the app's (a plain https origin) */
-  async devTabMoveProbe({ url }: { url?: string } = {}, sender: BrowserMessageSender) {
-    if (!sender?.app) throw new Error('the app only');
-    if (!/^https:\/\/[a-z0-9.-]+\/$/.test(String(url ?? ''))) throw new Error('a plain https origin only');
-    if (devProbing) throw new Error('a probe is already running');
-    devProbing = true;
-    const made = { tabId: (null as number | null), windowId: (null as number | null), homeId: (null as number | null), homeFront: (null as number | null) };
-    const out: Record<string, any> = { ok: false };
-    const wait = (ms: number) => new Promise<any>((r) => setTimeout(r, ms));
-    try {
-      const home = (await api.windows.getAll()).find((w) => w.focused) ?? (await api.windows.getAll())[0];
-      if (!home) throw new Error('no window');
-      made.homeId = home.id;
-      made.homeFront = (await api.tabs.query({ active: true, windowId: home.id }))[0]?.id ?? null;
-      const tab = await api.tabs.create({ windowId: home.id, url: String(url), active: false });
-      made.tabId = tab.id;
-      for (let i = 0; i < 50 && (await api.tabs.get(tab.id)).status !== 'complete'; i++) await wait(200);
-      const token = String(Math.random()).slice(2, 12);
-      const [marked] = await api.scripting.executeScript({ target: { tabId: tab.id }, args: [token], func: (t) => {
-         (window as any).__marginProbe = t;
-        const field = document.createElement('input');
-        field.id = '__margin_probe';
-        field.value = `typed ${t}`;
-        document.body.append(field);
-        document.body.style.minHeight = '5000px';
-        scrollTo(0, 1234);
-        return true;
-      } });
-      out.marked = marked?.result === true;
-      const check = async () => (await api.scripting.executeScript({ target: { tabId: tab.id }, args: [token], func: (t) => ({
-        marker: (window as any).__marginProbe === t,
-        field: (document.getElementById('__margin_probe') as HTMLInputElement | null)?.value === `typed ${t}`,
-        scroll: Math.round(scrollY),
-      }) }))[0]?.result ?? null;
-      // Short (the app's log line is cut at 600 characters): marker, field (1/0) and scroll.
-      // As a number: 3 marker and field kept (2 marker only, 1 field only), times 100000, plus the scroll; -1 none.
-      const kept = async () => { const c = await check(); return c ? ((c.marker ? 2 : 0) + (c.field ? 1 : 0)) * 100000 + Math.min(99999, c.scroll) : -1; };
-      out.before = await kept();
-      const second = await api.windows.create({ focused: true, state: 'fullscreen' });
-      made.windowId = second.id;
-      await wait(2000); // its full-screen Space up
-      let t0 = performance.now();
-      await api.tabs.move(tab.id, { windowId: second.id, index: -1 });
-      out.moveMs = Math.round(performance.now() - t0);
-      await api.tabs.update(tab.id, { active: true });
-      await wait(1000);
-      out.movedThere = (await api.tabs.get(tab.id)).windowId === second.id;
-      out.afterMove = await kept();
-      t0 = performance.now();
-      const picture = await api.tabs.captureVisibleTab(second.id, { format: 'jpeg', quality: 60 }).catch(() => null);
-      out.captureMs = Math.round(performance.now() - t0);
-      out.captureKB = picture ? Math.round(picture.length / 1024) : 0;
-      // The window behind (home, in its own Space now): can its tab in front be pictured from here?
-      t0 = performance.now();
-      const behind = await api.tabs.captureVisibleTab(home.id, { format: 'jpeg', quality: 60 }).catch(() => null);
-      out.captureBehindMs = Math.round(performance.now() - t0);
-      out.captureBehindKB = behind ? Math.round(behind.length / 1024) : 0;
-      t0 = performance.now();
-      await api.tabs.move(tab.id, { windowId: home.id, index: -1 });
-      out.backMs = Math.round(performance.now() - t0);
-      await wait(1000);
-      out.movedBack = (await api.tabs.get(tab.id)).windowId === home.id;
-      out.afterBack = await kept();
-      // Margin's own follow (background/away.ts), with home behind: the tab in front there, then chosen in the
-      // window in front (second), then home to the front again. Whether making and showing tabs in a window behind
-      // leaves the focus where it was (no slide to its Space), and whether the tab follows home back.
-      const focused = async (id: number) => (await api.windows.get(id).catch(() => null))?.focused === true;
-      await api.tabs.update(tab.id, { active: true });
-      await wait(500);
-      out.shownBehindKeptFocus = (await focused(second.id)) && !(await focused(home.id));
-      t0 = performance.now();
-      await away.bringTab(await api.tabs.get(tab.id), second.id, { source: 'probe', raise: false });
-      out.bringMs = Math.round(performance.now() - t0);
-      await wait(800);
-      out.bringKeptFocus = (await focused(second.id)) && !(await focused(home.id));
-      const standInIn = async (id: number) => (await api.tabs.query({ windowId: id })).find((t) => isAwayPage(t.url) || isAwayPage(t.pendingUrl)) ?? null;
-      const homeStandIn = await standInIn(home.id);
-      out.standInInFront = homeStandIn?.active === true;
-      const live = await api.tabs.get(tab.id);
-      out.broughtThere = live.windowId === second.id && live.active === true;
-      out.awayRecorded = (await load()).awayByWindow?.[home.id] === tab.id;
-      out.afterBring = await kept();
-      t0 = performance.now();
-      await api.windows.update(home.id, { focused: true });
-      for (let i = 0; i < 30 && (await api.tabs.get(tab.id)).windowId !== home.id; i++) await wait(100);
-      out.followMs = Math.round(performance.now() - t0);
-      await wait(800);
-      out.followedBack = (await api.tabs.get(tab.id)).windowId === home.id;
-      out.focusHeard = away.awayInternals.focusSeen.windowId === home.id;
-      out.focusOutcome = away.awayInternals.focusSeen.outcome;
-      out.homeFocused = await focused(home.id);
-      out.homeStandInGone = !(await standInIn(home.id));
-      out.secondStandIn = !!(await standInIn(second.id));
-      out.afterFollow = await kept();
-      out.ok = true;
-    } catch (err) {
-      out.error = String((err as any)?.name ?? 'Error');
-    } finally {
-      if (made.tabId != null) await api.tabs.remove(made.tabId).catch(() => {});
-      if (made.windowId != null) await api.windows.remove(made.windowId).catch(() => {});
-      // A stand-in the follow left in home (only the probe's tab was shown away there; nothing else touched).
-      if (made.homeId != null) for (const t of await api.tabs.query({ windowId: made.homeId }).catch(() => [])) if (isAwayPage(t.url) || isAwayPage(t.pendingUrl)) await api.tabs.remove(t.id).catch(() => {});
-      // Home's tab in front as it was.
-      if (made.homeFront != null) await api.tabs.update(made.homeFront, { active: true }).catch(() => {});
-      out.cleaned = true;
-      devProbing = false;
-    }
-    return { summary: JSON.stringify(out) };
-  },
   // A real new window of this profile (⌘N through Margin.app, the palette's "New window": docs/BROWSER-WINDOWS.md §5),
   // a Margin window of its own. With `fromWindowId`: in full screen if that window is (or as `fullscreen`
   // says), on the space it shows, set, not guessed, with its first tab in it too. Without one, the window
   // inherits the space (model.inheritSpace). Its new-tab page opens the palette. Answers its id, state and
-  // bounds, which the app binds it by as Margin's.
-  async newWindow({ fromWindowId, fullscreen }: { fromWindowId?: number, fullscreen?: boolean } = {}) {
+  // bounds, which the app binds it by as Margin's. `url: 'about:blank'`: a window Margin.app makes ready out of sight
+  // at its launch (HostedSession.prepareBrowser): nothing loaded in it. Always focused: a hidden Safari (one Margin.app
+  // started) asked for an unfocused window answers its id but never orders it in (the real Mac, 2026-11-16), so the
+  // app couldn't find it; the app keeps its own Space current while it's made.
+  // `hosted: true` (the app's only): a window the app will host (docs/HOSTED-WINDOWS-CHROMIUM.md §3.2), its state the
+  // app's from now on. `mark` (the app's only, 8 to 40 letters and digits): the window opened at Margin's new-tab page
+  // with `?mark=`, so its title carries the mark until its first item is shown there (Windows finds the window by it).
+  async newWindow({ fromWindowId, fullscreen, url, itemId, hosted, mark }: { fromWindowId?: number, fullscreen?: boolean, url?: string, itemId?: string, hosted?: boolean, mark?: string } = {}, sender?: BrowserMessageSender) {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
+    // (A web page's address only from Margin.app: its preview card window or a split's pane window, opened at its page
+    // (docs/PEEK-SPLIT.md §2, §4), never Safari's empty new-tab page, whose address field keeps the toolbar down over
+    // the page. Any other address, or one asked by anything else, is ignored, as before.)
+    const page = !!sender?.app && typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= 8192;
+    const marked = !!sender?.app && !page && url !== 'about:blank' && typeof mark === 'string' && WINDOW_MARK.test(mark);
+    const props = { focused: true, ...(url === 'about:blank' || page ? { url } : marked ? { url: api.runtime.getURL(`newtab/newtab.html?mark=${mark}`) } : {}) };
+    const forApp = !!sender?.app && (hosted === true || marked || typeof itemId === 'string');
     markMarginOpening();
     let win;
-    try {
-      win = await api.windows.create({ focused: true, ...(full ? { state: 'fullscreen' } : {}) });
+    // (A split's pane window around its item's tab, open in another of Margin's windows: made with the tab in it, never a
+    // blank page first (hosted.ts windowAround). Margin.app's ask only; else, or when the browser doesn't take it, as below.)
+    if (sender?.app && typeof itemId === 'string' && itemId.length <= 80) {
+      win = await hostedTabs.windowAround(itemId, (p) => api.windows.create(p as Parameters<typeof api.windows.create>[0]), full);
+    }
+    if (win) { /* made around its tab */ } else try {
+      win = await api.windows.create({ ...props, ...(full ? { state: 'fullscreen' } : {}) });
     } catch {
-      win = await api.windows.create({ focused: true }); // a browser that won't make it full screen at once
+      win = await api.windows.create(props).catch(() => null) // a browser that won't make it full screen at once
+        ?? await api.windows.create({ focused: true }); // (or won't take the blank address)
     }
     if (!win) return null;
+    if (forApp && win.id != null) hostedTabs.madeForApp(win.id);
     if (spaceId) {
       const tabs = win.tabs ?? (await api.tabs.query({ windowId: win.id }).catch(() => []));
       await mutate((st) => {
@@ -901,46 +876,17 @@ export const handlers = {
       ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
     return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
-  // Margin.app switching to a space of this profile from another profile's
-  // window (app/platforms/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
-  // window showing the space, in full screen. In front: the space's tab used
-  // last (it isn't open: the window the switch closed kept it); the others
-  // that were open with it in that window open behind once it's up. Answers
-  // the window's id and state (a browser that comes back with a normal
-  // window is asked again by the app).
-  async openSpaceWindow({ spaceId, fullscreen = true }: { spaceId: string, fullscreen?: boolean }) {
-    const s = await load();
-    if (!s.spaces.some((sp) => sp.id === spaceId)) throw new Error('no such space');
-    const { front, rest } = M.spaceWindowTabs(s, spaceId);
-    markMarginOpening();
-    if (front) noteReopened(front.url);
-    const props = { focused: true, ...(front ? { url: front.url } : {}) };
-    let win;
-    try {
-      win = await api.windows.create({ ...props, ...(fullscreen ? { state: 'fullscreen' } : {}) });
-    } catch {
-      win = await api.windows.create(props); // a browser that won't make it full screen at once
-    }
-    const tab = win.tabs?.[0] ?? (await api.tabs.query({ windowId: win.id }).catch(() => []))[0] ?? null;
-    await mutate((st) => {
-      let next = M.setActiveSpace(st, win.id, spaceId);
-      if (tab) {
-        next = M.upsertTab(next, tab, now());
-        if (front && next.keptTabs?.[front.id]) next = M.linkKept(next, tab.id, front.id, now());
-        next = M.moveTab(next, tab.id, spaceId);
-      }
-      return next;
+  // Margin.app bringing a window it hosts in front of its app's others (HostedSession.safariFocus): a card's or pane's
+  // window Safari made a moment ago, which Accessibility can't raise yet (docs/PEEK-SPLIT.md, the real screen
+  // 2026-11-21). Safari orders its own window in front; never past `notAfter`, one windows call per window at a time.
+  async hostFocusWindow(message: { windowId: number, notAfter?: number }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return windowCall('hostFocusWindow', message, async () => {
+      await api.windows.update(message.windowId, { focused: true });
+      return { windowId: message.windowId, focused: true };
     });
-    if (rest.length) setTimeout(() => void openKeptBehind(win.id, spaceId, rest.map((k) => k.id)), SPACE_WINDOW_REST_MS);
-    // Its bounds as Safari gave them, and the window list sent now: the app binds the window as made
-    // by Margin from them before the list's next look (docs/HANDOFF.md §1.6). One full-screen request
-    // only: macOS puts a window made while Safari has one in full screen there itself.
-    void appLink.windowsNow?.();
-    const bounds = [win.left, win.top, win.width, win.height].every(Number.isFinite) && win.width! > 0 && win.height! > 0 // (finite: there)
-      ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
-    return { windowId: win.id, state: win.state ?? 'normal', tabId: tab?.id ?? null, ...(bounds ? { bounds } : {}) };
   },
-  // The app's switch closing this profile's window (its tabs are kept, not open: a window closing).
+  // Margin.app closing a window of this profile it hosts or made (its tabs are kept, not open: a window closing).
   // Never past `notAfter`, and not while another windows call for it is pending (handoff.ts).
   async closeWindow(message: { windowId: number, notAfter?: number }) {
     return windowCall('closeWindow', message, async () => {
@@ -948,31 +894,10 @@ export const handlers = {
       return null;
     });
   },
-  // The app's switch bringing a window of this profile to the front (macOS
-  // slides to its Space), in full screen if asked. As closeWindow: never past `notAfter`, one at a time.
-  async focusWindow(message: { windowId: number, fullscreen?: boolean, notAfter?: number }) {
-    const { windowId, fullscreen = false } = message;
-    return windowCall('focusWindow', message, async () => {
-      const w = await api.windows.update(windowId, { focused: true, ...(fullscreen ? { state: 'fullscreen' } : {}) })
-        .catch(() => api.windows.update(windowId, { focused: true }));
-      return { windowId, state: w?.state ?? null };
-    });
-  },
-  // Margin.app's profile handoff (docs/HANDOFF.md §3.3): a window to full screen or normal, its focus
+  // Margin.app's host (HostedSession.safariFullScreen): a window to full screen or normal, its focus
   // left alone unless asked; answered once Safari says it's there (background/handoff.ts).
-  async setWindowState(message: { windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number }) {
+  async setWindowState(message: { windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number, land?: boolean }) {
     return setWindowState(message);
-  },
-  // The handoff's look at the window's tab in front (R3): it nudges and counts its frames at the
-  // full-screen size (shared/frame-probe.ts); `{ none }` when no page answers in `timeoutMs`.
-  async frameProbe({ windowId, width, height, frames = 6, nudgeMs = 80, timeoutMs = 400 }: { windowId: number, width: number, height: number, frames?: number, nudgeMs?: number, timeoutMs?: number }) {
-    if (!Number.isInteger(windowId)) throw new Error('no window');
-    return probeWindow(windowId, { width, height, frames, nudgeMs, timeoutMs });
-  },
-  // The window's tabs with typed text not sent, before the app closes it (background/sleep.ts).
-  async windowDrafts({ windowId }: { windowId: number }) {
-    if (!Number.isInteger(windowId)) throw new Error('no window');
-    return windowDrafts(windowId);
   },
   // A page's scroll as it's hidden or left (content/core.ts), kept on its tab's record for its
   // Margin tab (background/scroll-record.ts, docs/DATA.md "The scroll record").
@@ -984,22 +909,10 @@ export const handlers = {
   async takeScroll({ url }: { url: string }, sender: BrowserMessageSender) {
     return takeScroll(sender?.tab?.id, url);
   },
-  // The order of this profile's spaces as the app's order across profiles has them.
-  async orderSpaces({ spaceIds }: { spaceIds: string[] }) {
-    if (!Array.isArray(spaceIds)) return;
-    await mutate((s) => M.orderSpaces(s, spaceIds));
-  },
   // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
   // background already handed the tab off as it was created.
   // An address chosen on Margin's new-tab page, drawn by Margin.app's
   // overlay (its launcher): opened in that tab, as the page's own does.
-  // A key Margin.app holds while it draws the UI, heard by a page anyway
-  // (⌘T: left to the app; a tab or space key: done here, as the page asked
-  // with `navigate`): the app is told, for its log (why its keys were off).
-  async appKeyHeard({ command }: { command?: string }, sender: BrowserMessageSender) {
-    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI`);
-    appLink.push(sender?.tab?.windowId ?? null, { type: 'keyHeard', command: String(command), from: 'page' });
-  },
   // A button of one of Margin's notices, chosen in Margin.app's overlay
   // (background/notices.ts, shared/notices.ts): done here, and the notice
   // isn't said again for that page. Whether it was a notice's button.
@@ -1042,20 +955,8 @@ export const handlers = {
     // draws its launcher there and opens the palette over it. Not linked, or
     // in a window the app draws nothing over, the page shows its notice and
     // address field (newtab/newtab.ts).
-    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId) && !paletteDroppedRecently(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
+    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
     return { app: false };
-  },
-  // Margin.app couldn't show the palette pushed for a window (no overlay shown there within its hold):
-  // for ⌘T's hand-off (`newTab`: Safari's new tab already closed), Margin's new-tab page opens there
-  // instead, so the key still opens something; and ⌘T there keeps Safari's new tab for a while.
-  async paletteDropped({ windowId, newTab }: { windowId?: number, newTab?: boolean }, sender: BrowserMessageSender) {
-    if (!sender?.app) return false; // the app's word only
-    const id = Number.isInteger(windowId) ? (windowId as number) : sender?.tab?.windowId;
-    if (!Number.isInteger(id)) return false;
-    paletteDroppedAt.set(id, Date.now());
-    appLink.note(`the app couldn't show the palette over window ${id}${newTab ? ': Margin\'s new-tab page opened there' : ''}`);
-    if (newTab) await newTabKey({ windowId: id });
-    return true;
   },
   // ⌘T reaching a page while Margin.app isn't linked, or in a window it draws nothing over
   // (content/core.ts): Margin's new-tab page.
@@ -1113,7 +1014,148 @@ export const handlers = {
   // Whether this page's window is in full screen (Chrome, "only in full screen").
   async windowState(_: object, sender: BrowserMessageSender) {
     const id = sender.tab?.windowId;
-    return { fullscreen: id != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
+    return { fullscreen: await marginsFullscreen(id ?? null) };
+  },
+  // Margin.app hosting Safari in its page area (docs/MARGIN-APP.md, background/hosted.ts): an item of its library
+  // shown as a tab of the window it hosts for this profile, and closed. The app's word only.
+  // (`stopped`, the link's: the app cancelled this show; it then makes no more Safari calls. A newer show for its window
+  // waits for it: background/link.ts, docs/LINK-RESILIENCE.md §1 rules 12–13.)
+  async hostShow(message: { windowId?: number, itemId?: string, url?: string }, sender: BrowserMessageSender & { stopped?: () => boolean }) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.show(message, sender.stopped);
+  },
+  async hostPicture(message: { windowId?: number, itemId?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.picture(message);
+  },
+  async hostClose(message: { itemId?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.close(message);
+  },
+  async hostMute(message: { itemId?: string, muted?: boolean }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.mute(message);
+  },
+  async hostNavigate(message: { itemId?: string, url?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.navigate(message);
+  },
+  async hostPromotePeek(message: { fromItemId?: string, toWindowId?: number, toItemId?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.promotePeek(message);
+  },
+  // The preview card closed in Margin.app: its page's tab closed, its window kept (parked) with a blank tab.
+  async hostCardClose(_message: object, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.closeCard();
+  },
+  // A page's preview click (content/peek.ts), asked of Margin.app for the page's window (background/peek.ts): `hosted`
+  // once the app answered yes by `notAfter`; else no (and the app told to drop it), with the link's new tab opened
+  // here (`opened`) when the page's link opens one (`target=_blank`): the page opens a same-tab link itself.
+  async openPeek({ url, source = 'shift-click', newTab = false, notAfter }: { url: string, source?: string, newTab?: boolean, notAfter?: number }, sender: BrowserMessageSender) {
+    if (sender?.app || typeof url !== 'string' || url.length > 4096 || !/^https?:\/\//i.test(url)) return null;
+    const win = sender?.tab?.windowId ?? null;
+    const by = Number.isFinite(notAfter) ? Math.min(notAfter as number, Date.now() + 1000) : Date.now() + 300;
+    let ok: boolean | null = false;
+    if (appLink.linked() && win != null) {
+      const id = peekAnswers.id();
+      const answer = peekAnswers.wait(id, by);
+      if (appLink.push(win, { type: 'peekOpen', id, url, source: source === 'auto-peek' ? 'auto-peek' : 'shift-click', tabId: sender.tab?.id ?? null, notAfter: by })) ok = await answer;
+      else { peekAnswers.answer(id, false); ok = false; }
+      if (ok === null) appLink.push(win, { type: 'peekCancel', id });
+    }
+    if (ok === true) return { ok: true, hosted: true };
+    if (!newTab || win == null) return { ok: true, hosted: false };
+    const opener = sender.tab;
+    const tab = await api.tabs.create({ windowId: win, url, active: true, ...(Number.isInteger(opener?.index) ? { index: (opener!.index as number) + 1 } : {}) }).catch(() => null);
+    return { ok: true, hosted: false, opened: tab?.id != null };
+  },
+  // Margin.app's answer to a `peekOpen` push (above): whether it shows the card. The app's word only.
+  async peekAnswer({ id, ok }: { id?: string, ok?: boolean }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return peekAnswers.answer(id, ok);
+  },
+  // Esc or ⌘↩ in a page of the preview card window (content/peek.ts startCardKeys): told to Margin.app as
+  // `cardKey { key }`, only from a tab of a window the app made the card's (background/hosted.ts).
+  async cardKey({ key }: { key?: string }, sender: BrowserMessageSender) {
+    const win = sender?.tab?.windowId;
+    if (sender?.app || win == null || (key !== 'close' && key !== 'expand') || !hostedTabs.isCard(win)) return false;
+    return appLink.push(win, { type: 'cardKey', key });
+  },
+  // What a page plays (content/media.ts): the mini player's sources (background/media.ts).
+  async mediaState(report: MediaReportInput, sender: BrowserMessageSender) {
+    const tab = sender?.tab;
+    if (sender?.app || !tab || !Number.isInteger(tab.id)) return null;
+    mediaHub.report({ id: tab.id, windowId: tab.windowId, url: tab.url, title: tab.title, mutedInfo: tab.mutedInfo }, report && typeof report === 'object' ? report : { playing: false });
+    return true;
+  },
+  // The mini player's buttons in the extension's own UI (a tab of this copy's: its id). Margin.app's are `hostMedia`.
+  async mediaControl({ command, tabId }: { command?: string, tabId?: number | string | null }, sender: BrowserMessageSender) {
+    const id = Number.isInteger(tabId) ? tabId as number : mediaHub.current(sender?.tab?.id ?? null)?.tabId;
+    if (!Number.isInteger(id)) return false;
+    if (command === 'focus') {
+      await focusTab(id as number, { source: 'mediaFocus' }).catch(() => null);
+      return true;
+    }
+    if (command === 'mute') {
+      await handlers.muteTab({ tabId: id as number });
+      return true;
+    }
+    if (command !== 'toggle' && command !== 'prev' && command !== 'next') return false;
+    const answer = await api.tabs.sendMessage?.(id as number, { type: 'mediaCommand', command }).catch(() => null);
+    return answer?.ok === true;
+  },
+  // Margin.app's mini player's button for one of its items' pages (background/hosted.ts media).
+  async hostMedia(message: { itemId?: string, command?: string, tabId?: number }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.media(message);
+  },
+  async duplicateTab({ tabId, windowId }: { tabId: number | string, windowId?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const kept = typeof tabId === 'string' ? s.keptTabs[tabId] : null;
+    const live = Number.isInteger(tabId) ? s.tabs[tabId as number] : null;
+    const url = live?.url ?? kept?.url;
+    const spaceId = kept ? kept.spaceId : live ? s.tabSpace[live.id] : null;
+    if (!url || !/^https?:\/\//i.test(url)) return null;
+    const win = windowId ?? live?.windowId ?? sender.tab?.windowId;
+    if (win == null) return null;
+    markMarginOpening();
+    const created = await api.tabs.create({ windowId: win, url, active: true });
+    if (created?.id != null && spaceId) {
+      await mutate((st) => M.moveTab(M.upsertTab(st, created, now()), created.id, spaceId));
+    }
+    return created?.id ?? null;
+  },
+  async muteTab({ tabId }: { tabId: number | string }) {
+    if (!Number.isInteger(tabId)) return { muted: false };
+    const tab = await api.tabs.get(tabId as number).catch(() => null);
+    if (!tab) return { muted: false };
+    const next = !tab.mutedInfo?.muted;
+    const updated = await api.tabs.update(tab.id, { muted: next }).catch(() => null);
+    if (updated) await mutate((s) => M.upsertTab(s, updated, now()));
+    return { muted: updated?.mutedInfo?.muted ?? next };
+  },
+  async unloadTab({ tabId }: { tabId: number | string }) {
+    if (!Number.isInteger(tabId)) return false;
+    const id = tabId as number;
+    const s = await load();
+    if (!s.tabs[id]) return false;
+    if (capabilities?.sleepTabs === 'discard' && typeof api.tabs.discard === 'function') {
+      await api.tabs.discard(id).catch(() => null);
+      return true;
+    }
+    await mutate((st) => M.keepTab(st, id, { why: 'sleep', now: now() }));
+    noteClosing([id], 'keep', 'sleep');
+    await api.tabs.remove(id).catch(() => {});
+    return true;
+  },
+  async restoreLastArchive({ windowId }: { windowId?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const win = windowId ?? sender.tab?.windowId ?? null;
+    const spaceId = win != null ? V.activeSpaceId(s, win) : s.spaces[0]?.id ?? null;
+    const entry = (spaceId ? s.archive.find((a) => a.spaceId === spaceId) : null) ?? s.archive[0];
+    if (!entry) return null;
+    return handlers.restoreArchive({ archiveId: entry.id, windowId: win ?? undefined });
   },
   // Margin.app's index of the themes the person imported (app/platforms/macos/shell/ThemeStore.swift: they're the
   // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
@@ -1135,58 +1177,5 @@ export const handlers = {
       const own = theme.settingsOf({ themes: { [themeId]: { ...themes[themeId], ...patch } } });
       return { ...s, settings: { ...s.settings, themes: { ...themes, [themeId]: own } } };
     });
-  },
-  // The page's script in the page's world, for a page that didn't get it from
-  // its registration (content/page-link.ts): `left` (where its box starts
-  // until it's told: content/page/main.ts), then the script.
-  async injectPage({ left }: { left?: number }, sender: BrowserMessageSender) {
-    const tabId = sender.tab?.id;
-    if (tabId == null || !api.scripting?.executeScript) return false;
-    const target = { tabId };
-    await api.scripting.executeScript({
-      target, world: 'MAIN', injectImmediately: true, args: [left ?? null],
-      func: (at) => { (window as any)[Symbol.for('margin.page.start')] = { left: at ?? undefined }; },
-    });
-    await api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, files: ['content/page.bundle.js'] });
-    return true;
-  },
-  // A style sheet the page can't read (another origin's, no CORS:
-  // content/page-link.ts). No cookies, as a <link> of another origin needs none.
-  // The page gets the text, so this is only for real style sheets that it could
-  // load anyway: not a local network's unless it's on one, after any redirect.
-  // Null if it can't be had (Safari's per-site grants can refuse it): the
-  // sheet then stays as it is.
-  // What the page box's walk found in a page's content-named style sheets, kept for its return visits
-  // (content/sheet-walk-link.ts), under the origin of the page that sent it, never another's.
-  async keepSheetWalk({ v, files }: { v: string, files: Record<string, unknown> }, sender: BrowserMessageSender) {
-    let origin = '';
-    try {
-      origin = new URL(sender?.url ?? sender?.tab?.url ?? '').origin;
-    } catch {}
-    return sheetWalks.keep(origin, v, files);
-  },
-  async fetchStyle({ url }: { url: string }, sender: BrowserMessageSender) {
-    const pageUrl = sender?.tab?.url ?? sender?.url ?? '';
-    if (!styleUrlAllowed(url, pageUrl)) return null;
-    if (styleCache.has(url)) return styleCache.get(url);
-    const text = await fetch(url, { credentials: 'omit' }).then((res) => {
-      const css = /^text\/css\b/i.test(res.headers.get('content-type') ?? '');
-      return res.ok && css && styleUrlAllowed(res.url, pageUrl) ? res.text() : null;
-    }).catch(() => null);
-    if (text == null) return null;
-    if (text.length > STYLE_MAX_CHARS) {
-      console.warn('[margin] a style sheet too large to rewrite', url, text.length);
-      return null;
-    }
-    if (text.length > STYLE_CACHED_MAX_CHARS) return text;
-    styleCache.set(url, text);
-    let chars = 0;
-    for (const kept of styleCache.values()) chars += kept.length;
-    for (const oldest of styleCache.keys()) {
-      if (styleCache.size <= STYLE_CACHE_SIZE && chars <= STYLE_CACHE_CHARS) break;
-      chars -= styleCache.get(oldest).length;
-      styleCache.delete(oldest);
-    }
-    return text;
   },
 };

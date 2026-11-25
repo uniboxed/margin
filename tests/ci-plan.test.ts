@@ -7,9 +7,9 @@ import { plan, type Plan } from '../scripts/ci-plan.mts';
 import { themesInScope } from './theme/package.ts';
 
 const THEME_TESTS = readdirSync(new URL('./theme/', import.meta.url)).filter((n) => n.endsWith('.test.ts')).sort().map((n) => `tests/theme/${n}`);
-const OWN = ['tests/theme/arcadia.test.ts', 'tests/theme/neubrutalism.test.ts', 'tests/theme/pixel.test.ts'];
+const OWN = ['tests/theme/arcadia.test.ts', 'tests/theme/liquid-glass.test.ts', 'tests/theme/material.test.ts', 'tests/theme/neubrutalism.test.ts', 'tests/theme/pixel.test.ts'];
 const AGNOSTIC = THEME_TESTS.filter((f) => !OWN.includes(f));
-const LOOPED = ['tests/theme/behaviors.test.ts', 'tests/theme/cloud.test.ts', 'tests/theme/feedback.test.ts', 'tests/theme/live-cover.test.ts', 'tests/theme/security.test.ts', 'tests/theme/space-settle.test.ts', 'tests/theme/switch-cover.test.ts'];
+const LOOPED = ['tests/theme/background.test.ts', 'tests/theme/behaviors.test.ts', 'tests/theme/picker.test.ts', 'tests/theme/page-state.test.ts', 'tests/theme/feedback.test.ts', 'tests/theme/security.test.ts', 'tests/theme/space-settle.test.ts', 'tests/theme/intents.test.ts', 'tests/theme/row-icons.test.ts', 'tests/theme/space-themes.test.ts', 'tests/theme/nested-indent.test.ts', 'tests/theme/favorites-drop.test.ts', 'tests/theme/mini-player.test.ts', 'tests/theme/peek-card.test.ts', 'tests/theme/split-view.test.ts', 'tests/theme/card-over-split.test.ts', 'tests/theme/pane-ring.test.ts', 'tests/theme/empty-dblclick.test.ts'];
 const kinds = (p: Plan) => p.browsers.include.map((j) => `${j.kind} ${j.shard}${j.themes ? ` ${j.themes}` : ''}`);
 
 test('docs only: nothing heavy runs', () => {
@@ -28,7 +28,7 @@ test('everything (a nightly, by hand, no base) and the workflow itself: every th
 });
 
 test('the UI runtime, the host page or the harness: the theme-agnostic tests, against the reference theme', () => {
-  for (const f of ['extension/ui/render.ts', 'extension/ui/behaviors/drag.ts', 'app/shared/host/overlay.html', 'tests/theme/harness.ts', 'extension/shared/page-box.ts', 'extension/themes/packages.ts']) {
+  for (const f of ['app/shared/ui/render.ts', 'app/shared/ui/behaviors/drag.ts', 'app/shared/host/overlay.html', 'tests/theme/harness.ts', 'extension/shared/view.ts', 'app/shared/ui/themes/packages.ts']) {
     const p = plan([f]);
     assert.deepEqual(p.themes.files, AGNOSTIC, f);
     assert.equal(p.themes.scope, 'reference', f);
@@ -37,10 +37,10 @@ test('the UI runtime, the host page or the harness: the theme-agnostic tests, ag
 });
 
 test('a theme\'s folder: its own tests, and its entries in the tests that loop over the themes', () => {
-  const p = plan(['extension/themes/pixel/theme.css']);
+  const p = plan(['app/shared/ui/themes/pixel/theme.css']);
   assert.deepEqual(p.themes.files, [...LOOPED, 'tests/theme/pixel.test.ts'].sort());
   assert.equal(p.themes.scope, 'pixel');
-  const both = plan(['extension/themes/pixel/theme.css', 'extension/ui/render.ts']);
+  const both = plan(['app/shared/ui/themes/pixel/theme.css', 'app/shared/ui/render.ts']);
   assert.deepEqual(both.themes.files, [...AGNOSTIC, 'tests/theme/pixel.test.ts'].sort());
   assert.equal(both.themes.scope, 'reference,pixel');
 });
@@ -69,7 +69,7 @@ test('a unit test alone: the unit tests, no browser', () => {
 });
 
 test('a tool alone: the unit tests (npm test type-checks tools/), no browser', () => {
-  for (const f of ['tools/fit-check/store.mts', 'tools/webkit-host/scenarios.mts']) {
+  for (const f of ['tools/store-shots.mts', 'tools/webkit-host/scenarios.mts']) {
     const p = plan([f]);
     assert.equal(p.unit, true, f);
     assert.deepEqual(p.browsers.include, [], f);

@@ -1,4 +1,4 @@
-// The behaviors' pure parts (extension/ui/behaviors/): where a dragged row
+// The behaviors' pure parts (app/shared/ui/behaviors/): where a dragged row
 // goes (today's rules, themes/arcadia/sidebar.js dropTarget), the action a
 // drop runs, where a moved tab lands in the window's order, and what each
 // context menu holds; and how the view model shows menus and the space
@@ -6,10 +6,10 @@
 // tests/theme/behaviors.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dropAction, dropTarget, levelIds, moveIndex, stays, type Drag, type Over, type Target } from '../extension/ui/behaviors/drop-rules.ts';
-import { CONFIRM_LABEL, SPACE_COLORS, menuItems, type MenuItem } from '../extension/ui/behaviors/menu-items.ts';
-import { buildViewModel, type UiState } from '../extension/ui/view-model.ts';
-import { checkAction, contextFromState } from '../extension/ui/actions.ts';
+import { dropAction, dropTarget, levelIds, moveIndex, stays, type Drag, type Over, type Target } from '../app/shared/ui/behaviors/drop-rules.ts';
+import { CONFIRM_LABEL, SPACE_COLORS, menuItems, type MenuItem } from '../app/shared/ui/behaviors/menu-items.ts';
+import { buildViewModel, type UiState } from '../app/shared/ui/view-model.ts';
+import { checkAction, contextFromState } from '../app/shared/ui/actions.ts';
 import { smallState, W } from './ui/fixtures.ts';
 
 const state = smallState();
@@ -60,18 +60,20 @@ test('drop rules: on a folder\'s row, its top quarter is before it and the rest 
   assert.deepEqual(dropTarget(pin('pa'), pinsOver(folderRow('f2'), 0.6), space), { into: 'f2' });
   assert.equal(dropTarget(pin('pa'), pinsOver(folderRow('f1'), 0.6), space), null, 'already in it');
   assert.equal(dropTarget(pin('pd'), pinsOver(folderRow('f2'), 0.1), space), null, 'just before the folder after it: where it is');
-  // In a folder's own drop area, between its rows: into it.
+  // In a folder's own drop area, between its rows: into it (including nesting another folder).
   assert.deepEqual(dropTarget(pin('pd'), { zone: 'folder', folder: 'f1' }, space), { into: 'f1' });
-  assert.equal(dropTarget(folder('f2'), { zone: 'folder', folder: 'f1' }, space), null, 'folders stay at the top level');
+  assert.deepEqual(dropTarget(folder('f2'), { zone: 'folder', folder: 'f1' }, space), { into: 'f1' }, 'folders can nest into another folder');
+  assert.equal(dropTarget(folder('f1'), { zone: 'folder', folder: 'f1' }, space), null, 'a folder cannot nest into itself');
 });
 
-test('drop rules: a folder dragged goes before (top half) or after (bottom half) a row at the top level', () => {
-  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.3), space), { folderId: null, beforeId: 'f1', row: folder('f1'), side: 'before' });
+test('drop rules: a folder dragged goes before (top edge), into (middle), or after (bottom edge) another folder', () => {
+  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.1), space), { folderId: null, beforeId: 'f1', row: folder('f1'), side: 'before' });
+  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.5), space), { into: 'f1' }, 'middle nests into f1');
   assert.equal(dropTarget(folder('f2'), pinsOver(folderRow('f2'), 0.3), space), null, 'on itself');
-  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.7), space), { folderId: null, beforeId: 'pd', row: folder('f1'), side: 'after' }, 'after f1 and its pins');
+  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.9), space), { folderId: null, beforeId: 'pd', row: folder('f1'), side: 'after' }, 'after f1 and its pins');
   assert.equal(dropTarget(folder('f1'), pinsOver(pinRow('pd'), 0.3), space), null, 'before the row after it: where it is');
   assert.deepEqual(dropTarget(folder('f1'), pinsOver(pinRow('pd'), 0.7), space), { folderId: null, beforeId: 'f2', row: pin('pd'), side: 'after' });
-  assert.equal(dropTarget(folder('f1'), pinsOver(pinRow('pa', 'f1'), 0.3), space), null, 'not inside a folder');
+  assert.equal(dropTarget(folder('f1'), pinsOver(pinRow('pa', 'f1'), 0.3), space), null, 'not inside itself');
 });
 
 test('drop rules: on a pin\'s row, before or after it at its level; below the last row, the end', () => {
@@ -118,18 +120,19 @@ const labels = (items: MenuItem[]) => items.map((i) => (i.separator ? '—' : i.
 const run = (items: MenuItem[]) => items.filter((i) => !i.separator).map((i) => [i.action, i.arg]);
 
 test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () => {
-  assert.deepEqual(labels(menuItems({ kind: 'folder', id: 'f1' }, { state, space })), ['Rename Folder', 'Close Folder', '—', 'Delete Folder (pins stay)']);
-  assert.deepEqual(run(menuItems({ kind: 'folder', id: 'f2' }, { state, space })), [['folder.rename', 'f2'], ['folder.toggle', 'f2'], ['folder.delete', 'f2']]);
+  assert.deepEqual(labels(menuItems({ kind: 'folder', id: 'f1' }, { state, space })), ['Rename Folder', 'Close Folder', 'New Subfolder', '—', 'Delete Folder (pins stay)']);
+  assert.deepEqual(run(menuItems({ kind: 'folder', id: 'f2' }, { state, space })), [['folder.rename', 'f2'], ['folder.toggle', 'f2'], ['folder.newIn', 'f2'], ['folder.delete', 'f2']]);
   assert.equal(menuItems({ kind: 'folder', id: 'f2' }, { state, space })[1].label, 'Open Folder', 'a closed one opens');
   // A pin in a folder, its tab open; a loose pin not open.
   const pa = menuItems({ kind: 'pin', id: 'pa' }, { state, space });
-  assert.deepEqual(labels(pa), ['Unpin', '—', 'Move to 📁 Projects', 'Remove from Folder', 'New Folder with Pin', '—', 'Close Tab']);
-  assert.deepEqual(run(pa), [['tab.unpin', 'pa'], ['pin.move', { pin: 'pa', folder: 'f2', before: null }], ['pin.move', { pin: 'pa', folder: null, before: null }], ['folder.newWithPin', 'pa'], ['tab.close', 11]]);
-  assert.deepEqual(labels(menuItems({ kind: 'pin', id: 'pd' }, { state, space })), ['Unpin', '—', 'Move to 📁 Reading', 'Move to 📁 Projects', 'New Folder with Pin']);
+  assert.deepEqual(labels(pa), ['Unpin', 'Add to Favorites', 'Rename Pin', 'Copy URL', '—', 'Move to 📁 Projects', 'Remove from Folder', 'New Folder with Pin', '—', 'Mute Tab', 'Sleep Tab', 'Close Tab']);
+  assert.deepEqual(run(pa), [['tab.unpin', 'pa'], ['favorite.addPin', 'pa'], ['pin.rename', 'pa'], ['pin.copyUrl', 'pa'], ['pin.move', { pin: 'pa', folder: 'f2', before: null }], ['pin.move', { pin: 'pa', folder: null, before: null }], ['folder.newWithPin', 'pa'], ['tab.mute', 11], ['tab.unload', 11], ['tab.close', 11]]);
+  assert.deepEqual(labels(menuItems({ kind: 'pin', id: 'pd' }, { state, space })), ['Unpin', 'Add to Favorites', 'Rename Pin', 'Copy URL', '—', 'Move to 📁 Reading', 'Move to 📁 Projects', 'New Folder with Pin']);
   const t = menuItems({ kind: 'tab', id: 14 }, { state, space });
-  assert.deepEqual(labels(t), ['Pin Tab', 'Pin to 📁 Reading', 'Pin to 📁 Projects', 'New Folder with Tab', '—', 'Move to 💼 Deep Work', 'Move to 🎨 Side', '—', 'Close Tab']);
-  assert.deepEqual(run(t), [['tab.pin', 14], ['tab.pinAt', { tab: 14, folder: 'f1', before: null }], ['tab.pinAt', { tab: 14, folder: 'f2', before: null }], ['folder.newWithTab', 14],
-    ['tab.moveToSpace', { tab: 14, space: 'work' }], ['tab.moveToSpace', { tab: 14, space: 'side' }], ['tab.close', 14]]);
+  assert.deepEqual(labels(t), ['Pin Tab', 'Add to Favorites', 'Add to Split View', 'Pin to 📁 Reading', 'Pin to 📁 Projects', 'New Folder with Tab', 'Rename Tab', '—', 'Copy URL', 'Duplicate Tab', 'Mute Tab', 'Always Open nofav.example in This Space', '—', 'Move to 💼 Deep Work', 'Move to 🎨 Side', '—', 'Sleep Tab', 'Close Tab']);
+  assert.deepEqual(run(t), [['tab.pin', 14], ['favorite.add', 14], ['split.add', 14], ['tab.pinAt', { tab: 14, folder: 'f1', before: null }], ['tab.pinAt', { tab: 14, folder: 'f2', before: null }], ['folder.newWithTab', 14], ['tab.rename', 14],
+    ['tab.copyUrl', 14], ['tab.duplicate', 14], ['tab.mute', 14], ['linkRules.addHost', 14],
+    ['tab.moveToSpace', { tab: 14, space: 'work' }], ['tab.moveToSpace', { tab: 14, space: 'side' }], ['tab.unload', 14], ['tab.close', 14]]);
   // Every item's action passes the checks.
   const ctx = contextFromState(state);
   for (const item of [...pa, ...t, ...menuItems({ kind: 'folder', id: 'f1' }, { state, space })]) if (!item.separator) assert.equal(checkAction(item.action!, item.arg, ctx).ok, true, item.label); // an item: its action
@@ -137,10 +140,24 @@ test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () 
 
 test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () => {
   const s = menuItems({ kind: 'space', id: 'work' }, { state, space });
-  assert.deepEqual(labels(s), ['Edit Space…', 'Rename Space', '—', 'New Space', '—', 'Delete Space']);
-  assert.deepEqual(s.at(-1), { id: 'i3', label: 'Delete Space', separator: false, danger: true, confirm: true, action: 'space.delete', arg: 'work' }, 'deleting asks first');
+  assert.deepEqual(labels(s), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '—', 'New Space', '—', 'Delete Space'], 'where each space\'s theme isn\'t drawn: no themes');
+  assert.deepEqual(s.at(-1), { id: 'i4', label: 'Delete Space', separator: false, danger: true, confirm: true, action: 'space.delete', arg: 'work' }, 'deleting asks first');
   const one = { ...state, spaces: state.spaces.slice(0, 1) };
-  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'home' }, { state: one, space })), ['Edit Space…', 'Rename Space', '—', 'New Space'], 'the last space can\'t be deleted');
+  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'home' }, { state: one, space })), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '—', 'New Space'], 'the last space can\'t be deleted');
+  // Its theme (2026-11-20, a theme per space; Margin.app's window: `spaceThemes`): every built-in one, the one it's
+  // drawn with checked (none of its own: the profile's, Arcadia here).
+  const on = { spaceThemes: true };
+  const themes = ['Theme: Arcadia ✓', 'Theme: Neubrutalism', 'Theme: Pixel', 'Theme: Liquid Glass', 'Theme: Material'];
+  const t = menuItems({ kind: 'space', id: 'work' }, { state, space, features: on });
+  assert.deepEqual(labels(t), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '—', ...themes, '—', 'New Space', '—', 'Delete Space']);
+  assert.deepEqual(t.find((i) => i.label === 'Theme: Pixel'), { id: 'i5', label: 'Theme: Pixel', separator: false, danger: false, confirm: false, action: 'space.setTheme', arg: { space: 'work', theme: 'pixel' } });
+  assert.equal(t.at(-1)!.id, 'i9');
+  // Its own theme checked; an imported one (Margin.app's) offered too; one removed since: drawn with the profile's.
+  const themed = { ...state, spaces: state.spaces.map((sp) => (sp.id === 'work' ? { ...sp, theme: 'my-theme' } : sp)), settings: { ...state.settings, theme: 'pixel' } };
+  const features = { ...on, userThemes: [{ id: 'my-theme', name: 'Mine' }] };
+  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'work' }, { state: themed, space, features })).filter((l) => l.startsWith('Theme:')),
+    ['Theme: Arcadia', 'Theme: Neubrutalism', 'Theme: Pixel', 'Theme: Liquid Glass', 'Theme: Material', 'Theme: Mine ✓']);
+  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'work' }, { state: themed, space, features: on })).filter((l) => l.endsWith('✓')), ['Theme: Pixel ✓'], 'its theme gone: the profile\'s');
   assert.deepEqual(run(menuItems({ kind: 'add' }, { state, space })), [['folder.new', undefined], ['space.new', undefined]]);
   for (const target of [{ kind: 'tab', id: 99 }, { kind: 'tab', id: '14' }, { kind: 'pin', id: 'zz' }, { kind: 'folder', id: 'f9' }, { kind: 'space', id: 'nope' }, { kind: 'eval', id: 1 }, null]) {
     assert.deepEqual(menuItems((target as any), { state, space }), [], JSON.stringify(target));
@@ -156,11 +173,13 @@ test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () =>
 test('view model: a menu shows its labels, not what they run; a confirming item asks', () => {
   // Each asked for, of something there: shown.
   const m = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40 } }).menu!;
-  assert.deepEqual(m.items.map((i) => i.label), ['Edit Space…', 'Rename Space', '', 'New Space', '', 'Delete Space']);
+  assert.deepEqual(m.items.map((i) => i.label), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '', 'New Space', '', 'Delete Space']);
   assert.deepEqual(Object.keys(m.items[0]).sort(), ['confirming', 'danger', 'id', 'label', 'separator'], 'no action, no argument');
   assert.deepEqual([m.kind, m.id, m.x, m.y, m.hasItems], ['space', 'work', 30, 40, true]);
-  const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i3' } }).menu!;
-  assert.deepEqual(asked.items.at(-1), { id: 'i3', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true });
+  const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i4' } }).menu!;
+  assert.deepEqual(asked.items.at(-1), { id: 'i4', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true });
+  const themed = buildViewModel({ state, ui: { windowId: W, menu: { kind: 'space', id: 'work', x: 30, y: 40 } }, platform: { features: { spaceThemes: true } } }).menu!;
+  assert.deepEqual(themed.items.map((i) => i.label).filter((l) => l.startsWith('Theme:')).length, 5, 'Margin.app\'s window: its themes');
   assert.equal(vm({ menu: { kind: 'tab', id: 99 } }).menu, null, 'its tab is gone: no menu');
 });
 
@@ -173,4 +192,22 @@ test('view model: the space editor, its swatches and its delete rule', () => {
   assert.equal(vm({ editor: { spaceId: 'gone', name: '', emoji: '', color: '' } }).editor, null);
   const only = buildViewModel({ state: { ...state, spaces: state.spaces.slice(0, 1) }, ui: { windowId: W, editor: { spaceId: 'home', name: 'Home', emoji: '', color: '' } } }).editor!;
   assert.deepEqual([only.canDelete, only.cannotDelete, only.deleteTitle], [false, true, 'The last space can’t be deleted']);
+});
+
+test('view model: the space editor\'s themes: the space\'s own, else the profile\'s; the one picked; imported ones too', () => {
+  const at = (theme?: string, extra: any = {}, settings: any = {}) => buildViewModel({
+    state: { ...state, settings: { ...state.settings, ...settings }, spaces: state.spaces.map((sp) => (sp.id === 'work' ? { ...sp, ...(theme ? { theme } : {}) } : sp)) },
+    ui: { windowId: W, editor: { spaceId: 'work', name: 'W', emoji: '', color: '', ...extra } },
+    platform: { features: { spaceThemes: true, userThemes: [{ id: 'my-theme', name: 'Mine' }] } },
+  }).editor!;
+  const picked = (e: any) => e.themes.filter((t: any) => t.selected).map((t: any) => t.id);
+  assert.deepEqual(at('pixel').themes.map((t: any) => [t.id, t.name]), [['arcadia', 'Arcadia'], ['neubrutalism', 'Neubrutalism'], ['pixel', 'Pixel'], ['liquid-glass', 'Liquid Glass'], ['material', 'Material'], ['my-theme', 'Mine']]);
+  assert.deepEqual([picked(at('pixel')), at('pixel').theme], [['pixel'], 'pixel'], 'its own');
+  assert.deepEqual(picked(at(undefined, {}, { theme: 'material' })), ['material'], 'none of its own: the profile\'s');
+  assert.deepEqual(picked(at('gone', {}, { theme: 'material' })), ['material'], 'its own removed since: the profile\'s');
+  assert.deepEqual(picked(at('pixel', { theme: 'my-theme' })), ['my-theme'], 'picked in the editor');
+  assert.deepEqual(picked(at('pixel', { theme: 'gone' })), ['pixel'], 'a pick that isn\'t there: its own');
+  assert.equal(at('pixel').hasThemes, true);
+  const elsewhere = buildViewModel({ state, ui: { windowId: W, editor: { spaceId: 'work', name: 'W', emoji: '', color: '' } } }).editor!;
+  assert.deepEqual([elsewhere.themes, elsewhere.hasThemes], [[], false], 'where each space\'s theme isn\'t drawn: none offered');
 });

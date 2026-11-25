@@ -68,8 +68,9 @@ sleep 1
 check "started as launchd does (a relative path): finds its Margin.app and runs" "$(kill -0 $HELPER 2>/dev/null && echo true || echo false)" "$(tail -2 "$BUILD/helper.log")"
 kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
 
-# The stand-ins forgotten by the system again.
+# The stand-ins forgotten by the system again, and gone: left on disk, Spotlight listed each run's stand-in "Margin"
+# (no icon) beside the real one (2026-11-20: 305 of them). A failed run's folder is kept, to look at.
 pkill -f "$BUILD/Browser.app/Contents/MacOS/run" 2>/dev/null; pkill -f "$BUILD/Margin.app/Contents/MacOS/run" 2>/dev/null
 "$LSR" -u "$BUILD/Margin.app" 2>/dev/null; "$LSR" -u "$BUILD/Browser.app" 2>/dev/null
-./helper-splash-test.sh "$BUILD/margin-helper" || fail=1
+if [ "$fail" = 0 ]; then rm -rf "$BUILD"; else echo "helper: kept $BUILD (a check failed)"; fi
 exit $fail

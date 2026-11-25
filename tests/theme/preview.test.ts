@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 import { chromium, webkit } from 'playwright';
-import type { createPreviewBar } from '../../extension/ui/theme-preview.ts';
+import type { createPreviewBar } from '../../app/shared/ui/theme-preview.ts';
 
 // What the page below puts on its window: the preview bar it made, and what its buttons said.
 declare const P: { log: string[], make(ms: number): void, bar: ReturnType<typeof createPreviewBar> };
@@ -19,7 +19,7 @@ const bundle = buildSync({
   stdin: {
     contents: `import { createPreviewBar } from './theme-preview.js';
       window.P = { log: [], make(ms) { window.P.bar = createPreviewBar({ ms, onUse: () => P.log.push('use'), onCancel: (why) => P.log.push('cancel:' + why) }); } };`,
-    resolveDir: fileURLToPath(new URL('../../extension/ui/', import.meta.url)),
+    resolveDir: fileURLToPath(new URL('../../app/shared/ui/', import.meta.url)),
   },
   bundle: true, format: 'iife', write: false, target: 'es2022', logLevel: 'silent',
 }).outputFiles[0].text;

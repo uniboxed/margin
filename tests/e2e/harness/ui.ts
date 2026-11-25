@@ -1,6 +1,6 @@
 // Reading and driving the overlay (the theme Margin draws, Arcadia by
-// default) and the pages' box, for the e2e tests. Rows carry their ids as
-// data-* (extension/themes/arcadia/theme.html).
+// default), for the e2e tests. Rows carry their ids as
+// data-* (app/shared/ui/themes/arcadia/theme.html).
 import type { Page } from 'playwright';
 
 /** The sidebar as drawn: tab rows, pins, folders, chips, the space's name. @param ui the overlay's page */
@@ -67,25 +67,6 @@ export function palette(ui: Page) {
 export async function menuItem(ui: Page, label: string|RegExp) {
   const item = ui.locator('.tab-menu .menu-item', { hasText: label }).first();
   await item.click();
-}
-
-/**
- * Where Margin put a page's box, in the window's points (the page's html moved
- * into the slot: content/page/box.ts), or null for no box.
- * @param page a site page
- */
-export function pageBox(page: Page) {
-  return page.evaluate(() => {
-    const cs = getComputedStyle(document.documentElement);
-    const num = (name: string) => { const v = cs.getPropertyValue(name).trim(); return v ? parseFloat(v) : null; };
-    const left = num('--margin-box-left');
-    const dw = num('--margin-box-dw');
-    if (left == null || dw == null) return null;
-    const top = num('--margin-box-top') ?? 0;
-    const dh = num('--margin-box-dh') ?? 0;
-    if (dw === 0 && dh === 0) return null;
-    return { left, top, right: Math.round((dw - left) * 2) / 2, bottom: Math.round((dh - top) * 2) / 2, width: innerWidth, height: innerHeight };
-  });
 }
 
 /** The slot the overlay's theme left for the page (its <m-page>), in the window's points. */

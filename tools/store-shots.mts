@@ -1,6 +1,6 @@
 // Screenshots for the browser stores' listings: Margin over the test site, in
-// each built-in theme, at the stores' 1280 × 800. Headless, off-screen. No
-// iCloud Tabs (Safari's alone), nothing that names a browser.
+// each built-in theme, at the stores' 1280 × 800. Headless, off-screen.
+// Nothing that names a browser.
 //
 //   node tools/store-shots.mts [out dir]
 //
@@ -15,7 +15,7 @@ process.env.MARGIN_E2E_SHOTS = process.argv[2] || join(process.env.MARGIN_E2E_SH
 const { startMargin } = await import('../tests/e2e/harness/margin.ts');
 const { SPACES } = await import('../tests/e2e/harness/seed.ts');
 const { settled } = await import('../tests/e2e/harness/ui.ts');
-const { PACKAGE_THEMES } = await import('../extension/themes/packages.ts');
+const { PACKAGE_THEMES } = await import('../app/shared/ui/themes/packages.ts');
 
 const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,

@@ -2,6 +2,8 @@
 
 Draft plan, 2026-11-04. Nothing here is built yet. Once it is approved, the decisions move into `SPEC.md` (which this plan changes, see the last section) and `DECISIONS.md`, and the work starts at Phase 0.
 
+**Hosted only (2026-11-16):** the page box is removed, for every browser (`DECISIONS.md` "Hosted only: the page box removed"): Margin.app hosts the browser's window in its page area, sized by macOS (`docs/MARGIN-APP.md`). What this plan says of the page box, its first paint and its layout per window is history; Chrome and Edge get no page fitting until they're hosted like Safari.
+
 **Mission Control follow-up (2026-11-10):** Preserve an already shown own-Space layout at its independently validated model geometry while the window server presents a scaled preview. Opt those layers into Mission Control only after that exact browser window passes the read-only geometry check; keep transient hiding when unavailable. No additional resident helper work, view reload, snapshot cache or timer. See SPEC.md, DECISIONS.md and `tools/mission-control-lab/README.md`; actual compositor alignment remains a manual check.
 
 ## 1. What we're building, in one picture
@@ -19,7 +21,7 @@ Draft plan, 2026-11-04. Nothing here is built yet. Once it is approved, the deci
         └──────────────────▲───────────────┘        └─────────────▲────────────────────┘
                            │ link (snapshot, deltas, requests)    │ runtime messages
             ┌──────────────┴──────────────────────────────────────┴─────────────────────┐
-            │ Extension: state owner, tabs and windows, page box, sleeping tabs, palette  │
+            │ Extension: state owner, tabs and windows, sleeping tabs, palette            │
             │ key, search, icons, archive. No UI of its own: none in pages (Phase 2).    │
             └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -43,7 +45,7 @@ New in this plan (decided 2026-11-04):
 
 | Part | Owns | Doesn't |
 |---|---|---|
-| Extension | Live tab and window state (tab ids, which tab is in which window and space), a cached copy of the app's data, tab and window actions, the page box in every page (while the app is linked), sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI in pages, linked or not (gone in Phase 2 step 5); not linked, only its new-tab page's notice that Margin.app isn't running |
+| Extension | Live tab and window state (tab ids, which tab is in which window and space), a cached copy of the app's data, tab and window actions, sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI in pages, linked or not (gone in Phase 2 step 5); not linked, only its new-tab page's notice that Margin.app isn't running |
 | Margin UI runtime | The state mirror, rendering the theme, the action list, the behaviors (drag and drop, resize, peek, palette keys, context menus, inline rename), measuring the theme's page slot | Talk to the browser: everything goes through the host |
 | Theme | Structure (HTML), look (CSS), layout (where the page slot is), fonts and images bundled with it, its settings (as CSS variables) | Any script, any network request, any action Margin doesn't list |
 | Margin.app host | Native windows per browser window, following the window, the link to each browser's extension, app shortcuts, keyboard focus for the palette, the window drag in windowed mode, and **the lasting data on the Mac** (section 6, "Where data lives") | Live tab state: tab ids exist only inside the running browser |
@@ -88,6 +90,8 @@ One documented, versioned object, the same in both hosts: `window` (mode `fullsc
 `tab.activate`, `tab.close`, `tab.new`, `tab.pin`, `tab.unpin`, `tab.moveToSpace`, `pin.open`, `folder.toggle`, `folder.new`, `space.switch`, `space.new`, `space.edit`, `today.clear`, `nav.back`, `nav.forward`, `nav.reload`, `palette.open`, `palette.close`, `sidebar.toggle`, `archive.open`, `archive.restore`, `window.close`, `window.minimise`, `window.fullscreen`, `settings.open`. Each argument is checked against the current state: a tab id must be an open tab, a space id an existing space. An unknown action or argument is ignored and logged.
 
 ### Layout: from the theme to the page box
+
+> Removed 2026-11-16 (Hosted only): no page has a box; `<m-page>` is where Margin.app places the hosted window.
 
 1. The runtime renders the theme at the browser window's size and measures `<m-page>`: `left, top, right, bottom` insets and the corner radius.
 2. The host sends that layout to the extension for that window (`setLayout {windowId, insets, radius, mode}`).
@@ -164,7 +168,7 @@ Reuse the protocol from `feat/native-panel` (which worked in real Safari), gener
 ## 7. The extension, changed
 
 - **Switching (done in Phase 2 step 8, 2026-11-05):** `focusTab` is `tabs.update(active)`, and `windows.update(focused)` only if the window isn't focused (`background/tabs.ts`, from about 1,100 lines). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks. Each switch is one line in Margin.app's log (`background/switch-log.ts`).
-- **Page box (done):** insets come from the theme's layout per window (Phase 2 step 3a for live pages; Phase 3 for the first paint).
+- **Page box (done; removed 2026-11-16, Hosted only):** insets come from the theme's layout per window (Phase 2 step 3a for live pages; Phase 3 for the first paint).
   - First paint (Phase 3): the registered CSS carries the insets as variables, spelled in digit files (`shared/page-box.ts layoutFiles`), the theme's first-paint file builds the box from them under a mark the page's world sets (`data-margin-at`), and the page's world reads them (`content/page/main.ts`). A window whose layout isn't the registered one gets its own sheet as each page commits (`registered.ts fixUp`, `webNavigation`). No file per width: the 36 placeholders and the `at-*.js` files are empty stubs for one update's sake (`scripts/build.ts LEGACY_FILES`).
   - The registration is never taken away once made in a run of Safari, only updated (to zeros for no box): WebKit kept drawing a dropped registration in between (section 14).
 - **No UI in pages (done in Phase 2 step 5):** pages get only the box, while the app is linked (none otherwise: the page as it is), and the small scripts that must run in a page (gestures, pinch, the draft check, the navigation and ⌘T keys). The UI runtime, the theme loader and the in-page host are out of the content script and the new-tab page. With no app linked, Margin's new-tab page says Margin.app isn't running, with a button that starts it and an address field; Phase 7 makes that the prompt to install the app (and adds the toolbar button).
@@ -199,6 +203,7 @@ Each is a theme package, passes the security rules, and covers all three modes.
 
 - **Arcadia:** today's look, ported from `sidebar.js` and its CSS. The reference for every binding and behavior. Done first, so nothing looks different when the runtime switches over.
 - **Neubrutalism** (the canvas's "Neubrutalism" board): dotted background in the space's color, 256 px sidebar of 2.5 px-bordered cards with hard offset shadows, Archivo Black and Space Grotesk (bundled), the page as an 18 px-rounded card with a 3 px border and a 6 px shadow, 16 px gutters. Spaces as color chips, folders as bordered cards, a yellow New Tab button, a palette dialog with a 10 px shadow.
+- **Liquid Glass** (`themes/liquid-glass/`, 2026-11-17): macOS's own glass. The sidebar is one floating glass panel 8 px in from the window's edges, the address, navigation and space switcher are glass capsules in it, the tab in front a lit one, the command bar, menus and dialogs glass panels, over a soft ground in the space's color. The real system glass (`-apple-visual-effect`, theme.json `systemMaterials`) in Margin.app on macOS 26 and later; translucent fills, hairlines and soft shadows everywhere else. No `backdrop-filter`.
 - **Pixel** (the canvas's "Sidebar · Pixel / 8-bit" board): a dark dotted ground, Press Start 2P and Pixelify Sans (bundled), 3 px pixel borders made of box-shadows, a `▶` blinking cursor on the active tab, folders as `▼`/`▶` lists, spaces as numbered "worlds", the palette as "SELECT DESTINATION". `svg` with crisp edges for the pixel icons.
 
 Parts of those designs Margin doesn't have yet are left out of the first version and planned as future features (decided 2026-11-04; section 13): the **Ask** panel, the **mini player**, and the **favorites** tiles. The themes keep their place in the layout, and each arrives later as new actions and view-model fields, not theme code.
@@ -247,7 +252,7 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 - **Linked (2026-11-09):** the relay helper, the host files, the link in Chrome's build, both browsers at once (`DECISIONS.md` "Chrome and Edge link to Margin.app on the Mac"). Left: the checks by hand in real Chrome and Edge, their profiles' names, the iCloud Tabs counterpart.
 
 - Native messaging host install, window matching for Chromium windows, both browsers at once.
-- iCloud Tabs' folder and palette section for Chrome and Edge windows (built for Safari on 2026-11-05: `DECISIONS.md` "Margin 2: iCloud Tabs"): the extension's `sessions.getDevices()` gives the person's other devices and their open tabs (its own sync, not iCloud), sent to the app for its overlays in the same shape as `cloudTabs` (`docs/PROTOCOL.md` "iCloud Tabs").
+- (iCloud Tabs were removed for every browser on 2026-11-17, to be rebuilt later: `DECISIONS.md` "Hosted only: the cleanup".) iCloud Tabs' folder and palette section for Chrome and Edge windows (built for Safari on 2026-11-05: `DECISIONS.md` "Margin 2: iCloud Tabs"): the extension's `sessions.getDevices()` gives the person's other devices and their open tabs (its own sync, not iCloud), sent to the app for its overlays in the same shape as `cloudTabs` (`docs/PROTOCOL.md` "iCloud Tabs").
 - Their profiles' own names, as Safari's are shown from Phase 2 step 9 (`app/engines/webkit/safari/SafariProfiles.swift`; not built for them yet): each browser's `Local State` file (JSON; Chrome: `~/Library/Application Support/Google/Chrome/Local State`, Edge: `~/Library/Application Support/Microsoft Edge/Local State`), `profile.info_cache`, keyed by the profile's folder (`Default`, `Profile 1`…), with `name` (and `avatar_icon`, `default_avatar_fill_color`). Readable without Full Disk Access, but macOS 27 asks before an app reads another app's data (TCC "app data"): the set-up window will need its own step. The extension sees no profile id at all in Chromium, so the link from a copy to its folder still has to be found (its `Extensions/`/`Local Extension Settings/<extension id>/` folder under the profile is one lead).
 
 ### Phase 6: Neubrutalism and Pixel, and user themes
@@ -289,7 +294,7 @@ Still open: nothing. Phase 0 settled the drawing method (section 14).
 - **Mini player:** controls for whatever tab is playing (title, play/pause), from the audible tab and the page's media session, shown by themes that have a place for it.
 - **Favorites:** a small grid of always-there sites above the space's tabs, across spaces (Arc's favorites), as their own list in the state.
 - **Theme gallery:** themes listed inside Margin's Settings and installed with one click, on top of file import. Needs hosting, a listing review, and the same checks as an imported file on every download.
-- **iCloud Tabs beside the sidebar's toggle:** iCloud Tabs (a live folder in the sidebar and a palette section since 2026-11-05, `DECISIONS.md` "Margin 2: iCloud Tabs") moved, as the person chooses, out of the sidebar into an icon at the top of the sidebar, right of the sidebar's slide/toggle icon, opening the same `cloud-tabs` part in a popover. The part already draws the whole folder on its own, so it's a new place to show it and a setting, not new theme code.
+- **iCloud Tabs beside the sidebar's toggle** (iCloud Tabs removed 2026-11-17, to be rebuilt later)**:** iCloud Tabs (a live folder in the sidebar and a palette section since 2026-11-05, `DECISIONS.md` "Margin 2: iCloud Tabs") moved, as the person chooses, out of the sidebar into an icon at the top of the sidebar, right of the sidebar's slide/toggle icon, opening the same `cloud-tabs` part in a popover. The part already draws the whole folder on its own, so it's a new place to show it and a setting, not new theme code.
 
 ## 14. Phase 0 results (2026-11-04)
 

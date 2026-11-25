@@ -1,0 +1,403 @@
+// The hosted parts joined in the shell (HostedSession.swift; docs/MARGIN-APP.md).
+//
+// - Margin's windows draw the library (LibraryWindowSource), with a profile's settings and site icons
+//   (DataSetWindowSource).
+// - The library's requests go to the session (its sink, in the core), which drives the host engine and the Safari copies' tabs; the engine's
+//   Safari window requests are the copies' (`newWindow`, `setWindowState`, `closeWindow`, after their link); its events tell the session
+//   what went outside Margin; a palette pick (`openApp`) is the session's.
+// - The copies stay linked as the tabs' drivers; the shell's read (Shell.track) polls the host.
+// - The first run with nothing in the library (no profile's set to import): one space made, Personal, and shown in
+//   the UI's own space editor as the window's page is drawn, for the person to name (the minimal first-run step;
+//   the UI has no create-spaces flow of its own).
+
+import AppKit
+
+// The shell's links, as the session asks the Safari copies.
+final class ShellHostedLinks: HostedLinks {
+    weak var shell: Shell?
+    init(shell: Shell) { self.shell = shell }
+
+    func safariProfiles() -> [String] {
+        guard let shell else { return [] }
+        return shell.links.values.filter { $0.connection.isUp && $0.connection.hello.browser == "safari" }.map(\.connection.hello.profile).sorted()
+    }
+
+    func openProfileWindow(_ profile: String, pressed: @escaping @MainActor (Bool) -> Void) -> Bool { shell?.openProfileWindow("safari:\(profile)", pressed: pressed) ?? false }
+    func windowIds(of profile: String) -> [Int] { shell?.windows(of: "safari:\(profile)").map(\.id) ?? [] }
+    // Every window the copy lists now (the session takes them at its link's first look: then, in a Safari Margin started,
+    // each is one Safari restored, Margin's own and its woken ones aside). Not by `createdAt`: a copy may hear Safari's
+    // restored windows created as it starts (the sweep never ran on the real Mac, 2026-11-18, with two restored).
+    func restoredWindowIds(of profile: String) -> [Int]? {
+        guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp, entry.mirror.hasState else { return nil }
+        return ExtWindow.parse(entry.mirror.windows).map(\.id)
+    }
+    func linkEpoch(of profile: String) -> String? {
+        guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return nil }
+        return entry.connection.hello.epoch
+    }
+
+    func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
+        await request(profile: profile, type, payload, asked: nil)
+    }
+
+    // The session's asks under way, by their command's id: the link and the request's id there (what `cancel` takes).
+    private var asking: [UInt64: (connection: LinkConnection, id: Int)] = [:]
+
+    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?) {
+        guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return (nil, "not linked") }
+        let connection = entry.connection
+        defer { if let asked { asking[asked] = nil } }
+        do {
+            let reply = try await connection.request(type: type, payload: payload, windowId: nil, asked: { [weak self] id in
+                if let asked { self?.asking[asked] = (connection, id) }
+            })
+            guard reply["ok"] as? Bool == true else { return (nil, Diagnostics.scrub(reply["error"] as? String ?? "refused", max: 160)) }
+            return (reply["result"] as? JSONObject ?? [:], nil)
+        } catch {
+            return (nil, "\(error)")
+        }
+    }
+
+    func cancel(profile: String, asked: UInt64) {
+        guard let (connection, id) = asking.removeValue(forKey: asked) else { return }
+        connection.cancel(id)
+    }
+
+    func slow(of profile: String) -> Double? {
+        shell?.links["safari:\(profile)"]?.connection.slow
+    }
+}
+
+// No engine (its private calls didn't pass): every show fails, said once by the session's log.
+final class NoHostEngine: HostedEngine {
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult { .failed(.margin, "the host engine is off (its calls didn't pass their check)") }
+    func show(_ id: HostID) async -> HostResult { .failed(.margin, "the host engine is off") }
+    func close(_ id: HostID) async {}
+    func pageRectChanged(_ placement: HostPlacement) async -> Bool { false }
+    func parkShown(why: String) async {}
+    var shown: HostID? { nil }
+    var hasHosts: Bool { false }
+    func isHosted(_ id: HostID) -> Bool { false }
+    func mode(of id: HostID) -> HostMode? { nil }
+    var shownWindow: Int? { nil }
+    func activateShown(at point: CGPoint?) async {}
+    func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
+    func target(ofWindow number: Int) -> HostTarget? { nil }
+    func launchedPid(bundleId: String) -> pid_t? { nil }
+}
+
+// The engine as the session sees it: the shell's at the time of each call (it may start after the session is made),
+// the stand-in that fails every show while there is none.
+final class LateHostEngine: HostedEngine {
+    let resolve: () -> HostEngine?
+    private let none = NoHostEngine()
+    init(_ resolve: @escaping () -> HostEngine?) { self.resolve = resolve }
+    private var engine: HostedEngine { resolve() ?? none }
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult {
+        await engine.open(app: target, in: placement, marginWindow: marginWindow, marginSpace: marginSpace, wanted: wanted)
+    }
+    func show(_ id: HostID) async -> HostResult { await engine.show(id) }
+    func close(_ id: HostID) async { await engine.close(id) }
+    func pageRectChanged(_ placement: HostPlacement) async -> Bool { await engine.pageRectChanged(placement) }
+    func parkShown(why: String) async { await engine.parkShown(why: why) }
+    var shown: HostID? { engine.shown }
+    var hasHosts: Bool { engine.hasHosts }
+    func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
+    func mode(of id: HostID) -> HostMode? { engine.mode(of: id) }
+    var shownWindow: Int? { engine.shownWindow }
+    func activateShown(at point: CGPoint?) async { await engine.activateShown(at: point) }
+    func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
+    func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
+    func launchedPid(bundleId: String) -> pid_t? { resolve()?.launchedPid(bundleId: bundleId) }
+    var preparesOutOfSight: Bool { resolve()?.preparesOutOfSight ?? false }
+    func start(bundleId: String) async -> HostApp? { await resolve()?.start(bundleId: bundleId) }
+    func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
+        await engine.prepare(target, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
+    }
+    func hideWoken(bundleId: String) { resolve()?.hideWoken(bundleId: bundleId) }
+    func stopHidingWoken(bundleId: String) { resolve()?.stopHidingWoken(bundleId: bundleId) }
+    func releaseWoken(bundleId: String) { resolve()?.releaseWoken(bundleId: bundleId) }
+    func wokenWindows(bundleId: String) -> Int { resolve()?.wokenWindows(bundleId: bundleId) ?? 0 }
+    func wokenParked(bundleId: String) -> [Int] { resolve()?.wokenParked(bundleId: bundleId) ?? [] }
+    func appRuns(bundleId: String) -> Bool? { resolve()?.appRuns(bundleId: bundleId) }
+    var quitting: Bool { resolve()?.quitting ?? false }
+    func dragging(_ on: Bool) -> Bool { resolve()?.dragging(on) ?? false }
+    func follow(_ placement: HostPlacement) { resolve()?.follow(placement) }
+    var shownFillsPage: Bool { resolve()?.shownFillsPage ?? false }
+    func setLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult] {
+        await engine.setLayout(main: main, mainRect: mainRect, extras: extras, focused: focused, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
+    }
+    func focus(_ id: HostID) async -> Bool { await resolve()?.focus(id) ?? false }
+    func focus(_ id: HostID, fronted: Bool) async -> Bool { await resolve()?.focus(id, fronted: fronted) ?? false }
+    func visibleHost(at point: CGPoint) -> HostID? { resolve()?.visibleHost(at: point) }
+    func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { resolve()?.follow(placement, rects: rects) }
+    func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await resolve()?.pageRectChanged(placement, rects: rects) ?? false }
+    func minimum(of id: HostID) -> CGSize? { resolve()?.minimum(of: id) }
+    // (Every one the protocol's extension answers for a stand-in, forwarded: missed, the real app took the stand-in's
+    // answer. 2026-11-21: `showsAlone` true with a split up (an item of main's profile only a tab switch), and
+    // `liveFollowers` one window for a divider's drag of two.)
+    func showsAlone(_ id: HostID) -> Bool { resolve()?.showsAlone(id) ?? true }
+    func liveFollowers() -> (follow: Int, visible: Int) { resolve()?.liveFollowers() ?? (0, 0) }
+    var knownAppMinimums: [String: CGSize] { resolve()?.knownAppMinimums ?? [:] }
+    func toolbarsRest(_ ids: [HostID]) async -> String? { await resolve()?.toolbarsRest(ids) }
+    func focusPages(_ ids: [HostID]) async -> String? { await resolve()?.focusPages(ids) }
+    func slide(_ id: HostID, side: PaneSide) async -> Bool { await resolve()?.slide(id, side: side) ?? false }
+}
+
+extension Shell {
+    // The engine's hooks to the session (the Safari windows it asks for, its loading steps, its events): when the
+    // session is made with an engine already there, or when the engine starts after the session.
+    func wire(_ host: HostEngine, to session: HostedSession) {
+        // (At quit the session waits for a copy's answer no longer than the engine's own quit does: its quitWait.)
+        session.options.quitWait = host.options.quitWait
+        host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) }
+        host.requestRoleWindow = { [weak session] profile, role in await session?.requestSafariWindow(profile, role: role) }
+        host.hostedWindows = { [weak session] list in session?.hostedWindows(list) }
+        host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
+        host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
+        host.safariFocus = { [weak session] profile, id in await session?.safariFocus(profile, id) ?? false }
+        host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
+        host.loading = { [weak session] id in session?.loading(id) }
+        host.hostedWindow = { [weak session] number in session?.hosted(number) }
+        host.onMinimum = { [weak session] width in session?.minimum(width) }
+        host.onAppMinimums = { [weak session] in session?.appMinimumsChanged() }
+        host.cover = { [weak session] number in session?.cover(number) }
+        host.others = { [weak session] number in session?.others(number) }
+        host.front = { [weak session] read in session?.front(read) }
+        host.onRoute = { [weak session] id, route in session?.routeChanged(id, route) }
+        host.onAsking = { [weak session] id in session?.appAsking(id) }
+        // (All panes active: the apps kept active, for the pane click tap.)
+        host.onKeptActive = { [weak self] pids in self?.marginWindows?.keptActiveChanged(pids) }
+        let before = host.onEvent
+        // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
+        host.onWake = { [weak self] in self?.soon() }
+        host.onEvent = { [weak self, weak session] event in
+            before?(event)
+            session?.hostEvent(event)
+            // A host just shown: the engine's poll every 0.1 s for the next two seconds, beside the shell's own (macOS's
+            // own full-screen change can still finish after the show: a window that ends up in no Space, or off the
+            // screen, is brought back at the first read: 2026-11-17, check10).
+            if case .shown = event { self?.pollAfterShow() }
+            // Any event of the engine's: the shell's own read, which then goes on every `restPoll` while something is
+            // hosted. (Found on the real screen, 2026-11-17: with only apps hosted and no browser's copy linked nothing
+            // had started the reads, so the poll that brings a strayed window back, lets another window in front and
+            // keeps Margin's keys never ran.)
+            self?.soon()
+        }
+    }
+
+    // (The 20 polls at 0.1 s after each show are the schedule's now: a show is activity, its looks come every 0.1 s for
+    // 2 s through the shell's own read, one run of them however many shows.)
+    func pollAfterShow() { soon() }
+
+    // The source Margin's windows draw, and the session that hosts what they show: the library's, made once.
+    func makeHostedSource() -> MarginWindowSource {
+        // (A theme's settings changed in Margin's window, its sidebar's width, last across launches: the app's defaults.)
+        let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() }, keeper: options.harness ? nil : .appDefaults,
+                                           settingsKeeper: options.harness ? nil : .appDefaults)
+        hostedSettings = profiles
+        // The engine looked up at each call: Margin's window (and so this session) is made when Margin is opened by hand,
+        // before the private calls are checked and the engine started (seen 2026-11-15: the session kept the stand-in).
+        let engine = LateHostEngine { [weak self] in self?.host }
+        let session = HostedSession(library: library, engine: engine, links: ShellHostedLinks(shell: self), options: options.hostedOptions ?? HostedSession.Options())
+        if let name = UserDefaults.standard.string(forKey: "MarginHostedSafari"), !options.harness { session.options.safariBundles.insert(name) }
+        // (`defaults write com.unibox.margin MarginResumeLast -bool NO`: the launcher at every launch, the last item never shown by itself.)
+        if !options.harness, !HostedSession.resumesLast(setting: UserDefaults.standard.object(forKey: HostedSession.resumeKey)) {
+            session.options.resumesLast = false
+            Diagnostics.note("hosted: the last item isn't shown at launch (\(HostedSession.resumeKey) is NO)")
+        }
+        session.appName = { [weak self] id in self?.installedAppName(id) }
+        hosted = session
+        session.marginActive = { NSApp.isActive }
+        session.activateMargin = { NSApp.activate() }
+        if let host { wire(host, to: session); prepareBrowserOnce() }
+        openApp = { [weak session] id in session?.openApp(id, windowId: nil) }
+        // The first run, nothing imported: a space to start in, named by the person in the UI's editor.
+        if library.spaces().isEmpty {
+            let out = library.perform("createSpace", ["name": "Personal", "emoji": "🏠", "color": "#6c5ce7"])
+            session.firstSpace = (out.result as? JSONObject)?["spaceId"] as? String
+            Diagnostics.note("hosted: the library is empty (nothing imported): a first space made, for the person to name")
+        }
+        Diagnostics.note("Margin's window: the library's \(library.spaces().count) space(s), \(library.items().count) item(s); hosting \(host == nil ? "off (no host engine)" : "on")")
+        return LibraryWindowSource(library: library, session: session, profileSource: profiles)
+    }
+
+    // The person's default browser made ready out of sight (HostedSession.prepareBrowser), once both the session and the
+    // engine are up (either may come first), in the background: Margin's own window isn't held up for it.
+    func prepareBrowserOnce() {
+        guard let session = hosted, host != nil, !browserPrepared else { return }
+        browserPrepared = true
+        // (`defaults write com.unibox.margin MarginPrepareBrowser -bool NO`: no browser started or asked for a window at
+        // launch; the first web item opens it then. The on-screen checks that use only their own test apps set it.)
+        if !options.harness, UserDefaults.standard.object(forKey: "MarginPrepareBrowser") as? Bool == false {
+            session.preparationOver() // (the item shown last isn't held for it)
+            return Diagnostics.note("hosted: browser not prepared at launch (MarginPrepareBrowser is NO)")
+        }
+        let setting = UserDefaults.standard.string(forKey: DefaultBrowser.key)
+        Task { await session.prepareBrowser(setting: setting) }
+    }
+
+    // Margin's windows joined to the session: which window is which, their page areas, the first run's editor.
+    func joinHosted(_ windows: MarginWindows) {
+        guard let session = hosted else { return }
+        // (A Margin window brought in front takes back its item from another one; one closed forgets its card.)
+        windows.onKey = { [weak session] id in session?.focused(id) }
+        windows.onClosing = { [weak session] controller, done in
+            guard let session else { return done() }
+            session.windowClosing(controller, then: done)
+        }
+        windows.onClosed = { [weak session] id in session?.windowClosed(id) }
+        session.window = { [weak windows] id in
+            guard let windows else { return nil }
+            if let id { return windows.controllers.first { $0.id == id } }
+            return windows.front
+        }
+        session.windowIds = { [weak windows] in windows?.controllers.map(\.id) ?? [] }
+        windows.onPageRect = { [weak session] controller, _ in session?.pageRectChanged(controller) }
+        windows.onReady = { [weak session] controller in
+            guard let session, let space = session.firstSpace else { return }
+            session.firstSpace = nil
+            controller.push(#"{"type":"command","name":"edit-space","spaceId":"# + (jsonString(space) ?? "\"\"") + "}")
+        }
+        windows.onLeavingFullScreen = { [weak session] controller in session?.leavingFullScreen(controller) }
+        windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
+        windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
+        windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onPaneClick = { [weak session] controller, result in session?.paneClicked(controller, result) }
+        windows.onPaneSlide = { [weak session] controller, item, side in session?.slidePane(item, side: side, in: controller) }
+        // All panes active (PanesActive.swift): the split and the front app to the engine, its front process to the tap.
+        windows.onPanesActive = { [weak self] scene in self?.host?.panesShown(scene) }
+        windows.onFrontApp = { [weak self] pid in self?.host?.frontChanged(pid) }
+        windows.paneFronting = { [weak self] in self?.host?.paneFronting }
+        windows.paneDelivery = { [weak self] in self?.host?.paneDelivery }
+        windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
+        windows.onCardRect = { [weak session] controller in session?.cardRectChanged(controller) }
+        windows.onPanes = { [weak session] controller in session?.pageRectChanged(controller) }
+        windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
+        windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
+        windows.onSidebarResizing = { [weak session] controller, on, divider in session?.sidebarResizing(controller, on, divider: divider) }
+        windows.onCounts = { [weak self] _ in self?.updateHostedKeys() }
+        windows.onNarrowed = { [weak self] _ in self?.host?.marginNarrowed() }
+        windows.apps = { [weak self] in self?.appsJSON ?? "null" }
+        windows.holdsMenu = { [weak session] in session?.startupShown == true }
+    }
+
+    // The installed app's name as the catalog read it (Finder's).
+    func installedAppName(_ bundleId: String) -> String? {
+        guard let json = appsJSON, let list = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [JSONObject] else { return nil }
+        return list.first { $0["bundleId"] as? String == bundleId }?["name"] as? String
+    }
+
+    // ---- Margin's keys while hosting (Shortcuts.swift ShortcutSet.hostedActive) ----
+
+    // Held while Margin or an app it hosts is in front (with a Margin window on the current Space), let go otherwise;
+    // the combinations the first linked copy's Settings say, else the defaults. The quit guard (⌘Q, ⌥⌘Q) by the same
+    // rule, while Margin asks before it quits (ShellQuit.swift).
+    func updateHostedKeys() {
+        let own = ProcessInfo.processInfo.processIdentifier
+        let windows = marginWindows?.controllers ?? []
+        let hostedPids = Set(host?.hosts.values.map(\.pid) ?? [])
+        let here = options.harness ? !windows.isEmpty : windows.contains { $0.window.isVisible && $0.window.isOnActiveSpace }
+        let active = ShortcutSet.hostedActive(frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids, marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
+        if active {
+            let said = links.keys.sorted().lazy.compactMap { self.links[$0] }.first { $0.connection.isUp && $0.keys != nil }?.keys
+            // (A hosted app in front: the sidebar key stays with it, and ⌘L, ⌘D, ⌘1–9… unless it's a browser (Safari's
+            // window, Chrome's or Edge's); a numbered key with no space or row behind it in the window the keys go to
+            // (runHosted's) isn't held, so the app in front gets the press.)
+            let front = host?.hosts.values.first { $0.pid == apps.frontPid }
+            let browser = front.map { ShortcutSet.hostIsBrowser(target: $0.target, safariWindow: $0.safariWindow, bundles: Set(options.bundleIds.values)) } ?? false
+            let target = hosted?.hostingWindow.flatMap { id in windows.first { $0.id == id } } ?? marginWindows?.front
+            let counts = target?.rowCounts
+            shortcuts.rebind(ShortcutSet.held(ShortcutSet.bindings(from: said ?? [:]), marginInFront: apps.frontPid == own, browser: browser,
+                                              spaces: counts?.spaces, items: counts?.items))
+        }
+        // (Which app took the front is said by its bundle id: 2026-11-17's log let go and held the keys again and again
+        // and couldn't say which app came between.)
+        if active != shortcuts.isActive {
+            let front = active ? "" : apps.frontPid.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }.map { " (\($0))" } ?? ""
+            Diagnostics.note("Margin's keys \(active ? "held: Margin or an app it hosts is in front" : "let go: another app is in front\(front)")")
+        }
+        shortcuts.set(active: active)
+        let guards = ShortcutSet.guardsQuit(asks: options.asksBeforeQuit(), quitting: hostQuitting || quitsAsked > 0, frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids,
+                                            marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
+        if guards != shortcuts.guardsQuit { Diagnostics.note("⌘Q \(guards ? "is Margin's first: it asks before it quits" : "let go: the front app's own")") }
+        shortcuts.setQuitGuard(active: guards)
+        let appKeys = ShortcutSet.guardsAppKeys(quitting: hostQuitting || quitsAsked > 0, frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids,
+                                                marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
+        if appKeys != shortcuts.guardsAppKeys { Diagnostics.note("a hosted app's ⌘W, ⌘M, ⌘H, ⌃⌘F \(appKeys ? "are Margin's while it's in front" : "let go")") }
+        shortcuts.setAppKeyGuard(active: appKeys)
+        // (Its prompt up and neither Margin nor an app it hosts in front any more: never left up.)
+        if !active, quitPrompt != nil { quitPrompt?.choose(.left) }
+    }
+
+    // A key of Margin's while hosting: to the Margin window hosting (else the front one), whose page does it as its own
+    // (the palette; the sidebar; the next or previous item of its space, an app or a web item, shown as a sidebar pick;
+    // the next or previous space: overlay.ts), or a new Margin window.
+    func runHosted(_ command: AppCommand, isRepeat: Bool) {
+        guard let windows = marginWindows else { return }
+        let w = hosted?.hostingWindow.flatMap { id in windows.controllers.first { $0.id == id } } ?? windows.front
+        // (The start screen up: nothing of Margin's usable yet, its page ignores its keys too.)
+        if hosted?.startupShown == true { return Diagnostics.note("\(command.rawValue): not now, the start screen is up") }
+        // (Each press said, never a held key's repeats: whether a key reached Margin at all is then in its log, 2026-11-19:
+        // ⌥⌘↓ after Journal's Touch ID prompt did nothing and the log couldn't say whether Margin heard it.)
+        if !isRepeat { Diagnostics.note("Margin's key: \(command.rawValue), the front app \(apps.frontPid.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier } ?? "unread")") }
+        switch command {
+        case .newWindow:
+            windows.open()
+        case .palette:
+            Diagnostics.note("the palette's key: sent to Margin's window \(w?.id ?? 0)")
+            w?.push(#"{"type":"command","name":"palette"}"#)
+        case .toggleSidebar:
+            w?.push(#"{"type":"command","name":"toggle-sidebar"}"#)
+        case .nextTab, .prevTab, .nextSpace, .prevSpace:
+            // (Tab keys: the picks they make in that window are a cycle's, an app not running yet held a moment first.)
+            if command == .nextTab || command == .prevTab, let id = w?.id { hosted?.cycled(windowId: id) }
+            w?.push(#"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
+        case .copyUrl, .focusAddress, .togglePin, .reopenArchived, .littleArc, .addSplit:
+            w?.push(#"{"type":"command","name":"\#(command.rawValue)"}"#)
+        case .space1, .space2, .space3, .space4, .space5, .space6, .space7, .space8, .space9:
+            if let index = command.spaceNumber { w?.push(#"{"type":"command","name":"space-index","index":\#(index)}"#) }
+        case .item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8, .item9:
+            if let index = command.itemNumber { w?.push(#"{"type":"command","name":"item-index","index":\#(index)}"#) }
+        }
+        w.map { hostedKeysRun.append("\(command.rawValue) → \($0.id)") }
+        if hostedKeysRun.count > 50 { hostedKeysRun.removeFirst(hostedKeysRun.count - 50) }
+    }
+
+    // A hosted app's own key Margin took (Shortcuts.swift AppKey), for the window of the front app that has its keys:
+    // the one Margin hosts gets what Margin's own menu does (⌘W: Close Tab, the item shown in that Margin window, as the
+    // sidebar's close does) or nothing (the rest would take it out of Margin, or close every tab of a Safari window);
+    // another window of its app's (a meeting, a draft, Safari's Settings) is closed by ⌘W and minimized by ⌘M as there.
+    // Its keyboard's window unread (Accessibility busy): nothing, said, rather than close what the person didn't mean.
+    func runAppKey(_ key: AppKey) {
+        guard let host, let pid = apps.frontPid, host.hosts.values.contains(where: { $0.pid == pid }) else { return }
+        let started = Diagnostics.now()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let target = await host.keyWindow(pid: pid)
+            var done: String
+            switch (key, target) {
+            case (.closeTab, .hosted(let id)) where id.safariRole == .card:
+                // (The preview card has the keys: the card closes, never the item under it, HostedPeek.swift.)
+                let w = self.hosted?.hostingWindow ?? self.marginWindows?.front?.id
+                done = self.hosted?.closeCardForKey(windowId: w) == true ? "the card closed in Margin's window \(w ?? 0)" : "the card's window, no card open: nothing"
+            case (.closeTab, .hosted(let id)):
+                let w = self.hosted?.hostingWindow.flatMap { n in self.marginWindows?.controllers.first { $0.id == n } } ?? self.marginWindows?.front
+                if let w { w.run(.closeTab); done = "Close Tab in Margin's window \(w.id) (\(id))" } else { done = "no Margin window: nothing" }
+            case (.closeTab, .other(let n)):
+                done = await host.closeOther(pid: pid, window: n) ? "its window \(n) closed (its close button)" : "its window \(n) has no close button Accessibility can press: nothing"
+            case (.minimize, .other(let n)):
+                done = await host.minimizeOther(pid: pid, window: n) ? "its window \(n) minimized" : "its window \(n) didn't minimize: nothing"
+            case (_, .unread):
+                done = "the window with its keys unread: nothing"
+            case (_, .hosted):
+                done = "in the window Margin hosts: nothing (it would take it out of Margin)"
+            case (_, .other(let n)):
+                done = "in its window \(n): nothing (it would take it out of Margin)"
+            }
+            Diagnostics.note("\(key.name) in a hosted app: \(done), \(Diagnostics.ms(since: started))")
+            self.hostedKeysRun.append("\(key.name) → \(done)")
+            if self.hostedKeysRun.count > 50 { self.hostedKeysRun.removeFirst(self.hostedKeysRun.count - 50) }
+        }
+    }
+}

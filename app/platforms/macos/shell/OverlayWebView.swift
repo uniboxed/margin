@@ -1,5 +1,5 @@
 // The overlay's page (dist/app/overlay.html, built from app/shared/host/: the UI
-// runtime with the app's host, extension/ui/host-app.ts) in a web view, and
+// runtime with the app's host, app/shared/ui/host-app.ts) in a web view, and
 // its line to the app.
 //
 // OverlayWebView takes a press without first becoming key (WebKit takes no
@@ -33,10 +33,41 @@ final class OverlayWebView: WKWebView {
             && event.charactersIgnoringModifiers?.lowercased() == "r"
     }
 
+    // A field of Margin's has the keys while Margin isn't the active app (its panel key without it: MarginWindowController
+    // `takeKeys`): the menu bar is the hosted app's then, so the editing keys (⌘A, ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z) are sent
+    // from here as Margin's own Edit menu sends them (to the first responder: this web view, then its window's undo).
+    var takesEditKeys: () -> Bool = { false }
+
+    static func editAction(_ event: NSEvent) -> Selector? {
+        guard event.type == .keyDown else { return nil }
+        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        switch (event.charactersIgnoringModifiers?.lowercased(), mods) {
+        case ("a", .command): return #selector(NSText.selectAll(_:))
+        case ("c", .command): return #selector(NSText.copy(_:))
+        case ("v", .command): return #selector(NSText.paste(_:))
+        case ("x", .command): return #selector(NSText.cut(_:))
+        case ("z", .command): return Selector(("undo:"))
+        case ("z", [.command, .shift]): return Selector(("redo:"))
+        default: return nil
+        }
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if Self.isBrowserReload(event), reloadBrowserTab?(event.isARepeat) == true { return true }
+        // (Up its own window's responder chain, from its first responder: never another window's, the key one being Margin's
+        // panel only by the window server's word.)
+        if let action = Self.editAction(event), takesEditKeys(), (window?.firstResponder ?? self).tryToPerform(action, with: self) { return true }
         return super.performKeyEquivalent(with: event)
     }
+
+    // Whether a click on it makes its panel key (Margin's panel becomes key only if needed: `becomesKeyOnlyIfNeeded`).
+    // WebKit's own answer is yes, and AppKit's left-mouse-down handling of a non-activating panel then keyed Margin's
+    // panel (`_NSShowNonActivatingKeyWindow`, whatever its `canBecomeKey`) and took Margin for active while the hosted app
+    // stayed the front one (the screen run of 2026-11-25, its DIAG lines; docs/SIDEBAR-PRESS.md). Its window's answer
+    // (MarginWindowController: the core's `keys_stay`, an app shown and no field of Margin's: no; anything else: yes, as
+    // before). A field the press focuses takes the keys by the page's word (`takeKeys`), not by the click.
+    var needsKeyForPress: () -> Bool = { true }
+    override var needsPanelToBecomeKey: Bool { needsKeyForPress() }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func shouldDelayWindowOrdering(for event: NSEvent) -> Bool { true }
@@ -68,10 +99,31 @@ final class OverlaySchemeHandler: NSObject, WKURLSchemeHandler {
     private static let types = ["html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8", "css": "text/css; charset=utf-8"]
 
     let root: URL
-    init(root: URL) { self.root = root }
+    // The pictures spaces' backgrounds name (M2.9 step 7: BackgroundStore.swift), served at `/background/<id>`.
+    let backgrounds: BackgroundStore?
+    init(root: URL, backgrounds: BackgroundStore? = nil) {
+        self.root = root
+        self.backgrounds = backgrounds
+    }
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         guard let url = task.request.url else { return task.didFailWithError(URLError(.badURL)) }
+        // A space's picture: by its id alone (64 hex characters, checked by the core, the file looked up there; no path
+        // made of anything in the address), its type the stored one's. A picture is its bytes' hash, so it never changes.
+        if url.host == "app", url.path.hasPrefix("/background/") {
+            let id = String(url.path.dropFirst("/background/".count))
+            guard task.request.httpMethod == nil || task.request.httpMethod == "GET", url.query == nil,
+                  let found = backgrounds?.file(id: id), let data = try? Data(contentsOf: found.url) else {
+                task.didReceive(HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: ["Content-Security-Policy": Self.policy])!)
+                return task.didFinish()
+            }
+            task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [
+                "Content-Type": found.mime, "Content-Length": String(data.count), "Content-Security-Policy": Self.policy,
+                "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+            ])!)
+            task.didReceive(data)
+            return task.didFinish()
+        }
         let name = url.path.split(separator: "/").last.map(String.init) ?? ""
         let file = root.appendingPathComponent(name)
         guard url.host == "app", url.path == "/" + name, !name.hasPrefix("."), let type = Self.types[file.pathExtension],
@@ -89,7 +141,7 @@ final class OverlaySchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {}
 }
 
-// What an overlay's page asks of the app (OverlayController answers).
+// What the page asks of the app (MarginWindowController answers).
 protocol OverlayPageOwner: AnyObject {
     // The reply to { op: 'hello' }: the window, the state, the theme (JSON).
     func pageHello() -> String
@@ -131,6 +183,14 @@ final class OverlayBridge: NSObject, WKScriptMessageHandlerWithReply {
                     replyHandler(nil, "no answer from Margin: \(error)")
                 }
             }
+        case "appearance":
+            // The page asks for WebKit's system appearance while something it draws uses the system's materials (a
+            // theme whose theme.json says `systemMaterials`: Liquid Glass; Edit Theme Color's panel while it's open),
+            // before that one's style sheet is made, and turns it off again (app/shared/host/materials.ts). The
+            // answer: on.
+            let said = OverlaySystemAppearance.set(body["system"] as? Bool == true, for: webView)
+            OverlaySystemAppearance.note(said)
+            replyHandler(said.hasPrefix("on"), nil)
         default:
             owner.pageSaid(op, body)
             replyHandler(nil, nil)
@@ -155,18 +215,19 @@ final class OverlayPages {
      {"trigger":{"url-filter":"^ftp:"},"action":{"type":"block"}}]
     """#
 
-    init(root: URL) {
+    init(root: URL, backgrounds: BackgroundStore? = nil) {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.suppressesIncrementalRendering = true
-        configuration.setURLSchemeHandler(OverlaySchemeHandler(root: root), forURLScheme: OverlaySchemeHandler.scheme)
+        configuration.setURLSchemeHandler(OverlaySchemeHandler(root: root, backgrounds: backgrounds), forURLScheme: OverlaySchemeHandler.scheme)
         configuration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: "margin")
         configuration.preferences.isElementFullscreenEnabled = false
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        // Issue #14, both off unless set (`defaults write com.unibox.margin <name> -bool YES`, then Margin restarted):
-        // MarginOverlayFullFrameRate draws the overlay at the display's rate (WebKit holds an app's web view near
-        // 60 fps), MarginFrameProbe logs how often the overlay really draws while something moves. Measured first.
-        if UserDefaults.standard.bool(forKey: "MarginOverlayFullFrameRate") {
+        // Issue #14: Margin's own web views draw at the display's rate (WebKit holds an app's web view near 60 fps;
+        // Safari and other apps keep their own setting). On by default since 2026-11-16; `defaults write
+        // com.unibox.margin MarginOverlayFullFrameRate -bool NO` (then Margin restarted) keeps WebKit's 60 fps.
+        // MarginFrameProbe (off unless set) logs how often the page really draws while something moves.
+        if UserDefaults.standard.object(forKey: "MarginOverlayFullFrameRate") as? Bool ?? true {
             Diagnostics.note("overlay frame rate: \(OverlayFrameRate.uncap(configuration.preferences))")
         }
         if UserDefaults.standard.bool(forKey: "MarginFrameProbe") {
@@ -270,4 +331,51 @@ enum OverlayFrameRate {
       for (const type of ['transitionstart', 'animationstart']) document.addEventListener(type, () => sample(type.replace('start', '')), true);
     })();
     """#
+}
+
+// The system's own materials in Margin's page (Liquid Glass's: `-apple-visual-effect` in its CSS, theme.json
+// `systemMaterials`; Edit Theme Color's glass). WebKit only knows that property in a web view with "system
+// appearance" on, a private switch (docs/PRIVATE-APIS.md): `-[WKWebView _setUseSystemAppearance:]`, per view and
+// live. It's on only while the page asks for it (the theme drawn says `systemMaterials`, or Edit Theme Color's panel
+// is open: its glass, M2.9 step 5), since it changes more than the property: links take AppKit's colours, and in Dark
+// Mode `color-scheme: light` is no longer honoured (a light-only theme's own controls, scroll bars and `light-dark()`
+// would turn dark: Neubrutalism's Settings; DECISIONS.md "Liquid Glass", "M2.9 step 5 spike"). The page asks before it
+// makes a style sheet that uses them (app/shared/host/materials.ts, the `appearance` message). Each step is checked,
+// and anything missing leaves the switch off: the theme then draws its plain fills and the picker its solid panel
+// (`@supports (-apple-visual-effect: …)` is false). `defaults write com.unibox.margin MarginSystemAppearance -bool NO`
+// keeps it off for everything.
+enum OverlaySystemAppearance {
+    static let setter = "_setUseSystemAppearance:"
+    static let getter = "_useSystemAppearance"
+    nonisolated static var allowed: Bool { UserDefaults.standard.object(forKey: "MarginSystemAppearance") as? Bool ?? true }
+
+    /// Turns a web view's system appearance on or off. What happened, for the log: "on", "off", or "off: why".
+    @MainActor static func set(_ on: Bool, for webView: WKWebView, allowed: Bool = allowed) -> String {
+        let cls: AnyClass = WKWebView.self
+        let set = NSSelectorFromString(setter)
+        let get = NSSelectorFromString(getter)
+        // (A BOOL is `B` on Apple silicon, `c` on Intel.)
+        guard webView.responds(to: set), webView.responds(to: get),
+              let setMethod = class_getInstanceMethod(cls, set), let getMethod = class_getInstanceMethod(cls, get),
+              let setTypes = method_getTypeEncoding(setMethod).map({ String(cString: $0) }),
+              let getTypes = method_getTypeEncoding(getMethod).map({ String(cString: $0) }),
+              ["v20@0:8B16", "v20@0:8c16"].contains(setTypes), ["B16@0:8", "c16@0:8"].contains(getTypes) else {
+            return "off: WebKit has no system appearance switch here"
+        }
+        typealias Set = @convention(c) (AnyObject, Selector, Bool) -> Void
+        typealias Get = @convention(c) (AnyObject, Selector) -> Bool
+        let read = { unsafeBitCast(method_getImplementation(getMethod), to: Get.self)(webView, get) }
+        let want = on && allowed
+        if read() != want { unsafeBitCast(method_getImplementation(setMethod), to: Set.self)(webView, set, want) }
+        guard read() == want else { return "off: WebKit's system appearance didn't turn \(want ? "on" : "off")" }
+        return want ? "on" : on ? "off: MarginSystemAppearance is NO" : "off"
+    }
+
+    // Logged when it changes, not for every theme drawn.
+    @MainActor private static var said = "off"
+    @MainActor static func note(_ now: String) {
+        guard now != said else { return }
+        said = now
+        Diagnostics.note("overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): \(now)")
+    }
 }

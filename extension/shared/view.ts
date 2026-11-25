@@ -1,12 +1,29 @@
 // Pure view derivation shared by the content script and the new-tab page.
 // No browser APIs: also importable from node for tests.
-import type { Pin, State } from '../../types/margin';
+import type { Favorite, Pin, State } from '../../types/margin';
+import { appIcon, appOfItem } from './apps.ts';
+import type { InstalledApp } from './apps.ts';
+import { boundElsewhere, favoriteScopeOf } from './pinned-rules.ts';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
 
 // Keep in sync with state/model.ts normalizeUrl.
+// Each address worked out once (a URL parse is the dear part of a sidebar's build: every pin and favorite is matched
+// against every tab), the answers kept until there are this many, then dropped all at once.
+const NORMALIZED_KEPT = 4000;
+const normalized = new Map<string, string>();
 function normalizeUrl(url: string | null | undefined) {
+  if (typeof url !== 'string') return parseUrl(url);
+  let out = normalized.get(url);
+  if (out === undefined) {
+    if (normalized.size >= NORMALIZED_KEPT) normalized.clear();
+    out = parseUrl(url);
+    normalized.set(url, out);
+  }
+  return out;
+}
+function parseUrl(url: string | null | undefined) {
   try {
     const u = new URL(url as string); // (none: it throws, and that's caught)
     const path = u.pathname === '/' ? '' : u.pathname;
@@ -45,7 +62,8 @@ function activeSpaceId(state: State, windowId: number | null | undefined) {
 // top of the list, highlighted, at once (Arc), titled with what was asked for
 // (`title`, `url`); the tab in front plain, "+ New Tab" not lit (seen
 // 2026-11-08: it only lit partly until the page had loaded).
-function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | string | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
+// `pinning`: a pin with no tab being opened (ui/intents.ts), highlighted at once and whole, as a switch's tab is.
+function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null, pinning = null }: { newTabPending?: boolean, switchingTo?: number | string | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null, pinning?: string | null } = {}) {
   if (typeof switchingTo === 'string') switchingTo = liveTabId(state, switchingTo) ?? switchingTo;
   const has = (id: string) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
@@ -68,14 +86,15 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
       return active === t.active && !isAway ? t : { ...t, active, ...(isAway ? { away: true } : {}) };
     });
   const target = goingKept ? switchingTo : switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
+  const pinFirst = target == null && pinning != null && state.pins?.some((p) => p.id === pinning && p.spaceId === spaceId) ? pinning : null;
   const front = shown.find((t) => t.active);
-  const openingRow = opening && target == null && (front == null || front.id === opening.from)
+  const openingRow = opening && target == null && pinFirst == null && (front == null || front.id === opening.from)
     ? { id: OPENING_ID, windowId, title: String(opening.title ?? ''), url: String(opening.url ?? ''), favIconUrl: '', active: true, opening: true, status: 'loading', order: Infinity, index: Infinity, lastActive: Date.now() }
     : null;
   const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isPlaceholderPage(t.url));
   const windowTabs = shown
     .map((t) => {
-      if (openingRow) return t.active ? { ...t, active: false } : t;
+      if (openingRow || pinFirst != null) return t.active ? { ...t, active: false } : t;
       // Switching: the highlight moves at once and whole (Arc), the tab still
       // on screen plain; the new page's sidebar then looks the same.
       if (target != null) return t.id === target ? { ...t, active: true } : t.active ? { ...t, active: false } : t;
@@ -88,52 +107,201 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   // shown in every window showing the space, not open (`kept`), in their place.
   const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId).map((k) => ({ ...k, kept: true, active: k.id === target }));
   const folders = (state.folders ?? []).filter((f) => f.spaceId === spaceId);
+  const folderById = new Map(folders.map((f) => [f.id, f]));
   const folderIds = new Set(folders.map((f) => f.id));
+  const parentOfFolder = (f: { id: string, parentId?: string }) => {
+    if (!f.parentId || f.parentId === f.id || !folderIds.has(f.parentId)) return null;
+    const seen = new Set<string>([f.id]);
+    let cur = folderById.get(f.parentId);
+    while (cur) {
+      if (seen.has(cur.id)) return null;
+      seen.add(cur.id);
+      cur = cur.parentId ? folderById.get(cur.parentId) : undefined;
+    }
+    return f.parentId;
+  };
+  // Favorites in the active scope (global across Spaces by default, or scoped per profile):
+  // bound to live tabs via `favoriteId` first (surviving sub-navigation), else URL match.
+  const favScope = favoriteScopeOf(state, spaceId);
+  const allOpenTabs = shown;
+  const allKeptTabs = Object.values(state.keptTabs ?? {});
+  type ShownFavorite = Favorite & {
+    pos: number, tabId: number | null, active: boolean, behind: boolean, away: boolean,
+    drifted: boolean, rootUrl: string, favIconUrl: string,
+  };
+  const boundFavTabIds = new Set<number>();
+  const boundFavKeptIds = new Set<string>();
+  // The tabs by what binds them, each list in the tabs' order: worked out once, not once per favorite or pin.
+  const group = <T, K>(list: T[], keyOf: (t: T) => K | null | undefined) => {
+    const out = new Map<K, T[]>();
+    for (const t of list) { const k = keyOf(t); if (k == null) continue; const at = out.get(k); if (at) at.push(t); else out.set(k, [t]); }
+    return out;
+  };
+  const favs = state.favorites ?? [];
+  const openByFavorite = favs.length ? group(allOpenTabs, (t) => t.favoriteId) : new Map();
+  const openByUrl = favs.length ? group(allOpenTabs, (t) => (!t.favoriteId && !t.pinnedBy ? normalizeUrl(t.url) : null)) : new Map();
+  const keptByFavorite = favs.length ? group(allKeptTabs, (k) => k.favoriteId) : new Map();
+  const favorites: ShownFavorite[] = favs
+    .filter((f) => (f.scope || 'global') === favScope)
+    .map((f, i) => ({ f, i }))
+    .sort((a, b) => posOf(a.f, a.i) - posOf(b.f, b.i))
+    .map(({ f, i }) => {
+      const key = normalizeUrl(f.url);
+      const sticky = openByFavorite.get(f.id) ?? [];
+      const matches: typeof allOpenTabs = sticky.length ? sticky : openByUrl.get(key) ?? [];
+      const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
+      if (tab?.id != null) boundFavTabIds.add(tab.id);
+      for (const k of keptByFavorite.get(f.id) ?? []) boundFavKeptIds.add(k.id);
+      const drifted = Boolean(tab && normalizeUrl(tab.url) !== key);
+      return {
+        ...f,
+        url: tab?.url || f.url,
+        pos: posOf(f, i),
+        tabId: tab?.id ?? null,
+        active: !!tab?.active || !!(goingKept && (goingKept.favoriteId === f.id || normalizeUrl(goingKept.url) === key)),
+        behind: !!tab?.behind,
+        away: !!tab?.away,
+        drifted,
+        rootUrl: f.url,
+        favIconUrl: tab?.favIconUrl ?? '',
+      };
+    });
+  const favUrls = new Set(favorites.map((f) => normalizeUrl(f.rootUrl)));
+
   // A pin as shown: in its folder (if that's still there), bound to the tab it's open in, if any.
-  type ShownPin = Omit<Pin, 'folderId'> & { folderId: string | null, pos: number, tabId: number | null, active: boolean, behind: boolean, away: boolean, favIconUrl: string };
+  // Sticky pin binding: match tabs with `pinnedBy === p.id` first (even if navigated away from root URL),
+  // falling back to URL match for tabs not bound to another pin.
+  type ShownPin = Omit<Pin, 'folderId'> & {
+    folderId: string | null, pos: number, tabId: number | null, active: boolean, behind: boolean, away: boolean,
+    drifted: boolean, rootUrl: string, favIconUrl: string,
+  };
   const bound = new Map<string, ShownPin>(); // pin id → the pin as shown
+  const boundTabIds = new Set<number>(boundFavTabIds);
+  const boundKeptIds = new Set<string>(boundFavKeptIds);
+  const spaceByPin = group(spaceTabs, (t) => t.pinnedBy);
+  const spaceByUrl = group(spaceTabs, (t) => (!t.pinnedBy && !t.favoriteId ? normalizeUrl(t.url) : null));
+  const keptByPin = group(kept, (k) => k.pinnedBy);
   state.pins.forEach((p, i) => {
     if (p.spaceId !== spaceId) return;
     const key = normalizeUrl(p.url);
-    // Open in more than one tab: the one shown or being switched to, else this window's.
-    const matches = spaceTabs.filter((t) => normalizeUrl(t.url) === key);
+    const sticky = spaceByPin.get(p.id) ?? [];
+    const matches = sticky.length ? sticky : spaceByUrl.get(key) ?? [];
     const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
+    if (tab?.id != null) boundTabIds.add(tab.id);
+    for (const k of keptByPin.get(p.id) ?? []) boundKeptIds.add(k.id);
+    const drifted = Boolean(tab && normalizeUrl(tab.url) !== key);
     bound.set(p.id, {
       ...p,
+      url: tab?.url || p.url,
       folderId: p.folderId && folderIds.has(p.folderId) ? p.folderId : null, // its folder gone: loose
       pos: posOf(p, i),
-      tabId: tab?.id ?? null, active: !!tab?.active || !!(goingKept && normalizeUrl(goingKept.url) === key), behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
+      tabId: tab?.id ?? null,
+      active: pinFirst != null ? p.id === pinFirst : !!tab?.active || !!(goingKept && (goingKept.pinnedBy === p.id || normalizeUrl(goingKept.url) === key)),
+      behind: !!tab?.behind,
+      away: !!tab?.away,
+      drifted,
+      rootUrl: p.url,
+      favIconUrl: tab?.favIconUrl ?? '',
     });
   });
   const byPos = (a: { pos: number }, b: { pos: number }) => a.pos - b.pos;
-  const loose = [...bound.values()].filter((p) => !p.folderId);
-  // The pinned area, in order (state/model.ts pinOrder): folders, with their
-  // pins, and the pins in none. A closed folder still shows the pin of the
-  // tab shown or being switched to (`peek`), so the highlight stays visible.
-  const pinned = [
-    ...folders.map((f, i) => {
-      const inside = [...bound.values()].filter((p) => p.folderId === f.id).sort(byPos);
-      return { kind: 'folder' as const, id: f.id, name: f.name, open: f.open !== false, pos: posOf(f, i), pins: inside, peek: f.open === false ? inside.filter((p) => p.active || p.behind) : [] };
-    }),
-    ...loose.map((p) => ({ kind: 'pin' as const, ...p })),
-  ].sort(byPos);
+  // Build nested folder tree + pre-order flattened rows (`pinnedFlat`) with depth (0..3).
+  type ShownPinItem = { kind: 'pin', depth: number } & ShownPin;
+  type ShownFolder = {
+    kind: 'folder', id: string, name: string, open: boolean, pos: number,
+    parentFolderId: string | null, depth: number, pins: ShownPin[], peek: ShownPin[],
+    shownFlat?: (ShownFolder | ShownPinItem)[],
+  };
+  type TreeFolder = ShownFolder & { allPins: ShownPin[], children: (TreeFolder | ShownPinItem)[] };
+  const buildLevel = (parentId: string | null, depth: number): (TreeFolder | ShownPinItem)[] => {
+    const childFolders: TreeFolder[] = folders
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => parentOfFolder(f) === parentId)
+      .map(({ f, i }) => {
+        const directPins = [...bound.values()].filter((p) => p.folderId === f.id).sort(byPos);
+        const children = buildLevel(f.id, depth + 1);
+        const allPins: ShownPin[] = children.flatMap((c) => (c.kind === 'folder' ? c.allPins : [c]));
+        const peek = f.open === false ? allPins.filter((p) => p.active || p.behind) : [];
+        return {
+          kind: 'folder' as const,
+          id: f.id,
+          name: f.name,
+          open: f.open !== false,
+          pos: posOf(f, i),
+          parentFolderId: parentId,
+          depth,
+          pins: directPins,
+          allPins,
+          children,
+          peek,
+        };
+      });
+    const directPins: ShownPinItem[] = [...bound.values()].filter((p) => p.folderId === parentId).map((p) => ({ kind: 'pin' as const, depth, ...p }));
+    return [...childFolders, ...directPins].sort(byPos);
+  };
+  const tree = buildLevel(null, 0);
+  // Pre-order flat list for nested folder rendering (respecting collapsed ancestors + active peek).
+  const pinnedFlat: (ShownFolder | ShownPinItem)[] = [];
+  const flatten = (nodes: (TreeFolder | ShownPinItem)[], visible: boolean, out: (ShownFolder | ShownPinItem)[]) => {
+    for (const n of nodes) {
+      if (n.kind === 'folder') {
+        const row: ShownFolder = { kind: 'folder', id: n.id, name: n.name, open: n.open, pos: n.pos, parentFolderId: n.parentFolderId, depth: n.depth, pins: n.allPins, peek: n.peek };
+        if (visible) out.push(row);
+        flatten(n.children, visible && n.open, out);
+        if (visible && !n.open && n.peek.length) {
+          for (const p of n.peek) out.push({ kind: 'pin', depth: n.depth + 1, ...p });
+        }
+      } else if (visible) {
+        out.push(n);
+      }
+    }
+  };
+  flatten(tree, true, pinnedFlat);
+  // Top-level `pinned` stays compatible with card-grouped themes (liquid-glass, neubrutalism, pixel),
+  // with `shownFlat` exposing each top-level folder's visible descendants (subfolders + pins up to depth 4).
+  const pinned: (ShownFolder | ShownPinItem)[] = tree.map((item) => {
+    if (item.kind !== 'folder') return item;
+    const sub: (ShownFolder | ShownPinItem)[] = [];
+    if (item.open) flatten(item.children, true, sub);
+    else for (const p of item.peek) sub.push({ kind: 'pin', depth: item.depth + 1, ...p });
+    return { kind: 'folder' as const, id: item.id, name: item.name, open: item.open, pos: item.pos, parentFolderId: item.parentFolderId, depth: item.depth, pins: item.allPins, peek: item.peek, shownFlat: sub };
+  });
   // Every pin of the space, flat, in the order shown.
   const pins = pinned.flatMap((item) => (item.kind === 'folder' ? item.pins : [item]));
-  const pinnedUrls = new Set(pins.map((p) => normalizeUrl(p.url)));
+  const pinnedUrls = new Set(pins.map((p) => normalizeUrl(p.rootUrl)));
   // Switching to a new-tab page: it's the "+ New Tab" row, as once it's shown.
   const targetIsNewTab = target != null && isNewTabPage(shown.find((t) => t.id === target)?.url);
   return {
     spaceId,
     spaces: state.spaces,
+    favorites,
     pins,
     pinned,
+    pinnedFlat,
     // The new-tab page being shown is this row: softly while switching away.
-    newTab: { active: targetIsNewTab || (target == null && !openingRow && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
+    newTab: { active: targetIsNewTab || (target == null && pinFirst == null && !openingRow && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
     // with its URL (unless another is shown or being switched to). Open and
-    // not open, in their places (pins bind to open tabs only).
-    tabs: [...spaceTabs, ...kept].sort(byPlace).filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && !isPlaceholderPage(t.url)).reverse(),
+    // not open, in their places (sticky-bound tabs stay attached to their pin/favorite even after navigating away).
+    tabs: [...spaceTabs, ...kept].sort(byPlace).filter((t: any) => {
+      if (isPlaceholderPage(t.url)) return false;
+      if (!t.kept && boundTabIds.has(t.id)) return false;
+      if (t.kept && boundKeptIds.has(t.id)) return false;
+      if (!t.pinnedBy && !t.favoriteId && (pinnedUrls.has(normalizeUrl(t.url)) || favUrls.has(normalizeUrl(t.url)))) return false;
+      return true;
+    }).reverse(),
   };
+}
+
+// The tab a favorite opens: one bound via `favoriteId` first, else URL match, in this window first.
+function favoriteTabId(state: State, favoriteId: string, windowId: number) {
+  const fav = (state.favorites ?? []).find((f) => f.id === favoriteId);
+  if (!fav) return null;
+  const sticky = Object.values(state.tabs ?? {}).filter((t) => t.favoriteId === favoriteId);
+  if (sticky.length) return (sticky.find((t) => t.windowId === windowId) ?? sticky[0])?.id ?? null;
+  const key = normalizeUrl(fav.url);
+  const matches = Object.values(state.tabs ?? {}).filter((t) => !t.favoriteId && !t.pinnedBy && normalizeUrl(t.url) === key);
+  return (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id ?? null;
 }
 
 // A tab's place in the list (state/model.ts "places in the list"): its Margin
@@ -141,13 +309,15 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
 const placeOf = (t: { order?: number, index?: number } | null | undefined): number => (Number.isFinite(t?.order) ? t!.order! : Number(t?.index) || 0);
 const byPlace = (a: { order?: number, index?: number }, b: { order?: number, index?: number }) => placeOf(a) - placeOf(b) || (Number(a.index) || 0) - (Number(b.index) || 0);
 
-// The tab a pin opens: one of its space with its URL, in this window first
-// (as the background's openPin), or null (the pin opens a new tab).
+// The tab a pin opens: one bound via `pinnedBy` first, else one of its space with its URL,
+// in this window first (as the background's openPin), or null (the pin opens a new tab).
 function pinTabId(state: State, pinId: string, windowId: number) {
   const pin = state.pins?.find((p) => p.id === pinId);
   if (!pin) return null;
+  const sticky = Object.values(state.tabs ?? {}).filter((t) => t.pinnedBy === pinId && state.tabSpace?.[t.id] === pin.spaceId);
+  if (sticky.length) return (sticky.find((t) => t.windowId === windowId) ?? sticky[0])?.id ?? null;
   const key = normalizeUrl(pin.url);
-  const matches = Object.values(state.tabs ?? {}).filter((t) => normalizeUrl(t.url) === key && state.tabSpace?.[t.id] === pin.spaceId);
+  const matches = Object.values(state.tabs ?? {}).filter((t) => normalizeUrl(t.url) === key && state.tabSpace?.[t.id] === pin.spaceId && !boundElsewhere(state, t, pin.spaceId, { pinId }));
   return (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id ?? null;
 }
 
@@ -267,9 +437,18 @@ function pickIconHref(links: { rel: string; href: string; sizes?: string; type?:
   return best ? best.l.href : `${origin}/favicon.ico`;
 }
 
-// What to show for a tab/pin/archive entry: the browser's icon if it gave
+// What to show for a tab/pin/archive entry: an app item's (Margin.app: its
+// address app://<bundle id>) the installed app's icon, as the app listed it
+// (the state's `apps`: shared/apps.ts); else the browser's icon if it gave
 // one (Chrome does), else the icon Margin fetched for that site.
-function iconFor(state: State, item: { url?: string, favIconUrl?: string } | null | undefined) {
+// Margin's own Settings page (Margin.app's Settings tab, margin://settings): a gear, as macOS's System Settings.
+const SETTINGS_ICON = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNy41IiBmaWxsPSIjOGU4ZTkzIi8+PHBvbHlnb24gcG9pbnRzPSIxMy4xMCw3LjU4IDEzLjc5LDQuNjEgMTguMjEsNC42MSAxOC45MCw3LjU4IDE5LjkwLDguMDAgMjIuNDksNi4zOCAyNS42Miw5LjUxIDI0LjAwLDEyLjEwIDI0LjQyLDEzLjEwIDI3LjM5LDEzLjc5IDI3LjM5LDE4LjIxIDI0LjQyLDE4LjkwIDI0LjAwLDE5LjkwIDI1LjYyLDIyLjQ5IDIyLjQ5LDI1LjYyIDE5LjkwLDI0LjAwIDE4LjkwLDI0LjQyIDE4LjIxLDI3LjM5IDEzLjc5LDI3LjM5IDEzLjEwLDI0LjQyIDEyLjEwLDI0LjAwIDkuNTEsMjUuNjIgNi4zOCwyMi40OSA4LjAwLDE5LjkwIDcuNTgsMTguOTAgNC42MSwxOC4yMSA0LjYxLDEzLjc5IDcuNTgsMTMuMTAgOC4wMCwxMi4xMCA2LjM4LDkuNTEgOS41MSw2LjM4IDEyLjEwLDguMDAiIGZpbGw9IiNmZmYiLz48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIzLjQiIGZpbGw9IiM4ZThlOTMiLz48L3N2Zz4=';
+const isSettingsPage = (url: unknown) => typeof url === 'string' && /^margin:\/\/settings\/?$/i.test(url);
+
+function iconFor(state: State, item: { url?: string, favIconUrl?: string, target?: unknown } | null | undefined) {
+  if (isSettingsPage(item?.url)) return SETTINGS_ICON;
+  const app = appOfItem(item);
+  if (app) return appIcon((state as { apps?: InstalledApp[] | null } | null)?.apps, app) ?? '';
   if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item!.favIconUrl!; // (an icon matched: it's there)
   const origin = originOf(item?.url);
   return (origin && state?.favicons?.[origin]?.data) || '';
@@ -291,4 +470,4 @@ function letterAvatar(label: string): { letter: string, color: string } {
 }
 
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, isLauncherPage, isPlaceholderPage, liveTabId, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, favoriteTabId, isNewTabPage, isLauncherPage, isPlaceholderPage, liveTabId, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };

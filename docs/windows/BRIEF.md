@@ -16,7 +16,7 @@ build and run it in `app/platforms/windows/README.md`.
   Edge's copies link on Windows as on the Mac (`extension/engines/chromium/capabilities.ts` `linksApp`).
 - **Next:** the first run on a real Windows PC (`app/platforms/windows/README.md`, then `docs/windows/UNVERIFIED.md` line by line);
   the keys' defaults, still to be agreed (DECISIONS.md "Margin for Windows planned"); the overlay page's `platform.os` (it
-  says `mac` whatever the app's hello says: `extension/ui/host-app.ts`, a reviewed change to the shared overlay page);
+  says `mac` whatever the app's hello says: `app/shared/ui/host-app.ts`, a reviewed change to the shared overlay page);
   Chromium's profile names from `Local State`; opening a profile with no window (`--profile-directory`).
 
 ## One link for every OS (the restructure, 2026-11-09)
@@ -66,14 +66,14 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
 - **Rust** for the Windows shell, chosen over C#/.NET and C++. It's small, starts fast, uses little memory, gets all of
   Win32 through Microsoft's `windows` crate, and the same code can carry a Linux shell later.
 - **Architecture: a thin native shell per OS, everything else shared.** Shared already: the extension, the UI runtime
-  (`extension/ui/`), the themes (HTML/CSS, sanitized), and the overlay page Margin.app shows (`app/shared/host/overlay.ts`).
+  (`app/shared/ui/`), the themes (HTML/CSS, sanitized), and the overlay page Margin.app shows (`app/shared/host/overlay.ts`).
   The shell finds and follows the browser's windows, draws the overlay page over them, holds Margin's keys, talks to
   the extension and keeps the lasting data.
 - **macOS stays Swift** (`app/platforms/macos/shell/`), untouched by this work. **No Flutter or React Native:** they draw their own
   UI, and the themes are HTML/CSS.
 - **No Chrome side panel:** it has Chrome's own header and width limits. Margin draws its own overlay, as on the Mac.
 - **No in-page sidebar as the product:** no product build draws the sidebar in pages (DECISIONS.md, "Margin 2 ships
-  for macOS only", 2026-11-04). `createInPageHost` (`extension/ui/host.ts`) remains a development/test host only.
+  for macOS only", 2026-11-04). `createInPageHost` (`app/shared/ui/host.ts`) remains a development/test host only.
 - **Linux: later, undecided.** Under Wayland an app can't follow or cover another app's windows. The options to choose
   from when it comes up: the in-page host as Linux's product, X11 only, or Margin as its own Chromium browser.
 - **Testing:** on real Windows, later. Nothing here can run on Windows from this Mac: compile-check the

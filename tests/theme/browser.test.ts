@@ -144,7 +144,7 @@ for (const [name, engine] of ENGINES) {
 
         // The palette: "New tab" opens it (local), a row runs its own request and closes it.
         await click('.new-tab');
-        assert.deepEqual(await page.evaluate(() => T.rtUi().palette), { open: true, query: '', selected: 0, newTab: true });
+        assert.deepEqual(await page.evaluate(() => T.rtUi().palette), { open: true, query: '', selected: 0, newTab: true, selectAll: false });
         assert.ok(await page.evaluate(() => T.rtCount('.palette-row')) > 3);
         await click('.palette-row', 1);
         assert.equal((await page.evaluate(() => T.rtUi().palette)).open, false);

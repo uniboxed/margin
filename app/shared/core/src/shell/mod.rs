@@ -79,7 +79,7 @@ use crate::json::{self, Object};
 use crate::link::{self, Action, ConnId, LinkError};
 use crate::mirror::{Outcome, Resync, StateMirror};
 use crate::planner::Display;
-use crate::protocol::{AppMessage, Hello, LinkMessage};
+use crate::protocol::{AppMessage, Hello, LinkMessage, ParkedActivity};
 use crate::relay::{RelayHub, RelayOut};
 use crate::shortcuts::{AppCommand, AppShortcuts, Combo, HotKeyRegistrar, KeyRepeat, KeysFront, Os};
 use crate::socket::{self, SocketLink};
@@ -929,6 +929,8 @@ impl Shell {
                     self.actions(outs);
                 }
                 socket::Out::Link(a) => self.session(a),
+                // (Safari's, the Mac's: the link note and appUp. Never asked for here.)
+                socket::Out::Note(_) | socket::Out::AppUpDue => {}
                 socket::Out::Log { level, text } => match level {
                     link::Level::Note => self.out.note(text),
                     link::Level::Warn => self.out.warn(text),
@@ -1207,6 +1209,8 @@ impl Shell {
                 let fx = self.data.received(&link, &Value::Object(message));
                 self.effects(fx);
             }
+            // (A malformed parkedActivity comes as a plain push: never an overlay's, as before.)
+            LinkMessage::Push { msg, .. } if json::string(msg.get("type")) == Some(ParkedActivity::TYPE) => {}
             LinkMessage::Push { window_id, msg, .. } => self.pushed(key, window_id, msg),
             LinkMessage::Keys { epoch, bindings } => {
                 let Some(entry) = self.links.get_mut(key) else { return };
@@ -1402,7 +1406,7 @@ impl Shell {
 fn error_words(e: LinkError) -> &'static str {
     match e {
         LinkError::Down => "down",
-        LinkError::TimedOut => "timedOut",
+        LinkError::Lost => "lost",
         LinkError::NotJson => "notJSON",
     }
 }

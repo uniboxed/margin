@@ -1,10 +1,8 @@
 // Margin's stand-in page (background/away.ts, docs/BROWSER-WINDOWS.md §9): in front of a window whose chosen tab is shown
 // live in another window of the profile. It shows that tab's picture (taken as it left, kept in the background's
 // memory only), faded, and its title; a click, Return or Space brings the tab back to this window, as the window
-// coming to the front does. Never a Margin tab (state/model.ts upsertTab), never kept or synced. It answers
-// Margin.app's handoff as the new-tab page does (its visibility, the frame probe).
-import { linksApp } from '../shared/capabilities.ts';
-import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
+// coming to the front does. Never a Margin tab (state/model.ts upsertTab), never kept or synced.
+export {}; // (a module: it awaits at the top level)
 
 const api = globalThis.browser ?? globalThis.chrome;
 const SEND_TIMEOUT_MS = 8000;
@@ -49,21 +47,9 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-// Whether this page is shown, as the new-tab page says it (newtab.ts tellVisibility).
-const tellVisibility = () => { if (linksApp()) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'away' }); };
-document.addEventListener('visibilitychange', tellVisibility);
-addEventListener('pageshow', (event) => event.persisted && tellVisibility());
-tellVisibility();
-const visibleAt = watchVisible();
 const self = await Promise.resolve(api.tabs.getCurrent()).catch(() => null);
 api.runtime.onMessage.addListener((message: any, _: any, sendResponse: (answer: unknown) => void) => {
   if (message?.type === 'switching' && message.from === self?.id) sendResponse(false);
-  if (message?.type === 'reportVisibility') tellVisibility();
   if (message?.type === 'awayChanged') void draw();
-  // Margin.app's profile handoff asking whether this page draws frames at the full-screen size.
-  if (message?.type === 'frameProbe') {
-    void probeFrames(message, { visibleAt }).then((answer) => sendResponse(answer), () => sendResponse(null));
-    return true;
-  }
   return undefined;
 });

@@ -1,7 +1,9 @@
-// The page in each of Margin.app's overlays (app/platforms/macos/shell/Overlay.swift): the
-// UI runtime (extension/ui/runtime.ts) drawing the theme around the page
-// slot over one browser window, with the app's host
-// (extension/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
+// The page Margin.app draws its UI with (on the Mac, Margin's own window:
+// app/platforms/macos/shell/MarginWindowController.swift; the overlay over a
+// browser's window was removed 2026-11-16, and is still the Windows shell's): the
+// UI runtime (app/shared/ui/runtime.ts) drawing the theme around the page
+// slot, with the app's host
+// (app/shared/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
 // build.js), served at margin-app://app/ with a policy that allows no
 // network (app/platforms/macos/shell/OverlayWebView.swift).
 //
@@ -15,24 +17,38 @@
 // tells it about the window's pages (ui/app-feedback.ts): Margin's notices,
 // in the theme's guarded notice part, their buttons going back to the copy;
 // the trackpad gestures' feedback; which tabs are loading (through the host).
-// While a switch to another profile runs (docs/HANDOFF.md §7): that the
-// "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.ts), and,
-// after each `shown`, that the page has drawn and in which mode (`framed`).
-import { createRuntime } from '../../../extension/ui/runtime.ts';
-import { createGestureMotion } from '../../../extension/ui/gesture-motion.ts';
-import { loadTheme, encodeStoredTheme } from '../../../extension/ui/theme-loader.ts';
-import { readThemeFile } from '../../../extension/ui/theme-import.ts';
-import { createPreviewBar } from '../../../extension/ui/theme-preview.ts';
-import { createAppHost, hitRects } from '../../../extension/ui/host-app.ts';
-import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
+//
+// In Margin's own window (the hello's `host` 'app-window': app/platforms/macos/shell/MarginWindowController.swift)
+// the same page draws the whole app: its mode is the window's (windowed or full screen), it says where the theme
+// draws the window's buttons and its drag regions (`chrome`), a layer over the whole window (the palette's) takes the
+// pointer there (hitRects keepEqual), it never says it's reconnecting to a browser, and with
+// no theme package from the app it draws Arcadia, bundled beside it, as its own (no notice: nothing failed).
+import { createRuntime } from '../ui/runtime.ts';
+import { createGestureMotion } from '../ui/gesture-motion.ts';
+import { loadTheme, encodeStoredTheme } from '../ui/theme-loader.ts';
+import { wantsSystemMaterials } from '../ui/theme-schema.ts';
+import { readThemeFile } from '../ui/theme-import.ts';
+import { createPreviewBar } from '../ui/theme-preview.ts';
+import { chromeRects, cornerFill, createAppHost, hitRects, sidebarFixed } from '../ui/host-app.ts';
+import { createAppNotices, createGestureFeedback } from '../ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
-import { cycleTab } from '../../../extension/shared/view.ts';
-import { answerFramed, createCoverWatch } from '../../../extension/ui/switch-cover.ts';
-import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
+import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
+import { pickBridge } from '../ui/overlay-bridge.ts';
+import { createMaterials } from './materials.ts';
+import { numberedAction, numberedRows, togglePin } from '../ui/shortcut-targets.ts';
+import { nextSplitPane } from '../ui/behaviors/split.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
 const bridge = pickBridge(globalThis);
-const post = (op: string, body: Record<string, any> = {}): Promise<any> => (bridge ? bridge({ op, ...body }) : Promise.reject(new Error('no app')));
+// Margin.app's window reads what its page says as the JSON it is (its hello's `saidText`: margin-core reads each op
+// as it comes, no object made of it first): each op's body as its text then, but the hello's, a request's (`send`,
+// answered), the appearance's and a layout report's (its own text already: `layoutText`).
+let saidText = false;
+const OWN_BODY = new Set(['hello', 'send', 'appearance', 'layout']);
+const post = (op: string, body: Record<string, any> = {}): Promise<any> => {
+  if (!bridge) return Promise.reject(new Error('no app'));
+  return bridge(saidText && !OWN_BODY.has(op) ? { op, json: JSON.stringify(body) } : { op, ...body });
+};
 const log = (level: 'note' | 'warn' | 'error', ...args: any[]) => { void post('log', { level, text: args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ') }).catch(() => {}); };
 
 let host: ReturnType<typeof createAppHost> | null = null;
@@ -47,7 +63,11 @@ const notices = createAppNotices({
   send: (type, payload) => host?.send(type, payload),
   frontTab: () => host?.frontTabId ?? null,
   // The overlay's own notice (a theme it couldn't draw): Settings opens Margin's Settings in this window.
-  local: (kind, action) => { if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true }); },
+  local: (kind, action) => {
+    if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true });
+    // Margin.app's picker on Safari's folder (app/engines/webkit/safari/SafariFolderGrant.swift).
+    if (kind === 'safari-profile' && action === 'allow') void host?.send('allowSafariProfiles', {});
+  },
 });
 // How far a gesture has gone: eased every frame into --gesture-live (ui/gesture-motion.ts), the UI not drawn again.
 const gestureMotion = createGestureMotion({ apply: (value) => document.documentElement.style.setProperty('--gesture-live', value.toFixed(3)) });
@@ -60,7 +80,7 @@ const gestures = createGestureFeedback({
 const copySwitches = backgroundSwitches();
 
 // ---- next/previous tab by the app's keys: highlighted here at once ---------------------------------------------
-// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/Shell.swift run): the target
+// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/ShellHostedGlue.swift runHosted): the target
 // is worked out here with the copy's rule (shared/view.ts cycleTab: the order the sidebar shows, wrapping), each
 // press going on from the one before for a moment (NAV_CHAIN_MS), else from the tab in front; highlighted now, then
 // asked of the copy with its switch id, which takes it as that press's (background/navigation.ts navigate `given`).
@@ -93,8 +113,18 @@ function flushNav() {
   const state = (host?.getState() as any);
   const windowId = host?.windowId;
   const ask = (extra: Record<string, any>) => { void Promise.resolve(host?.send('navigate', { action, ...extra })).catch(() => {}); };
-  if (!runtime || !Number.isInteger(windowId)) return ask({});
+  if (!runtime || !Number.isInteger(windowId)) return host?.appWindow ? undefined : ask({});
   let target = pickNavTab(state, (windowId as number), localNav, dir, cycleTab);
+  // Margin's own window (it owns the items: app/platforms/macos/shell/HostedSession.swift): nothing in front yet, the first
+  // (or last) of the space's rows; the item picked shown as a sidebar pick is (`tab.activate`: an app or a web item).
+  if (host?.appWindow) {
+    if (target === undefined && state) target = cycleTab(state, (windowId as number), null, dir);
+    for (let i = 1; i < Math.abs(steps) && target != null; i++) target = cycleTab(state, (windowId as number), target, dir);
+    if (target == null) return;
+    localNav = { tabId: target, at: Date.now() };
+    runtime.dispatch('tab.activate', target, 'behavior');
+    return;
+  }
   // Nothing in front known yet: the copy works it out (and highlights it, as before).
   if (target === undefined) return ask({});
   for (let i = 1; i < Math.abs(steps) && target != null; i++) target = cycleTab(state, (windowId as number), target, dir);
@@ -114,7 +144,7 @@ function flushNav() {
 // drawing took. `marginApp.stats()` has the counts (the app's tests read it).
 const SLOW_MS = 50;
 const SAY_EVERY_MS = 10_000;
-const stats = { slow: 0, hits: 0, hitsMs: 0, hitsMaxMs: 0, measures: 0, measureMs: 0, received: 0, receivedMs: 0, receivedMaxMs: 0, pointers: 0, inputMaxMs: 0, palette: ([] as any[]) };
+const stats = { slow: 0, hits: 0, hitsMs: 0, hitsMaxMs: 0, measures: 0, measureMs: 0, received: 0, receivedMs: 0, receivedMaxMs: 0, pointers: 0, inputMaxMs: 0, palette: ([] as any[]), themeSwaps: ([] as any[]) };
 const saidAt = new Map();
 const unsaid = new Map();
 function slow(what: string, ms: number, cause: string) {
@@ -155,6 +185,96 @@ try {
 const decode = (text: string) => { const bin = atob(text); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
 const nextFrame = () => new Promise<any>((resolve) => { const t = setTimeout(resolve, 100); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); resolve(undefined); })); });
 
+// ---- the page's own hover, while a hosted app has the keys (Tirth, 2026-11-20) --------------------------------
+// WebKit hit-tests a pointer's move for :hover only in a page whose window is active (its window key), and Margin's
+// panel isn't key while the app it hosts has the keys: its sidebar lit nothing under the pointer. Margin.app says where
+// the pointer is over its UI then (`hoverAt`, CSS pixels; none: it left, a button went down, or the panel became key);
+// the element there and each of its ancestors carry `m-hover`, and every rule of the theme's (and Margin's own) that
+// says :hover also says [m-hover] (`withHoverAttr`, as the theme is drawn). Changed only where the element under the
+// pointer changes. With the panel key, WebKit's own :hover does it, and the marks are cleared.
+// WebKit's own :hover stays where it last was once the panel isn't key (it follows no move then): the row the pointer
+// was over as a hosted app took the keys back stayed lit beside the one under the pointer (Tirth's recording,
+// 2026-11-20). So while Margin's marks are in charge, each element WebKit still has as :hover carries `m-hover-off`
+// (read again whenever the element under the pointer changes: a press updates WebKit's :hover even then), and the rules
+// take WebKit's :hover only where it isn't marked off. A mark on the element itself, never a condition on an ancestor:
+// WebKit restyles an element for a change of its own attributes at once, and was seen not to for a flag on the root.
+// In charge from Margin's first `hoverAt`, until WebKit itself dispatches a move to the page again (the panel key: its
+// :hover is current from that move on), when every mark goes.
+const HOVER_ATTR = 'm-hover';
+const HOVER_OFF = 'm-hover-off';
+let hoverChain: Element[] = [];
+let hoverOff: Element[] = [];
+let hoverOwn = false;
+function stillWebKits() {
+  const now = Array.from(document.querySelectorAll(':hover'));
+  const keep = new Set(now);
+  for (const el of hoverOff) if (!keep.has(el)) el.removeAttribute(HOVER_OFF);
+  for (const el of now) if (!el.hasAttribute(HOVER_OFF)) el.setAttribute(HOVER_OFF, '');
+  hoverOff = now;
+}
+document.addEventListener('pointermove', (e) => {
+  if (!e.isTrusted || !hoverOwn) return;
+  hoverOwn = false;
+  hoverAt(null, null);
+  for (const el of hoverOff) el.removeAttribute(HOVER_OFF);
+  hoverOff = [];
+}, { capture: true, passive: true });
+function hoverAt(x: unknown, y: unknown) {
+  const at = typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y) ? document.elementFromPoint(x, y) : null;
+  if (at && !hoverOwn) { hoverOwn = true; stillWebKits(); }
+  if (at === (hoverChain[0] ?? null)) return;
+  if (hoverOwn) stillWebKits();
+  const chain: Element[] = [];
+  for (let el: Element | null = at; el; el = el.parentElement) chain.push(el);
+  const next = new Set(chain);
+  for (const el of hoverChain) if (!next.has(el)) el.removeAttribute(HOVER_ATTR);
+  const had = new Set(hoverChain);
+  for (const el of chain) if (!had.has(el) || !el.hasAttribute(HOVER_ATTR)) el.setAttribute(HOVER_ATTR, '');
+  hoverChain = chain;
+}
+// Every style rule's :hover becomes "WebKit's :hover where it isn't marked off, or [m-hover]", in place, in
+// the sheets the page draws with (nested rules, @media, @supports and @layer blocks included). Once per sheet: a rule
+// that already says [m-hover] is left as it is.
+const HOVER_PSEUDO = /:hover(?![\w-])/g;
+function withHoverAttr(rules: CSSRuleList) {
+  for (const rule of Array.from(rules)) {
+    if (rule instanceof CSSStyleRule && HOVER_PSEUDO.test(rule.selectorText) && !rule.selectorText.includes(`[${HOVER_ATTR}]`)) {
+      HOVER_PSEUDO.lastIndex = 0;
+      // ((hover or marked) and (not marked off, or marked)): hovered not marked off, or marked. Its specificity is a plain
+      // :hover's (:is() counts its weightiest part, one pseudo-class or attribute; :where() counts nothing), so the theme's
+      // own order decides as it does with WebKit's :hover: the row shown keeps its fill under the pointer (2026-11-20:
+      // ":is(:hover:not([m-hover-off]),[m-hover])" weighed two and outweighed the theme's `.active` rule).
+      rule.selectorText = rule.selectorText.replace(HOVER_PSEUDO, `:is(:hover,[${HOVER_ATTR}]):where(:not([${HOVER_OFF}]),[${HOVER_ATTR}])`);
+    }
+    HOVER_PSEUDO.lastIndex = 0;
+    const inner = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+    if (inner) withHoverAttr(inner);
+  }
+}
+
+// ---- ⌃⇧= Add Split View (docs/PEEK-SPLIT.md §4, decided 2026-11-21) ----------------------------------------------
+// The space's item used most recently (not the one in front, nor a pane already: behaviors/split.ts nextSplitPane) is
+// added: to the split shown, else split with the item in front. Nothing else in the space: the palette opens for a new
+// tab, and the item it opens (a search, an address, a tab, an app) is added once it's in front, as a pane beside the
+// item that was. Escape, or nothing new in front within SPLIT_PICK_MS: nothing added.
+const SPLIT_PICK_MS = 15_000;
+let splitPick: { front: number | string | null, until: number, picked: boolean } | null = null;
+function addSplitPane() {
+  if (!runtime) return;
+  const next = nextSplitPane(host?.getState(), runtime.vm);
+  if (next != null) return void runtime.dispatch('split.add', next, 'behavior');
+  splitPick = { front: runtime.vm?.tab?.id ?? null, until: Date.now() + SPLIT_PICK_MS, picked: false };
+  openPaletteTimed({ newTab: true }, '⌃⇧= Add Split View');
+}
+function followSplitPick() {
+  if (!splitPick || !runtime) return;
+  if (Date.now() > splitPick.until) { splitPick = null; return; }
+  const front = runtime.vm?.tab?.id ?? null;
+  if (!splitPick.picked || front == null || front === splitPick.front) return;
+  splitPick = null;
+  runtime.dispatch('split.add', front, 'behavior');
+}
+
 // ---- what the theme draws over the page slot ------------------------------------------
 
 let hitsQueued = false;
@@ -167,18 +287,43 @@ function reportHits() {
   const { insets, container } = geometry;
   const slot = { left: insets.left, top: insets.top, right: container.width - insets.right, bottom: container.height - insets.bottom };
   const from = performance.now();
-  const { rects, all } = timed('measuring what is over the page', () => `${root.getElementsByTagName('*').length} elements`, () => hitRects(root, slot));
+  const { rects, all } = timed('measuring what is over the page', () => `${root.getElementsByTagName('*').length} elements`, () => hitRects(root, slot, { keepEqual: !!host?.appWindow }));
   const ms = performance.now() - from;
   stats.hits++;
   stats.hitsMs += ms;
   stats.hitsMaxMs = Math.max(stats.hitsMaxMs, ms);
-  // The preview's bar (Margin's own, outside the theme) takes the pointer too.
+  // The preview's bar and Edit Theme Color's panel (Margin's own, outside the theme) take the pointer too.
   const bar = preview.bar.rect();
   if (bar && !all) rects.push(bar);
+  const panel = runtime?.panelRect();
+  if (panel && !all) rects.push(panel);
+  reportChrome(root);
+  reportPeekPage();
   const key = JSON.stringify([rects, all]);
   if (key === lastHits) return;
   lastHits = key;
   void post('hits', { rects, all }).catch(() => {});
+}
+// Where the theme's `<m-preview-page>` is (the preview card: Margin.app places the card's window there, docs/PEEK-SPLIT.md §2):
+// said as it changes, null once there's none. Measured as laid out, never mid-animation (ui/render.ts measurePeekPage).
+let lastPeekPage = 'null';
+function reportPeekPage() {
+  if (!host?.appWindow || !runtime) return;
+  const r = runtime.measurePeekPage();
+  const said = r ? JSON.stringify([[r.x, r.y, r.width, r.height], r.radius]) : 'null';
+  if (said === lastPeekPage) return;
+  lastPeekPage = said;
+  void post('peekRect', r ? { rect: [r.x, r.y, r.width, r.height], radius: r.radius } : { rect: null }).catch(() => {});
+}
+// Margin's own window: where the theme draws its buttons and where a drag moves it (host-app.ts chromeRects).
+let lastChrome = '';
+function reportChrome(root: Element) {
+  if (!host?.appWindow) return;
+  const chrome = chromeRects(root);
+  const key = JSON.stringify(chrome);
+  if (key === lastChrome) return;
+  lastChrome = key;
+  void post('chrome', chrome).catch(() => {});
 }
 function hitsSoon() {
   if (hitsQueued) return;
@@ -196,16 +341,23 @@ function measureNow() {
   stats.measures++;
   stats.measureMs += performance.now() - from;
   if (!g || !host) return;
-  const key = JSON.stringify([g.insets, g.radius, g.container]);
+  // (The mode too: Margin's own window learns it went full screen after its new size was measured, and the app
+  // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
+  // (Margin's own window: the colour around the page's rounded corners too, the ground the app puts under the page area.)
+  // (A space's background: Margin's ground under the theme, its colour there: runtime.backgroundAt.)
+  const fills = host.appWindow ? cornerFill(runtime?.view.pageEl, { ground: runtime ? runtime.backgroundAt : null })?.fills ?? null : null;
+  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, !!(host as { pageHosted?: boolean }).pageHosted, fills, g.split ?? null, g.panes ?? null]);
   if (key === lastLayout) return;
   lastLayout = key;
-  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode });
+  // (Said as none when the theme draws nothing there: a report that leaves them out keeps the last ones, host-app.ts.)
+  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(host.appWindow ? { fills } : {}) });
+  reportPeekPage();
 }
 // Which pointer positions the app hands in (runtime.pointer: only peek uses
 // them): none while the sidebar is docked (nothing to bring out), those in
 // the reveal zone of the theme's peek edges while it's hidden, all of them
 // while it's out over the page (to put it away once the pointer leaves).
-// Told to the app when it changes (app/platforms/macos/shell/Shell.swift pointerMoved).
+// Told to the app when it changes (app/platforms/macos/shell/MarginWindowController.swift pointerMoved).
 let lastWant = '';
 function reportWant() {
   const vm = runtime?.vm;
@@ -220,16 +372,6 @@ function reportWant() {
 }
 // The widest reveal zone (shared/view.ts revealZone: 24 px in full screen); peek checks the exact one.
 const REVEAL_ZONE_MAX = 24;
-// The "switching" cover drawn, with no swipe sliding: the app may freeze the screen on it.
-const coverWatch = createCoverWatch({
-  requestFrame: (fn) => requestAnimationFrame(fn),
-  cover: () => {
-    const c = runtime?.vm?.switchCover;
-    return c && (document.querySelector('m-switch-cover')?.childElementCount ?? 0) > 0 ? c.id : null;
-  },
-  settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
-  say: () => { host?.perform('switch.coverShown'); },
-});
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, a real
 // session's recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
@@ -242,13 +384,44 @@ let spaceTold = '';
 function reportSpace() {
   const vm = runtime?.vm;
   if (!vm?.space) return;
-  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null, !!vm.space.foreign]);
+  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null]);
   if (told === spaceTold) return;
   spaceTold = told;
-  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null, foreign: !!vm.space.foreign }).catch(() => {});
+  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
-const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
+// How many spaces and numbered rows (⌘1–9: ui/shortcut-targets.ts) the sidebar has, told to the app when it changes: it
+// holds only the numbered keys with something behind them, so a press of another reaches the app in front
+// (Shortcuts.swift ShortcutSet.held: Carbon's hot keys can't pass one on).
+let countsTold = '';
+function reportCounts() {
+  const vm = runtime?.vm;
+  if (!vm?.space) return;
+  const counts = { spaces: vm.spaces?.length ?? 0, items: numberedRows(vm).length };
+  const told = JSON.stringify(counts);
+  if (told === countsTold) return;
+  countsTold = told;
+  void post('counts', counts).catch(() => {});
+}
+const SPLIT_ATTRS = new Set(['style', 'aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'm-dragging']);
+const watcher = new MutationObserver((records) => {
+  // (The page's own hover marks change nothing measured: m-hover alone, nothing to do.)
+  if (records.every((r) => r.type === 'attributes' && (r.attributeName === HOVER_ATTR || r.attributeName === HOVER_OFF))) return;
+  // (A split's panes sized again, a divider's frame of a drag: measured and reported by the drag itself, ui/behaviors/
+  // split.ts; what takes the pointer read once the dividers are still. Nothing else per frame.)
+  if (records.every((r) => r.type === 'attributes' && SPLIT_ATTRS.has(r.attributeName ?? '') && ((r.target as Element).localName === 'm-pane' || (r.target as Element).localName === 'm-divider'))) return hitsAfter(150);
+  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(reportCounts); queueMicrotask(followPopup);
+});
+// A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
+function followPopup() { const want = stillHasKeys(); if (want !== hasKeys) setKeys(want); }
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
+
+// Margin's own window as a tile beside a hosted one (host-app.ts sidebarFixed: the older pageOutside): the sidebar's
+// width isn't dragged, so the theme's handle goes (render.ts `m-sidebar-fixed`). Under a hosted window above its page
+// area (pageHosted) it's dragged as anywhere: the app places the hosted window once, when the drag is over.
+function followOutside() {
+  const root = runtime?.view.rootElement();
+  if (root) root.toggleAttribute('m-sidebar-fixed', sidebarFixed(host));
+}
 
 // ---- the theme --------------------------------------------------------------------------
 
@@ -318,6 +491,11 @@ async function fallBack(id: string, why: string) {
   return false;
 }
 
+// The system's materials (macOS's Liquid Glass: `-apple-visual-effect`): on while the theme drawn or Edit Theme
+// Color's panel asks for them, each before its sheet is read (app/shared/host/materials.ts says why and how).
+const materials = createMaterials((on) => post('appearance', { system: on }),
+  () => typeof CSS !== 'undefined' && CSS.supports('-apple-visual-effect', '-apple-system-glass-material'));
+
 /**
  * @param pkg the theme package (background/theme-package.ts ThemeMessage)
  * @param options `fallback`: it's Arcadia standing in (never falls back again)
@@ -332,7 +510,9 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     let files: { [k: string]: Uint8Array<ArrayBuffer>; } | null = null;
     try { files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))])); } catch { why = 'its files aren\'t readable'; }
     if (files) {
-      loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
+      const read = files, settings = host.getState()?.settings?.themes?.[pkg.id] ?? null;
+      loaded = await materials.readTheme(wantsSystemMaterials(pkg.manifest),
+        () => loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: read }, { document, settings }));
       if (!loaded.ok) why = `refused: ${(loaded as any).report.errors.length} problem(s) in ${reasonKinds((loaded as any).report.errors)}`;
     }
   }
@@ -356,14 +536,30 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     // Each chain of switches (keys pressed fast, a click during them) as it ends, in Margin.app's log:
     // whether the highlight ever went back (it must not). A lone switch that landed says nothing.
     onSwitchRun: (run) => { const line = describeSwitchRun(run); if (line) log('note', line); },
+    // (⌃⇧= with nothing else to split with: the palette's pick is the new pane, `addSplitPane`.)
+    onPalette: (what) => { if (splitPick && what === 'close') splitPick = null; else if (splitPick && what === 'run') splitPick.picked = true; },
+    // (What the UI opens as the palette's key does, a double-click on the sidebar's empty part: timed and logged as the
+    // key's own, ui/behaviors/empty.ts.)
+    openPalette: (options, by) => openPaletteTimed(options, by),
+    // (A space's background drawn, changed or gone: the colours around the page's corners told again.)
+    onGround: () => measureNow(),
+    // (Edit Theme Color opened or closed: the keys taken or given back with it, and what takes the pointer told again.)
+    onPanel: () => { hitsSoon(); queueMicrotask(followPopup); },
+    // (Edit Theme Color's glass: the system's materials while its panel is open.)
+    materials: (on) => materials.panel(on),
   });
+  // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
+  for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }
+  hoverChain = [];
   const root = runtime.view.rootElement();
   // The pointer over the page slot is the page's (the app lets it through); what the theme draws there keeps it.
   root?.setAttribute('m-passthrough', '');
+  followOutside();
   if (root) watcher.observe(root, { subtree: true, childList: true, attributes: true, characterData: false });
   lastHits = '';
   lastLayout = '';
   lastWant = '';
+  lastChrome = '';
   measureNow();
   if (previewing && !usableLayout()) { previewFailed('Margin couldn’t use it: its page is too small to show, or outside the window.'); return false; }
   if (!fallback && !usableLayout()) return fallBack(id, 'its page slot is too small or outside the window');
@@ -379,8 +575,97 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
   return true;
 }
 
+// Another theme from the app while one is drawn (2026-11-20, Tirth: a theme per space; Settings' Theme, a space's menu
+// or editor): drawn once a space swipe has landed (the space is asked for at the lift, its settle still sliding in the
+// theme it started in), then at once, no animation (Tirth, 2026-11-20: none). A page area bigger than the one before
+// (Arcadia's 1264×933 after Neubrutalism's 1190×911): the theme before stays on screen (the document's view transition,
+// no animation: overlay.html) until the hosted window has taken the new page area (the app's `hostedFrame`), at most
+// HOSTED_WAIT_MS; then the new theme in one frame, the hosted window under it already its size (before: drawn first, the
+// window was smaller than its card ~50-100 ms, 2026-11-20 20:18:23). A smaller one: drawn at once, the window bigger than
+// it a moment, under the theme's frame. The first theme, the same theme again, or a WebKit without view transitions:
+// drawn as before, at once.
+const SWIPE_WAIT_MS = 4000;
+const HOSTED_WAIT_MS = 300;
+function swipeLanded(): Promise<void> {
+  const busy = () => { const root = runtime?.view.rootElement(); return !!root && (root.matches('.m-swiping, .m-settling') || !!root.querySelector('.m-swiping, .m-settling')); };
+  if (!busy()) return Promise.resolve();
+  const from = performance.now();
+  return new Promise((resolve) => {
+    // (Timers, not frames: an overlay off screen gets none.)
+    const check = () => (!busy() || performance.now() - from > SWIPE_WAIT_MS ? resolve() : void setTimeout(check, 30));
+    setTimeout(check, 30);
+  });
+}
+type Box = { left: number, top: number, right: number, bottom: number };
+/** The hosted window's bounds in this page, as the app last said them (`hostedFrame`); null: none hosted. */
+let hostedBox: Box | null = null;
+const hostedWaiters = new Set<() => void>();
+function hostedFrameSaid(rect: unknown) {
+  hostedBox = Array.isArray(rect) && rect.length === 4 && rect.every((v) => Number.isFinite(v)) && rect[2] > 0 && rect[3] > 0
+    ? { left: rect[0], top: rect[1], right: rect[0] + rect[2], bottom: rect[1] + rect[3] } : null;
+  for (const wake of [...hostedWaiters]) wake();
+}
+/** Every visible host's window in this page while more than one is (docs/PEEK-SPLIT.md §1: a card, a split's panes),
+ *  as the app last said them (`hostedFrames`), back to front; empty: one host (its frame is `hostedBox`). */
+type HostedFrame = { role: 'main' | 'pane' | 'card', focused: boolean, box: Box };
+let hostedBoxes: HostedFrame[] = [];
+function hostedFramesSaid(list: unknown) {
+  hostedBoxes = (Array.isArray(list) ? list : []).flatMap((f): HostedFrame[] => {
+    const r = f?.rect;
+    if (!Array.isArray(r) || r.length !== 4 || !r.every((v) => Number.isFinite(v)) || r[2] <= 0 || r[3] <= 0) return [];
+    const role = f.role === 'pane' || f.role === 'card' ? f.role : 'main';
+    return [{ role, focused: f.focused === true, box: { left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3] } }];
+  });
+}
+/** The page slot as the theme drawn now lays it out (the layout reported to the app). */
+function slotBox(): Box | null {
+  const g = host?.layout;
+  if (!g) return null;
+  return { left: g.insets.left, top: g.insets.top, right: g.container.width - g.insets.right, bottom: g.container.height - g.insets.bottom };
+}
+const covers = (a: Box, b: Box, e = 2) => a.left <= b.left + e && a.top <= b.top + e && a.right >= b.right - e && a.bottom >= b.bottom - e;
+/** Once the hosted window covers `slot` (true), or `ms` on (false). */
+function hostedCovering(slot: Box, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (ok: boolean) => { hostedWaiters.delete(check); if (timer) clearTimeout(timer); resolve(ok); };
+    function check() { if (hostedBox && covers(hostedBox, slot)) finish(true); }
+    hostedWaiters.add(check);
+    timer = setTimeout(() => finish(false), ms);
+    check();
+  });
+}
+async function swapTheme(pkg: any) {
+  const other = !!runtime && !!drawn && drawn.pkg?.id !== pkg?.id;
+  if (!other) return mount(pkg);
+  await swipeLanded();
+  const hold = !!host?.appWindow && hostedBox != null && typeof (document as any).startViewTransition === 'function';
+  if (!hold) return mount(pkg);
+  let result: unknown = false;
+  const from = performance.now();
+  let waited: string | null = null;
+  let waitMs = 0;
+  let covered = true;
+  const transition = (document as any).startViewTransition(async () => {
+    result = await mount(pkg);
+    // (The window covers the new slot already, a smaller one: shown at once.)
+    const slot = slotBox();
+    if (!slot || !hostedBox || covers(hostedBox, slot)) return;
+    const t = performance.now();
+    covered = await hostedCovering(slot, HOSTED_WAIT_MS);
+    waitMs = Math.round(performance.now() - t);
+    waited = covered ? `the hosted window took its page area in ${waitMs} ms first` : `the hosted window not at its page area within ${HOSTED_WAIT_MS} ms: shown anyway`;
+  });
+  await transition.updateCallbackDone.catch(() => {});
+  const ms = Math.round(performance.now() - from);
+  stats.themeSwaps.push({ id: String(pkg?.id ?? ''), ms, waitedMs: waitMs, covered });
+  if (stats.themeSwaps.length > 20) stats.themeSwaps.shift();
+  log('note', `theme ${JSON.stringify(String(pkg?.id ?? '').slice(0, 64))} drawn in ${ms} ms${waited ? ` (${waited})` : ''}`);
+  return result;
+}
+
 // The palette opened: drawn how long after the word came (work, then frames until it's on screen), one line each time.
-function openPaletteTimed(options: { newTab: boolean }, by: string) {
+function openPaletteTimed(options: { newTab: boolean, query?: string, selectAll?: boolean }, by: string) {
   if (!runtime) return;
   const from = performance.now();
   runtime.openPalette(options);
@@ -537,17 +822,70 @@ function onMessage(msg: any) {
         if (ok) importStatus('Saved. This profile uses it now; choose it in other profiles’ Settings.');
       }
       pendingTheme = msg.theme;
-      if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
+      if (host?.getState()) mounting = mounting.then(() => swapTheme(msg.theme));
       return;
     case 'command':
-      // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts).
+      // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts). None while the
+      // start screen is up (Margin's default browser getting ready: nothing of Margin's usable yet).
+      if (host?.pageStarting) return;
       if (msg.name === 'palette') {
         if (runtime?.paletteOpen) runtime.closePalette();
-        else openPaletteTimed({ newTab: !host?.launcher }, 'the app\'s key');
+        else if (runtime) openPaletteTimed(runtime.paletteKeyOptions(), 'the app\'s key');
       } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
       else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
+      // Margin's own window: the next or previous space (the copy picks it over a browser: background/navigation.ts).
+      else if ((msg.name === 'next-space' || msg.name === 'prev-space') && host?.appWindow) {
+        const state = (host.getState() as any);
+        const id = state && Number.isInteger(host.windowId) ? cycleSpace(state, (host.windowId as number), msg.name === 'next-space' ? 1 : -1) : null;
+        if (id) runtime?.dispatch('space.switch', id, 'behavior');
+      }
+      // Margin's own window, its first run (app/platforms/macos/shell/HostedSession.swift): the space it made, in the
+      // space editor for the person to name (the UI's own editor, as a new space opens in it).
+      else if (msg.name === 'edit-space' && host?.appWindow && typeof msg.spaceId === 'string') runtime?.dispatch('space.edit', msg.spaceId, 'behavior');
+      // Margin's own window, the palette's Settings while it hosted (HostedSession.swift openLauncher): its launcher is
+      // in the page area again, with its Settings open.
+      else if (msg.name === 'settings' && host?.appWindow) runtime?.setUi({ settingsOpen: true, recording: null });
+      else if (msg.name === 'copy-url') runtime?.dispatch('tab.copyUrl', undefined, 'behavior');
+      else if (msg.name === 'focus-address') {
+        const cur = runtime?.vm?.tab;
+        const url = cur?.url && /^https?:\/\//i.test(cur.url) ? cur.url : '';
+        openPaletteTimed({ newTab: false, query: url, selectAll: true }, '⌘L');
+      } else if (msg.name === 'toggle-pin') {
+        // The pin bound to the row in front, in a folder or not; the toast once the request has come back.
+        host?.takeFailure(); // (an earlier request's failure isn't this one's)
+        if (runtime) void togglePin(runtime.vm, runtime, () => host?.takeFailure() != null);
+      } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
+      // Quick Tab (⌥⌘N): the preview card with Margin's own address field (ui/behaviors/card.ts; `little-arc`, the
+      // app's command, keeps its first name).
+      else if (msg.name === 'little-arc') runtime?.card.openLittleArc();
+      else if (msg.name === 'add-split') addSplitPane();
+      else if (msg.name === 'space-index' && Number.isInteger(msg.index)) {
+        const sp = runtime?.vm?.spaces?.[msg.index - 1];
+        if (sp) runtime?.dispatch('space.switch', sp.id, 'behavior');
+      } else if (msg.name === 'item-index' && Number.isInteger(msg.index)) {
+        // Favorites, the pins as the sidebar shows them (folders included), today's rows.
+        const target = numberedAction(runtime?.vm, msg.index);
+        if (target) runtime?.dispatch(target.name, target.arg, 'behavior');
+      }
+      return;
+    case 'toast':
+      if (typeof msg.text === 'string' && msg.text) runtime?.showToast(msg.text);
+      return;
+    // The background mini player's sources for this window (the copy's `media` push, checked and given the UI's
+    // numbers for its tabs by the app: app/platforms/macos/shell/UIPush.swift): the view model picks the one shown.
+    case 'media':
+      // (Each a tab's: Safari's pages are the mini player's only sources so far.)
+      runtime?.setUi({ media: Array.isArray(msg.sources) ? msg.sources.filter((m: any) => !!m && typeof m === 'object' && Number.isInteger(m.tabId)).slice(0, 8).map((m: any) => ({ ...m, id: `tab:${m.tabId}`, source: 'tab' })) : null });
+      return;
+    // The preview card as Margin.app has it (app/platforms/macos/shell/HostedPeek.swift): drawn, or (null) closed, animated
+    // out (ui/behaviors/card.ts).
+    case 'peek':
+      runtime?.card.show(msg.peek ?? null);
+      queueMicrotask(reportPeekPage);
       return;
     case 'link':
+      // (Margin's own window has no copy's link to lose.)
+      if (host?.appWindow) return;
       // The link to the copy dropped (`reconnecting`: the last picture stays,
       // dimmed, saying so, until it's back or the app closes the overlay) or came back.
       setReconnecting(msg.state === 'reconnecting');
@@ -576,10 +914,14 @@ function onMessage(msg: any) {
       // The app showed this overlay (it wasn't): `palette`, over a new window in front (⌘N, New
       // Window): the palette opens over its new tab, as ⌘T's does (2026-11-09), never as the
       // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
-      if (msg.palette === true) openPaletteTimed({ newTab: !host?.launcher }, 'a new window');
+      if (host?.pageStarting) return;
+      if (msg.palette === true) openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();
-      // Drawn, and in which mode, on the next frame (R4).
-      answerFramed({ requestFrame: (fn) => requestAnimationFrame(fn), mode: () => host?.mode ?? 'fullscreen', post: (op, body) => post(op, body).catch(() => {}) });
+      return;
+    // Margin.app's own word about a hosted app (HostEngine stepDown): its notice, its name filled in.
+    case 'hostNote':
+      if (msg.kind === 'route-simpler' || msg.kind === 'app-asking') notices.say(msg.kind, { app: msg.app });
+      if (msg.kind === 'safari-profile') notices.say(msg.kind, { space: msg.space });
       return;
     case 'push':
       switch (msg.msg?.type) {
@@ -602,10 +944,7 @@ function onMessage(msg: any) {
         case 'gesture': gestures.push(msg.msg); return;
         // Safari's own New Tab made a tab the copy closed again (background/handlers.ts
         // newTabHandOff), or Margin's new-tab page came up: the palette, here.
-        case 'palette': openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
-        // A key the app holds, heard by the copy anyway (its command, or a page): noted. (The shell
-        // says whether its hot key was on then, and why not: Shell.swift keyHeard.)
-        case 'keyHeard': log('note', `${msg.msg.command} reached the extension (${msg.msg.from})`); return;
+        case 'palette': if (!host?.pageStarting) openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
         default: return;
       }
     default:
@@ -617,13 +956,36 @@ function onMessage(msg: any) {
 
 const editable = (el: any) => !!el && (el.localName === 'input' || el.localName === 'textarea' || el.localName === 'select' || el.isContentEditable);
 let hasKeys = false;
+// A field that has the keys and is then taken out of the page (an editor closed, the launcher gone) fires no focusout
+// in WebKit, which left the app thinking a field of Margin's still had them (seen 2026-11-15 in the hosted e2e: a
+// window-mode app was never put back in front of Margin's window). While a field has them, the page's changes say
+// when it's gone (one check per turn, only then).
+let keysWatch: MutationObserver | null = null;
+let keysCheck = false;
+// (A menu or prompt of Margin's open takes the keys too, as a field does (Tirth, 2026-11-20): its ↑/↓, Return and Escape
+// are Margin's while it's up, and the app doesn't hand them back to the hosted app at the press that opened it, which
+// made the page lose its focus and the menu close as it came. The hosted app stays the front app throughout: Margin's
+// panel takes the keys without making Margin active. Closed: the keys back to the app.)
+const popupOpen = () => !!(runtime?.vm?.menu || runtime?.vm?.prompt || runtime?.panelOpen);
+const stillHasKeys = () => editable(document.activeElement) || preview.bar.shown || popupOpen();
 const setKeys = (on: boolean) => {
   if (on === hasKeys) return;
   hasKeys = on;
+  if (on && !keysWatch && typeof MutationObserver === 'function') {
+    keysWatch = new MutationObserver(() => {
+      if (keysCheck) return;
+      keysCheck = true;
+      setTimeout(() => { keysCheck = false; if (hasKeys && !stillHasKeys()) setKeys(false); }, 0);
+    });
+    keysWatch.observe(document.documentElement, { childList: true, subtree: true });
+  } else if (!on) {
+    keysWatch?.disconnect();
+    keysWatch = null;
+  }
   void post('focus', { on }).catch(() => {});
 };
 document.addEventListener('focusin', (e) => { if (editable(e.target)) setKeys(true); });
-document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) setTimeout(() => setKeys(editable(document.activeElement) || preview.bar.shown), 0); });
+document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) setTimeout(() => setKeys(stillHasKeys()), 0); });
 
 // ---- start ----------------------------------------------------------------------------------
 
@@ -634,23 +996,38 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     let msg;
     try { msg = JSON.parse(json); } catch { return; }
     if (!host) return;
+    // Where the pointer is over Margin's UI while a hosted app has the keys (the app's, MarginWindowController.hover):
+    // the page's own hover, before anything else (it's many a second, and nothing else needs it).
+    if (msg?.type === 'hoverAt') { hoverAt(msg.x, msg.y); return; }
+    // The hosted window's bounds in this page, as they change (MarginWindowController.readHosted): a theme with a bigger
+    // page area waits for them (swapTheme).
+    if (msg?.type === 'hostedFrame') { hostedFrameSaid(msg.rect); return; }
+    // Every visible host's window while several are (MarginWindowController.sayHostedFrames): kept for the preview card and
+    // split view's panes (docs/PEEK-SPLIT.md §2-§4).
+    if (msg?.type === 'hostedFrames') { hostedFramesSaid(msg.frames); return; }
+    // The trackpad's phases over Margin's UI (MarginWindowController.wheelPhase): for the space swipe (ui/behaviors/
+    // swipe.ts), which web pages' wheel events don't tell.
+    if (msg?.type === 'wheelPhase') {
+      const phase = ['mayBegin', 'began', 'ended', 'cancelled', 'momentum', 'momentumEnd'].includes(msg.phase) ? msg.phase : null;
+      if (phase) document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
+      return;
+    }
+    // The device a gesture over Margin's UI comes from (MarginWindowController.tellPointer): Edit Theme Color's ticks
+    // (ui/picker/feedback.ts). The host's alone: nothing drawn for it.
+    if (msg?.type === 'pointerKind') { host.receive(msg); return; }
     if (msg?.type === 'pointer') stats.pointers++;
     const cause = () => (msg?.type === 'changes' ? `changes to ${Object.keys(msg.changes ?? {}).join(', ') || 'site icons'}` : msg?.type === 'push' ? `the copy's ${msg.msg?.type}` : String(msg?.type));
     timed('taking the app\'s word', cause, () => {
       const before = !!host?.getState();
       host?.receive(msg);
-      // Handed to another window by a switch (host-app.ts `rekey`): what its copy pushed before, and its theme if
-      // that profile's isn't the one drawn (settings are shared across profiles, so usually it is).
-      if (msg?.type === 'rekey' && msg.hello && host) {
-        for (const held of Array.isArray(msg.hello.held) ? msg.hello.held : []) host.receive({ type: 'push', msg: held });
-        const theme = msg.hello.theme ?? null;
-        if (theme && JSON.stringify(theme) !== JSON.stringify(pendingTheme)) {
-          pendingTheme = theme;
-          if (host.getState() && !preview.pkg) mounting = mounting.then(() => mount(theme));
-        }
-      }
       // A notice about one tab's page goes once another tab is in front.
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
+      // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
+      // whose drawing doesn't change with it changes nothing the watcher sees, and the app waits for that layout).
+      if (msg?.type === 'windows' || msg?.type === 'pageOutside' || msg?.type === 'pageHosted' || msg?.type === 'pageState') { followOutside(); queueMicrotask(measureNow); }
+      // The app asks for a measure now: the window took a size its page hasn't drawn yet (no frame since, so no resize
+      // event; seen 2026-11-15 after a hosted tile left: 4.8 s), and the web view's size is what a measure reads.
+      if (msg?.type === 'measure') measureNow();
       // The first state after a hello without one: the theme can draw now.
       if (!before && host?.getState() && !runtime && pendingTheme) mounting = mounting.then(() => mount(pendingTheme));
     });
@@ -660,9 +1037,32 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     stats.receivedMaxMs = Math.max(stats.receivedMaxMs, ms);
   },
   // The counts above (the app's tests read them).
-  stats: () => JSON.parse(JSON.stringify(stats)),
-  // The window this page draws for (a switch's hand-over changes it: host-app.ts `rekey`). The app's tests read it.
+  // (With the device the last gesture came from, as the app told it: Edit Theme Color's ticks.)
+  stats: () => ({ ...JSON.parse(JSON.stringify(stats)), device: host?.feedbackDevice ?? null }),
+  // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
+  // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
+  devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK
+  // DEV-HOOK: an empty point of the sidebar, by the double-click's own rule (ui/empty.ts): DevHooks.swift `say: spot`.
+  devEmptySpot: () => { const p = runtime?.emptySpot(); return p ? `${p.x},${p.y}` : 'none'; }, // DEV-HOOK
+  devState: () => { // DEV-HOOK
+    const vm: any = runtime?.vm;
+    if (!vm) return 'no view model';
+    const rows = [...(vm.favorites?.items ?? []), ...(vm.space?.pinnedFlat ?? []).filter((p: any) => !p.isFolder), ...(vm.space?.today ?? [])];
+    const name = (id: unknown) => { const r = rows.find((x: any) => x.id === id || x.tabId === id); return r ? String(r.title ?? '').slice(0, 24) : String(id); };
+    return JSON.stringify({ space: vm.space?.name, tab: vm.tab ? { id: vm.tab.id, title: String(vm.tab.title ?? '').slice(0, 24) } : null,
+      today: (vm.space?.today ?? []).map((t: any) => ({ id: t.id, title: String(t.title ?? '').slice(0, 24), active: !!t.active })),
+      preview: vm.preview ? { host: vm.preview.host, quickTab: !!vm.preview.isQuickTab, loading: !!vm.preview.loading } : null,
+      // (Each pane's `tabId`: its row's number while it's open, what an action on it takes; `id` the split's own name for it.)
+      split: vm.split ? { axis: vm.split.axis, panes: (vm.split.panes ?? []).map((p: any) => ({ id: p.id, tabId: p.tabId ?? p.id, title: name(p.tabId ?? p.id), focused: !!(p.focused ?? p.active) })) } : null,
+      splits: (vm.space?.splits ?? []).map((sp: any) => ({ id: sp.id, count: sp.count })),
+      hostedFrames: hostedBoxes.length });
+  },
+  // The visible hosts' windows as the app last said them (`hostedFrames`), empty with one host. The app's tests read it.
+  hostedFrames: () => hostedBoxes.map((f) => ({ ...f, box: { ...f.box } })),
+  // The window this page draws for. The app's tests read it.
   windowId: () => host?.windowId ?? null,
+  // Drawn in Margin's own window, in which mode, and whether its palette is open (the app's tests read them).
+  appWindow: () => ({ appWindow: !!host?.appWindow, mode: host?.mode ?? null, palette: !!runtime?.paletteOpen }),
   // The theme the overlay couldn't draw, if it fell back to Arcadia (the app's tests read it).
   themeFailure: () => (themeFailure ? { ...themeFailure } : null),
   // The preview's bar, for the app's tests: what it says, and a press of one of its buttons.
@@ -679,7 +1079,7 @@ let pendingTheme: any = null;
 // (Still clickable and hovered: a link back in a moment is the usual case; the dim and the note come only after
 // 1.5 s, overlay.html. A press meanwhile that needs the copy is lost, as one in a dropped link always was.)
 // Dimmed with a note (not the theme's: Margin's own, over everything) while
-// the app waits for the copy to come back (app/platforms/macos/shell/Shell.swift).
+// the app waits for the copy to come back (an overlay over a browser's window: never Margin's own).
 let reconnectNote: HTMLElement | null = null;
 function setReconnecting(on: boolean) {
   document.documentElement.toggleAttribute('data-reconnecting', on);
@@ -716,13 +1116,24 @@ async function start() {
   const text = await post('hello');
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
-  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
-  host.onState(() => followPage());
+  saidText = hello.host === 'app-window' && hello.saidText === true;
+  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args), note: (...args) => log('note', ...args) });
+  hostedFrameSaid(hello?.hostedFrame);
+  // (Several visible as it starts: the preview card, a split's panes. `hostedFrames` pushes keep it as they change.)
+  hostedFramesSaid(hello?.hostedFrames);
+  host.onState(() => { followPage(); followSplitPick(); });
   // What the copy pushed for this window before this page was there (a
-  // notice, the tabs loading: app/platforms/macos/shell/Shell.swift HeldPushes), as if it came now.
+  // notice, the tabs loading: an app that holds them says so in its hello's `held`), as if it came now.
   for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });
   pendingTheme = hello.theme ?? null;
-  if (hello.theme && host.getState()) mounting = mounting.then(() => mount(hello.theme));
+  // Margin's own window with no package from the app (no copy has said its theme): Arcadia, as its own.
+  if (!pendingTheme && host.appWindow) {
+    const arcadia = await fallbackPackage();
+    // (A package the app pushed meanwhile is the one, drawn as it came.)
+    if (pendingTheme) return;
+    pendingTheme = arcadia;
+  }
+  if (pendingTheme && host.getState()) { const pkg = pendingTheme; mounting = mounting.then(() => mount(pkg)); }
 }
 
 start().catch((err) => log('error', 'the overlay failed to start:', String(err?.stack ?? err)));

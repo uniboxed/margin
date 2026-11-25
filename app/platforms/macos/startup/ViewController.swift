@@ -1,12 +1,13 @@
-// Margin's app: a set-up window that walks through what Safari needs for
-// Margin, checking each step where it can. It sees itself whether Margin is
+// Margin's app: a set-up window (shown when Margin is opened with Option held: Margin's own window is what opens
+// otherwise, AppDelegate.swift) that walks through what Safari needs for Margin, which shows Safari's windows in its
+// own window (docs/MARGIN-APP.md), checking each step where it can. It sees itself whether Margin is
 // on in Safari (SFSafariExtensionManager); the rest only the extension can see
 // (extension/engines/webkit/safari/onboarding.ts → SafariWebExtensionHandler.swift → a distributed
 // notification here): whether Margin may run on every website, whether ⌘T
 // reaches Margin, whether new tabs and windows open Margin's page. Itself
 // again, by trying to read Safari's data: whether Margin has Full Disk Access,
-// which shows Safari's own profile names (app/engines/webkit/safari/SafariProfiles.swift) and
-// iCloud Tabs (app/engines/webkit/safari/CloudTabs.swift); without it nothing else changes. Safari only for now; Chrome and Edge come later.
+// which gives Safari's own profile names (app/engines/webkit/safari/SafariProfiles.swift), nothing else (iCloud Tabs
+// were removed 2026-11-17); without it nothing else changes. Safari only for now; Chrome and Edge come later.
 // Copied into the generated Xcode project by scripts/make-xcode.sh (the
 // converter's storyboard window shows this view controller).
 
@@ -42,10 +43,19 @@ class ViewController: NSViewController {
         model.start()
     }
 
+    // Its checks poll only while the window is on screen (2 s each: an
+    // extension-state request and a file open). Margin ran them all the
+    // time before, hidden too: part of its idle cost (2026-11-18).
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        model.pause()
+    }
+
     // Once: it appears again after the app is hidden and shown, where the
     // user may have moved or resized it.
     override func viewDidAppear() {
         super.viewDidAppear()
+        model.resume()
         guard !placed, let window = view.window else { return }
         placed = true
         window.title = "Set up Margin"
@@ -111,14 +121,24 @@ final class SetupModel: ObservableObject {
 
     func start() {
         refreshExtensionState()
-        // On the main run loop and queue, both.
-        poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshExtensionState() }
-        }
         DistributedNotificationCenter.default().addObserver(forName: setupNotification, object: nil, queue: .main) { [weak self] note in
             let json = note.object as? String
             MainActor.assumeIsolated { self?.receive(json) }
         }
+    }
+
+    // The window shown: checked now and every 2 s (on the main run loop and
+    // queue, both); hidden: not checked.
+    func resume() {
+        guard poll == nil else { return }
+        refreshExtensionState()
+        poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshExtensionState() }
+        }
+    }
+    func pause() {
+        poll?.invalidate()
+        poll = nil
     }
 
     // Margin on or off, and when Safari last opened: both can set Safari's
@@ -267,6 +287,21 @@ final class SetupModel: ObservableObject {
         NSWorkspace.shared.open(SafariFiles.fullDiskAccessURL)
     }
 
+    // Safari's folder picked once (SafariFolderGrant): the profiles' names readable without Full Disk Access.
+    @Published var folderSaid: String?
+    func allowSafariFolder() {
+        SafariFolderGrant.ask(over: NSApp.keyWindow) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .granted: self.folderSaid = nil
+            case .cancelled: self.folderSaid = nil
+            case .wrongFolder: self.folderSaid = "That wasn't Safari's folder. Click Allow Safari's profiles again and choose the folder it opens on."
+            case .unreadable: self.folderSaid = "Still not readable. Quit Margin, open it again, and try once more."
+            }
+            self.refreshExtensionState()
+        }
+    }
+
     func openKeyboardSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -321,7 +356,7 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Set up Margin for Safari")
                     .font(.system(size: 22, weight: .semibold))
-                Text("A few settings in Safari and macOS make Margin feel like its own browser. Steps with a check confirm themselves as you go.")
+                Text("Margin is the app you open: it shows Safari's pages in its own window, beside its sidebar. A few settings in Safari and macOS make that work well. Steps with a check confirm themselves as you go.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -408,7 +443,7 @@ struct StepCard: View {
         case .allSites: return "Let Margin work on every website"
         case .newTabs: return "Open Margin for new windows and tabs"
         case .commandT: return "Make ⌘T open Margin's palette"
-        case .profileNames: return "Show Safari's profile names and iCloud Tabs"
+        case .profileNames: return "Use Safari's profile names"
         case .restore: return "Keep your tabs when Safari restarts"
         case .tidy: return "Tidy up Safari's own interface"
         case .shortcuts: return "Margin's keyboard shortcuts"
@@ -419,19 +454,19 @@ struct StepCard: View {
         switch (step, state) {
         case (.turnOn, .done): return "Margin is on."
         case (.turnOn, _): return "Safari keeps new extensions off until you turn them on."
-        case (.allSites, .done): return "Margin can show its sidebar on every website."
-        case (.allSites, _): return "Without this, Safari asks site by site, and Margin's sidebar is missing where it hasn't been allowed."
+        case (.allSites, .done): return "Margin's extension works on every website."
+        case (.allSites, _): return "Without this, Safari asks site by site, and Margin's extension is missing on the sites it hasn't been allowed on."
         case (.newTabs, .done): return "New windows and tabs open Margin's page."
         case (.newTabs, _) where model.newWindowsOpenMargin: return "New windows open Margin's page; new tabs not yet (or not since Safari last opened)."
         case (.newTabs, _) where model.newTabsOpenMargin: return "New tabs open Margin's page; new windows not yet (or not since Safari last opened)."
-        case (.newTabs, _): return "So a new window or tab starts in Margin, with its sidebar and palette. While Margin isn't signed, Safari can set these back when it restarts: check again then."
+        case (.newTabs, _): return "So a new window or tab in Safari starts on Margin's page. While Margin isn't signed, Safari can set these back when it restarts: check again then."
         case (.commandT, .done): return "⌘T opens Margin's palette, with no new tab flashing first."
         case (.commandT, _): return "Safari keeps ⌘T for its own New Tab, which makes a tab before Margin can step in (a flicker). Giving Safari's New Tab another shortcut frees ⌘T for Margin."
-        case (.profileNames, .done): return "Margin shows each Safari profile by the name Safari gives it, and follows when you rename one in Safari. It shows the tabs open on your other devices (iCloud Tabs) in its sidebar."
-        case (.profileNames, _) where model.diskAccess == .noSafari: return "Safari's data wasn't found on this Mac. Margin uses the names you give profiles in Edit Profile, and shows no iCloud Tabs."
-        case (.profileNames, _): return "With several Safari profiles, Margin can show them by Safari's own names, and it can show the tabs open on your other devices (iCloud Tabs) in its sidebar. That needs Full Disk Access: Safari keeps both in its own data. Without it, Margin uses the names you give profiles in Edit Profile, shows no iCloud Tabs, and nothing else changes."
+        case (.profileNames, .done): return "Margin knows each Safari profile by the name Safari gives it, and follows when you rename one in Safari: that's how it opens a space's pages in the right profile."
+        case (.profileNames, _) where model.diskAccess == .noSafari: return "Safari's data wasn't found on this Mac. Margin uses its own names for Safari's profiles (Default, Profile 2)."
+        case (.profileNames, _): return "With several Safari profiles, Margin needs Safari's own names for them: that's how it opens a space's pages in the right profile. Safari keeps the names in its own folder: allow Margin to see it once. No Full Disk Access needed. Without it, a space's pages open in your default profile."
         case (.restore, _): return "Margin keeps tabs in their spaces across restarts when Safari reopens them."
-        case (.tidy, _): return "Margin's sidebar replaces Safari's tab bar and sidebar."
+        case (.tidy, _): return "In Margin's window, its sidebar takes the place of Safari's tab bar and sidebar."
         case (.shortcuts, _): return "Most of Margin works from the keyboard."
         }
     }
@@ -485,16 +520,16 @@ struct StepCard: View {
             TestLine(test: model.test, step: step, waiting: "Waiting for ⌘T on a web page in Safari…")
         case .profileNames:
             Instructions(lines: [
-                "Click Open Full Disk Access (System Settings › Device Control and Data Access › Full Disk Access).",
-                "Turn on Margin. If it isn't listed, click +, then choose Margin in your Applications folder.",
-                "Margin reads only the profiles' names and symbols and the tabs open on your other devices (iCloud Tabs), never your history, and never changes anything of Safari's.",
+                "Click Allow Safari's profiles. A folder window opens on Safari's own folder.",
+                "Click Allow in it. That's all: Margin remembers it.",
+                "Margin reads only the profiles' names and symbols, never your tabs or history, and never changes anything of Safari's.",
             ])
             HStack {
-                Button("Open Full Disk Access") { model.openFullDiskAccess() }
+                Button("Allow Safari's profiles…") { model.allowSafariFolder() }
                 if model.diskAccess == .granted {
-                    Text("Margin has Full Disk Access.").font(.callout).foregroundStyle(.secondary)
-                } else {
-                    Text("Checked as you go. Names not showing a minute after you allow it: quit Margin and open it again.").font(.callout).foregroundStyle(.secondary)
+                    Text("Margin can see your Safari profiles.").font(.callout).foregroundStyle(.secondary)
+                } else if let said = model.folderSaid {
+                    Text(said).font(.callout).foregroundStyle(.secondary)
                 }
             }
         case .restore:
@@ -511,7 +546,7 @@ struct StepCard: View {
             Instructions(lines: [
                 "Hide Safari's sidebar: View › Hide Sidebar (⇧⌘L).",
                 "Use the compact tab bar: Safari Settings › Tabs › Tab layout: Compact.",
-                "For the cleanest look, use Safari in full screen (⌃⌘F).",
+                "In Safari's View menu, leave “Always Show Toolbar in Full Screen” off: Margin shows Safari's windows in full screen inside its own window.",
             ])
             Toggle("Done", isOn: Binding(get: { model.manual.contains(step.rawValue) }, set: { _ in model.toggleManual(step) }))
                 .toggleStyle(.checkbox)

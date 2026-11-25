@@ -17,8 +17,6 @@
 //     true), sends the state (tests/ui/fixtures.ts smallState, Keep open on)
 //     with `windows`, then the theme (`theme`: a built-in theme's id, sent in
 //     pieces of `chunkBytes`, default 512 KB) → { ev: 'sent', id, what };
-//     `newTabPage`: that tab of the fixture's is Margin's new-tab page (the
-//     overlay over a window with it in front draws the launcher);
 //   { do: 'delta', id, changes, favicons?, skip? } → a delta numbered next
 //     (`skip`: one number missed, as a lost message would);
 //   { do: 'windows', id, list } → a window list numbered next;
@@ -28,6 +26,16 @@
 //     (`corrupt`: one piece's bytes changed);
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
 //   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id };
+//   { do: 'stall', id, ms } → { ev: 'stalled' }: from now on each message read is handled `ms` after it was read, in
+//     order (a copy whose event loop runs late: docs/LINK-RESILIENCE.md), while what the host tells it to send
+//     (`windows`, `send`) still goes at once; its acks and tocks come late with the rest. `ms: 0` ends it once what's
+//     held has run ({ ev: 'drained', id } then: caught up). A `cancel` read while its req is held drops it (never acked or answered) → { ev: 'cancel', id,
+//     reqId, started: false }; one already handled → started: true (its reply, if it comes, isn't sent);
+//   { do: 'lose', id, n } → the next `n` reqs handled are left, as a copy that read past them: no ack, no reply →
+//     { ev: 'lost', id, reqId, type }.
+// As a copy of today's extension: each req is acked before it runs (`ack { id }`), an id seen this epoch runs once
+// (running: left, { ev: 'again', answered: false }; answered: its reply again, answered: true), and a tick's `seq` is
+// echoed in its tock.
 //   { do: 'play', id, play } → connect's `play` changed (below).
 // A socket done by hand (node:net), for what a page's WebSocket can't send (a close of 1001, an
 // empty close, a TCP end with no close frame, a socket that never says hello):
@@ -54,28 +62,20 @@
 //     { ev: 'dataChanges', id, changes };
 //   { do: 'dataChanges', id, changes } → data.changes from the copy;
 //   { do: 'dataHello', id, acked?, rev?, queue? } → data.hello again.
-// Spaces across profiles (e2e-profiles.swift): connect's `spaces` replaces the
-// fixture's spaces (and puts its tabs in the first), and `newWindow` (bounds)
-// makes it play its window requests as Safari would: openSpaceWindow adds a
-// full-screen window with those bounds (ids from 90) to its list, sends the
-// list and answers { windowId, state }; closeWindow takes the window out and
-// sends the list; focusWindow and setSpace answer ok (setSpace also makes
-// the space the window's). Each says { ev: 'req', … } first, as any req.
-// The handoff's requests (docs/HANDOFF.md §3.3), played the same way with
-// connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari
-// takes to enter and leave full screen, how much later the copy's list says
-// so, and a normal window's bounds): setWindowState refuses past `notAfter`
-// and answers `busy` while another windows call for that window is under way,
-// else lands the state after its time, says { ev: 'landed', id, windowId,
-// state }, sends the list (`listLagMs` later) and answers { windowId, state,
-// landedAt }; windowDrafts answers connect's `drafts` ({ windowId: [tabId] },
-// none by default); frameProbe answers { none }. openSpaceWindow also says
-// { ev: 'made', id, windowId } and closeWindow { ev: 'closed', id, windowId },
-// so the host can play the window server's side.
+// Connect's `spaces` replaces the fixture's spaces (and puts its tabs in the first), and `newWindow` (bounds)
+// makes it play its window requests as Safari would (ids from 90): closeWindow takes the window out, sends the list
+// and says { ev: 'closed', id, windowId }; setWindowState, with connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari takes to
+// enter and leave full screen, how much later the copy's list says so, and a normal window's bounds), refuses past
+// `notAfter` and answers `busy` while another windows call for that window is under way, else lands the state after
+// its time, says { ev: 'landed', id, windowId, state }, sends the list (`listLagMs` later) and answers { windowId,
+// state, landedAt }. Each says { ev: 'req', … } first, as any req.
+// Margin.app hosting (e2e-glue.swift): with `newWindow`, newWindow adds a window with those bounds (normal, or
+// full screen if asked), sends the list, says { ev: 'made', id, windowId } and answers { windowId, state, bounds };
+// hostShow { windowId, itemId, url } answers { tabId, created } (the item's tab kept, ids from 700) and hostClose
+// { itemId } { closed }, each said as { ev: 'hostShow' | 'hostClose', id, payload } after its req.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
-// payload } }); setLayout → { ev: 'setLayout', msg }; drawn →
-// { ev: 'drawn', id, windowId, on, msg }; resync →
+// payload } }); drawn → { ev: 'drawn', id, windowId, on, msg }; resync →
 // { ev: 'resync' } and the state again; bye → { ev: 'bye', why }; anything
 // else → { ev: 'message', msg }. Every message from the app is checked to be
 // under 1 MB ({ ev: 'tooBig' } if not).
@@ -86,7 +86,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { smallState } from '../../tests/ui/fixtures.ts';
 import { toStorage } from '../../extension/shared/stored.ts';
-import { readBuiltinTheme } from '../../extension/ui/theme-loader.ts';
+import { readBuiltinTheme } from '../../app/shared/ui/theme-loader.ts';
 import { dataSetFromStorage, stateFromDataSet } from '../../extension/shared/data-set.ts';
 import { liveValues } from '../../extension/shared/data-merge.ts';
 import { normalizeState } from '../../extension/state/model.ts';
@@ -95,15 +95,19 @@ import { fromStorage } from '../../extension/shared/stored.ts';
 // What the host and the app send, and a copy's storage: parsed JSON, read field by field where it's used.
 type Msg = Record<string, any>;
 type Bounds = { left: number, top: number, width: number, height: number };
-type Win = Bounds & { windowId: number, state: string, focused?: boolean, focusedAt?: number, activeTabId?: number };
+type Win = Bounds & { windowId: number, state: string, focused?: boolean, focusedAt?: number };
 type DataSet = { format: number, items: Record<string, Record<string, unknown>> };
 // A copy on the link (connect).
 type Sock = {
   id: string, ws: WebSocket, profile: string, epoch: string, seq: number, muted: boolean, welcomed: boolean, raw: Msg,
   windows: Win[], data: Msg | null, acked: number, rev: string | null, cache: DataSet | null,
   incoming: { transfer: string, parts: Map<number, Msg>, bytes: number } | null, newWindow: Bounds | null, nextWindow: number,
-  play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds }, drafts: Record<string, number[]> | null,
-  calling: Set<number>, send: (m: Msg) => void,
+  play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds },
+  calling: Set<number>, send: (m: Msg) => void, snapshot: () => void, hosted?: Map<string, number>, nextTab?: number,
+  // `stall`: each message read is held `stallMs` before it's handled (in order); `lose`: that many reqs read and left.
+  stallMs: number, held: { m: Msg, due: number }[], drainTimer: ReturnType<typeof setTimeout> | null, lose: number,
+  // This epoch's reqs: running, or their reply (sent again for a repeated id); and the ids the app cancelled.
+  answered: Map<number, Msg | 'running'>, cancelled: Set<number>,
 };
 // Node's WebSocket (undici's) takes the request's headers; the DOM's type doesn't say so.
 type NodeWebSocket = new (url: string, init: { headers: Record<string, string> }) => WebSocket;
@@ -129,7 +133,7 @@ function storedState(): Msg {
 const themes = new Map<string, Msg>();
 async function themeMessage(id: string) {
   if (!themes.has(id)) {
-    const dir = fileURLToPath(new URL(`../../extension/themes/${id}/`, import.meta.url));
+    const dir = fileURLToPath(new URL(`../../app/shared/ui/themes/${id}/`, import.meta.url));
     const pkg = await readBuiltinTheme(id, { readFile: async (p: string) => { const b = readFileSync(dir + p); return /\.(json|html|css)$/.test(p) ? b.toString('utf8') : new Uint8Array(b); } });
     // background/theme-package.ts ThemeMessage: the files' bytes as base64.
     themes.set(id, { id, manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.fromEntries(Object.entries(pkg.files).map(([p, b]) => [p, Buffer.from(b).toString('base64')])) });
@@ -208,24 +212,40 @@ function takeData(s: Sock, m: Msg) {
   }
 }
 
+// Margin.app hosting this copy's window (above): an item's tab shown or closed; null: not one of these.
+function playHosted(s: Sock, m: Msg) {
+  if (m.type !== 'hostShow' && m.type !== 'hostClose') return null;
+  s.hosted ??= new Map();
+  const item = m.payload?.itemId;
+  say({ ev: m.type, id: s.id, payload: m.payload });
+  if (m.type === 'hostClose') { const had = s.hosted.delete(item); return { closed: had }; }
+  const had = s.hosted.get(item);
+  if (had != null) return { tabId: had, created: false };
+  s.nextTab = (s.nextTab ?? 700) + 1;
+  s.hosted.set(item, s.nextTab);
+  return { tabId: s.nextTab, created: true };
+}
+
 // A window request played as Safari would (above); null: the usual echo. A promise: answered when it settles.
 function playWindow(s: Sock, m: Msg) {
+  const hosted = playHosted(s, m);
+  if (hosted) return hosted;
   if (!s.newWindow) return null;
   const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
   const windowId = m.payload?.windowId;
-  // The handoff's one windows call per window, never late (background/handoff.ts windowCall).
-  const windowCall = ['setWindowState', 'focusWindow', 'closeWindow'].includes(m.type);
+  // One windows call per window, never late (background/handoff.ts windowCall).
+  const windowCall = ['setWindowState', 'closeWindow'].includes(m.type);
   if (windowCall && typeof m.payload?.notAfter === 'number' && Date.now() > m.payload.notAfter) return { refused: 'late', pastMs: Date.now() - m.payload.notAfter };
   if (windowCall && s.calling.has(windowId)) return { busy: true };
   switch (m.type) {
-    case 'openSpaceWindow': {
+    case 'newWindow': {
       const id = s.nextWindow++;
       const b = s.newWindow;
-      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state: 'fullscreen', focused: true, focusedAt: Date.now(), activeTabId: 13 }];
-      setSpace(s, id, m.payload?.spaceId);
+      const state = m.payload?.fullscreen ? 'fullscreen' : 'normal';
+      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state, focused: true, focusedAt: Date.now() }];
       say({ ev: 'made', id: s.id, windowId: id });
       sendWindows();
-      return { windowId: id, state: 'fullscreen', bounds: b };
+      return { windowId: id, state, bounds: b };
     }
     case 'closeWindow':
       s.windows = s.windows.filter((w) => w.windowId !== windowId);
@@ -249,30 +269,11 @@ function playWindow(s: Sock, m: Msg) {
         done({ windowId, state, landedAt: Date.now() });
       }, same ? 0 : (state === 'fullscreen' ? s.play.enterMs ?? 300 : s.play.exitMs ?? 100)));
     }
-    case 'windowDrafts':
-      return { drafts: s.drafts?.[windowId] ?? [], unknown: [] };
-    case 'frameProbe':
-      return { none: 'no page' };
-    case 'focusWindow':
-      s.windows = s.windows.map((x) => ({ ...x, focused: x.windowId === windowId, ...(x.windowId === windowId ? { focusedAt: Date.now() } : {}) }));
-      sendWindows();
-      return { windowId, state: s.windows.find((x) => x.windowId === windowId)?.state ?? 'fullscreen' };
-    case 'setSpace':
-      setSpace(s, m.payload?.windowId, m.payload?.spaceId);
-      return { shown: null };
     default:
       return null;
   }
 }
-function setSpace(s: Sock, windowId: number | undefined, spaceId: unknown) {
-  if (windowId == null || typeof spaceId !== 'string') return;
-  const open = structuredClone(s.raw.openTabs);
-  open.activeSpaceByWindow = { ...open.activeSpaceByWindow, [windowId]: spaceId };
-  s.raw.openTabs = open;
-  s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
-}
-
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, drafts = null, nextWindow = 90 }: Msg) {
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, instanceId = null, play = {}, nextWindow = 90 }: Msg) {
   const to = (old ? kept : link)!; // (connect: once linked)
   const ws = new (WebSocket as unknown as NodeWebSocket)(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
@@ -283,16 +284,12 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
     open.activeSpaceByWindow = Object.fromEntries(Object.keys(open.activeSpaceByWindow ?? {}).map((w) => [w, spaces[0].id]));
     raw.openTabs = open;
   }
-  if (newTabPage != null && raw.openTabs?.tabs?.[newTabPage]) {
-    raw.openTabs = structuredClone(raw.openTabs);
-    Object.assign(raw.openTabs.tabs[newTabPage], { url: `${ORIGIN}/newtab/newtab.html`, title: 'New Tab' });
-  }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
-  // (Its `send`: just below.)
-  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, drafts, calling: new Set() } satisfies Omit<Sock, 'send'>) as Sock;
+  // (Its `send` and `snapshot`: just below.)
+  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, calling: new Set(), stallMs: 0, held: [], drainTimer: null, lose: 0, answered: new Map(), cancelled: new Set(), send: () => {}, snapshot: () => {} }) as Sock;
   sockets.set(id, s);
   s.send = (m: Msg) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
-  const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
+  const snapshot = (s.snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows }));
   ws.onopen = () => say({ ev: 'open', id });
   ws.onerror = () => say({ ev: 'error', id });
   ws.onclose = (e) => say({ ev: 'close', id, code: e.code, reason: e.reason });
@@ -316,32 +313,75 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       }
       return;
     }
+    // A cancel read while its req is still held (stalled): that req is dropped, never acked or answered (as the copy's
+    // queue is read first after a pause, docs/LINK-RESILIENCE.md §1 rules 12 and 14).
+    if (m.k === 'cancel') {
+      const at = s.held.findIndex((h) => h.m.k === 'req' && h.m.id === m.id);
+      if (at >= 0) s.held.splice(at, 1);
+      s.cancelled.add(m.id);
+      return say({ ev: 'cancel', id, reqId: m.id, started: at < 0 });
+    }
+    if (s.stallMs > 0 || s.held.length) {
+      s.held.push({ m, due: Date.now() + s.stallMs });
+      return drain(s);
+    }
+    handle(s, m);
+  };
+}
+
+// The held messages whose time has come, in the order they were read; the timer set for the next.
+function drain(s: Sock) {
+  clearTimeout(s.drainTimer ?? undefined);
+  s.drainTimer = null;
+  const had = s.held.length > 0;
+  while (s.held.length && s.held[0].due <= Date.now()) handle(s, s.held.shift()!.m);
+  if (s.held.length) s.drainTimer = setTimeout(() => drain(s), Math.max(0, s.held[0].due - Date.now()));
+  else if (had && s.stallMs === 0) say({ ev: 'drained', id: s.id }); // (caught up: nothing held, no longer stalled)
+}
+
+// One message from the app, handled (after its hold, when stalled).
+function handle(s: Sock, m: Msg) {
+  const id = s.id;
+  {
     switch (m.k) {
       case 'tick':
-        say({ ev: 'tick', id });
-        if (!s.muted) s.send({ k: 'tock', at: Date.now() });
+        say({ ev: 'tick', id, seq: m.seq ?? null });
+        if (!s.muted) s.send({ k: 'tock', at: Date.now(), ...(Number.isInteger(m.seq) ? { seq: m.seq } : {}) });
         return;
       case 'req': {
+        // `lose`: read and left, as a copy that read past it would (no ack, no reply).
+        if (s.lose > 0) {
+          s.lose--;
+          return say({ ev: 'lost', id, reqId: m.id, type: m.type });
+        }
+        // Acked as it's read, before it runs (a stalled copy's ack comes late with it); an id seen this epoch runs once.
+        s.send({ k: 'ack', id: m.id });
+        if (s.cancelled.has(m.id)) return;
+        const seen = s.answered.get(m.id);
+        if (seen) { say({ ev: 'again', id, reqId: m.id, answered: seen !== 'running' }); if (seen !== 'running') s.send(seen); return; }
+        s.answered.set(m.id, 'running');
         say({ ev: 'req', id, msg: m });
         const played = m.epoch === s.epoch ? playWindow(s, m) : null;
-        const reply = (result: unknown) => s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
+        const reply = (result: unknown) => {
+          const r = { k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } };
+          s.answered.set(m.id, r);
+          if (!s.cancelled.has(m.id)) s.send(r);
+        };
         if (played instanceof Promise) return void played.then(reply);
         return reply(played);
       }
-      case 'setLayout':
-        return say({ ev: 'setLayout', id, msg: m });
       case 'drawn':
         return say({ ev: 'drawn', id, windowId: m.windowId, on: m.on, msg: m });
       case 'resync':
         say({ ev: 'resync', id });
-        return snapshot();
+        return s.snapshot();
       case 'bye':
         return say({ ev: 'bye', id, why: m.why });
       default:
         if (typeof m.k === 'string' && m.k.startsWith('data.')) return takeData(s, m);
         return say({ ev: 'message', id, msg: m });
     }
-  };
+  }
 }
 
 // A client's frame (masked, as every client's must be).
@@ -426,6 +466,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return say({ ev: 'sent', id: c.id, what: 'data.hello' });
     case 'mute':
       s.muted = c.on;
+      return;
+    case 'stall':
+      s.stallMs = Math.max(0, Number(c.ms) || 0);
+      say({ ev: 'stalled', id: c.id, ms: s.stallMs });
+      if (s.stallMs === 0 && !s.held.length) say({ ev: 'drained', id: c.id });
+      return;
+    case 'lose':
+      s.lose = Math.max(0, Number(c.n) || 0);
       return;
     case 'play':
       s.play = { ...s.play, ...c.play };

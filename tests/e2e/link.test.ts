@@ -1,16 +1,14 @@
 // The link (docs/PROTOCOL.md): the real extension, built with Safari's
 // profile, linking to the stand-in Margin.app through the native messaging
-// relay, and the real overlay drawing in WebKit. Then the page box, and the
-// app starting after Safari (appUp, and Start on Margin's new-tab page).
+// relay, and the real overlay drawing in WebKit. Then a page following the
+// overlay, and the app starting after Safari (appUp, and Start on Margin's new-tab page).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { sidebar, pageBox, slot } from './harness/ui.ts';
+import { sidebar, slot } from './harness/ui.ts';
 import type { Space } from '../../types/margin.d.ts';
 
-// The test site's first-frames recorder (site/sites/common.ts FIRST_FRAMES), on a page's window.
-type FirstFrames = { __fp?: { frames: { x: number, y: number }[] } };
 
 const SEED = { spaces: SPACES, settings: { sidebarPinnedOpen: true } };
 
@@ -44,7 +42,7 @@ test('linking at start: hello, snapshot, theme, keys, the data set, and the over
   // drawn on before the first layout, and the layout is where the theme put the page.
   const windowId = shell.frontWindowId();
   await m.until(async () => (await m.stored('appLink')).appLink?.drawn?.[windowId] === true, { what: 'the copy\'s word that the app draws over the window' });
-  const layout = await m.until(() => shell.layoutsSent.findLast((l) => l.windowId === windowId), { what: 'a setLayout' });
+  const layout = await m.until(() => shell.layoutsSent.findLast((l) => l.windowId === windowId), { what: 'the page\'s layout' });
   const s = (await slot(ui))!;
   assert.deepEqual(layout.insets, { left: s.left, top: s.top, right: s.right, bottom: s.bottom });
   assert.deepEqual(layout.container, { width: 1440, height: 900 });
@@ -58,21 +56,6 @@ test('linking at start: hello, snapshot, theme, keys, the data set, and the over
   assert.deepEqual(shell.blocked, [], 'the overlay loaded nothing from the web');
   assert.deepEqual(shell.pageErrors, [], 'no errors in the overlay');
   await m.shoot(t, 'linked');
-});
-
-test('a page opened while linked sits in the slot from its first frame', async (t) => {
-  const page = await m.open('dispatch.test', '/2026/11/the-quiet-city?fp');
-  const ui = await m.ui();
-  const s = (await slot(ui))!;
-  const box = await m.until(() => pageBox(page), { what: 'the article\'s box' });
-  assert.deepEqual({ left: box.left, top: box.top, right: box.right, bottom: box.bottom }, s);
-  assert.equal(box.width, 1440 - s.left - s.right, 'the page lays out at the slot\'s width');
-  // The recorder (site/sites/common.ts FIRST_FRAMES): where <html> sat in each early frame.
-  const frames = await m.until(() => page.evaluate(() => ((globalThis as unknown as FirstFrames).__fp?.frames.length! >= 10 ? (globalThis as unknown as FirstFrames).__fp!.frames : null)), { what: 'the first frames' });
-  assert.equal(Math.round(frames[0].x), s.left, `the first frame is already in the box: ${JSON.stringify(frames.slice(0, 3))}`);
-  assert.equal(Math.round(frames[0].y), s.top);
-  await m.shoot(t, 'article');
-  await page.close();
 });
 
 test('the overlay follows the state: a tab opened, retitled and closed', async () => {

@@ -1,11 +1,11 @@
-// The host adapters (extension/ui/host.ts): the in-page host against a fake
+// The host adapters (app/shared/ui/host.ts): the in-page host against a fake
 // browser API (storage.local, storage.onChanged, runtime.sendMessage), read
 // as content/core.ts reads today; and the mock host the browser tests use.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInPageHost, createMockHost, type Geometry } from '../extension/ui/host.ts';
+import { createInPageHost, createMockHost, type Geometry } from '../app/shared/ui/host.ts';
 import { toStorage, faviconsMark, firstReadKeys } from '../extension/shared/stored.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
 import { smallState, W, OTHER_WINDOW } from './ui/fixtures.ts';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

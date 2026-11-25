@@ -14,7 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeBrowser, type FakeBrowserApi, type FakeInjection } from './fake-browser.ts';
 import type { Said } from '../extension/background/link.ts';
-import type { UiState } from '../extension/ui/view-model.ts';
+import type { UiState } from '../app/shared/ui/view-model.ts';
 
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,10 +122,10 @@ notices.useLinkForTests(stand);
 pageLoads.useLinkForTests(stand);
 const { repairCutOff, forgetCurrent } = await import('../extension/background/tabs.ts');
 const words = await import('../extension/shared/notices.ts');
-const { createAppNotices, createGestureFeedback, GESTURE_DONE_MS, GESTURE_LEAVE_MS } = await import('../extension/ui/app-feedback.ts');
-const { createGestureMotion, TAU_MS } = await import('../extension/ui/gesture-motion.ts');
-const { createAppHost } = await import('../extension/ui/host-app.ts');
-const { buildViewModel } = await import('../extension/ui/view-model.ts');
+const { createAppNotices, createGestureFeedback, GESTURE_DONE_MS, GESTURE_LEAVE_MS } = await import('../app/shared/ui/app-feedback.ts');
+const { createGestureMotion, TAU_MS } = await import('../app/shared/ui/gesture-motion.ts');
+const { createAppHost } = await import('../app/shared/ui/host-app.ts');
+const { buildViewModel } = await import('../app/shared/ui/view-model.ts');
 const { startLoads, TRANSITION_MS } = await import('../extension/content/loads.ts');
 const { gestureTeller, GESTURE_TELL_MS } = await import('../extension/content/trackpad.ts');
 type Shown = Parameters<Parameters<typeof createGestureFeedback>[0]['set']>[0];
@@ -135,7 +135,7 @@ const kinds = (kind: string) => pushed.filter((p) => p.msg.type === 'notice' && 
 // ---- the words ------------------------------------------------------------------
 
 test('notices: Margin\'s words, each kind\'s buttons; a switch that didn\'t happen gets the notice for why', () => {
-  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'tab-gone', 'theme-failed', 'updated-while-open']);
+  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['app-asking', 'new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'safari-profile', 'tab-gone', 'theme-failed', 'updated-while-open']);
   assert.match(words.NOTICES['not-responding'].text, /isn’t responding on this page/);
   assert.deepEqual(words.NOTICES['not-responding'].actions.map((a) => a.id), ['reload', 'later']);
   assert.match(words.NOTICES['updated-while-open'].text, /Quit and reopen Safari/);
@@ -506,46 +506,18 @@ test('loads: the page being left told at once, taken back when it stays; a slow 
   assert.equal(said.length, before, 'not drawn by the app: nothing');
 });
 
-// ---- where the page's area sits in its window ------------------------------------------
-
-test('viewport: the page\'s word goes to the link with `measured` only when a pointer event said where the area starts; junk is null', async () => {
-  const { appLink } = await import('../extension/background/app-link.ts');
-  const heard: unknown[][] = [];
-  const was = appLink.viewport;
-  appLink.viewport = (windowId, tabId, rect) => heard.push([windowId, tabId, rect]);
-  try {
-    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949, measured: true } });
-    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949 } });
-    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949, measured: 'yes' } });
-    await ask('viewport', { viewport: { x: -5, y: 0, width: 1272, height: 949, measured: true } });
-    assert.deepEqual(heard, [
-      [1, 1, { x: 240, y: 0, width: 1272, height: 949, measured: true }],
-      [1, 1, { x: 240, y: 0, width: 1272, height: 949 }],
-      [1, 1, { x: 240, y: 0, width: 1272, height: 949 }],
-      [1, 1, null],
-    ]);
-  } finally {
-    appLink.viewport = was;
-  }
-});
-
-test('viewport: when the page was resized and said so, and when the copy heard it, go with it (Margin.app logs the delay)', async () => {
-  const { appLink } = await import('../extension/background/app-link.ts');
-  const heard: [unknown, NonNullable<Parameters<typeof appLink.viewport>[3]>][] = [];
-  const was = appLink.viewport;
-  appLink.viewport = (windowId, tabId, rect, times) => heard.push([rect, times!]);
-  try {
-    const before = Date.now();
-    await ask('viewport', { viewport: { x: 0, y: 0, width: 1512, height: 485 }, resizedAt: before - 30, at: before - 10 });
-    await ask('viewport', { viewport: { x: 0, y: 0, width: 1512, height: 485 }, resizedAt: 'soon', at: -1 });
-    assert.deepEqual(heard[0][0], { x: 0, y: 0, width: 1512, height: 485 }, 'the rect as before');
-    assert.equal(heard[0][1].resized, before - 30);
-    assert.equal(heard[0][1].said, before - 10);
-    assert.ok(heard[0][1].heard >= before, 'when the copy heard it');
-    assert.deepEqual(Object.keys(heard[1][1]), ['heard'], 'junk times left out');
-  } finally {
-    appLink.viewport = was;
-  }
+test('Margin.app\'s own notice: a hosted app moved to a simpler way, its name filled in as plain text; never the copy\'s', () => {
+  const shown: AppNotice[] = [];
+  const n = createAppNotices({ show: (v) => shown.push(v), send: () => {}, setTimer: () => 0, clearTimer: () => {} });
+  assert.equal(n.push({ type: 'notice', kind: 'route-simpler', app: 'Weather' }), false, 'not the copy\'s to say');
+  assert.equal(n.say('route-simpler', { app: 'Weather' }), true);
+  assert.equal(shown.at(-1)!.text, 'Weather didn’t settle in Margin, so it’s shown a simpler way now. It may take a moment to resize. Margin tries again when Weather updates.');
+  assert.deepEqual(shown.at(-1)!.actions.map((a) => a.label), ['OK']);
+  assert.equal(words.fillNotice('{app} x', { app: 'A\u0007pp\n' + 'b'.repeat(80) }).length, 62, 'control characters out, 60 characters at most');
+  assert.equal(words.fillNotice('{app} x', {}), 'An app x', 'no name: words still whole');
+  assert.equal(words.fillNotice('{app} x', { app: 42 }), 'An app x', 'only a string');
+  assert.equal(words.fillNotice('“{space}” y', { space: 'Work\u0007' }), '“Work” y', 'a space\'s name, cleaned the same way');
+  assert.equal(words.fillNotice('“{space}” y', {}), '“this space” y');
 });
 
 test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push it, and its buttons stay in the overlay', () => {

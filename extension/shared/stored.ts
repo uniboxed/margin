@@ -20,7 +20,6 @@
 //
 // The background (background/store.ts) and pages (content/core.ts, the
 // new-tab page) read through here. Pure.
-import { isSheetWalkKey } from './sheet-walk.ts';
 
 /** The state keys kept in `openTabs`. */
 export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow', 'awayByWindow', 'keptTabs']);
@@ -83,22 +82,21 @@ export function toStorage(state: Record<string, any>, keys: string[], { origin, 
  * times for Margin.app (`dataMeta:<collection>`, written on their own:
  * background/store.ts): nothing to draw.
  * */
-export const onlyMark = (changes: Record<string, unknown>) => Object.keys(changes).every((key) => key === FAVICONS_MARK || key.startsWith('dataMeta:') || isSheetWalkKey(key));
+export const onlyMark = (changes: Record<string, unknown>) => Object.keys(changes).every((key) => key === FAVICONS_MARK || key.startsWith('dataMeta:'));
 
 // What a page reads besides the icons, whatever it has seen so far: the open
 // tabs and what the sidebar, the palette and the page's own start use. Keys
 // seen in a read or a change event are read too. Never the old names of the
 // open tabs (read in full when `openTabs` isn't there), lostTabs (only the
 // background's), or the envelope an old development build kept.
-const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK]);
+const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'archive', 'settings', 'owner', 'showing', FAVICONS_MARK]);
 // The active theme's package (`uiTheme`, background/theme-package.ts) is
 // Margin.app's (the link reads it): never read by a page (Margin 2 Phase 2
 // step 7; before, its first read of everything took it, some 100 KB to 3 MB).
 const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup', 'uiTheme']);
 /** @param seen storage keys a page has seen */
-// Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.ts), nor the page box's kept sheet
-// walks (`sheetWalk:<origin>`, read by content/sheet-walk-link.ts on its own: shared/sheet-walk.ts).
-export const pageKeys = (seen: Iterable<string> = []): string[] => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:') && !isSheetWalkKey(key));
+// Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.ts).
+export const pageKeys = (seen: Iterable<string> = []): string[] => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:'));
 // A page's first read: what it reads every time, with the site icons and
 // Margin.app's link (`appLink`: shared/app-link.ts). Not all of storage
 // (until Margin 2 Phase 2 step 7 it was: get(null), the theme's package with it).

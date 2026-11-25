@@ -1,19 +1,17 @@
-// Margin.app's real end of the link (app/platforms/macos/shell/ExtensionLink.swift, LinkSocket.swift,
-// LinkMessage.swift, Chunks.swift), on its own, for the WebKit host's `app*` steps: the
+// Margin.app's real end of the link (app/platforms/macos/shell/ExtensionLink.swift, RelayLink.swift and
+// LinkMessage.swift over margin-core's link through margin-ffi), on its own, for the WebKit host's `app*` steps: the
 // host passes what the extension's native messaging does to it (wantLink) on stdin, and
 // puts what this dispatches into the extension (SFSafariApplication.dispatchMessage in the
-// app) into the copy's native port. No overlays, no window tracking: it plays the app's
+// app) into the copy's native port. No windows, nothing hosted: it plays the app's
 // part of the link and says on stdout, one JSON object a line, what it heard:
 //   { dispatch: name, info }  for the host to deliver into the extension's port
 //   { ev: ... }               what happened (logged by the host)
-// As the copy links, it sends a setLayout for the copy's first window (300/40/20/24, or
-// MARGIN_LINK_LAYOUT="left,top,right,bottom"), and once the theme's pieces add up, a request
-// (`updateSettings`, the sidebar's shortcut to ⌥J) whose effect a page can see. Stdin:
-// { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) | { layout: [left, top, right, bottom] } (a new
-// setLayout for the linked copy's first window: the host's `appLayout` step) | { req: { type, payload } }
-// (a request from the app's UI for that window, its reply said: the host's `appReq` step) | { drawn: Bool }
-// (whether the app draws over that window: the host's `appDrawn` step).
-// Built by run.sh with the app's flags; never shows anything.
+// Once the linked copy's theme's pieces add up, it sends a request (`updateSettings`, the sidebar's shortcut to ⌥J)
+// whose effect a page can see. Stdin:
+// { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) |
+// { req: { type, payload } } (a request from the app for the copy's first window, its reply said: the host's `appReq`
+// step) | { drawn: Bool } (whether the app draws that window: the host's `appDrawn` step).
+// Built by run.sh with the app's flags and margin-core (scripts/build-core.sh host); never shows anything.
 import AppKit
 import Foundation
 
@@ -38,30 +36,13 @@ final class StdoutDispatch: ExtensionDispatch {
 }
 let dispatcher = StdoutDispatch()
 
-// The insets the app's overlay would measure for the page slot (left, top, right, bottom).
-var insets: [Double] = {
-  let parts = (ProcessInfo.processInfo.environment["MARGIN_LINK_LAYOUT"] ?? "").split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-  return parts.count == 4 ? parts : [300, 40, 20, 24]
-}()
-
 final class Harness: ExtensionLinkDelegate {
   let link: SocketLink
-  var assembler = ChunkAssembler()
-  var laidOut = Set<String>()
   var asked = Set<String>()
-  var firstWindow: [String: Int] = [:]
-  var size: [String: (Double, Double)] = [:]
-  var seq: [String: Int] = [:]
+  var firstWindow: [String: Int] = [:] // each copy's (epoch's) first window, as its first snapshot listed it
   var current: LinkConnection?
-
-  func layout(_ c: LinkConnection, _ epoch: String) {
-    guard let id = firstWindow[epoch], let (width, height) = size[epoch] else { return }
-    let n = (seq[epoch] ?? 0) + 1
-    seq[epoch] = n
-    let layout = PageLayout(left: insets[0], top: insets[1], right: insets[2], bottom: insets[3], radius: 10, radii: [10, 10, 10, 10], width: width, height: height, mode: "fullscreen")
-    c.send(.setLayout(epoch: epoch, windowId: id, seq: n, layout: layout))
-    say(["ev": "setLayout sent", "windowId": id, "insets": insets, "seq": n])
-  }
+  // A `drawn` asked for while the copy was linked but its first snapshot hadn't come: sent with it.
+  var heldDrawn: Bool?
 
   init() {
     link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.link.\(getpid())"))
@@ -78,23 +59,30 @@ final class Harness: ExtensionLinkDelegate {
 
   func linkReceived(_ c: LinkConnection, _ message: LinkMessage) {
     switch message {
-    case .snapshot(let epoch, let seq, let state, let windows):
-      let spaces = (state["spaces"] as? [Any])?.count ?? -1
-      say(["ev": "snapshot", "seq": seq, "keys": Array(state.keys).sorted(), "spaces": spaces, "windows": windows])
-      guard !laidOut.contains(epoch), let w = windows.first, let id = int(w["windowId"]) else { return }
-      laidOut.insert(epoch)
-      firstWindow[epoch] = id
-      let width = num(w["width"]) ?? 1200, height = num(w["height"]) ?? 800
-      size[epoch] = (width > 0 ? width : 1200, height > 0 ? height : 800)
-      layout(c, epoch)
-    case .delta(_, let seq, let changes, _):
-      say(["ev": "delta", "seq": seq, "keys": Array(changes.keys).sorted()])
-    case .windows(_, let seq, let list):
-      // Each window's tab in front and its page's word (ids and booleans: the visibility scenario reads them).
-      let each: [[String: Any]] = list.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull(), "visible": w["visible"] ?? "unknown"] }
-      say(["ev": "windows", "seq": seq, "count": list.count, "list": each])
-    case .theme(let epoch, let chunk):
-      switch assembler.add(chunk) {
+    case .state(let state):
+      // (Applied by the core as it was read: the values are its mirror's, the windows as it now has them.)
+      let windows = state.windows ?? c.mirror.windows
+      switch state.kind {
+      case .snapshot:
+        let spaces = (c.mirror.value("spaces") as? [Any])?.count ?? -1
+        say(["ev": "snapshot", "seq": state.seq, "keys": state.keys.sorted(), "spaces": spaces, "windows": windows])
+        guard firstWindow[state.epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
+        firstWindow[state.epoch] = id
+        if let on = heldDrawn, current === c {
+          heldDrawn = nil
+          c.send(.drawn(epoch: c.epoch, windowId: id, on: on))
+          say(["ev": "drawn sent", "windowId": id, "on": on])
+        }
+      case .delta:
+        say(["ev": "delta", "seq": state.seq, "keys": state.keys.sorted()])
+      case .windows:
+        // Each window's id and focus.
+        let each: [[String: Any]] = windows.map { w in ["windowId": w["windowId"] ?? NSNull(), "focused": w["focused"] ?? NSNull()] }
+        say(["ev": "windows", "seq": state.seq, "count": windows.count, "list": each])
+      }
+    case .theme(let epoch, let theme):
+      // (Its pieces put together by the core, per link.)
+      switch theme {
       case .complete(let id, let data):
         say(["ev": "theme", "id": id, "bytes": data.count])
         guard !asked.contains(epoch) else { return }
@@ -109,12 +97,11 @@ final class Harness: ExtensionLinkDelegate {
           }
         }
       case .refused(let why): say(["ev": "theme refused", "why": why])
-      case .waiting: break
       }
     case .keys(_, let bindings):
       say(["ev": "keys", "bindings": bindings])
     case .push(_, let windowId, let msg):
-      say(["ev": "push", "windowId": windowId ?? NSNull(), "msg": msg])
+      say(["ev": "push", "windowId": windowId ?? NSNull(), "msg": msg.object])
     case .other(let k):
       say(["ev": "other", "k": k])
     default:
@@ -123,7 +110,7 @@ final class Harness: ExtensionLinkDelegate {
   }
 
   func linkDown(_ c: LinkConnection, _ why: String) {
-    if current === c { current = nil }
+    if current === c { current = nil; heldDrawn = nil }
     say(["ev": "down", "why": why])
   }
 }
@@ -158,11 +145,12 @@ FileHandle.standardInput.readabilityHandler = { handle in
           if let c = harness.current, let id = harness.firstWindow[c.epoch] {
             c.send(.drawn(epoch: c.epoch, windowId: id, on: on))
             say(["ev": "drawn sent", "windowId": id, "on": on])
+          } else if harness.current != nil {
+            // (Linked, its snapshot not here yet: the copy says hello and writes `linked` for its pages before its
+            // snapshot is read, so a scenario's check can see it linked first. Sent as the first snapshot names the window.)
+            harness.heldDrawn = on
+            say(["ev": "drawn held: the copy's first snapshot not here yet"])
           } else { say(["ev": "drawn kept: no copy linked"]) }
-        }
-        if let given = object["layout"] as? [Double], given.count == 4 {
-          insets = given
-          if let c = harness.current { harness.layout(c, c.epoch) } else { say(["ev": "layout kept: no copy linked"]) }
         }
       }
     }

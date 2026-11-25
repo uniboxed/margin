@@ -1,6 +1,6 @@
 // What must never be in a sanitized template, checked on the sanitizer's tree
 // (Node) and on the DOM the renderer made (browsers).
-import type { CleanNode } from '../../extension/ui/sanitize.ts';
+import type { CleanNode } from '../../app/shared/ui/sanitize.ts';
 
 // The sanitizer's tree (ui/sanitize.ts sanitizeTemplate's `tree`).
 type Tree = { type: 'root', children: CleanNode[] };

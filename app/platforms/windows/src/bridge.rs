@@ -3,7 +3,7 @@
 //! Page → app: `window.chrome.webview.postMessage({ op, ...body, rid })`, which WebView2 gives the app as JSON
 //! (`WebMessageAsJson`). The app answers every message that has a `rid` with
 //! `PostWebMessageAsJson({ reply: rid, ok: true, value })` or `{ reply: rid, ok: false, error }`; the page's
-//! bridge (extension/ui/overlay-bridge.ts) matches replies by `rid` and waits for each, so none may go unanswered
+//! bridge (app/shared/ui/overlay-bridge.ts) matches replies by `rid` and waits for each, so none may go unanswered
 //! (WebKit's `postMessage` returns a promise; WebView2's doesn't).
 //! App → page: `ExecuteScript("marginApp.receive(<the JSON as a string literal>)")`, as the Mac's
 //! `callAsyncJavaScript("marginApp.receive(m)", ["m": json])` (OverlayWebView.swift): the page gets one string.

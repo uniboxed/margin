@@ -8,8 +8,8 @@
 // tests/theme/arcadia.test.ts (npm run test:theme).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTemplate, sanitizeCss, guardText, GUARDED_PARTS, TEXT_ATTRS, type CleanElement, type CleanNode, type Removed } from '../extension/ui/sanitize.ts';
-import { sanitizeTheme, BUILTIN_THEMES } from '../extension/ui/theme-loader.ts';
+import { sanitizeTemplate, sanitizeCss, guardText, GUARDED_PARTS, TEXT_ATTRS, type CleanElement, type CleanNode, type Removed } from '../app/shared/ui/sanitize.ts';
+import { sanitizeTheme, BUILTIN_THEMES } from '../app/shared/ui/theme-loader.ts';
 import { readTheme } from './theme/package.ts';
 
 const root = (inner: string) => `<div class="t">${inner}<m-page></m-page></div>`;
@@ -36,9 +36,36 @@ const find = (tree: Walked | null, pred: (n: CleanElement) => boolean) => {
 };
 const reasons = (r: { removed: Removed[] }) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
-test('guarded parts: menus, notices, prompts, the space editor, Settings, iCloud Tabs and the switching cover', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['cloud-tabs', 'menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor', 'switch-cover']);
+test('guarded parts: menus, notices, prompts, the space editor, Settings, the preview card, toast, the page card\'s loader and Edit Theme Color', () => {
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['background-picker', 'menu', 'menu-item', 'notice', 'page-loader', 'preview', 'prompt', 'settings', 'space-editor', 'toast']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
+});
+
+test('the page card\'s loader: the `page-loader` part and its `<m-page-loader>` slot are a theme\'s to give; only Margin\'s bound words show in it', () => {
+  const r = sanitizeTemplate(root(`
+    <m-page-loader></m-page-loader>
+    <template m-part="page-loader">
+      <div class="loader" title="Your session expired"><span class="spin"></span><p class="what">{{pageLoader.label}}</p><p>Sign in again to continue</p></div>
+    </template>`));
+  const html = JSON.stringify(r.tree);
+  assert.ok(html.includes('m-page-loader') && html.includes('page-loader') && html.includes('{{pageLoader.label}}'), 'the slot, the part and Margin\'s label kept');
+  assert.ok(!html.includes('Sign in again') && !html.includes('Your session expired'), 'what the theme wrote there is gone');
+  assert.ok(reasons(r).some((x) => x.includes('Sign in again')) || r.removed.length >= 2, `reported: ${reasons(r).join(' | ')}`);
+});
+
+test('Edit Theme Color: the `background-picker` part and its `<m-picker>` slot are a theme\'s to give; only Margin\'s bound words show in it, Margin\'s controls kept', () => {
+  const r = sanitizeTemplate(root(`
+    <m-picker></m-picker>
+    <template m-part="background-picker">
+      <div class="p" aria-label="Pick a vibe"><h2>{{picker.title}}</h2><p>Pick a vibe</p>
+        <m-picker-field m-variant="cells"></m-picker-field><m-picker-slider m-value="amount" m-variant="bar"></m-picker-slider><m-picker-dial></m-picker-dial>
+        <m-for each="picker.textures" as="t"><button m-action="picker.run" m-arg="{{t.id}}">{{t.label}}</button></m-for>
+      </div>
+    </template>`));
+  const html = JSON.stringify(r.tree);
+  for (const kept of ['"m-picker"', 'background-picker', '{{picker.title}}', '{{t.label}}', 'm-picker-field', '"cells"', 'm-picker-slider', '"amount"', '"bar"', 'm-picker-dial', 'picker.run']) assert.ok(html.includes(kept), `kept: ${kept}`);
+  assert.ok(!html.includes('Pick a vibe'), 'what the theme wrote there is gone (its text, its label)');
+  assert.equal(r.removed.length, 2, reasons(r).join(' | '));
 });
 
 test('guardText keeps the bindings and the space between them, nothing the theme wrote', () => {
@@ -89,24 +116,6 @@ test('a malicious notice part: fake words, tooltips and placeholders go; the not
   assert.ok(reasons(r).some((w) => /"Install"/.test(w) && /"notice" part/.test(w)));
   assert.ok(reasons(r).some((w) => /Your session expired/.test(w)));
   assert.ok(reasons(r).some((w) => /aria-label/.test(w) && /Install Margin\.app/.test(w)));
-});
-
-test('a malicious iCloud Tabs part: a fake permission prompt goes; the folder\'s words, device names and titles are Margin\'s bindings', () => {
-  const r = sanitizeTemplate(root(`
-    <template m-part="cloud-tabs">
-      <div class="cloud" title="iCloud needs your Apple Account password">
-        <button m-action="cloud.toggle">iCloud Tabs {{cloudTabs.labels.title}}</button>
-        <span>Sign in again to keep syncing</span>
-        <m-if test="cloudTabs.canFix"><button m-action="cloud.access" aria-label="Enter password">{{cloudTabs.labels.fix}}</button></m-if>
-        <m-for each="cloudTabs.devices" as="d"><span title="{{d.describe}}">{{d.name}}</span></m-for>
-      </div>
-    </template>
-    <m-cloud-tabs>Your tabs are at risk</m-cloud-tabs>`));
-  const part = find(r.tree, (n) => n.name === 'template');
-  assert.deepEqual(texts(part), ['{{cloudTabs.labels.title}}', '{{cloudTabs.labels.fix}}', '@title={{d.describe}}', '{{d.name}}']);
-  assert.ok(reasons(r).some((w) => /Sign in again/.test(w) && /"cloud-tabs" part/.test(w)));
-  assert.ok(reasons(r).some((w) => /Apple Account password/.test(w)));
-  assert.ok(reasons(r).some((w) => /Your tabs are at risk/.test(w) && /m-cloud-tabs/.test(w)), 'the slot\'s own content too');
 });
 
 test('prompts and the space editor are guarded; bound attributes stay', () => {
@@ -174,7 +183,7 @@ test('every built-in theme passes the rule with nothing removed (Neubrutalism bi
   assert.ok(BUILTIN_THEMES.includes('neubrutalism'));
   assert.ok(BUILTIN_THEMES.includes('pixel'));
   for (const id of BUILTIN_THEMES) {
-    const t = readTheme(new URL(`../extension/themes/${id}/`, import.meta.url).pathname);
+    const t = readTheme(new URL(`../app/shared/ui/themes/${id}/`, import.meta.url).pathname);
     const r = sanitizeTheme({ ...t, files: Object.keys(t.files) });
     assert.deepEqual([r.errors, r.removed], [[], []], id);
   }

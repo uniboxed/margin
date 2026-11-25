@@ -98,7 +98,9 @@ test('Settings has a dedicated page and a named sidebar row', async (t) => {
   const { page, tab } = await newTabPage('#settings');
   try {
     await m.until(() => ui.isVisible('.settings-form .setting'), { what: 'dedicated Settings form' });
-    assert.equal(await ui.locator('.launcher h1').innerText(), 'Settings');
+    // As macOS's System Settings (2026-11-20): its categories beside the chosen one's settings.
+    assert.equal(await ui.locator('.settings-page .settings-title').innerText(), 'Settings');
+    assert.equal(await ui.locator('.settings-page .settings-category').count(), 4);
     assert.equal(await ui.isVisible('.launcher-query'), false);
     assert.equal(await ui.isVisible('.archive-list'), false);
     await m.until(async () => (await page.title()) === 'Settings', { what: 'Settings document title' });

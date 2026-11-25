@@ -7,17 +7,19 @@
 // chat counting messages, a page's timer) is written at most every
 // TITLE_EVERY_MS: its row shows them that much later. The state has each
 // change at once, in order with every other (store.ts mutate `within`), and
-// any write before then (a switch, a tab opened or closed, the tab in front
-// changing) takes them along. The tab in front, one not known yet, and a
-// hidden tab's new address are written at once.
+// any write before then (Margin's own switch, a tab opened or closed, the tab
+// in front's own change) takes them along; a switch Margin.app's show made
+// waits too (background.ts ACTIVATION_WRITE_MS), and the first due takes
+// both. The tab in front, one not known yet, and a hidden tab's new address
+// are written at once.
 import type { State } from '../../types/margin';
 import * as M from '../state/model.ts';
 import { mutate, now } from './store.ts';
 
 export const GATHER_MS = 300;
 export const TITLE_EVERY_MS = 2000;
-// (`audible`: the row's playing mark, ui/view-model.ts tabRow; it was never stored before 2026-11-10.)
-const TRACKED = ['title', 'url', 'favIconUrl', 'audible'];
+// (`audible`, `mutedInfo`: the row's playing/muted marks, ui/view-model.ts tabRow.)
+const TRACKED = ['title', 'url', 'favIconUrl', 'audible', 'mutedInfo'];
 
 // Tab id → when the write that takes its last title alone was due.
 const titleDue = new Map();

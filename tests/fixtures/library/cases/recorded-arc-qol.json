@@ -1,0 +1,38 @@
+{
+  "about": "tests/arc-qol.test.ts's calls of library.ts, as the test made them (npm run library:vectors).",
+  "from": "recorded",
+  "cases": [
+    {
+      "about": "arc-qol.test.ts: M2.1: library duplicateTab, unloadTab, muteTab, and restoreLastArchive",
+      "values": {
+        "spaces": {"personal":{"name":"Personal","emoji":"🏠","color":"#6c5ce7","order":0,"browser":"safari","profile":null}},
+        "pins": {},
+        "folders": {},
+        "tabs": {"t-1111111111":{"url":"https://example.com","title":"Example","icon":"","spaceId":"personal","order":1,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},
+        "archive": {"a-1":{"url":"https://old.example.com","title":"Old","spaceId":"personal","icon":"","closedAt":900,"target":{"kind":"web","browser":"safari","profile":null}}},
+        "windows": {"1":{"spaceId":"personal"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"unloadTab","payload":{"tabId":"t-1111111111","windowId":1},"env":{"now":2000,"ids":["aaaa","zq000001x","zq000002x"]},"expect":{"ok":true,"result":{"item":"t-1111111111"},"changes":[],"requests":[{"type":"unloadTab","windowId":1,"item":"t-1111111111","url":"https://example.com","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"personal","next":null}]}},
+      {"perform":"duplicateTab","payload":{"tabId":"t-1111111111","windowId":1},"env":{"now":2001,"ids":["dup1234567","zq000049x","zq000050x"]},"expect":{"ok":true,"result":{"tabId":"t-dup1234567"},"changes":[{"collection":"tabs","id":"t-1111111111","value":{"url":"https://example.com","title":"Example","icon":"","spaceId":"personal","order":1,"lastUsed":1000,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-dup1234567","value":{"url":"https://example.com","title":"Example","icon":"","spaceId":"personal","order":2,"lastUsed":2001,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-dup1234567","url":"https://example.com","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"personal"}]}}
+      ]
+    },
+    {
+      "about": "arc-qol.test.ts: M2.1: library duplicateTab, unloadTab, muteTab, and restoreLastArchive #2",
+      "values": {
+        "spaces": {"personal":{"name":"Personal","emoji":"🏠","color":"#6c5ce7","order":0,"browser":"safari","profile":null}},
+        "pins": {},
+        "folders": {},
+        "tabs": {"t-1111111111":{"url":"https://example.com","title":"Example","icon":"","spaceId":"personal","order":1,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},
+        "archive": {"a-1":{"url":"https://old.example.com","title":"Old","spaceId":"personal","icon":"","closedAt":900,"target":{"kind":"web","browser":"safari","profile":null}}},
+        "windows": {"1":{"spaceId":"personal"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"muteTab","payload":{"tabId":"t-1111111111","windowId":1},"env":{"now":2002,"ids":["bbbb","zq000097x","zq000098x"]},"expect":{"ok":true,"result":{"item":"t-1111111111"},"changes":[],"requests":[{"type":"muteTab","windowId":1,"item":"t-1111111111","url":"https://example.com","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"personal"}]}},
+      {"perform":"restoreLastArchive","payload":{"windowId":1},"env":{"now":2003,"ids":["res1234567","zq000145x","zq000146x"]},"expect":{"ok":true,"result":{"tabId":"t-res1234567"},"changes":[{"collection":"tabs","id":"t-1111111111","value":{"url":"https://example.com","title":"Example","icon":"","spaceId":"personal","order":1,"lastUsed":1000,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-res1234567","value":{"url":"https://old.example.com","title":"Old","icon":"","spaceId":"personal","order":2,"lastUsed":2003,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"archive","id":"a-1","deleted":true}],"requests":[{"type":"restoreArchive","windowId":1,"item":"t-res1234567","url":"https://old.example.com","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"personal"}]}}
+      ]
+    }
+  ]
+}

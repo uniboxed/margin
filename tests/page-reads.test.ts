@@ -75,7 +75,7 @@ test('page reads: what pages use and the icons once, then all but the icons and 
   const second = storage.gets[1];
   assert.equal(storage.gets.length, 2, 'one get');
   for (const key of ['favicons', 'lostTabs2', 'tabs', 'tabSpace', 'activeSpaceByWindow']) assert.equal(second.keys!.includes(key), false, key);
-  for (const key of ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', 'faviconsMark']) assert.equal(second.keys!.includes(key), true, key);
+  for (const key of ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'faviconsMark']) assert.equal(second.keys!.includes(key), true, key);
   assert.ok(second.bytes < full / 20, `${second.bytes} bytes against ${full}`);
   const { lostTabs: _a, lostTabs2: _b, ...drawn } = fromStorage(storage.map.size ? Object.fromEntries(storage.map) : {});
   const { lostTabs: _c, lostTabs2: _d, ...page } = state!;

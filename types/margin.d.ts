@@ -14,21 +14,79 @@ export type Send = <K extends MessageType>(type: K, payload?: Request<K>) => Pro
 
 // ---- stored state (storage.local; state/model.ts) ---------------------------
 
-export interface Space { id: string; name: string; emoji: string; color: string }
+export interface Space {
+  id: string; name: string; emoji: string; color: string;
+  /** its theme's id (state/model.ts spaceTheme); none: the profile's settings.theme (spaces from before 2026-11-20) */
+  theme?: string;
+  /** its background (Edit Theme Color, M2.9: docs/SPACE-BACKGROUNDS.md), as state/model.ts backgroundOf reads it;
+   *  none: the theme's own */
+  background?: SpaceBackground;
+}
+/** A space's background, read by state/model.ts backgroundOf (margin-core: library/state.rs background_of). */
+export interface SpaceBackground {
+  /** 0–3 lowercase `#rrggbb`, the first the key colour (none: a picture alone) */
+  colors: string[];
+  wheel: 'complementary' | 'analogous';
+  /** 0–1, to 2 decimals */
+  intensity: number;
+  texture: 'grain' | 'sand' | 'denim' | 'tweed' | 'dots' | 'grid';
+  /** 0–1 in steps of 0.05; 0: no texture */
+  amount: number;
+  appearance: 'auto' | 'light' | 'dark';
+  /** a stored picture: its SHA-256 (64 lowercase hex), how it fits, the point kept in view (each 0–1, to 3 decimals) */
+  image?: { id: string; fit: 'cover' | 'contain' | 'tile'; focus: [number, number] };
+}
 export interface Pin {
   id: string; spaceId: string; url: string; title: string;
+  /** user-given custom title (inline rename); absent: use live/saved title */
+  customTitle?: string;
   /** a folder of its space (state/model.ts); none or unknown: at the top level */
   folderId?: string;
   /** order within its level (folder, or the space's top level); missing: its place in the list */
   pos?: number;
 }
-export interface Folder { id: string; spaceId: string; name: string; open: boolean; pos?: number }
+export interface Favorite {
+  id: string;
+  /** 'global' (default across Spaces) or a browser profile id when favoritesScope === 'profile' */
+  scope: string;
+  url: string;
+  title: string;
+  customTitle?: string;
+  pos?: number;
+  target?: { kind: 'web', browser: string, profile: string | null } | { kind: 'app', bundleId: string, name: string } | { kind: 'margin', page: string };
+}
+export interface AirTrafficRule {
+  id: string;
+  pattern: string;
+  spaceId: string;
+  enabled?: boolean;
+  order?: number;
+}
+export interface SplitGroup {
+  id: string;
+  spaceId: string;
+  axis: 'horizontal' | 'vertical';
+  /** 2–4 Margin tab ids (`t-…`: an open tab's `mid`, a kept tab's or library item's id; never a browser tab id: state/model.ts "split view") */
+  panes: string[];
+  /** Relative size ratios summing to 1.0 (length === panes.length) */
+  ratios: number[];
+  pinned?: boolean;
+  folderId?: string;
+  pos?: number;
+}
+export interface Folder {
+  id: string; spaceId: string; name: string; open: boolean; pos?: number;
+  /** parent folder in the same space (nested folders, max depth 4); absent: top level */
+  parentId?: string;
+}
 // Snapshot of an open tab (state/model.ts tabRecord).
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
   favIconUrl: string; active: boolean; lastActive: number;
   /** playing sound now (the browser's `audible`): the row's playing mark */
   audible?: boolean;
+  /** muted now (the browser's `mutedInfo.muted`): the row's muted mark */
+  muted?: boolean;
   /** its Margin tab's own id, lasting (state/model.ts "Margin's tabs") */
   mid?: string;
   /** its place in the list (higher: newer, shown higher), as its Margin tab's */
@@ -55,6 +113,12 @@ export interface TabRecord {
   restoreScroll?: { y: number; url: string };
   /** a page Margin sent it to, shown at once while the browser's tab still says the page before (state/model.ts goingTo) */
   going?: { url: string; title: string; from: string; at: number };
+  /** sticky pin binding: pin id this live tab belongs to (survives sub-navigation) */
+  pinnedBy?: string;
+  /** sticky favorite binding: favorite id this live tab belongs to (survives sub-navigation) */
+  favoriteId?: string;
+  /** user-given custom title (inline rename) */
+  customTitle?: string;
 }
 /** A tab from before ids changed that no open tab matched yet (an earlier build's lostTabs: moved into keptTabs as read). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
@@ -72,6 +136,12 @@ export interface KeptTab {
   wasTab?: number;
   /** where its page was scrolled as it closed, and the address that's for (the scroll record) */
   scroll?: { y: number; url: string };
+  /** sticky pin binding: pin id this item belongs to */
+  pinnedBy?: string;
+  /** sticky favorite binding: favorite id this item belongs to */
+  favoriteId?: string;
+  /** user-given custom title (inline rename) */
+  customTitle?: string;
   /** view.sidebar only: not open */
   kept?: true;
 }
@@ -83,12 +153,6 @@ export interface Shortcuts { nextTab: string; prevTab: string; nextSpace: string
 export interface Settings {
   sidebarPinnedOpen: boolean;
   frameWhenHidden?: boolean;
-  /** iCloud Tabs (Margin.app with Safari): shown in the sidebar and the palette */
-  showCloudTabs?: boolean;
-  /** iCloud Tabs' folder open */
-  cloudTabsOpen?: boolean;
-  /** the devices whose tabs iCloud Tabs' folder hides (Safari's device ids) */
-  cloudTabsClosed?: string[];
   archiveAfterHours: number;
   /** tabs unused this long are put to sleep (background/sleep.ts); 0: never */
   sleepAfterHours: number;
@@ -103,8 +167,16 @@ export interface Settings {
   marginFullscreenAuto: boolean;
   fullscreenOnly: boolean;
   shortcuts: Shortcuts;
+  /** Margin.app's own keys by Settings field (shared/app-keys.ts): a combination, '' off; absent: the default */
+  appKeys?: Record<string, string>;
   shortcutDefaults: string;
-  theme: string; // extension/themes/index.ts
+  /** Favorites bar scope: 'global' across all Spaces (default) or 'profile' scoped per browser profile */
+  favoritesScope?: 'global' | 'profile';
+  /** Auto-open external-domain links from Pinned tabs and Favorites in Peek (default true) */
+  autoPeekPins?: boolean;
+  /** Edit Theme Color's ticks (M2.9 step 6): haptics on a trackpad (Margin.app), a click, or nothing. */
+  pickerFeedback?: 'auto' | 'haptics' | 'sound' | 'off';
+  theme: string; // app/shared/ui/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }
 export interface State {
@@ -114,6 +186,9 @@ export interface State {
   awayByWindow?: Record<number, number>;
   tabSpace: Record<number, string>;
   pins: Pin[];
+  favorites?: Favorite[];
+  airTraffic?: AirTrafficRule[];
+  splits?: SplitGroup[];
   folders: Folder[];
   archive: ArchiveEntry[];
   settings: Settings;

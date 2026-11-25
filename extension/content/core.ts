@@ -1,30 +1,27 @@
 // Margin on web pages (Margin 2, PLAN.md §7). Margin.app draws all of
 // Margin's UI around the browser's window; a page draws none of it, linked
-// or not: no UI runtime, no theme, no element of Margin's in the document.
-// What a page keeps is what only a page can do: its box (while the app is
-// linked, from the app's layout for its window: content/layout.ts; not
-// linked, none, the page as it is), the trackpad's gestures, the draft check, the keys a page hears (navigation, ⌘T), its icon
-// and zoom, and its part in the background's switches (Phase 3 slims them).
+// or not: no UI runtime, no theme, no element of Margin's in the document,
+// and no box (the page box was removed 2026-11-16: DECISIONS.md "Hosted only").
+// What a page keeps is what only a page can do: the trackpad's gestures, the
+// draft check, the keys a page hears (navigation, ⌘T), its icon, and its part
+// in the background's switches.
 // It reads the state from storage.local, for its tab and window, its
 // settings and its copy of Margin.
 import * as V from '../shared/view.ts';
 import { mark } from '../shared/dom.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
-import { linksApp, capabilities } from '../shared/capabilities.ts';
+import { capabilities } from '../shared/capabilities.ts';
 import { watchEdits } from './edits.ts';
 import { startTrackpad } from './trackpad.ts';
-import { startPageLink } from './page-link.ts';
-import { startSheetWalkLink } from './sheet-walk-link.ts';
-import { isSheetWalkKey } from '../shared/sheet-walk.ts';
 import { SWITCH_GRACE_MS } from '../shared/switching.ts';
-import { startLayout } from './layout.ts';
 import { startLoads } from './loads.ts';
+import { startMedia } from './media.ts';
+import { PEEK_ANSWER_MS, startCardKeys, startPeek } from './peek.ts';
+import { startKeepFullscreen } from './keep-fullscreen.ts';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
-import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, unpinchedSize } from '../shared/app-link.ts';
-import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
+import { APP_LINK_KEY, appDraws, drawsWindow } from '../shared/app-link.ts';
 import { startScrollRecord } from './scroll-record.ts';
 import type { MessageType, Request, Result } from '../../types/margin';
-import type { Geometry } from './layout.ts';
 
 // Starts Margin in this page; false when it shouldn't (or already did).
 export function startCore() {
@@ -54,10 +51,8 @@ export function startCore() {
 
   // ---- Margin.app ---------------------------------------------------------------
   // Linked (or reconnecting: shared/app-link.ts), the app draws Margin around
-  // this window, and the page's box is the app's layout for its window. Not
-  // linked, the page is left as it is. Known from storage (appLink, in the
-  // page's first read), then from the background (hello, its `appLayout`
-  // messages, appLink's change events).
+  // this window. Known from storage (appLink, in the page's first read), then
+  // from the background (hello, its `appDrawn` messages, appLink's change events).
   let appLink: any; // undefined until the first read
   const appUi = () => appDraws(appLink);
 
@@ -136,80 +131,30 @@ export function startCore() {
 
   let state: import('../../types/margin').State | null = null;
   // Chrome, "only in full screen" (setting fullscreenOnly, on by default):
-  // in a window that isn't full screen Margin stays out of the way (no box,
-  // no keys). Whether the window is in full screen comes from the background
+  // in a window that isn't full screen Margin stays out of the way (no keys,
+  // no gestures). Whether the window is in full screen comes from the background
   // (`hello`, `windowState`), not the page's size; null until it says.
   const fullscreenOnly = () => !!capabilities?.marginFullscreen && state?.settings?.fullscreenOnly !== false;
   let fullscreen: boolean | null = null;
   const active = () => !retired() && (!fullscreenOnly() || fullscreen === true);
   Margin.content.active = active; // (whether this copy acts here: it hasn't stood back; Chrome: in full screen)
 
-  // The page's box (content/page-link.ts).
-  const link = startPageLink(send);
-  // What the page box's walks of this site's style sheets found before (content/sheet-walk-link.ts).
-  if (link.can) startSheetWalkLink(api, send, marks);
-  let box: { left: number, top: number, right: number, bottom: number } | null = null;
   const page = {
-    api, marks, send, link,
-    // Where the box is now (content/layout.ts).
-    boxed: () => !!box,
-    setBox: (next: Geometry['insets'] | null) => {
-      box = link.can ? next : null;
-      link.setBox(box);
-    },
+    api, marks, send,
     state: () => state,
     active,
     dormant: retired,
-    // The page's zoom (1 = 100%).
-    zoom: () => pageZoom,
     // A trackpad gesture's feedback as it goes (content/trackpad.ts), for
     // Margin.app's overlay to draw while it draws Margin around this window.
     tellGesture: (g: any) => { if (appUi() && active()) void send('gesture', g, false); },
   };
-  Margin.content.boxed = () => !!box;
 
-  // ---- page zoom ---------------------------------------------------------------
-  // The page's box follows the app's layout in the page's zoomed pixels
-  // (appGeometry). Read at start, after a resize (a zoom change resizes the
-  // page's viewport; ⌘+ sends nothing else), when shown again (a site's zoom
-  // is shared by its tabs).
-  let pageZoom = 1;
-  let zoomAnswered = false; // until the browser says, the site's last zoom (storage pageZoom)
-  function applyZoom(z: number) {
-    if (!Number.isFinite(z) || z <= 0 || Math.abs(z - pageZoom) < 0.001) return;
-    pageZoom = z;
-    layout.rezoom(); // only from answers and events, after the layout below exists
-  }
-  // With send's retry: a background asleep when asked answers the second time.
-  // Each answer also gives the screen's own scale (devicePixelRatio is that
-  // times the page's zoom, in WebKit and Chromium), so the next change is
-  // followed at once from the page (the answer, a moment later, confirms).
-  let screenScale: number | null = null;
-  const readZoom = () => send('getZoom').then((z) => {
-    if (!Number.isFinite(Number(z)) || Number(z) <= 0) return;
-    zoomAnswered = true;
-    screenScale = devicePixelRatio / Number(z);
-    applyZoom(Number(z));
-  }, () => {});
-  let zoomTimer: Timer | null = null;
-  addEventListener('resize', () => {
-    if (screenScale) applyZoom(devicePixelRatio / screenScale);
-    clearTimeout(zoomTimer);
-    zoomTimer = setTimeout(readZoom, 60);
-  });
-  readZoom();
   const trackpad = startTrackpad(page);
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space (none while Margin is
   // out of the way). The background does the work; nothing here draws.
-  // One reaching the page while Margin.app draws this window (its hot keys
-  // were off then): still done, by the copy, and the app told why for its log.
   const navSettings = () => (active() ? state?.settings : null);
-  const navSend = (type: 'navigate', payload?: { action: string }) => {
-    if (type === 'navigate' && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId)) void send('appKeyHeard', { command: String(payload?.action ?? type) }, false);
-    return send(type, payload);
-  };
-  shortcuts.installNavigation({ send: navSend, getSettings: navSettings });
-  // Going in or out of full screen (Chrome): Margin's box comes, or goes.
+  shortcuts.installNavigation({ send, getSettings: navSettings });
+  // Going in or out of full screen (Chrome): Margin's keys and gestures come, or go.
   // The background tells the window's pages; a resize, or coming back to a
   // tab (moved to another window meanwhile), asks again.
   function setFullscreen(value: boolean) {
@@ -224,146 +169,29 @@ export function startCore() {
     recheck = setTimeout(() => send('windowState').then((res) => res && setFullscreen(res.fullscreen)), 200);
   };
   addEventListener('resize', checkFullscreen);
-  const layout = startLayout(page);
-
-  // The box from Margin.app's layout for this window (shared/app-link.ts):
-  // its insets from the window's edges, less where this viewport sits in the
-  // window, in this page's zoomed pixels. No layout for the window yet
-  // (null): the box stays as it is (the first-paint one, registered while
-  // the app is linked: background/registered.ts). A window the app said it
-  // draws nothing over: a layout of zeros, no box.
-  function appGeometry() {
-    const l = layoutFor(appLink, windowId ?? helloWindowId);
-    if (!l) return null;
-    const at = viewportNow();
-    // (The page's area as before any pinch: a pinch magnifies the page, it doesn't move its box. shared/app-link.ts.)
-    const inner = unpinchedSize({ innerWidth, innerHeight, visualViewport });
-    const insets = boxFromLayout(l, { outerWidth, outerHeight, innerWidth: inner.width, innerHeight: inner.height, zoom: pageZoom, x: at?.x, y: at?.y }) ?? { left: 0, top: 0, right: 0, bottom: 0 };
-    const radius = Number(l.radius) || 0;
-    const g: import('./layout.ts').Geometry = { insets, radius, radii: Array.isArray(l.radii) ? l.radii : [radius, radius, radius, radius] };
-    return g;
-  }
-  // ---- where this page's area sits in its window (Phase 2 step 8) ---------------
-  // Safari can take part of a full-screen window: the Web Inspector docked at
-  // the bottom, left or right (Safari's sidebar on the left). The page's area
-  // is then smaller than the window, and Margin.app draws only over it
-  // (app/platforms/macos/shell/Shell.swift overlayFrame), beside the inspector. Its size is
-  // the viewport's; where it starts is known exactly from any pointer event
-  // (the event's screen point less the window's corner and its own point in
-  // the page), else taken as: the width missing on the left (Safari's
-  // sidebar, an inspector on the left), the height missing at the bottom in
-  // full screen (the inspector: the toolbar is a window of its own there),
-  // at the top otherwise (the toolbar). Told to the copy when it changes, by
-  // the page in front only (the inspector is a tab's): `viewport`, in the
-  // window's points, null for the whole window.
-  let pointerOrigin: { x: number, y: number, w: number, h: number } | null = null; // as found for the viewport size w × h
-  const viewportNow = () => {
-    const z = pageZoom || 1;
-    // (Before any pinch: WebKit divides innerWidth and innerHeight by a pinch's scale, which read as Safari taking
-    // most of the window, a real session's log 2026-11-07: Margin drew in a third of it.)
-    const inner = unpinchedSize({ innerWidth, innerHeight, visualViewport });
-    const w = inner.width * z;
-    const h = inner.height * z;
-    const offX = Math.max(0, outerWidth - w);
-    const offY = Math.max(0, outerHeight - h);
-    if (offX < 1 && offY < 1) return null;
-    const known = pointerOrigin && Math.abs(pointerOrigin.w - w) < 1 && Math.abs(pointerOrigin.h - h) < 1 ? pointerOrigin : null;
-    const full = outerWidth >= screen.width - 1 && outerHeight >= screen.height - 60;
-    const x = known ? known.x : offX;
-    const y = known ? known.y : full ? 0 : offY;
-    const half = (v: number) => Math.round(v * 2) / 2;
-    // `measured`: where the area starts came from a pointer event, not the guess (for Margin.app's log).
-    return { x: half(x), y: half(y), width: half(w), height: half(h), ...(known ? { measured: true } : {}) };
-  };
-  const learnOrigin = (e: MouseEvent) => {
-    // (Not while pinched: an event's client point is then in the magnified page, not the window's points.)
-    if ((visualViewport?.scale ?? 1) > 1.001) return;
-    const z = pageZoom || 1;
-    const w = innerWidth * z;
-    const h = innerHeight * z;
-    if (pointerOrigin && Math.abs(pointerOrigin.w - w) < 1 && Math.abs(pointerOrigin.h - h) < 1) return;
-    if (outerWidth - w < 1 && outerHeight - h < 1) return;
-    const x = e.screenX - screenX - e.clientX * z;
-    const y = e.screenY - screenY - e.clientY * z;
-    if (!(x >= -1 && x <= outerWidth - w + 1 && y >= -1 && y <= outerHeight - h + 1)) return;
-    pointerOrigin = { x: Math.max(0, x), y: Math.max(0, y), w, h };
-    tellViewport();
-    layout.settle();
-  };
-  for (const type of ['pointermove', 'pointerdown'] as const) addEventListener(type, learnOrigin, { capture: true, passive: true });
-  // (Nothing said while the page's area is the whole window: the copy keeps only the tab in front's word.)
-  let toldViewport = 'null';
-  function tellViewport() {
-    if (document.hidden || !appUi() || retired()) return;
-    const v = viewportNow();
-    const key = JSON.stringify(v);
-    if (key === toldViewport) return;
-    toldViewport = key;
-    void send('viewport', { viewport: v, resizedAt, at: Date.now() }, false);
-  }
-  // The page in full screen (its own, YouTube's button, a video in a frame; or Safari's own video full screen): told so
-  // Margin.app's layout leaves the window meanwhile, and comes back after (2026-11-07: the video's full screen
-  // left the sidebar's strip on the left). The top frame says it for the page.
-  let toldFullscreen = false;
-  function pageFullscreenNow() {
-    if (document.fullscreenElement || (document as any).webkitFullscreenElement) return true;
-    for (const v of (document.getElementsByTagName('video') as any)) if (v.webkitPresentationMode === 'fullscreen' || v.webkitDisplayingFullscreen) return true;
-    return false;
-  }
-  function tellFullscreen() {
-    if (window !== window.top || !appUi() || retired()) return;
-    const on = pageFullscreenNow();
-    if (on === toldFullscreen) return;
-    toldFullscreen = on;
-    void send('pageFullscreen', { on }, false);
-  }
-  document.addEventListener('fullscreenchange', tellFullscreen);
-  document.addEventListener('webkitfullscreenchange', tellFullscreen);
-  // (A video's own: they don't bubble, heard on the way down.)
-  for (const type of ['webkitpresentationmodechanged', 'webkitbeginfullscreen', 'webkitendfullscreen']) document.addEventListener(type, tellFullscreen, true);
-  // At once (the next frame: Safari's resize as the inspector docks), and again once a drag of its
-  // edge settles; the copy and the app pass it on without waiting (Margin's area follows quickly).
-  let viewportSettle: Timer | 0 = 0;
-  let resizedAt = 0; // (for Margin.app's log: how long the word took)
-  addEventListener('resize', () => {
-    resizedAt = Date.now();
-    requestAnimationFrame(tellViewport);
-    clearTimeout(viewportSettle);
-    viewportSettle = setTimeout(tellViewport, 120);
-  });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) return; if (toldViewport !== 'null') toldViewport = 'unset'; tellViewport(); });
-  const applyApp = () => { layout.settle(); tellViewport(); };
-  // What the background says of the link: the page's box from the app's
-  // layout from now on, or none.
-  const appKey = (l: any) => JSON.stringify([l?.state ?? null, l?.layouts ?? null, l?.drawn ?? null]);
+  // What the background says of the link, and of what the app draws.
+  const appKey = (l: any) => JSON.stringify([l?.state ?? null, l?.drawn ?? null]);
   // What the log last said of the app here, said again as it changes (the window known later too).
-  // Linked, the box is the app's layout for the window: none where it said it draws nothing.
   let saidOfApp: string | null = null;
   function sayApp() {
     if (appLink === undefined) return;
     // (Its window not known yet, from Margin's state or the background's hello: not said either way.)
     const known = state?.tabs?.[tabId as number]?.windowId ?? helloWindowId; // (no id yet: no tab, undefined)
-    const said = !appUi() ? 'Margin.app isn\'t linked: the page as it is, no box' : known == null ? 'Margin.app is linked (this page\'s window not known yet)' : drawsWindow(appLink, known) ? 'Margin.app draws Margin around this window' : 'Margin.app is linked but draws nothing over this window: the page as it is, no box';
+    const said = !appUi() ? 'Margin.app isn\'t linked' : known == null ? 'Margin.app is linked (this page\'s window not known yet)' : drawsWindow(appLink, known) ? 'Margin.app draws Margin around this window' : 'Margin.app is linked but draws nothing over this window';
     if (said !== saidOfApp) console.debug(`[margin] ${said}`);
     saidOfApp = said;
   }
   function setAppLink(next: any) { // (storage's appLink: shared/app-link.ts)
-    const value = next && typeof next === 'object' ? next : { state: 'off', layouts: {} };
+    const value = next && typeof next === 'object' ? next : { state: 'off' };
     if (appLink !== undefined && appKey(value) === appKey(appLink)) return;
     appLink = value;
-    const now = appUi();
     mark(marks, 'app', String(appLink.state ?? 'off')); // test/debug hook
-    layout.setSource(now ? appGeometry : null);
     sayApp();
-    applyApp();
   }
   Margin.content.appDraws = () => appUi();
-  // The page's area as it would be told to the app now (null: the whole window): tests read it.
-  Margin.content.viewportNow = () => viewportNow();
-  addEventListener('resize', applyApp);
   // ⌘T reaching the page (Safari's File › New Tab given another shortcut).
   // Linked, in a window the app draws over, it's the app's (its hot key,
-  // PLAN.md §6): nothing visible here, and the app is told. Not linked, or in
+  // PLAN.md §6): nothing here. Not linked, or in
   // a window the app said it draws nothing over (`drawn`: not in full screen,
   // not found yet; its hot key isn't on there), a new tab: Margin's new-tab
   // page, which has an address field (background/handlers.ts newTabKey;
@@ -373,8 +201,7 @@ export function startCore() {
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.repeat) return;
-    if (drawsWindow(appLink, windowId ?? helloWindowId)) void send('appKeyHeard', { command: 'palette' }, false);
-    else void send('newTabKey', {}, false);
+    if (!drawsWindow(appLink, windowId ?? helloWindowId)) void send('newTabKey', {}, false);
   }, true);
 
   // The page being left, or a site's own same-page navigation under way:
@@ -414,9 +241,8 @@ export function startCore() {
     // the older one (then it stands back), or will it claim it again?
     if (helloAnswered && storedOwner && storedOwner.origin !== origin && before?.origin !== storedOwner.origin) void send('owner');
   }
-  // Out of the way: no box, keys or gestures from this copy (Safari runs both
-  // copies until it quits; this page can only reach the older one). The box
-  // is left to the copy in charge.
+  // Out of the way: no keys or gestures from this copy (Safari runs both
+  // copies until it quits; this page can only reach the older one).
   function standDown() {
     if (dormant) return;
     dormant = true;
@@ -435,30 +261,15 @@ export function startCore() {
     changedWhileHidden = false;
     void refresh();
     checkFullscreen();
-    readZoom();
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') shown(); });
   addEventListener('pageshow', (event) => event.persisted && shown());
 
-  // Whether this page is shown, said to the background at each change, once at the start and when
-  // it asks (Safari: Margin.app tells same-bounds full-screen windows of different profiles apart by
-  // which one's page in front is shown: background/link.ts visibility). Its time is when it was seen.
-  function tellVisibility() {
-    if (!linksApp() || retired()) return;
-    void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'page' }, false);
-  }
-  document.addEventListener('visibilitychange', tellVisibility);
-  addEventListener('pageshow', (event) => event.persisted && tellVisibility());
-  tellVisibility();
-  // When it last turned visible, for Margin.app's frame probe (shared/frame-probe.ts).
-  const visibleAt = watchVisible();
-
   // Where the page is scrolled, kept with its Margin tab and taken once when it's opened again
   // (content/scroll-record.ts).
-  const scrollRecord = startScrollRecord({ send, retired, boxed: () => !!box });
+  const scrollRecord = startScrollRecord({ send, retired });
 
-  // The state taken: this page's tab and window (its box is its window's
-  // layout), the gestures' settings.
+  // The state taken: this page's tab and window, the gestures' settings.
   let firstRender = true; // until the page first takes the state
   function render() {
     if (!state) return;
@@ -466,7 +277,6 @@ export function startCore() {
     // Known tab → its window. Until the background answers `hello`, guess.
     windowId = state.tabs?.[tabId as number]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
     if (tabId != null) scrollRecord.take(!!state.tabs?.[tabId]?.restoreScroll);
-    layout.settle();
     trackpad.update();
     if (firstRender) {
       firstRender = false;
@@ -508,7 +318,6 @@ export function startCore() {
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
     if (!missed) staleRead = false; // what's taken now is storage as read, newer than any change taken before
     state = next;
-    if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // its size from the start
     render();
     return true;
   }
@@ -537,9 +346,8 @@ export function startCore() {
       changes = rest;
     }
     // The data set's times for Margin.app, written on their own (background/
-    // store.ts), and the page box's kept sheet walks (content/sheet-walk-link.ts
-    // reads its own origin's at start): nothing the state has.
-    if (Object.keys(changes).every((key) => key.startsWith('dataMeta:') || isSheetWalkKey(key))) return;
+    // store.ts): nothing the state has.
+    if (Object.keys(changes).every((key) => key.startsWith('dataMeta:'))) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
     const read = () => void refresh();
@@ -552,7 +360,6 @@ export function startCore() {
       state = next;
       if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
       if (onlyMark(changes)) return;
-      if (!zoomAnswered && 'pageZoom' in changes) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
       render();
       return;
     }
@@ -596,13 +403,13 @@ export function startCore() {
     }
     helloWindowId = ctx.windowId;
     fullscreen = ctx.fullscreen;
+    cardKeys.set((ctx as { card?: boolean }).card === true);
+    appPinned = (ctx as { pinned?: boolean }).pinned === true;
     // The background's word on the link (it may be newer than storage's).
     if (ctx.app !== undefined) {
-      const layouts = { ...(appLink?.layouts ?? {}) };
-      if (ctx.app?.layout && ctx.windowId != null) layouts[ctx.windowId] = ctx.app.layout;
       const drawn = { ...(appLink?.drawn ?? {}) };
       if (typeof ctx.app?.drawn === 'boolean' && ctx.windowId != null) drawn[ctx.windowId] = ctx.app.drawn;
-      setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, layouts, drawn } : { state: 'off', layouts, drawn: {} });
+      setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, drawn } : { state: 'off', drawn: {} });
     }
     sayApp();
     render(); // its window is known now
@@ -629,26 +436,65 @@ export function startCore() {
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
+  const mediaWatcher = startMedia({
+    send: (report) => {
+      if (!dormant) void send('mediaState', report);
+    },
+  });
+  // The preview's link clicks (content/peek.ts): only in a window Margin.app draws, never in a copy that stood back; the
+  // card asked of the background (which asks the app: background/peek.ts), the link opening as it would have when
+  // the app doesn't take it in time.
+  // (This tab's window one Margin.app draws: main's, a card's or a split pane's; never in a copy that stood back.)
+  const drawnHere = () => !dormant && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId);
+  startPeek({
+    isDrawn: drawnHere,
+    isPinnedOrFav: () => {
+      // (Margin.app's library says so for its items: the copy's own state doesn't have its pins.)
+      if (appPinned) return true;
+      const s = state;
+      if (!s) return false;
+      const t = tabId != null ? s.tabs?.[tabId] : null;
+      if (t?.pinnedBy || t?.favoriteId) return true;
+      const key = V.normalizeUrl(location.href);
+      const sp = tabId != null ? s.tabSpace?.[tabId] : null;
+      if (sp && (s.pins ?? []).some((p: any) => p.spaceId === sp && V.normalizeUrl(p.url) === key)) return true;
+      return (s.favorites ?? []).some((f: any) => V.normalizeUrl(f.url) === key);
+    },
+    autoPeekEnabled: () => state?.settings?.autoPeekPins !== false,
+    ask: async (url, source, newTab) => {
+      const res = await send('openPeek', { url, source, newTab, notAfter: Date.now() + PEEK_ANSWER_MS - 50 }, false);
+      // (Refused, but the background opened the new tab already: done as the page would have had it.)
+      return res?.hosted === true || res?.opened === true;
+    },
+    fallback: ({ url, newTab }) => {
+      if (!newTab) return void location.assign(url);
+      // (No background to open it: the page's own way, which Safari may block this long after the click.)
+      window.open(url, '_blank', 'noopener');
+    },
+  });
+  // A pin's or favorite's item in Margin.app (the copy says so: hello's `pinned`, then `peekPinned`).
+  let appPinned = false;
+  // Esc and ⌘↩ in a page of the card's window (the copy says which: hello's `card`, then `cardWindow`).
+  const cardKeys = startCardKeys({ send: (key) => { if (!dormant) void send('cardKey', { key }, false); } });
+  // An Esc the page left alone never takes Safari's window out of full screen where Margin.app draws it
+  // (content/keep-fullscreen.ts): decided after the page's listeners and the card's.
+  startKeepFullscreen({ isDrawn: drawnHere });
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
     // (extension/engines/webkit/safari/newtab-hint.ts: Margin.app's overlay says it).
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
-    if (message?.type === 'reportVisibility') return tellVisibility();
-    // Margin.app's profile handoff asking whether this page draws frames at the full-screen size
-    // (shared/frame-probe.ts): answered when it's done, or null by its timeout.
-    if (message?.type === 'frameProbe') {
-      if (retired()) return;
-      void probeFrames(message, { visibleAt }).then((answer) => sendResponse(answer), () => sendResponse(null));
-      return true;
+    // This page's tab in the card's window of Margin.app's Peek, or out of it (background/hosted.ts).
+    if (message?.type === 'cardWindow' && typeof message.on === 'boolean') return cardKeys.set(message.on);
+    if (message?.type === 'peekPinned' && typeof message.on === 'boolean') { appPinned = message.on; return; }
+    if (message?.type === 'mediaCommand' && typeof message.command === 'string') {
+      return sendResponse({ ok: mediaWatcher.command(message.command) });
     }
-    // Margin.app's layout for this window, and whether it draws over it, as they change (background/link.ts).
-    if (message?.type === 'appLayout' && Number.isInteger(message.windowId)) {
+    // Whether Margin.app draws over this window, as it changes (background.ts appLink.onDrawn).
+    if (message?.type === 'appDrawn' && Number.isInteger(message.windowId) && typeof message.drawn === 'boolean') {
       if (!appLink) return;
-      const layouts = message.layout ? { ...(appLink.layouts ?? {}), [message.windowId]: message.layout } : appLink.layouts;
-      const drawn = typeof message.drawn === 'boolean' ? { ...(appLink.drawn ?? {}), [message.windowId]: message.drawn } : appLink.drawn;
-      setAppLink({ ...appLink, layouts, drawn });
+      setAppLink({ ...appLink, drawn: { ...(appLink.drawn ?? {}), [message.windowId]: message.drawn } });
     }
   };
   api.runtime.onMessage.addListener(onMessage);

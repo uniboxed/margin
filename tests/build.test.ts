@@ -2,13 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { CAPABILITIES } from '../extension/shared/any-engine-capabilities.ts';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DIST, FIRST_PAINT_THEMES, LEGACY_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.ts';
-import { allLayoutFiles, firstPaintFile, layoutFiles } from '../extension/shared/page-box.ts';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
+import { DIST, TARGETS, buildTo, manifestFor } from '../scripts/build.ts';
+import { PACKAGE_THEMES } from '../app/shared/ui/themes/packages.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // What the tests read of a built manifest (parsed JSON): a content script's entry, a command.
@@ -47,25 +46,17 @@ test('each build loads one bundled script per context', () => {
     if (target === 'safari') assert.deepEqual(manifest.background, { scripts: ['background.bundle.js'] }, target); // non-persistent: Manifest V3's default (WebKit), and Safari's converter warns on the key
     else assert.deepEqual(manifest.background, { service_worker: 'background.bundle.js' }, target);
     const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
-    assert.match(background, /content\/page\.bundle\.js/, `${target}: the background registers the page's script`);
     assert.doesNotMatch(background, /importScripts\(/, `${target}: nothing left to import`);
     const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(scripts, ['newtab.bundle.js'], target);
     const awayScripts = [...readFileSync(join(dir, 'away/away.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(awayScripts, ['away.bundle.js'], `${target}: the stand-in page (background/away.ts)`);
-    for (const file of ['content/content.bundle.js', 'content/page.bundle.js', 'newtab/newtab.bundle.js', 'away/away.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
-    // Nothing in the page's world from the manifest: a page Margin leaves
-    // alone loads none of it (background/registered.ts).
+    for (const file of ['content/content.bundle.js', 'newtab/newtab.bundle.js', 'away/away.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
+    // Nothing in the page's world (the page box, removed 2026-11-16: DECISIONS.md "Hosted only"): from
+    // the manifest, registered by the background, or in the build.
     assert.equal(manifest.content_scripts.find((c: ContentScript) => c.world === 'MAIN'), undefined, target);
-    // The first paint (background/registered.ts): every digit file of every
-    // place, at.css, and each built-in theme's file.
-    for (const [file, css] of allLayoutFiles()) assert.equal(readFileSync(join(dir, file), 'utf8'), css, `${target}/${file}`);
-    assert.deepEqual(FIRST_PAINT_THEMES, PACKAGE_THEMES, 'every built-in theme has its first paint');
-    for (const id of FIRST_PAINT_THEMES) assert.match(readFileSync(join(dir, firstPaintFile(id)), 'utf8'), new RegExp(`--margin-box-fp: ${id};[\\s\\S]*html\\[data-margin-at="${id}"\\]:not\\(#m#m#m#m#m\\) \\{[\\s\\S]*translate\\(var\\(--margin-box-at-left\\)`), `${target}: ${id}'s first paint`);
-    for (const file of layoutFiles({ left: 1023.75, top: 0, right: 8.25, bottom: 999, radius: 63.75 })) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}: there for any layout`);
-    // Safari loads none of its registrations if a path one names is missing:
-    // the build before Phase 3's stay, empty, until no Safari has them.
-    for (const file of LEGACY_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
+    assert.doesNotMatch(background, /\bregisterContentScripts|world: ?["']MAIN["']/, `${target}: no script registered for the page's world`);
+    for (const gone of ['content/page.bundle.js', 'content/page', 'content/layout']) assert.ok(!existsSync(join(dir, gone)), `${target}/${gone}: gone`);
     // Each built-in theme ships as its package (read by the background for
     // Margin.app); no theme script is registered.
     for (const id of PACKAGE_THEMES) for (const f of ['theme.json', 'theme.html', 'theme.css']) assert.ok(statSync(join(dir, `themes/${id}/${f}`)).size > 0, `${target}/themes/${id}/${f}`);

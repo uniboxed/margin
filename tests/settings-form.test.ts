@@ -1,15 +1,15 @@
-// The launcher's Settings form (extension/ui/settings-form.ts): every setting
+// The launcher's Settings form (app/shared/ui/settings-form.ts): every setting
 // of the form before Margin 2 (themes/arcadia/newtab.js), less keep-ready,
 // the warm-up and the switch log; what each field saves, checked; the inputs
 // the sanitizer allows for it; the view model and the action that run it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, type SettingsField } from '../extension/ui/settings-form.ts';
-import type { CleanElement, CleanNode } from '../extension/ui/sanitize.ts';
-import type { UiState } from '../extension/ui/view-model.ts';
-import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, SETTINGS_CATEGORIES, SETTINGS_CATEGORY_IDS, categoryOf, categoryNamed, fieldsIn, type SettingsField } from '../app/shared/ui/settings-form.ts';
+import type { CleanElement, CleanNode } from '../app/shared/ui/sanitize.ts';
+import type { UiState } from '../app/shared/ui/view-model.ts';
+import { sanitizeTemplate } from '../app/shared/ui/sanitize.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
 import { smallState, W } from './ui/fixtures.ts';
 import { wrap } from './theme/payloads.ts';
 
@@ -24,12 +24,13 @@ const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [
 test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, gestures, frame, the ⌘T hint, shortcuts; Wake all where sleeping tabs are discarded', () => {
   const fields = settingsFields({ theme: 'arcadia', archiveAfterHours: 12, sleepAfterHours: 4, neverSleepSites: ['mail.example.com'] }, SAFARI);
   assert.deepEqual(fields.map((f) => `${f.id}:${f.kind}`), [
-    'theme:choice', 'engine:info', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
-    'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'newTabHint:toggle',
-    'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut', 'resetShortcuts:button',
+    'theme:choice', 'pickerFeedback:choice', 'engine:info', 'favoritesScope:choice', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
+    'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'autoPeekPins:toggle', 'newTabHint:toggle',
+    'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut',
+    'appShortcuts:group', 'focusAddress:shortcut', 'copyUrl:shortcut', 'togglePin:shortcut', 'reopenArchived:shortcut', 'littleArc:shortcut', 'addSplit:shortcut', 'spaceDigits:shortcut', 'itemDigits:shortcut', 'resetShortcuts:button',
   ]);
   const f = byId(fields);
-  assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false]]);
+  assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false], ['liquid-glass', 'Liquid Glass', false], ['material', 'Material', false]]);
   assert.equal(f.neverSleepSites.value, 'mail.example.com');
   assert.equal(f.archiveAfterHours.value, '12');
   assert.match(f.engine.label, /Safari’s default search engine/);
@@ -37,6 +38,12 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
   assert.ok(f.blockGestures.isToggle && f.theme.isChoice && f.neverSleepSites.isList && f.nextTab.isShortcut && f.shortcuts.isGroup);
   // Safari closes a sleeping tab (each opens as it's clicked): nothing to wake.
   assert.ok(!('wakeAll' in f));
+  // A space shown (2026-11-20, a theme per space): its theme, said as this space's; without one, the profile's.
+  const spaced = byId(settingsFields({ theme: 'arcadia' }, SAFARI, { spaceTheme: 'pixel' }));
+  assert.deepEqual([spaced.theme.value, spaced.theme.label, spaced.theme.options.filter((o) => o.selected).map((o) => o.id)], ['pixel', 'Theme of this space', ['pixel']]);
+  assert.match(spaced.theme.help, /Each space has its own theme/);
+  assert.deepEqual([f.theme.label, f.theme.help], ['Theme', ''], 'no space: the profile\'s, as before');
+  assert.equal(byId(settingsFields({ theme: 'arcadia' }, SAFARI, { spaceTheme: 'gone' })).theme.value, 'arcadia', 'one not there: Arcadia');
   const discards = byId(settingsFields({}, DISCARDS));
   assert.ok(discards.wakeAll?.isButton, 'Wake all where they\'re discarded');
   // Gone from the form: keep-ready, the warm-up, the switch log.
@@ -124,12 +131,97 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
   assert.deepEqual(requestFor('settings.open', undefined, { state, ui: { windowId: 7 } }), { kind: 'send', type: 'openLauncher', payload: { windowId: 7, settings: true } });
 });
 
-// DEV-HOOK: Margin.app's "ask before quitting" (its quit prompt, app/platforms/macos/shell/QuitPrompt.swift), a development switch:
-// shown only when the app says it (`devAskBeforeQuit`), saved by the app.
-test('settings: the development switch for Margin\'s quit prompt, only when the app says it, saved by the app', () => {
-  assert.equal(settingsFields({}, {}).find((f) => f.id === 'devAskBeforeQuit'), undefined, 'not said: not shown');
-  const field = settingsFields({}, { devAskBeforeQuit: false }).find((f) => f.id === 'devAskBeforeQuit');
-  assert.ok(field && field.kind === 'toggle' && field.checked === false && /development/i.test(field.label), JSON.stringify(field));
-  assert.equal(settingsFields({}, { devAskBeforeQuit: true }).find((f) => f.id === 'devAskBeforeQuit')?.checked, true);
-  assert.deepEqual(saveField(field, true, {}), { perform: 'switch.askBeforeQuit', arg: { on: true } }, 'the app saves it');
+test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Browsing, Keyboard; every field in one, in the form\'s order', () => {
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.id), [...SETTINGS_CATEGORY_IDS], 'the action\'s ids (ui/actions.ts) are the categories\'');
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Tabs', 'Browsing', 'Keyboard']);
+  const theme = { id: 'arcadia', name: 'Arcadia', settings: { sidebarWidth: { type: 'number', label: 'Sidebar width', default: 260, min: 160, max: 500 } } };
+  const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
+  const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
+  assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'pickerFeedback', 'themeSettings', 'themeSetting:sidebarWidth']);
+  assert.deepEqual(ids('tabs'), ['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+  assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
+  assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'appShortcuts', 'focusAddress', 'copyUrl', 'togglePin', 'reopenArchived', 'littleArc', 'addSplit', 'spaceDigits', 'itemDigits', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
+  const shown = new Set(SETTINGS_CATEGORY_IDS.flatMap((c) => fieldsIn(all, c as any).map((f) => f.id)));
+  assert.deepEqual(all.map((f) => f.id).filter((id) => !shown.has(id)), ['shortcuts'], 'no field lost');
+  assert.equal(categoryOf('anything-new'), 'appearance', 'a field not listed still shows');
+  assert.equal(categoryNamed('keyboard'), 'keyboard');
+  assert.equal(categoryNamed('__proto__'), 'appearance');
+  assert.equal(categoryNamed(null), 'appearance');
+});
+
+test('Edit Theme Color\'s ticks (M2.9 step 6): haptics offered only where Margin.app plays them; a value not offered shown as Automatic; saved as chosen', () => {
+  const mac = byId(settingsFields({ pickerFeedback: 'haptics' }, { ...SAFARI, haptics: true })).pickerFeedback;
+  assert.deepEqual(mac.options.map((o) => [o.id, o.selected]), [['auto', false], ['haptics', true], ['sound', false], ['off', false]]);
+  assert.match(mac.options[0].label, /haptics on a trackpad/);
+  assert.match(mac.help, /Force Touch trackpad/);
+  assert.equal(categoryOf('pickerFeedback'), 'appearance');
+  const elsewhere = byId(settingsFields({ pickerFeedback: 'haptics' }, SAFARI)).pickerFeedback;
+  assert.deepEqual(elsewhere.options.map((o) => o.id), ['auto', 'sound', 'off'], 'no haptics where none play');
+  assert.deepEqual([elsewhere.value, elsewhere.options[0].label], ['auto', 'Automatic: a click'], 'haptics saved, none here: Automatic');
+  for (const bad of [undefined, 'loud', 3, null]) assert.equal(byId(settingsFields({ pickerFeedback: bad }, SAFARI)).pickerFeedback.value, 'auto', String(bad));
+  const saved = saveField(mac, 'off', { pickerFeedback: 'haptics' }) as Saved;
+  assert.deepEqual(saved.payload.patch, { pickerFeedback: 'off' });
+  assert.equal(saveField(elsewhere, 'haptics', {}), null, 'not offered: not saved');
+  assert.equal(saveField(mac, 'haptics', {}), null, 'the one chosen already: nothing to save');
+  assert.deepEqual((saveField(elsewhere, 'sound', {}) as Saved).payload.patch, { pickerFeedback: 'sound' });
+});
+
+test('the Settings page in the view model: its categories and the one shown; the fields of that one for a theme that draws them, all for one that doesn\'t', () => {
+  const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
+  const vm = (ui: UiState) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: SAFARI } });
+  assert.equal(vm({ launcherPage: true }).settingsTab, null, 'the launcher: no Settings page');
+  assert.equal(vm({ settingsPage: true }).settingsTab, null, 'not on a web page');
+  const page = vm({ launcherPage: true, settingsPage: true, settingsNav: true });
+  assert.equal(page.settingsTab!.title, 'Settings');
+  assert.deepEqual(page.settingsTab!.categories.map((c) => [c.id, c.selected]), [['appearance', true], ['tabs', false], ['browsing', false], ['keyboard', false]]);
+  assert.equal(page.settingsTab!.current.id, 'appearance');
+  assert.deepEqual(page.settingsForm!.fields.map((f) => f.id), ['theme', 'pickerFeedback']);
+  const keys = vm({ launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'keyboard' });
+  assert.equal(keys.settingsTab!.current.label, 'Keyboard');
+  assert.ok(keys.settingsTab!.categories.find((c) => c.id === 'keyboard')!.isKeyboard);
+  assert.ok(keys.settingsForm!.fields.every((f) => f.isShortcut || f.id === 'resetShortcuts' || f.id === 'appShortcuts'));
+  const plain = vm({ launcherPage: true, settingsPage: true, settingsCategory: 'keyboard' });
+  assert.ok(plain.settingsForm!.fields.some((f) => f.id === 'theme') && plain.settingsForm!.fields.some((f) => f.id === 'nextTab'), 'a theme with no categories: the whole form');
+  // Settings under the search field: not in Margin.app's window (its own tab there).
+  assert.equal(vm({ launcherPage: true }).launcher!.hasSettings, true);
+  assert.equal(vm({ launcherPage: true, appWindow: true }).launcher!.hasSettings, false);
+  // The category asked for: only one of the list.
+  const ctx = contextFromState(state);
+  assert.deepEqual(checkAction('settings.category', 'tabs', ctx), { ok: true });
+  assert.equal(checkAction('settings.category', 'evil', ctx).ok, false);
+  assert.equal(checkAction('settings.category', undefined, ctx).ok, false);
+  assert.deepEqual(requestFor('settings.category', 'tabs', { state, ui: { windowId: 7 } }), { kind: 'local', name: 'settings.category', arg: 'tabs' });
+});
+
+test('Settings: Margin.app\'s own keys (⌘L, ⌘D, ⌃1–9, ⌘1–9…) can be changed or turned off, and reach the app as its keys', async () => {
+  const { keyBindings } = await import('../extension/background/link.ts');
+  const f = byId(settingsFields({}, SAFARI));
+  assert.deepEqual([f.togglePin.value, f.focusAddress.value, f.spaceDigits.value, f.itemDigits.value, f.addSplit.value], ['⌘D', '⌘L', '⌃1–9', '⌘1–9', '⌃⇧=']);
+  // Another combination; a numbered one takes its digit's modifiers for 1–9 (any digit pressed).
+  assert.deepEqual((saveField(f.togglePin, 'Alt+Meta+KeyP', {}) as Saved).payload.patch.appKeys.togglePin, 'Alt+Meta+KeyP');
+  assert.equal((saveField(f.itemDigits, 'Alt+Meta+Digit7', {}) as Saved).payload.patch.appKeys.itemDigits, 'Alt+Meta+Digit1');
+  assert.equal(saveField(f.itemDigits, 'Alt+Meta+KeyP', {}), null, 'a numbered key needs a digit');
+  // Off.
+  const off = (saveField(f.togglePin, '', {}) as Saved).payload.patch.appKeys;
+  assert.equal(off.togglePin, '');
+  assert.equal(off.copyUrl, 'Shift+Meta+KeyC', 'the others kept');
+  const shown = byId(settingsFields({ appKeys: off }, SAFARI));
+  assert.equal(shown.togglePin.value, '');
+  assert.equal(shown.togglePin.placeholder, 'Off');
+  // Taken: a numbered key's nine combinations count.
+  assert.match(shortcutTaken('togglePin', 'Meta+Digit3', {})!, /already used for “Go to favorite, pin or tab 1–9”/);
+  assert.equal(shortcutTaken('itemDigits', 'Meta+Digit4', {}), null, 'its own');
+  assert.match(shortcutTaken('spaceDigits', 'Meta+Digit2', {})!, /favorite, pin or tab/);
+  assert.match(shortcutTaken('copyUrl', 'Alt+KeyS', {})!, /sidebar/);
+  // Reset: their defaults too.
+  assert.equal((runField(f.resetShortcuts) as Saved).payload.patch.appKeys.togglePin, 'Meta+KeyD');
+  // What the app is told: every one named, [] off (so it never falls back to its default), the digits one each.
+  const keys = keyBindings({ appKeys: { togglePin: '', itemDigits: 'Alt+Meta+Digit1' } });
+  assert.deepEqual(keys['toggle-pin'], []);
+  assert.deepEqual(keys['focus-address'], ['Meta+KeyL']);
+  assert.deepEqual(keys['item-1'], ['Alt+Meta+Digit1']);
+  assert.deepEqual(keys['item-9'], ['Alt+Meta+Digit9']);
+  assert.deepEqual(keys['space-3'], ['Ctrl+Digit3']);
+  const none = keyBindings({ appKeys: { spaceDigits: '' } });
+  assert.deepEqual(Array.from({ length: 9 }, (_, i) => none[`space-${i + 1}`]), Array(9).fill([]));
 });

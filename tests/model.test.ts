@@ -1,3 +1,4 @@
+import { checkIconUrl } from '../app/shared/ui/sanitize.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';
@@ -303,6 +304,39 @@ test('spaces: create and update (rename / emoji / recolor), blanks ignored', () 
   s = M.updateSpace(s, 'work', { name: ' Job ', color: '#ff0000', emoji: '' });
   assert.deepEqual(s.spaces[1], { id: 'work', name: 'Job', emoji: '💼', color: '#ff0000' });
   assert.equal(M.createSpace(s, { id: 'x', name: '  ' }).spaces[2].name, 'New space');
+});
+
+test('spaces: a theme (2026-11-20): an id kept, null clears it, anything else changes nothing', () => {
+  let s = twoSpaces();
+  assert.equal('theme' in M.createSpace(s, { id: 'x' }).spaces[2], false, 'none asked: none (the profile\'s)');
+  assert.equal(M.createSpace(s, { id: 'x', theme: 'pixel' }).spaces[2].theme, 'pixel');
+  assert.equal('theme' in M.createSpace(s, { id: 'x', theme: 'Pixel!' }).spaces[2], false, 'an id only');
+  s = M.updateSpace(s, 'work', { theme: 'material' });
+  assert.deepEqual(s.spaces[1], { id: 'work', name: 'Work', emoji: '💼', color: s.spaces[1].color, theme: 'material' });
+  assert.equal(M.updateSpace(s, 'work', { name: 'Job' }).spaces[1].theme, 'material', 'left out: kept');
+  assert.equal(M.updateSpace(s, 'work', { theme: '../x' }).spaces[1].theme, 'material', 'not an id: kept');
+  assert.equal('theme' in M.updateSpace(s, 'work', { theme: null }).spaces[1], false, 'null: none again');
+  assert.equal(M.updateSpace(s, 'work', { theme: 'pixel' }).spaces[0], s.spaces[0], 'the other space untouched');
+});
+
+test('spaces: a background (M2.9): read as backgroundOf reads it; an object sets it, null clears it, anything else keeps it', () => {
+  assert.deepEqual(
+    M.backgroundOf({ colors: ['#F7C7D3', 'nope', '#cfe8f7', '#111111', '#222222'], wheel: 'triadic', intensity: 0.373, texture: 'sand', amount: 0.47, appearance: 'dark', extra: 1 }),
+    { colors: ['#f7c7d3', '#cfe8f7', '#111111'], wheel: 'analogous', intensity: 0.37, texture: 'sand', amount: 0.45, appearance: 'dark' },
+    'colours lowercased, the first three #rrggbb; a value not its own: the default; numbers rounded; unknown keys dropped',
+  );
+  assert.equal(M.backgroundOf({ colors: [] }), null, 'no colour, no picture: none');
+  assert.equal(M.backgroundOf([{ colors: ['#111111'] }]), null, 'not an object');
+  assert.deepEqual(M.backgroundOf({ image: { id: 'a'.repeat(64), focus: [2, -0] } })?.image, { id: 'a'.repeat(64), fit: 'cover', focus: [1, 0] }, 'a picture alone; -0 reads as 0');
+  assert.equal(M.backgroundOf({ image: { id: 'A'.repeat(64) } }), null, 'a picture\'s id: lowercase SHA-256 only');
+  let s = twoSpaces();
+  s = M.updateSpace(s, 'work', { background: { colors: ['#ABCDEF'] } });
+  assert.deepEqual(s.spaces[1].background, { colors: ['#abcdef'], wheel: 'analogous', intensity: 0.5, texture: 'grain', amount: 0, appearance: 'auto' });
+  assert.equal(M.updateSpace(s, 'work', { name: 'Job' }).spaces[1].background, s.spaces[1].background, 'left out: kept');
+  assert.equal(M.updateSpace(s, 'work', { background: 'x' }).spaces[1].background, s.spaces[1].background, 'not an object: kept');
+  assert.equal('background' in M.updateSpace(s, 'work', { background: null }).spaces[1], false, 'null: none');
+  assert.equal('background' in M.updateSpace(s, 'work', { background: { colors: ['x'] } }).spaces[1], false, 'one that reads as none: none');
+  assert.equal('background' in M.createSpace(s, { id: 'x' }).spaces[2], false, 'a new space: none');
 });
 
 test('view.sidebar: shows the window\'s active space, pins separately, newest tabs first', () => {
@@ -615,6 +649,11 @@ test('favicons: browser icon first, else the fetched one for that site; cache is
   assert.equal(view.iconFor(s, { url: 'https://a.com/page', favIconUrl: 'https://a.com/x.png' }), 'https://a.com/x.png', 'browser icon wins');
   assert.equal(view.iconFor(s, { url: 'https://b.com/', favIconUrl: '' }), '', 'unknown site: letter avatar');
   assert.equal(view.iconFor(s, { url: 'chrome://settings' }), '');
+  // Margin's own Settings page (Margin.app's Settings tab): a gear, a data URL a row's icon check takes.
+  const gear = view.iconFor(s, { url: 'margin://settings', favIconUrl: '' });
+  assert.match(gear, /^data:image\/svg\+xml;base64,/);
+  assert.ok(checkIconUrl(gear), 'drawn as a row\'s icon');
+  assert.equal(view.iconFor(s, { url: 'margin://settingsx' }), '', 'only that page');
   for (let i = 0; i < 10; i++) s = M.rememberFavicon(s, `https://s${i}.com`, { data: 'd', href: 'h', at: 10 + i }, 5);
   assert.deepEqual(Object.keys(s.favicons).sort(), ['https://s5.com', 'https://s6.com', 'https://s7.com', 'https://s8.com', 'https://s9.com']);
   assert.equal(M.rememberFavicon(s, null, { data: 'd', at: 1 } as Parameters<typeof M.rememberFavicon>[2]), s); // no site: nothing else read

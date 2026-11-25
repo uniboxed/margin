@@ -14,10 +14,10 @@ import * as restore from './background/restore.ts';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.ts';
 import { switchLog, switchLogTo } from './background/switch-log.ts';
 import { learnSearchEngine } from './background/search-engine.ts';
-import { drawnChanged, handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.ts';
+import { handlers, hostedTabs, mediaHub, newTabHandOff, newTabKey } from './background/handlers.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
-import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits, windowDrawnChanged } from './background/registered.ts';
+import { storeActiveTheme } from './background/theme-package.ts';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.ts';
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.ts';
 import { navActivated, navigate, NAV_ACTIONS } from './background/navigation.ts';
@@ -28,7 +28,6 @@ import * as handoff from './background/handoff.ts';
 import * as pageLoads from './background/page-loads.ts';
 import * as away from './background/away.ts';
 import { linkedAgain } from './background/notices.ts';
-import { APP_LINK_KEY, appDraws } from './shared/app-link.ts';
 
 // ---- which copy is in charge ------------------------------------------------
 // Safari can keep an older copy of Margin running beside a newer one until it
@@ -139,6 +138,8 @@ api.permissions?.onRemoved?.addListener(owned(() => void engine.onboarding?.repo
 api.tabs.onCreated.addListener(owned(async (tab) => {
   // Margin's stand-in for a tab shown in another window is never a Margin tab (background/away.ts).
   if (away.isStandIn(tab.id, tab.windowId, tab)) return;
+  // A new tab in Margin.app's preview card window: the card's page now (background/hosted.ts).
+  void hostedTabs.tabCreated(tab);
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.ts newTabHandOff); a new tab
   // that stays is tracked as usual.
@@ -167,6 +168,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.status || change.url) pageChanged(tabId);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.ts).
   tabUpdated(tabId, change, tab);
+  // The preview card page's address or title, for Margin.app's card bar (background/hosted.ts).
+  hostedTabs.tabUpdated(tabId, change, tab);
   // Loading or done, for Margin.app's sidebar (background/page-loads.ts: not stored).
   if (change.status) pageLoads.statusChanged(tab, change.status);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
@@ -227,6 +230,21 @@ function stayInSpace(windowId: number, spaceId: string, closedId: number) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
+// A tab Margin.app's show brought to the front (background/hosted.ts `raisedByShow`: a run of them is a held key, a
+// fast run of picks): which tab is in front and when each was last used (and the space that follows it) are in the
+// state at once, and written within ACTIVATION_WRITE_MS, or sooner with any write before then (store.ts mutate
+// `within`). Every write reaches every open page (the hidden ones take it as they're shown, on the next switch's way:
+// background/tab-updates.ts) and Margin.app (the delta, and the data set's change it saves to disk and acks), so such
+// a run is a write or two, not one each; the app follows its own record of what it shows, not this one. Any other
+// switch is written at once: one made in the browser (its tab bar, a link), whose sidebar follows the stored state,
+// Margin's own (focusTab: its asker follows the stored state to see it land, shared/switching.ts), and one in a window
+// that showed a tab away (its stand-in goes: background/away.ts).
+const ACTIVATION_WRITE_MS = 1000;
+// A tab's copy of Margin checked (tabs.ts ensureCurrent) once its window's switches have settled: the tab in front
+// SETTLED_MS after the last one, not each tab a run of quick switches passes (each check asks Safari four times and
+// runs a script in the page, in the next switches' way).
+const SETTLED_MS = 300;
+const settling: Map<number, Timer> = new Map(); // windowId → the check of the tab it shows, due once it's settled
 // `left`: the tab it was shown in place of, as the activations came (not the
 // state's `active`, which lags a run of quick switches); null if not known.
 // Every activation waits for the state, so they go on in the order they came.
@@ -246,6 +264,7 @@ const activated = owned(async ({ tabId, windowId }: { tabId: number, windowId: n
   navActivated(windowId, tabId);
   const closed = closedShown.get(windowId);
   closedShown.delete(windowId);
+  const shown = hostedTabs.raisedByShow(tabId);
   mutate((s) => {
     const next = M.activateTab(s, tabId, windowId, now());
     if (closed && Date.now() - closed.at < STAY_MS && next.tabSpace[tabId] !== closed.spaceId) {
@@ -258,15 +277,19 @@ const activated = owned(async ({ tabId, windowId }: { tabId: number, windowId: n
       lastFollow.set(windowId, { from: V.activeSpaceId(next, windowId), at: Date.now(), prevTabId: prev?.id ?? null });
     }
     return followed;
-  });
+  }, { within: (s) => (shown && s.awayByWindow?.[windowId] == null ? ACTIVATION_WRITE_MS : null) });
   // A tab of its own in front: the window's stand-in goes.
   away.shownIn(windowId, tabId, wasAway);
   if (!api.alarms) {
     archiveStaleThrottled();
     sleepIdleThrottled();
   }
-  // After the switch has landed (not in its way).
-  setTimeout(() => isOwner() && ensureCurrent(tabId), 300);
+  // After the window's switches have settled (not in their way).
+  clearTimeout(settling.get(windowId));
+  settling.set(windowId, setTimeout(() => {
+    settling.delete(windowId);
+    if (isOwner()) ensureCurrent(tabId);
+  }, SETTLED_MS));
 });
 // The tab in front of each window as the activations come, in order (the tab
 // each one leaves): a tab closed or moved away is no longer in front.
@@ -298,11 +321,10 @@ api.windows?.onFocusChanged?.addListener(owned((windowId) => {
 api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onAttached.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
-// Chrome: a window going full screen becomes Margin full screen.
+// Chrome: a window going full screen becomes Margin full screen, except a window Margin.app hosts: its state is the
+// app's (it puts it in full screen itself; an exit and an entry here would fight it: docs/HOSTED-WINDOWS-CHROMIUM.md).
 const { fullscreen } = engine;
-if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => fullscreen.followFullscreen(win.id)));
-// A closed window may have been the one in full screen (registered.ts syncPage).
-if (capabilities?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
+if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => (win.id == null || hostedTabs.isHosted(win.id) ? undefined : fullscreen.followFullscreen(win.id))));
 api.windows?.onRemoved.addListener(owned((windowId) => {
   away.windowGone(windowId);
   return mutate((s) => {
@@ -330,8 +352,8 @@ async function withTab(message: Record<string, any>, sender: BrowserMessageSende
 }
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.ts). Requests that name no tab (a page starting,
-// its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'keepSheetWalk', 'appKeyHeard', 'newTabKey', 'startApp', 'retryLink', 'pageLoading', 'gesture', 'viewport', 'visibility', 'pageFullscreen']);
+// its scroll and icon) don't wait for the first sync.
+const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'pageIcon', 'windowState', 'newTabKey', 'startApp', 'retryLink', 'pageLoading', 'gesture']);
 // Requests whose page stops waiting at their `deadline` (content/core.ts
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -344,6 +366,7 @@ const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScrol
 const TIMED = new Set(['activateTab', 'openPin', 'setSpace', 'newTab', 'search']);
 const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  appLink.due(); // (a page's message is an event heard: the link's waits that are due run: background/link.ts)
   const handler = (handlers as Record<string, (message: any, sender: any) => Promise<any>>)[message?.type]; // (an unknown type: none)
   if (!handler) return false;
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
@@ -421,62 +444,62 @@ firstSync.then(async () => {
 api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && isOwner()) appLink.onStorage(changes); });
 api.windows?.onCreated?.addListener((win) => appLink.windowCreated(win?.id));
 api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId));
+api.windows?.onRemoved?.addListener((windowId) => hostedTabs.windowRemoved(windowId));
 api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
-api.tabs.onActivated.addListener((info) => appLink.tabActivated(info?.tabId, info?.windowId));
-// A window Margin.app parked (out of sight) used anyway: a tab Margin didn't open made there, or focus
-// landing there not by Margin's own call. The app is told, and hands off to it (background/handoff.ts).
-api.tabs.onCreated.addListener((tab) => void handoff.tabCreated(tab));
-api.windows?.onFocusChanged?.addListener((windowId) => void handoff.focusChanged(windowId));
+api.tabs.onActivated.addListener(() => appLink.tabActivated());
+// Safari's events come on time while a slowed background's timers don't: each one heard runs the link's waits that are
+// due (docs/LINK-RESILIENCE.md §2 rule 5; the windows events above and a page's message below do too).
+api.tabs.onUpdated.addListener(() => appLink.due());
+// A window closed: what the copy kept of its own windows calls for it goes (background/handoff.ts).
 api.windows?.onRemoved?.addListener((windowId) => handoff.windowClosed(windowId));
-// What a tab's page said of being shown is forgotten once it's another page, gone or elsewhere.
-api.tabs.onRemoved.addListener((tabId) => appLink.tabGone(tabId));
-api.tabs.onReplaced?.addListener((_added, removed) => appLink.tabGone(removed));
-api.tabs.onAttached.addListener((tabId) => appLink.tabGone(tabId));
-api.webNavigation?.onCommitted?.addListener(({ tabId, frameId, timeStamp }) => { if (frameId === 0) appLink.tabGone(tabId, Number.isFinite(timeStamp) ? timeStamp : Infinity); });
 // What's loading in each window, for its overlay (background/page-loads.ts):
 // a tab gone or moved, and every window again when the link comes.
 api.tabs.onRemoved.addListener((tabId) => pageLoads.tabMoved(tabId));
+// The background mini player's sources (background/media.ts): a tab closed, or its page left (a new document in its
+// main frame), goes at once; Safari's `audible` and mute for a tab, as they change. (In memory only: no storage.)
+api.tabs.onRemoved.addListener((tabId) => mediaHub.remove(tabId));
+api.webNavigation?.onCommitted.addListener((details) => { if (details.frameId === 0) mediaHub.remove(details.tabId); });
+api.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if ('audible' in change && tab) mediaHub.audible({ id: tabId, windowId: tab.windowId, url: tab.url, title: tab.title, audible: !!change.audible, mutedInfo: tab.mutedInfo });
+  if (change.mutedInfo) mediaHub.muted(tabId, !!change.mutedInfo.muted);
+});
 api.tabs.onAttached.addListener((tabId, info) => pageLoads.tabMoved(tabId, info?.newWindowId ?? null));
 appLink.onPageState((state) => {
   // The notices decided while the link was down, said now (background/notices.ts).
   if (state === 'linked') void linkedAgain().catch(() => {});
+  if (state === 'linked') mediaHub.tellAll(); // (what plays, told again: Margin.app may have started since)
   if (state === 'linked') void Promise.resolve(api.windows?.getAll?.()).then((wins) => pageLoads.tellAll((wins ?? []).map((w) => w.id)), () => pageLoads.tellAll());
 });
-// A window's layout: its page in front gets its box at once (the rest read
-// it from storage, appLink, as they're shown or start), and new pages get it
-// at their first paint (background/registered.ts: the registered layout
-// follows at once for a lone change, once layouts settle for a burst; a
-// window with another gets its own as each page commits).
-appLink.onLayout((windowId, layout) => {
-  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout, drawn: appLink.drawn(windowId) }).catch(() => {}), () => {});
-  layoutsChanged();
-});
-// Whether the app draws over a window (its `drawn`): the same way. Its pages lose their box
-// where it draws nothing (and get it back from the window's layout when it draws there again),
-// and new pages there get none from their first paint: the registration follows at once
-// (registered.ts windowDrawnChanged; until then fixUp's sheet as each page commits).
+// Whether the app draws over a window (its `drawn`): its page in front is told at once (the
+// rest read it from storage, appLink, as they're shown or start), for where Margin's keys go.
 appLink.onDrawn((windowId, drawn) => {
-  drawnChanged(windowId, drawn);
-  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout: appLink.layout(windowId), drawn }).catch(() => {}), () => {});
-  windowDrawnChanged();
+  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appDrawn', windowId, drawn }).catch(() => {}), () => {});
 });
-setLayoutSource(() => appLink.view());
-watchCommits();
 
-// What a page's zoom answer keeps (handlers.ts getZoom), in every copy: a
-// copy that doesn't own the state now may again.
-api.tabs.onZoomChange?.addListener(zoomChanged);
-api.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.pageZoom) zoomStored();
-});
-// The first paint follows the settings (the theme) and the link to
-// Margin.app (registered only while it's linked: background/registered.ts).
-const linkTurned = (change: BrowserStorageChange) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
+// The theme Margin.app draws with follows the settings (background/theme-package.ts), one write at a time.
+let themeWrites = Promise.resolve();
+const queueTheme = () => (themeWrites = themeWrites.then(storeActiveTheme).catch((err) => console.warn('[margin] theme', err)));
 api.storage.onChanged.addListener(owned((changes, area) => {
-  if (area === 'local' && (changes.settings || linkTurned(changes[APP_LINK_KEY]))) queueRegistrations();
+  if (area === 'local' && changes.settings) void queueTheme();
 }));
-owned(queueRegistrations)();
+owned(queueTheme)();
+// What the page box left (removed 2026-11-16, DECISIONS.md "Hosted only"): its content script
+// registrations (kept by Safari and Chrome across launches) and its kept sheet walks.
+owned(async () => {
+  const ids = ['margin-page', 'margin-docked'];
+  if (api.scripting?.unregisterContentScripts) {
+    const there = await Promise.resolve(api.scripting.getRegisteredContentScripts({ ids })).catch(() => []);
+    if (there?.length) await Promise.resolve(api.scripting.unregisterContentScripts({ ids: there.map((s) => s.id) })).catch(() => {});
+  }
+  // (The index names every origin kept: { [origin]: … }.)
+  const index = (await api.storage.local.get(['sheetWalkIndex']).catch(() => null))?.sheetWalkIndex;
+  if (index && typeof index === 'object') await api.storage.local.remove(['sheetWalkIndex', ...Object.keys(index).map((origin) => `sheetWalk:${origin}`)]).catch(() => {});
+  // What the overlay over a browser's windows kept (removed 2026-11-17, DECISIONS.md "Hosted only: the cleanup"):
+  // each site's zoom (for where the page's area sat in its window) and the record of the windows the app had parked.
+  const old = await Promise.resolve().then(() => api.storage.local.get(['pageZoom', 'parkedWindows'])).catch(() => null);
+  if (old && ('pageZoom' in old || 'parkedWindows' in old)) await Promise.resolve().then(() => api.storage.local.remove(['pageZoom', 'parkedWindows'])).catch(() => {});
+})();
 
 // ---- auto-archive -----------------------------------------------------------
 
@@ -496,15 +519,14 @@ if (api.alarms) {
 // Debug hook for Web Inspector and tests: `margin.archiveNow()`;
 // `margin.sleepNow(ms)`: a pass of sleeping tabs now, for tabs unused for `ms`
 // (the setting's hours if left out).
-globalThis.margin = { archiveNow: archiveStale, sleepNow: (ms: number | undefined) => sleepIdle(Number.isFinite(ms) ? { afterMs: ms } : {}), syncRegistrations: queueRegistrations, navigate };
+globalThis.margin = { archiveNow: archiveStale, sleepNow: (ms: number | undefined) => sleepIdle(Number.isFinite(ms) ? { afterMs: ms } : {}), navigate };
 
 // ---- commands -------------------------------------------------------------
 
 // While Margin.app draws the UI (linked, or reconnecting), its keys are the
 // app's (Carbon hot keys following the Settings shortcuts: the `keys`
 // message): a UI command that reaches the extension anyway (⌘T, the
-// palette's, the sidebar's) does nothing visible here, and the app is told,
-// for its diagnostics. In a window the app said it draws nothing over
+// palette's, the sidebar's) does nothing visible here. In a window the app said it draws nothing over
 // (`drawn`), its hot keys aren't on: ⌘T and the palette's key go the
 // unlinked way, and the sidebar's is logged (there's no sidebar there).
 // Not linked, there's no palette or sidebar to show
@@ -518,7 +540,6 @@ api.commands?.onCommand.addListener(owned(async (command, tabArg) => {
     const windowId = tabArg?.windowId ?? (await Promise.resolve(api.windows?.getLastFocused?.()).catch(() => null))?.id ?? null;
     if (appLink.drawsWindow(windowId)) {
       console.info(`[margin] ${command} heard while Margin.app draws the UI: left to the app`);
-      appLink.push(windowId, { type: 'keyHeard', command, from: 'command' });
       return;
     }
     if (command === 'toggle-sidebar') {

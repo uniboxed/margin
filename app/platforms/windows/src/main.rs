@@ -15,6 +15,10 @@ fn main() {
     let code = match args::mode(std::env::args().skip(1)) {
         args::Mode::App { login } => app::run(login),
         args::Mode::NotTheHost => 0,
+        args::Mode::HostCheck { target } => match margin_windows::hostcheck::target(&target) {
+            Some(t) => margin_windows::hostcheck::run(t),
+            None => 2,
+        },
     };
     log::flush();
     std::process::exit(code);

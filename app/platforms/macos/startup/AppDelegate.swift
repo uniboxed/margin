@@ -1,22 +1,18 @@
-// Margin's app: its set-up window (ViewController.swift, from the converter's
-// storyboard) while it's open, and otherwise running on with no window and no
-// Dock icon (an accessory app), linked to Margin's extension copies and
-// drawing Margin around the browser's windows (app/platforms/macos/shell/Shell.swift), which
-// does nothing until a linked browser is in front. Opening the app again
-// shows the set-up window again. Quitting, the copies are told first; a
-// SIGTERM quits the same way. scripts/safari.sh puts a new build in place of
-// the installed one, then sends a SIGTERM to the Margin.app it found running
-// from there (a KILL after 5 s), and if Safari is running and nothing has
-// started the new build in 2 s, opens it with --background (no set-up
-// window). Started by the extension handler for a link (2026-11-05: no
-// login item needed), there's no set-up window either: the handler's
-// arguments never reach a sandboxed caller's app, so it leaves a note instead
-// (startedForLink). With no copy linked for 10 minutes (and no set-up
-// window), it quits by itself. Replaced on disk some other way, it notices and
-// quits (BundleWatch.swift), and starting, it ends any other instance of its
-// bundle first. Started with --park-probe, it's only the parking self-test's
-// hidden child for a moment (BridgeParker.swift, docs/HANDOFF.md §4.2), which
-// the shell starts at launch. Copied over the converter's by scripts/make-xcode.sh.
+// Margin's app (docs/MARGIN-APP.md): opened by hand, or again, it shows Margin's own window (ShellHosted.swift: a
+// regular app from then on, its Dock icon and menu bar), which hosts Safari's windows and other apps in its page area;
+// its set-up window (ViewController.swift, from the converter's storyboard) only with Option held. Started in the
+// background (margin-helper, --background, or by the extension handler for a link) it runs on with no window and no
+// Dock icon (an accessory app), linked to Margin's extension copies (app/platforms/macos/shell/Shell.swift).
+// Quitting, every hosted app is given back and the copies are told first; a SIGTERM quits the same way.
+// scripts/safari.sh puts a new build in place of the installed one, then sends a SIGTERM to the Margin.app it found
+// running from there (a KILL after 5 s), and if Safari is running and nothing has started the new build in 2 s, opens
+// it with --background (no set-up window). Started by the extension handler for a link (2026-11-05: no login item
+// needed), there's no set-up window either: the handler's arguments never reach a sandboxed caller's app, so it leaves
+// a note instead (startedForLink). Margin is the app: once the person has opened it (a window of its own shown), or
+// while anything is hosted, it never quits by itself. Only one started in the background and never opened leaves
+// again, after 60 s with no browser open, no copy linked and nothing hosted (IdleQuit.swift). Replaced on disk some
+// other way, it notices and quits (BundleWatch.swift), and starting, it ends any other instance of its bundle first.
+// Copied over the converter's by scripts/make-xcode.sh.
 
 import Cocoa
 import ServiceManagement
@@ -24,11 +20,8 @@ import ServiceManagement
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    // Started as `Margin --park-probe`, it's the parking self-test's child (BridgeParker.swift):
-    // one hidden window, no shell, no set-up window, gone in a moment. Otherwise the app, as
-    // AppKit's own main would start it (the storyboard makes this delegate).
+    // The app, as AppKit's own main would start it (the storyboard makes this delegate).
     static func main() {
-        if ParkProbe.isChild(CommandLine.arguments) { ParkProbe.runChild() }
         _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)
     }
 
@@ -40,8 +33,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var bundle: BundleWatch?
     private let registration = Registration()
 
-    // Opened by macOS at login (a login item: SMAppService.mainApp), so it's running before Safari opens and
-    // can cover Safari's windows from their first frame (ShellCovers.swift). Read while the open event is current.
+    // Opened by macOS at login (a login item: SMAppService.mainApp), so it's running before Safari opens. Read while
+    // the open event is current.
     private var atLogin = false
     func applicationWillFinishLaunching(_ notification: Notification) {
         if let event = NSAppleEventManager.shared().currentAppleEvent, event.eventID == kAEOpenApplication,
@@ -97,24 +90,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bundle = BundleWatch(quit: { RunLoop.main.perform { NSApp.terminate(nil) } })
         registration.heal("launch")
         // The storyboard's window, shown at launch (but opened with --background).
-        // How it started goes in the log (a run with the set-up window open is a regular app with a
-        // Dock icon, and doesn't quit by itself while that window is open).
+        // How it started goes in the log, and is kept: only a start in the background may end in a quit by itself
+        // (IdleQuit.swift), and only while the person hasn't opened Margin since.
         if let window = NSApp.windows.first(where: { $0.contentViewController is ViewController }) {
             keep(window)
             watching = atLogin || CommandLine.arguments.contains("--watch")
             let background = CommandLine.arguments.contains("--background") || atLogin
             if background || Self.startedForLink() {
+                startedInBackground = true
                 window.orderOut(nil)
                 NSApp.setActivationPolicy(.accessory)
                 Diagnostics.note(atLogin ? "Margin.app opened at login: no set-up window" : background ? "Margin.app started with --background: no set-up window" : "Margin.app started for a link (the extension's note): no set-up window")
+            } else if !optionHeld {
+                // Opened by the person: Margin's own window (MarginWindow.swift), a regular app with its menu bar.
+                window.orderOut(nil)
+                showMarginWindow()
+                Diagnostics.note("Margin.app opened by hand: Margin's own window (no set-up window)")
             } else {
                 // An agent app (LSUIElement, scripts/make-xcode.sh): opened by
-                // the person, it gets its Dock icon and comes forward.
+                // the person holding Option, it gets its Dock icon and comes forward with its set-up window.
+                shown = true
                 NSApp.setActivationPolicy(.regular)
                 NSApp.activate()
-                Diagnostics.note("Margin.app opened by hand: set-up window shown")
+                Diagnostics.note("Margin.app opened by hand with Option: set-up window shown")
             }
         } else {
+            startedInBackground = true
             NSApp.setActivationPolicy(.accessory)
             Diagnostics.note("Margin.app started: no set-up window in its storyboard")
         }
@@ -165,7 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Watching (opened at login, or restarted idle with --watch): no shell, no link, no web views until a browser
-    // Margin works in opens; then the shell starts, in time to cover that browser's windows (ShellCovers.swift).
+    // Margin works in opens; then the shell starts, in time for its copies' links.
     private var watching = false
     private var browserLaunch: NSObjectProtocol?
     static let browsers: Set<String> = ["com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.microsoft.edgemac"]
@@ -176,7 +177,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func startShell() {
         guard idleCheck == nil else { return }
         // Waiting is margin-helper's (it starts this app as a browser opens): with it on and no browser open, quit.
-        if watching, !Self.browserRunning(), helperOn {
+        if watching, !Self.browserRunning(), helperOn, shell.marginWindows == nil, !shown {
             Diagnostics.note("no browser open: Margin.app quits (margin-helper starts it when one opens)")
             return NSApp.terminate(nil)
         }
@@ -203,57 +204,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Replaced while it was starting: no shell at all.
             if bundle.check("at launch") { return }
         }
-        // macOS's private calls for the profile handoff, checked before the shell starts: anything
+        // macOS's private calls for the freeze and the host, checked before the shell starts: anything
         // missing or changed turns that part off, with one log line (PrivateCalls.swift).
         shell.checkPrivateCalls()
         shell.start()
-        // Then the self-test (about 50 ms once its child is up): parking stays off until it passes.
-        shell.selfTestParking()
         idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIdle() }
         }
     }
 
-    // Started on demand, Margin.app quits by itself once no copy has been
-    // linked for a while and its set-up window isn't open (2026-11-05):
-    // a browser starting again starts it again.
-    static let idleQuitAfter: TimeInterval = 10 * 60
+    // Margin never quits by itself once the person has opened it, or while anything is hosted. Started in the
+    // background and never opened, it leaves after a minute with no browser open, no copy linked and nothing hosted
+    // (IdleQuit.swift: the rule, and its unit checks): a browser starting again starts it again.
     static let idleCheckEvery: TimeInterval = 30
-    static let noBrowserQuitAfter: TimeInterval = 60
     private var idleCheck: Timer?
     private var idleSince: Date?
-    private var keptBySetupSaid = false // the log said, once, that the set-up window keeps it running
-    private var noBrowserSince: Date?
+    private var startedInBackground = false // no window at launch: --background, a login item, the handler's link start
+    private var shown = false // a window of Margin's has been shown (its own, or the set-up window)
     private func checkIdle() {
-        // Another build in this one's place: quits, linked or not (BundleWatch.swift).
+        // Another build in this one's place: quits, whatever is open (BundleWatch.swift).
         if bundle?.check("the 30 s check") == true { return }
-        let setupOpen = setup?.window?.isVisible == true
-        // With the helper on, no browser open for a minute: quit (it starts Margin.app again as one opens).
-        if helperOn, !setupOpen, !Self.browserRunning() {
-            let since = noBrowserSince ?? Date()
-            noBrowserSince = since
-            if Date().timeIntervalSince(since) >= Self.noBrowserQuitAfter {
-                Diagnostics.note("no browser open for \(Int(Self.noBrowserQuitAfter)) s: Margin.app quits (margin-helper starts it when one opens)")
-                return NSApp.terminate(nil)
-            }
-        } else {
-            noBrowserSince = nil
-        }
-        if shell.links.isEmpty, setupOpen {
-            if !keptBySetupSaid { Diagnostics.note("no copy linked, but the set-up window is open: Margin.app doesn't quit by itself while it is") }
-            keptBySetupSaid = true
-        } else {
-            keptBySetupSaid = false
-        }
-        guard shell.links.isEmpty, !setupOpen else { idleSince = nil; return }
-        let since = idleSince ?? Date()
+        let state = IdleQuit.State(startedInBackground: startedInBackground,
+                                   shown: shown || setup?.window?.isVisible == true || shell.marginWindows != nil,
+                                   hosting: shell.host?.hasHosts == true || shell.host?.hasLeftSafariWindows == true,
+                                   linked: !shell.links.isEmpty, browserOpen: Self.browserRunning())
+        let (since, quit) = IdleQuit.check(state, since: idleSince, now: Date())
         idleSince = since
-        guard Date().timeIntervalSince(since) >= Self.idleQuitAfter else { return }
+        guard quit else { return }
         // The app its own login item (no helper): back to watching in a fresh process (nothing of the shell kept), so
-        // the next browser to open is covered from its first frame. Otherwise quit (the helper, or the extension
-        // asking, starts it again).
+        // the next browser to open links at once. Otherwise quit (the helper, or the extension asking, starts it again).
         if !helperOn, SMAppService.mainApp.status == .enabled {
-            Diagnostics.note("no copy linked for \(Int(Self.idleQuitAfter / 60)) min: Margin.app goes back to waiting for a browser")
+            Diagnostics.note("started in the background and never opened; no browser open, no copy linked, nothing hosted for \(Int(IdleQuit.after)) s: Margin.app goes back to waiting for a browser")
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false
             configuration.addsToRecentItems = false
@@ -266,6 +247,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             idleCheck = nil
             return
         }
+        Diagnostics.note("started in the background and never opened; no browser open, no copy linked, nothing hosted for \(Int(IdleQuit.after)) s: Margin.app quits (margin-helper, or the extension asking for its link, starts it again)")
         NSApp.terminate(nil)
     }
 
@@ -284,8 +266,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showSetup()
+        // Margin's own window: in front, or a new one; the set-up window if it's what's open, or with Option.
+        if !optionHeld, setup?.window?.isVisible != true { showMarginWindow() } else { showSetup() }
         return false
+    }
+
+    // Opening Margin shows its own window, unless Option is held: the set-up window then.
+    private var optionHeld: Bool { NSEvent.modifierFlags.contains(.option) }
+    private func showMarginWindow() {
+        shown = true
+        NSApp.setActivationPolicy(.regular)
+        NSApp.unhide(nil)
+        shell.showMarginWindow()
+        NSApp.activate()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -297,6 +290,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if setup == nil, let controller = NSStoryboard.main?.instantiateInitialController() as? NSWindowController, let window = controller.window {
             keep(window)
         }
+        shown = true
         NSApp.setActivationPolicy(.regular)
         NSApp.unhide(nil) // opened with `open -j`
         setup?.showWindow(nil)
@@ -308,8 +302,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         setup = window.windowController ?? NSWindowController(window: window)
         if let closing { NotificationCenter.default.removeObserver(closing) }
-        closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
-            _ = MainActor.assumeIsolated { NSApp.setActivationPolicy(.accessory) }
+        closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                // (Margin's own windows keep the Dock icon: a regular app from the first one on.)
+                guard self?.shell.marginWindows == nil else { return }
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
     }
 }

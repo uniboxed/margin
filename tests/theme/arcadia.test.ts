@@ -1,4 +1,4 @@
-// Arcadia as a theme package (extension/themes/arcadia/) in real engines:
+// Arcadia as a theme package (app/shared/ui/themes/arcadia/) in real engines:
 // Playwright's WebKit and Chromium, headless, every network request refused.
 // It loads as a built-in theme, passes the sanitizer with nothing removed,
 // renders the sidebar and every part (palette, menu, space editor, notice,
@@ -12,7 +12,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
+import { pageLoaderChecks, rgba, near } from './page-card.ts';
+import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
+import { hitRects } from '../../app/shared/ui/host-app.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
@@ -56,8 +59,8 @@ for (const [name, engine] of ENGINES) {
         assert.ok(await page.evaluate(() => T.rtCount('.audible-icon')) > 0, 'playing tabs show a speaker');
         assert.ok(await page.evaluate(() => T.rtCount('.tab.asleep')) > 0, 'sleeping tabs are marked');
         assert.equal(await page.evaluate(() => T.rtCount('[m-action], m-for, m-if')), 0, 'no template syntax left');
-        // Keep open: the page's card beside the 260 px sidebar, in Arc's 8 px frame, its corners 6.25 px.
-        assert.deepEqual(await layout(), { left: 260, top: 8, right: 8, bottom: 8, radius: 6.25, width: 1280, height: 800, windowId: 1, mode: 'inpage' });
+        // Keep open: the page's card beside the 260 px sidebar, in the 8 px frame, its corners 10 px.
+        assert.deepEqual(await layout(), { left: 260, top: 8, right: 8, bottom: 8, radius: 10, width: 1280, height: 800, windowId: 1, mode: 'inpage' });
       });
 
       await t.test('the width is the theme\'s setting (160–500, step 10); hidden, the page sits in the frame or fills the window', async () => {
@@ -66,7 +69,7 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 900 } } } }));
         assert.equal((await layout())!.left, 260, 'out of range: the default');
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false } }));
-        assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 6.25, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
+        assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 10, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
         assert.equal(await page.evaluate(() => T.rtCount('.peek-zone')), 1);
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false, frameWhenHidden: false } }));
         assert.deepEqual(await layout(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'no frame: the whole window');
@@ -144,6 +147,159 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.unmountRuntime());
       });
 
+      // Dia's own feel for the space swipe (Tirth, 2026-11-20: Arc's first, then Dia's, its haptic "exactly";
+      // shared/space-swipe.ts ARC and FEELS, from their code): half the fingers' distance; with the trackpad's phases
+      // (Margin.app), held while the fingers rest and let go at the lift, never by a pause; Dia's tick past halfway; its
+      // spring (0.25 s) played as one transition the browser runs; the next space shown as it lands.
+      await t.test('space swipe, Dia\'s feel: half the distance, held while the fingers rest, let go at the lift, a tick past halfway, its spring as one transition', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        assert.equal((await page.evaluate(() => T.rtComputed('.margin-sidebar', '--m-swipe-feel')))?.trim(), 'dia', 'Arcadia asks for Dia\'s feel');
+        const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
+        const held = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 400)); // the fingers resting, still down
+        assert.ok(held.length > 5 && held.every((f) => f.swiping && !f.settling && f.offset === -60), `half of 120 px, held while they rest: ${JSON.stringify(held.slice(-2))}`);
+        assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), [], 'no tick short of halfway');
+        // On past halfway, still moving as they lift: the next space.
+        const more = Math.ceil(width / 20) + 2;
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), more);
+        assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), ['haptic.alignment'], 'one tick past halfway');
+        // (Dia checks its detent at each of the trackpad's events: back across halfway, the tick in that event's own task,
+        // never a frame later.)
+        const back = await page.evaluate((n) => T.rtTrackpadNow('.space-title .title', Array(n).fill(-20)), Math.ceil(width / 20) + 4);
+        assert.equal(back.ticks, 2, `back across halfway: its tick at that event, before any frame (${JSON.stringify(back)})`);
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), Math.ceil(width / 20) + 4);
+        assert.equal(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment').length), 3, 'and forward again: one more');
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        const settle = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 700));
+        const during = settle.filter((f) => f.settling);
+        assert.ok(during.length > 3 && during.every((f) => f.offset === -width), `the offset at its end at once: the browser moves it (${JSON.stringify(during.slice(0, 2))})`);
+        assert.match(during[0].transition, /^transform \d+ms linear\(0, [\d., ]+, 1\)$/, 'its spring as one transition (a linear() easing)');
+        const drawn = during.map((f) => f.drawn).filter((x): x is number => x != null);
+        assert.ok(drawn.length > 3 && drawn.some((x) => x > -width + 1 && x < -61), `drawn on its way between frames (${drawn.slice(0, 6)})`);
+        assert.ok(drawn.every((x, i) => i === 0 || x <= drawn[i - 1] + 0.05) && drawn.every((x) => x >= -width - 0.5), `toward the next space, never past it: ${drawn.slice(0, 4)} … ${drawn.slice(-2)}`);
+        assert.equal(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').at(-1)?.[1].spaceId), 'work', 'the next space asked for at the lift');
+        await page.waitForFunction(() => T.rtVmFull().spaceName === 'Work', null, { timeout: 2000 });
+        assert.equal(await page.evaluate(() => T.rtComputed('.space-pane', 'transition-duration')), '0s', 'no transition of the theme\'s on the moving part');
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // A settle caught by the fingers touching again (as Arc and Dia do; 2026-11-20): held where it's drawn, never a jump;
+      // nearer the space it headed for, that one shown at once and swiped on from (a third space in two quick swipes);
+      // nearer the one it set out from, swiped back there and that space asked back of the copy; a touch with no swipe
+      // after it, settled again to the nearest space.
+      await t.test('space swipe, a settle caught: held where it\'s drawn; on to a third space; back again, asked back; a touch alone settles again', async () => {
+        const spaceOf = () => page.evaluate(() => (__rt.runtime.vm as any).space.id as string);
+        const asked = () => page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').map(([, p]) => p.spaceId as string));
+        const sidebar = '.margin-sidebar';
+        // Held where it's drawn: `after` (the behavior's own read, held) at `before` (the test's, just before), give or
+        // take how far the settle moves (its speed from `prev` to `before`) in the time the dispatch took, and in the way
+        // it was moving (rtPhaseRead): a jump is tens of pixels, this a pixel or two.
+        type At = { drawn: number, at: number };
+        const heldAt = (r: { prev: At, before: At, after: At }, shift = 0) => {
+          const speed = (r.before.drawn - r.prev.drawn) / Math.max(1, r.before.at - r.prev.at); // px a ms
+          const moved = r.after.drawn - shift - r.before.drawn;
+          const allowed = Math.abs(speed) * (r.after.at - r.before.at);
+          return Math.abs(moved) <= 1.5 || (Math.sign(moved) === Math.sign(speed) && Math.abs(moved) <= allowed + 1.5);
+        };
+        // (1) On past the next space: two quick swipes, a third space.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
+        const first = await spaceOf();
+        const far = Math.ceil(width * 0.075); // (20 px a step, half of it drawn: three quarters of the width, a settle left to run)
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        // (let go a frame after the lift; a few frames into the settle: caught in the fourth)
+        const caught = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin', 4), sidebar);
+        const second = caught.after.space;
+        assert.ok(caught.before.settling && !caught.after.settling && caught.after.swiping, `caught mid-settle: ${JSON.stringify(caught)}`);
+        assert.ok(second !== first, 'nearer the space it headed for: that one shown at once');
+        assert.ok(heldAt(caught, width), `held where it's drawn, no jump (${JSON.stringify([caught.prev, caught.before])} + ${width} → ${JSON.stringify(caught.after)})`);
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction((s) => (__rt.runtime.vm as any).space.id !== s, second, { timeout: 3000 });
+        const third = await spaceOf();
+        assert.ok(third !== first && third !== second, `two quick swipes: a third space (${first} → ${second} → ${third})`);
+        assert.deepEqual((await asked()).slice(-1), [third]);
+        await page.evaluate(() => T.unmountRuntime());
+
+        // (2) Back to where it set out from: caught early, swiped back, at rest there: that space asked back of the copy.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        const home = await spaceOf();
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
+        await page.evaluate(() => T.rtWheelPhase('ended')); // (still moving: it heads for the next space)
+        const early = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin', 2), sidebar);
+        assert.ok(early.before.settling && !early.after.settling, `caught: ${JSON.stringify(early)}`);
+        assert.equal(early.after.space, home, 'nearer where it set out from: still that space');
+        assert.ok(heldAt(early), `held where it's drawn (${JSON.stringify([early.prev, early.before])} → ${JSON.stringify(early.after)})`);
+        const headedFor = (await asked()).at(-1);
+        assert.ok(headedFor && headedFor !== home, 'the next space had been asked for at the lift');
+        await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [-10, -10, -10, -10, -10, -10]));
+        await page.waitForTimeout(300); // (the fingers resting: no speed at the lift, the nearest space)
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => T.rtCount('.m-swiping') === 0, null, { timeout: 3000 });
+        assert.equal(await spaceOf(), home, 'back where it set out from');
+        assert.deepEqual((await asked()).slice(-1), [home], 'that space asked back of the copy');
+        await page.evaluate(() => T.unmountRuntime());
+
+        // (3) A touch and no swipe: settled again, to the nearest space.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        const start = await spaceOf();
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        const touched = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin', 4), sidebar);
+        assert.ok(!touched.after.settling && touched.after.space !== start);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => T.rtCount('.m-swiping') === 0, null, { timeout: 3000 });
+        assert.equal(await spaceOf(), touched.after.space, 'settled again at the space it was nearest');
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // What takes the pointer over the page, measured mid-swipe as Margin.app's overlay does (host-app.ts hitRects):
+      // the list slid sideways under the page area, clipped by the sidebar, is nothing there (2026-11-20, his recording:
+      // swiping back, its rows counted, and Margin.app's pointer catcher, alpha 0.01 a box, drew a sidebar-shaped grey
+      // band over the page and took its clicks).
+      await t.test('space swipe: nothing more takes the pointer over the page than at rest, held and settling', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: true }));
+        await page.waitForFunction(() => __rt.runtime.vm.window.sidebar === 'open', null, { timeout: 2000 });
+        const l = (await layout())!;
+        assert.ok(l.left > 0, 'the page beside the sidebar');
+        const slot = { left: l.left, top: l.top, right: l.width - l.right, bottom: l.height - l.bottom };
+        const measure = () => page.evaluate(([src, slot]) => {
+          const hits = new Function(`return (${src})`)() as typeof hitRects;
+          return hits(__rt.runtime.view.rootElement()!, slot as { left: number, top: number, right: number, bottom: number });
+        }, [hitRects.toString(), slot] as const);
+        const rest = await measure();
+        assert.equal(rest.all, false);
+        // (No more than at rest: the resize edge over the page's edge goes while the sidebar clips, not drawn there.)
+        const within = (now: { rects: number[][], all: boolean }) => !now.all && now.rects.every(([x, y, w, h]) =>
+          rest.rects.some(([X, Y, W, H]) => x >= X && y >= Y && x + w <= X + W && y + h <= Y + H));
+        const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
+        // Both ways: back (the list sliding right, toward the page: his recording) and on (away from it, the next
+        // space's list coming in under the page area).
+        for (const dx of [-20, 20]) {
+          await page.evaluate(() => T.rtWheelPhase('began'));
+          for (const steps of [6, Math.ceil(width / 40), Math.ceil(width / 20)]) {
+            await page.evaluate(([n, d]) => T.rtTrackpadRun('.space-title .title', Array(n).fill(d)), [steps, dx] as const);
+            assert.ok(await page.evaluate(() => T.rtCount('.m-swiping')) > 0);
+            const now = await measure();
+            assert.ok(within(now), `${dx < 0 ? 'back' : 'on'}, held ${steps} steps in: nothing more over the page (${JSON.stringify(now)} vs ${JSON.stringify(rest)})`);
+          }
+          await page.evaluate(() => T.rtWheelPhase('ended'));
+          for (let i = 0; i < 4; i++) {
+            await page.evaluate(() => T.rtFrames(2));
+            const now = await measure();
+            assert.ok(within(now), `${dx < 0 ? 'back' : 'on'}, settling: nothing more over the page (${JSON.stringify(now)})`);
+          }
+          await page.waitForFunction(() => T.rtCount('.m-swiping, .m-settling') === 0, null, { timeout: 3000 });
+        }
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
       await t.test('the launcher in Margin.app\'s overlay: not focused as it first draws, focused at the app\'s word or when it comes later', async () => {
         // (Its overlay isn't on screen as it first draws: Margin.app starting, a link back, a page reloaded.)
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'fullscreen', inNewTab: true, focusLauncherAtMount: false }));
@@ -180,16 +336,12 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(result, { target: 't-saved00001', active: true });
       });
 
-      await t.test('dedicated Settings has a heading and controls without start-page sections', async () => {
-        await page.evaluate(() => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true }));
-        await page.evaluate(() => T.rtSetUi({ settingsPage: true }));
-        assert.equal(await page.locator('.launcher h1').innerText(), 'Settings');
-        assert.equal(await page.locator('.launcher-query, .launcher .archive-row, .launcher .tile').count(), 0);
-        assert.ok(await page.locator('.settings-form input').count() > 0);
+      await t.test('dedicated Settings: its own page, as System Settings (the categories beside the chosen one\'s settings); never under the search field in Margin.app\'s window', async () => {
+        await settingsPageChecks(page);
       });
 
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
-        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } };
+        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn', spaceThemes: true } };
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);
         await page.evaluate(() => T.rtSetUi({ settingsOpen: true }));
         const form = () => page.evaluate(() => {
@@ -203,17 +355,26 @@ for (const [name, engine] of ENGINES) {
           };
         });
         const f = await form();
-        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel']]]);
+        assert.deepEqual(f.select, [
+          ['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']],
+          // (Edit Theme Color's ticks: a browser's page plays no haptics, so no Haptics only.)
+          ['auto', ['Automatic: a click', 'A click', 'Off']],
+          ['global', ['Global across Spaces', 'Per browser profile']],
+        ]);
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');
-        assert.equal(f.toggles.length, 5);
+        assert.equal(f.toggles.length, 6);
         assert.equal(f.lists, 1);
-        assert.equal(f.shortcuts.length, 5);
+        assert.equal(f.shortcuts.length, 13, 'the five, and Margin.app\'s eight');
         assert.ok(f.shortcuts.every(([ro]) => ro));
         const lastSent = (type: string) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
         await page.click('label:has-text("keep the frame") input');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
-        await page.selectOption('.settings-form select', 'neubrutalism');
-        assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { theme: 'neubrutalism' } }]);
+        // Theme: the theme of the space shown (2026-11-20: each space has its own), not the profile's.
+        await page.selectOption('.settings-form select >> nth=0', 'neubrutalism');
+        const space = await page.evaluate(() => T.rtVmFull().space);
+        assert.deepEqual(await lastSent('setSpaceTheme'), ['setSpaceTheme', { spaceId: space, theme: 'neubrutalism' }]);
+        assert.equal((await page.evaluate(() => T.rtSent().filter(([k, p]) => k === 'updateSettings' && 'theme' in (p?.patch ?? {})))).length, 0, 'the profile\'s theme left as it is');
+        assert.match(await page.evaluate(() => document.querySelector('.settings-form')?.textContent ?? ''), /Theme of this space/);
         await page.click('label:has-text("Next tab") input');
         await page.keyboard.press('Control+Alt+KeyN');
         const saved = (await lastSent('updateSettings'))![1].patch.shortcuts;
@@ -222,6 +383,15 @@ for (const [name, engine] of ENGINES) {
         await page.keyboard.press('Alt+KeyS');
         assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /already used for “Show or hide the sidebar”/);
         await page.keyboard.press('Escape');
+        // Margin.app's keys: Delete turns one off; a numbered one takes a digit (its modifiers for 1–9).
+        await page.click('label:has-text("Pin or unpin the tab") input');
+        await page.keyboard.press('Backspace');
+        assert.equal((await lastSent('updateSettings'))![1].patch.appKeys.togglePin, '');
+        await page.click('label:has-text("Go to space 1–9") input');
+        await page.keyboard.press('Alt+Meta+KeyP');
+        assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /takes a digit/);
+        await page.keyboard.press('Alt+Control+Digit4');
+        assert.equal((await lastSent('updateSettings'))![1].patch.appKeys.spaceDigits, 'Ctrl+Alt+Digit1');
         await page.click('button:has-text("Wake all sleeping tabs")');
         await page.waitForFunction(() => /No tabs are asleep/.test(document.querySelector('.settings-form')?.textContent ?? ''));
         assert.deepEqual(await lastSent('wakeSleeping'), ['wakeSleeping', {}]);
@@ -237,6 +407,58 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(r.attrs, [], 'no static tooltip or label anywhere in them');
         assert.equal(r.paths, 1, 'the icon stays');
         assert.ok(r.warnings.some((w) => /Delete/.test(w)), r.warnings.join('\n'));
+      });
+
+      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, opaque, never a see-through hole', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', appWindow: true }));
+        const e = await page.evaluate(() => T.rtEmptyPage());
+        assert.ok(e.page && e.launcher, 'a launcher drawn in the page card');
+        const [px, py, pw, ph] = e.page!, [lx, ly, lw, lh] = e.launcher!;
+        assert.ok(Math.abs(px + pw / 2 - (lx + lw / 2)) <= 1 && Math.abs(py + ph / 2 - (ly + lh / 2)) <= 1 && lw >= pw - 8 && lh >= ph - 8, `the page's box covered: ${e.page} ${e.launcher}`);
+        const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
+        assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // Arcadia's own page loader (Margin.app, while an item opens): a calm white card (near-black in Dark Mode), in
+      // its middle a soft tile in the space's colour with a thin ring turning in it, Margin's words under it, muted.
+      await pageLoaderChecks(t, browser, {
+        id: 'arcadia', dir: ARCADIA, script,
+        label: '.opening-label', mark: '.opening-mark',
+        animations: ['arcadia-spin'],
+        icon: { size: 32 },
+        skeleton: [['.space-title .title', ''], ['.space-title .emoji', ''], ['.tabs', '::after'], ['.spaces', '::before']],
+        starting: ['arcadia-spin', 'arcadia-breathe'],
+        look: async (_page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, tile: T.rtComputed('.opening-mark', 'background-color'), mark: T.rtRect('.opening-mark')!, label: T.rtRect('.opening-label')!, slot: T.rtRect('m-page-loader')!,
+            size: T.rtComputed('.opening-label', 'font-size'), color: T.rtComputed('.opening-label', 'color'), radius: T.rtComputed('.opening-mark', 'border-top-left-radius'), ring: T.rtPseudo('.opening-mark', '::after') }));
+          const personal = await read();
+          assert.deepEqual(rgba(personal.card), [255, 255, 255, 1], 'a white card');
+          assert.deepEqual([personal.mark.width, personal.mark.height, personal.radius], [56, 56, '16px'], 'a soft rounded tile');
+          assert.ok(Math.abs(personal.mark.x - personal.slot.x) <= 1 && Math.abs(personal.mark.y - personal.slot.y) <= 1, 'in the card\'s middle');
+          assert.ok(personal.label.top >= personal.mark.bottom + 8 && Math.abs(personal.label.x - personal.mark.x) <= 1, 'the label under it');
+          assert.equal(personal.size, '13px');
+          assert.ok(rgba(personal.color)[3] <= 0.6, `muted (${personal.color})`);
+          assert.deepEqual([personal.ring?.animation, personal.ring?.width], ['arcadia-spin', 24], 'a thin ring turning in the tile');
+          // The tile is the space's colour, soft: #ffd23f at 24 % in white; another space, another tile.
+          assert.ok(near(rgba(personal.tile), [255, 244, 209], 4), `the tile in the space's colour (${personal.tile})`);
+          await ev(() => T.rtApply('switchSpace', 'work'));
+          const work = await read();
+          assert.ok(near(rgba(work.tile), [224, 237, 255], 4), `… and in another space's (${work.tile})`);
+          await ev(() => T.rtApply('switchSpace', 'personal'));
+        },
+        looks: [
+          ['Dark Mode', { colorScheme: 'dark' }, async (_page, ev) => {
+            const d = await ev(() => ({ card: T.rtLoader()!.background, color: T.rtComputed('.opening-label', 'color'), tile: T.rtComputed('.opening-mark', 'background-color') }));
+            assert.deepEqual(rgba(d.card), [27, 27, 31, 1], 'a near-black card');
+            assert.ok(rgba(d.color)[0] > 200 && rgba(d.tile)[0] < 120, `light words, a dark tile (${d.color}, ${d.tile})`);
+          }],
+          ['more contrast', { contrast: 'more' }, async (_page, ev) => {
+            const c = await ev(() => ({ card: T.rtLoader()!.background, color: T.rtComputed('.opening-label', 'color'), edge: T.rtComputed('.opening-mark', 'box-shadow') }));
+            assert.deepEqual([rgba(c.card), rgba(c.color)], [[255, 255, 255, 1], [0, 0, 0, 1]], 'black on white');
+            assert.match(c.edge ?? '', /inset/, 'the tile outlined');
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {

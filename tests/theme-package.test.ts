@@ -10,7 +10,7 @@ import { fakeBrowser } from './fake-browser.ts';
 const store: Record<string, any> = {}; // stored JSON
 const sets: string[][] = [];
 globalThis.browser = fakeBrowser({
-  runtime: { getURL: (p) => `file://${new URL(`../extension/${p}`, import.meta.url).pathname}`, getManifest: () => ({ version: '9.9' }) },
+  runtime: { getURL: (p) => `file://${new URL(p.startsWith('themes/') ? `../app/shared/ui/${p}` : `../extension/${p}`, import.meta.url).pathname}`, getManifest: () => ({ version: '9.9' }) },
   storage: { local: {
     // Asked by a key or keys here (never everything).
     get: async (keys) => Object.fromEntries(([] as string[]).concat(keys as string | string[]).filter((k) => k in store).map((k) => [k, store[k]])),
@@ -36,7 +36,7 @@ test('a built-in theme\'s package: its three texts and the files theme.json name
   assert.deepEqual(Object.keys(neo.files).sort(), ['fonts/archivo-black-latin-ext.woff2', 'fonts/archivo-black-latin.woff2', 'fonts/space-grotesk-latin-ext.woff2', 'fonts/space-grotesk-latin.woff2']);
   assert.ok(Object.values(neo.files).every((b) => /^[A-Za-z0-9+/]+=*$/.test(b)));
   const arcadia = await readThemePackage('arcadia');
-  assert.deepEqual(arcadia.files, {}, 'Arcadia bundles nothing (and its first-paint files aren\'t the package\'s)');
+  assert.deepEqual(arcadia.files, {}, 'Arcadia bundles nothing');
   await assert.rejects(readThemePackage('../../evil'), /no built-in theme/);
   assert.equal(activeThemeId({ theme: 'neubrutalism' }), 'neubrutalism');
   assert.equal(activeThemeId({ theme: 'gone' }), 'arcadia');

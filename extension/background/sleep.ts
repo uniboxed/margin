@@ -32,8 +32,7 @@ import { neverSleeps } from '../shared/sleep.ts';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy } from './tabs.ts';
 import { appLog } from './switch-log.ts';
 import { noteClosing, takeClosing } from './closing.ts';
-import { isParked } from './handoff.ts';
-import { keepScroll, keepScrolls } from './scroll-record.ts';
+import { keepScroll } from './scroll-record.ts';
 
 // Times (tests shorten them: setSleepTiming).
 const TIMING = {
@@ -67,14 +66,12 @@ const TIMING = {
 // frames in it it can't look into (`foreign`): each of those must answer
 // for itself (pageAnswer). Not past `until` (the background no longer waits
 // for the answer then).
-// `draftsOnly`: only whether something is typed and not sent (Margin.app's handoff asking before it
-// closes a window: windowDrafts): shown, playing or at another address doesn't matter then.
 // The top frame's answer that the page may sleep, or has a draft, says where it's scrolled too, when
 // it isn't at the top (`scrollY`: the scroll record, background/scroll-record.ts; back at the top,
-// the page said so itself as it was hidden): <html>'s, or <body>'s while Margin's page box scrolls it.
+// the page said so itself as it was hidden): <html>'s, or <body>'s where the page scrolls it.
 // What a page (or frame) answers: may it sleep, and if not, why.
 export type SleepAnswer = { ok: boolean, why?: string, judged?: string, top: boolean, foreign?: number, scrollY?: number, apart?: boolean };
-export function sleepInPage(expected: string, until: number, draftsOnly: boolean = false): SleepAnswer {
+export function sleepInPage(expected: string, until: number): SleepAnswer {
   let top = true;
   let apart = false;
   try {
@@ -85,10 +82,10 @@ export function sleepInPage(expected: string, until: number, draftsOnly: boolean
   }
   try {
     if (Date.now() > until) return { ok: false, why: 'late', top };
-    if (!draftsOnly && document.visibilityState !== 'hidden') return { ok: false, why: 'shown', top };
-    if (!draftsOnly && top && location.href !== expected) return { ok: false, why: 'moved', top };
+    if (document.visibilityState !== 'hidden') return { ok: false, why: 'shown', top };
+    if (top && location.href !== expected) return { ok: false, why: 'moved', top };
     const playing = (doc: Document) => [...doc.querySelectorAll('audio, video')].some((el: any) => (!el.paused && !el.ended) || (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream));
-    if (!draftsOnly && (playing(document) || (navigator as any).mediaSession?.playbackState === 'playing' || (document as any).pictureInPictureElement || document.fullscreenElement)) return { ok: false, why: 'playing', top };
+    if (playing(document) || (navigator as any).mediaSession?.playbackState === 'playing' || (document as any).pictureInPictureElement || document.fullscreenElement) return { ok: false, why: 'playing', top };
     const inUse = (doc: Document | null, depth = 0) => {
       if (!doc || depth > 4) return false;
       for (const el of ([...doc.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=password]')] as any[])) if (String(el.value ?? '').trim()) return true;
@@ -206,9 +203,6 @@ async function sleepTab(record: import('../../types/margin').TabRecord, afterMs:
   if (!stillDue(record.id, afterMs)) return 'used';
   const tab = await api.tabs.get(record.id).catch(() => null);
   if (!tab) return 'gone';
-  // A parked window's tab in front (out of sight while another profile's window is shown:
-  // docs/HANDOFF.md §2.5) is the page shown when the window comes back: it never sleeps.
-  if (tab.active && isParked(tab.windowId)) return 'in front, parked';
   if (tab.active) return 'in front';
   if (tab.discarded) return 'asleep';
   if (!/^https?:/i.test(tab.url ?? '')) return 'not a web page';
@@ -298,54 +292,6 @@ export function pageAnswer(rows: unknown) {
   }
   if (unseen > answered) return { ok: false, why: 'frame unknown', judged: 'frame' };
   return top.result;
-}
-
-// ---- drafts, before Margin.app closes a window ------------------------------------------
-// The window's tabs with text typed and not sent (docs/HANDOFF.md §4.5: the app closes a window only
-// when there's none), asked in every tab at once with the same check as a sleep's (sleepInPage, its
-// drafts only, in every frame), DRAFTS_MS in all. `unknown`: a web page that couldn't say (no access,
-// no answer in time, a frame nothing can look into); the app keeps the window then too. Not asked: a
-// tab that isn't a web page (Margin's own pages, Safari's) and one with no page to hold text (asleep,
-// or unloaded by Safari).
-const DRAFTS_MS = 400;
-export async function windowDrafts(windowId: number, { ms = DRAFTS_MS }: { ms?: number } = {}): Promise<{ drafts: number[], unknown: number[] }> {
-  const started = Date.now();
-  const until = started + ms;
-  const tabs = await answerOrNull(Promise.resolve(api.tabs.query({ windowId })), ms);
-  // Not an answer: the app keeps the window, as for a draft.
-  if (!Array.isArray(tabs)) throw new Error(`Safari didn't list the window's tabs in ${ms} ms`);
-  const drafts: number[] = [];
-  const unknown: number[] = [];
-  const scrolls: { tabId: number, url: string, y: number }[] = [];
-  await Promise.all(tabs.map(async (tab) => {
-    if (!Number.isInteger(tab?.id) || !/^https?:/i.test(tab.url ?? '') || tab.discarded || foundWithNoPage(tab.id)) return;
-    const said = await answerOrNull(draftIn(tab, until), Math.max(0, until - Date.now()));
-    if (said?.scrollY != null) scrolls.push({ tabId: tab.id, url: tab.url as string, y: said.scrollY }); // (a web page's: checked above)
-    if (said?.is === 'draft') drafts.push(tab.id);
-    else if (said?.is !== 'none') unknown.push(tab.id);
-  }));
-  // Where each page is scrolled, just before the close it was asked for (the scroll record).
-  void keepScrolls(scrolls);
-  appLog(`windowDrafts window ${windowId}: ${tabs.length} tabs, ${drafts.length} with a draft, ${unknown.length} unknown (${Date.now() - started} ms)`);
-  return { drafts, unknown };
-}
-// `is` 'draft', 'none', or null (it couldn't say), and where the page is scrolled if it said.
-async function draftIn(tab: any, until: number): Promise<{ is: 'draft' | 'none' | null, scrollY: number | null } | null> {
-  if (!(await mayAccess(tab.url))) return null;
-  const call = (allFrames: boolean) => Promise.resolve(api.scripting?.executeScript?.({ target: allFrames ? { tabId: tab.id, allFrames: true } : { tabId: tab.id }, func: sleepInPage, args: [tab.url, until, true] }));
-  const answer = await call(true).then(pageAnswer, () => call(false).then(pageAnswer, () => 'no page'));
-  if (answer === 'no page' || !answer) return null;
-  const scrollY = Number.isFinite(answer.scrollY) ? answer.scrollY : null;
-  if (answer.ok) return { is: 'none', scrollY };
-  return { is: answer.why === 'edited' ? 'draft' : null, scrollY };
-}
-async function answerOrNull<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  let timer;
-  try {
-    return await Promise.race([promise.catch(() => null), new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), ms); })]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 // ---- pages that said no ---------------------------------------------------------

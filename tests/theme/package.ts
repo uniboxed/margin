@@ -4,11 +4,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
-import { PACKAGE_THEMES } from '../../extension/themes/packages.ts';
+import { PACKAGE_THEMES } from '../../app/shared/ui/themes/packages.ts';
 
-export const NEO = fileURLToPath(new URL('../../extension/themes/neubrutalism/', import.meta.url));
-export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia/', import.meta.url));
-export const PIXEL = fileURLToPath(new URL('../../extension/themes/pixel/', import.meta.url));
+export const NEO = fileURLToPath(new URL('../../app/shared/ui/themes/neubrutalism/', import.meta.url));
+export const ARCADIA = fileURLToPath(new URL('../../app/shared/ui/themes/arcadia/', import.meta.url));
+export const PIXEL = fileURLToPath(new URL('../../app/shared/ui/themes/pixel/', import.meta.url));
+export const GLASS = fileURLToPath(new URL('../../app/shared/ui/themes/liquid-glass/', import.meta.url));
+export const MATERIAL = fileURLToPath(new URL('../../app/shared/ui/themes/material/', import.meta.url));
 
 // The reference theme: the one the theme-agnostic browser tests run in when CI scopes them to one.
 export const REFERENCE_THEME = 'arcadia';
@@ -32,8 +34,7 @@ export function themesInScope<T>(themes: readonly T[], idOf: (t: T) => string | 
 
 const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
 // A package's own files: the three, and what's under fonts/ and images/.
-// (Arcadia's folder also holds its first-paint placeholders and their
-// descriptor, theme.ts: not the package's.)
+// (A built-in theme's folder also holds its descriptor, theme.ts: not the package's.)
 const BUNDLED = /^(fonts|images)\//;
 
 export function readTheme(dir = NEO): { manifest: string, html: string, css: string, files: Record<string, Buffer> } {

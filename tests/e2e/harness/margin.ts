@@ -68,14 +68,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // How much longer waits for what does come are given (CI sets it: .github/workflows/ci.yml).
 const SLOW = Math.max(1, Number(process.env.MARGIN_E2E_SLOW) || 1);
 
-export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e', web = false }: {
+export async function startMargin({ seed = null, fullscreen = true, running = true, name = 'e2e' }: {
   seed?: any,           // what the app's data set holds (seed.ts seedSet's input), or a data set;
                         // or a function of the site's `url(host, path)` returning one (pins of the test site)
   fullscreen?: boolean, // the first window in full screen (default) — Margin's overlays draw only there
   running?: boolean,    // Margin.app running at the start (default true)
-  cloudTabs?: any, across?: any,
   name?: string,        // for the screenshots' folder
-  web?: boolean,        // the real web too (tools/fit-check only): other hosts resolve, nothing is a leak, sound muted
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'margin-e2e-'));
   const t0 = Date.now();
@@ -91,7 +89,6 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     webkit: wk,
     overlayUrl: overlayServer.url,
     dataSet: seed ? seedSet(seed) : null,
-    cloudTabs, across,
     makeFullscreen: (id) => worker?.evaluate((wid) => chrome.windows.update(wid, { state: 'fullscreen' }).then(() => {}), id),
   });
   if (!running) shell.setRunning(false);
@@ -114,8 +111,8 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
       '--headless=new',
       `--window-size=${SIZE.width},${SIZE.height}`,
       `--screen-info={${SIZE.width}x${SIZE.height}}`,
-      `--host-resolver-rules=${web ? 'MAP *.test 127.0.0.1, EXCLUDE 127.0.0.1' : HOST_RULES}`,
-      ...(web ? ['--mute-audio', '--disable-notifications', '--deny-permission-prompts'] : ['--autoplay-policy=no-user-gesture-required']),
+      `--host-resolver-rules=${HOST_RULES}`,
+      '--autoplay-policy=no-user-gesture-required',
       `--disable-extensions-except=${build.path}`,
       `--load-extension=${build.path}`,
     ],
@@ -126,11 +123,11 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
   context.on('request', (r) => {
     const u = new URL(r.url());
     if (!/^https?:$|^wss?:$/.test(u.protocol)) return;
-    if (web || u.hostname.endsWith('.test') || u.hostname === '127.0.0.1') return;
+    if (u.hostname.endsWith('.test') || u.hostname === '127.0.0.1') return;
     if (ENGINES.test(r.url())) return; // answered locally (the route below)
     leaks.push(r.url());
   });
-  if (!web) await context.route(ENGINES, (route) => {
+  await context.route(ENGINES, (route) => {
     const u = new URL(route.request().url());
     const q = u.searchParams.get('q') ?? u.searchParams.get('p') ?? u.searchParams.get('text') ?? '';
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: searchResults(q, site.port) });

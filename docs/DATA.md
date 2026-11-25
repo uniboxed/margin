@@ -25,7 +25,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 
 | Collection | Id | Value |
 |---|---|---|
-| `spaces` | the space's id | `name`, `emoji`, `color`, `order` (its place among spaces, 0 first) |
+| `spaces` | the space's id | `name`, `emoji`, `color`, `order` (its place among spaces, 0 first); `theme` and `background` when it has them (a background: `colors`, `wheel`, `intensity`, `texture`, `amount`, `appearance`, `image?`, as `backgroundOf` in extension/state/model.ts reads it; docs/SPACE-BACKGROUNDS.md) |
 | `pins` | the pin's id | `spaceId`, `url`, `title`, `folderId` (or null), `pos` (its place at its level) |
 | `folders` | the folder's id | `spaceId`, `name`, `open`, `pos` |
 | `tabs` | the Margin tab's own id (`t-` and ten letters or digits) | `url`, `title`, `icon` (an address or `data:` image the browser gave, else empty), `spaceId`, `order` (its place in the list: higher is newer, shown higher), `lastUsed`, `selected` (boolean; absent in earlier data) |
@@ -33,7 +33,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `settings` | the setting's name | the setting's value (any JSON); every setting but `themes` |
 | `themeSettings` | the theme's id | that theme's settings object |
 | `siteIcons` | the site's origin | `data` (a `data:` image), `href`, `at` |
-| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (`app/platforms/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
+| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (margin-core's `data/themes.rs`, the Mac's through `app/platforms/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
 
 Only web pages are Margin tabs worth keeping: a new-tab page or an extension page isn't in `tabs`. In the extension, an open Margin tab is a browser tab's record with its Margin id (`mid`) and place (`order`); one that isn't open is in `keptTabs` (`state/model.ts`).
 A tab value also carries `selected` (boolean): whether it was its browser window's chosen tab at the last live/saved record. It breaks equal `lastUsed` times when restoring an unloaded space; missing in older data means false. The extension maps it to `wasActive` on a kept tab. It contains no browser ID, and a cache refill retains it.
@@ -101,6 +101,7 @@ data/<browser>/<profile>/items/<collection>.json   { format, collection, items: 
 - **A profile under a new id** (a build signed by another team, or unsigned over a signed one: Safari gives each named profile's copy a new id): with Full Disk Access, the app carries the profile's set to the new id once Safari's files map both to the same Safari profile (`browser.json`'s `browserId`), and puts the old folder away as `data/<browser>/.archived/<profile>-<ms>/`, whole. Nothing reads or lists it there. The new copy's own fresh items become deletions, so its copy ends up with the profile's set alone. DECISIONS.md "Margin 2: Safari reliability" › "A profile's spaces follow it across a signing change".
 - Tombstones are dropped when a set is saved once they're older than 60 days, and beyond the newest 2,000 in a collection (the extension's limits).
 - Tests use a temporary folder (`Shell.Options.dataRoot`; a harness without one gets a new temporary folder), never the real one.
+- **The library** (`MarginHosted` on only: `Library.swift`, DECISIONS.md "Margin.app owns the spaces"): the app's own spaces, pins, folders and items in one set of the same format, flat in `data/app/` (`set.json`, `items/`), each profile's set imported into it once (namespaced ids, its marker in `imports`); the profiles' own sets are never written by it.
 
 The rest of the app reads the data through `Shell.data` (`DataSync`): `profiles(browser:)`, `set(of:)`, `values(_:of:)` (a collection's live values), `marginTabs(of:space:)`, `onChange`, and `change(_:_:)` for the app's own changes; `Shell.notOpenTabs(_:space:)` gives a profile's Margin tabs that aren't open (all of them for a profile that isn't linked).
 
@@ -135,6 +136,8 @@ What the app does with each:
 - A refill isn't the copy's own change: its meta (`dataMeta:<collection>`) should take the set's times, or the next queue sends the app's items back as new ones.
 
 ## Spaces across profiles
+
+**Since 2026-11-17 (hosted only, the cleanup: `DECISIONS.md`):** Margin.app owns the spaces (its library), and this file is only what the library's one import and the carry-over across signing changes read. `browser.json` keeps `order` (as last stored: the import reads it once, by the slots rule below) and `profiles` (`name`, `named`, `firstSeen`, `lastSeen`, `hidden`, `browserId`, `browserName`). Gone: `switching` (`closeWindows`), a profile's `emoji` and `color` (dropped from the file at its next save), moving a space in the one order, renaming or forgetting a profile from the UI, and what each overlay was sent (`across`). What follows about those is history.
 
 Margin 2, Phase 2 step 4 (`PLAN.md` §15). Each space belongs to one browser profile: the profile whose data set has it. Nothing in a set names its profile, so a space can't be in two, and a profile's copy needs nothing new to keep its own.
 

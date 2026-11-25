@@ -2,15 +2,13 @@
 // the checks an imported theme goes through (docs/phase6-themes.md §4):
 // the package's caps and file kinds (with each file's first bytes), the
 // sanitizer with nothing removed, the tree audit, the parts a theme needs to
-// be switched away from, bundled fonts with their licence, no addresses, and (built-ins) a first paint that only paints
-// under its own mark. Part of npm test and npm run test:security.
+// be switched away from, bundled fonts with their licence, no addresses. Part of npm test and npm run test:security.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkPackage, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
+import { checkPackage, sanitizeTheme } from '../../app/shared/ui/theme-loader.ts';
 import { auditTree } from '../theme/audit.ts';
-import { checkImport, missingWaysOut } from '../../extension/ui/theme-import.ts';
+import { checkImport, missingWaysOut } from '../../app/shared/ui/theme-import.ts';
 import { readSuitePackages } from './packages.ts';
 
 const ADDRESS = /https?:\/\/|\/\/[a-z0-9-]+\.[a-z]|fonts\.googleapis|fonts\.gstatic|typekit|use\.fontawesome|cdn\.|@import/i;
@@ -43,18 +41,4 @@ for (const p of await readSuitePackages()) {
     for (const f of Object.keys(pkg.files).filter((x) => /\.svg$/i.test(x))) assert.doesNotMatch(text(f), ADDRESS, `${f} names no address`);
   });
 
-  // A built-in theme's: its folder.
-  if (p.builtin && existsSync(join(p.dir!, 'first-paint.css'))) {
-    test(`${p.label}: its first paint paints only under its own mark, with no address and no text`, () => {
-      const css = readFileSync(join(p.dir!, 'first-paint.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-      assert.doesNotMatch(css, /url\(|@import|image-set|src\s*\(/i);
-      for (const m of css.matchAll(/content\s*:\s*([^;}]*)/gi)) assert.match(m[1].trim(), /^(""|'')\s*(!important)?$/, 'content only ever empty');
-      // Every rule's selectors under html[data-margin-at="<id>"] (at-rules' preludes aside).
-      const selectors = [...css.matchAll(/([^{}]+)\{/g)].map((m) => m[1].trim()).filter((s) => !s.startsWith('@'));
-      assert.ok(selectors.length > 0);
-      for (const list of selectors) {
-        for (const sel of list.split(',').map((s) => s.trim())) assert.ok(sel.startsWith(`html[data-margin-at="${p.id}"]`), `${sel} is under its mark`);
-      }
-    });
-  }
 }

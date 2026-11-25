@@ -13,15 +13,6 @@
 // resolve). A search engine's address is answered with searchResults(q)
 // (the tests route it): a plain results page of this site's own pages.
 //
-// Every HTML page takes `?fp`: a recorder at the top of <head> notes where
-// <html> sits in each of its first 40 frames (window.__fp), holding Margin's
-// word to the page's box back until `&late=N` ms, as the WebKit host's /fp/
-// pages do.
-//
-// `box.test` isn't a site: it serves the page patterns the box handles
-// (tests/box/serve.ts), so the suites that go through every site don't go through them.
-// `box-cdn.test` serves the same files as another origin's (a CDN's, no CORS).
-//
 // Nothing is logged unless MARGIN_E2E_VERBOSE is set.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -30,17 +21,16 @@ import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 import { artFor } from './art.ts';
 import { media } from './make-media.mts';
-import { FIRST_FRAMES, notFound, type Link, type Out, type Site } from './sites/common.ts';
+import { notFound, type Link, type Out, type Site } from './sites/common.ts';
 import { SITES } from './sites/index.ts';
 import { searchResults as resultsPage } from './sites/search.ts';
-import { boxPage } from '../../box/serve.ts';
 
 export const HOST_RULES = 'MAP *.test 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1';
 export { SITES };
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const FILES = join(HERE, 'files');
-const FONTS = fileURLToPath(new URL('../../../extension/themes/neubrutalism/fonts/', import.meta.url));
+const FONTS = fileURLToPath(new URL('../../../app/shared/ui/themes/neubrutalism/fonts/', import.meta.url));
 const TYPES: Record<string, string> = { '.webm': 'video/webm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
 
 let made: ReturnType<typeof media>; // the raster files, made once a process (startSite, before any request)
@@ -58,18 +48,6 @@ export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_V
     const site = byHost.get(hostname) ?? (hostname === '127.0.0.1' || hostname === 'localhost' ? byHost.get('margin.test') : null);
     if (verbose) console.log(`site ${req.method} ${hostname}${u.pathname}`);
     try {
-      if (hostname === 'box.test' || hostname === 'box-cdn.test') { // box-cdn.test: another origin for the same files
-        const out = boxPage(u.pathname, u.searchParams, { other: url('box-cdn.test', '').replace(/\/$/, '') });
-        if (out?.parts && out.parts.length > 1) { // a page that arrives in parts (tests/box/serve.ts partsOf)
-          res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store' });
-          for (const part of out.parts) {
-            if (part.wait) await new Promise((r) => setTimeout(r, part.wait));
-            res.write(part.text);
-          }
-          return res.end();
-        }
-        return send(res, out ? { ...out, cache: false } : { status: 404, type: 'text/plain; charset=utf-8', body: 'No such pattern.' }, u);
-      }
       if (!site) return send(res, { status: 404, type: 'text/plain; charset=utf-8', body: 'No such site on the test server.' });
       // On every page: `?wait=<ms>` answers that late (a slow server), `?nocontent` with 204 (the page stays).
       const wait = Number(u.searchParams.get('wait'));
@@ -162,7 +140,6 @@ async function send(res: ServerResponse, out: Out, u?: URL) {
   if (out.delay) await new Promise((r) => setTimeout(r, out.delay));
   const type = out.type ?? 'text/html; charset=utf-8';
   let body = out.body ?? '';
-  if (typeof body === 'string' && type.startsWith('text/html') && u?.searchParams.has('fp')) body = body.replace('<head>', `<head>\n${FIRST_FRAMES}`);
   res.statusCode = out.status ?? (out.location ? 302 : 200);
   res.setHeader('content-type', type);
   res.setHeader('cache-control', out.cache ? 'public, max-age=600' : 'no-store');

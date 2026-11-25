@@ -1,8 +1,7 @@
 // The extension's end of the link to Margin.app (docs/PROTOCOL.md; the app's
 // end is app/platforms/macos/shell/ExtensionLink.swift). While it's up, the app draws all of
-// Margin's UI around this copy's windows (pages never draw any): pages have
-// their box, which comes from the app's layout per window (setLayout), in
-// the windows the app draws over (`drawn`: a window it doesn't gets none).
+// Margin's UI around this copy's windows (pages never draw any), and says
+// which windows it draws over (`drawn`).
 // Safari's copies, and Chrome's and Edge's on the Mac and Windows (shared/capabilities.ts linksApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
@@ -29,6 +28,11 @@
 // requests from the app run the background's handlers (`route`, with
 // `windowId` standing in for the page's sender.tab.windowId) and are
 // answered, ticks are answered, and nothing heard for DEAD_MS drops the link.
+// A request is acked as it's read and runs once per id, a cancelled one never
+// runs or stops at its next check, the newest show for a window wins, and
+// after a pause the queue is read before any request starts; the waits while
+// linking are advanced by the extension events Safari still sends on time
+// (docs/LINK-RESILIENCE.md, docs/PROTOCOL.md "Requests").
 // A drop is tried again with the kept link (RECONNECT_MS), then asked for
 // again, less and less often (ASK_MS), and on every page starting (poke).
 // Asked for while a try is under way (appUp, a page, the person), it's asked
@@ -37,11 +41,11 @@
 //
 // What pages see (storage.local appLink, shared/app-link.ts): 'linked', then
 // on a drop 'reconnecting' for GONE_MS (the app keeps the last picture,
-// dimmed, saying it's reconnecting), and only then 'off' (pages lose their
-// box: no Margin then), with `why: 'no-link'` while Margin.app is running but
-// sends no link (NO_LINK_ASK_MS). The app saying goodbye (it quit) is 'off' at once. Each
-// window's layout is kept there too (pages new and old read it), and the
-// window's page in front is told at once (`appLayout`).
+// dimmed, saying it's reconnecting), and only then 'off' (no Margin then),
+// with `why: 'no-link'` while Margin.app is running but sends no link
+// (NO_LINK_ASK_MS). The app saying goodbye (it quit) is 'off' at once. Whether
+// the app draws each window is kept there too (pages new and old read it), and
+// the window's page in front is told at once (`appDrawn`).
 //
 // The background must be a page here: in a worker WebKit's `new WebSocket`
 // never returns and hangs the background until Safari restarts
@@ -71,6 +75,7 @@
 import { browserName, linksApp, capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
+import { appKeyBindings } from '../shared/app-keys.ts';
 import { DATA_FORMAT, isName } from '../shared/data-merge.ts';
 import { switchLog } from './switch-log.ts';
 
@@ -84,7 +89,7 @@ const OPEN_WAIT_MS = 2000; // a socket opening, and the app's welcome
 const KEPT_WAIT_MS = 400; // the kept link, at a start
 export const RECONNECT_MS = [250, 500, 1000, 2000, 4000];
 export const ASK_MS = [5000, 60_000]; // asked again after this long, doubling up to the second
-export const GONE_MS = 6000; // a drop not mended in this long: 'off', pages lose their box
+export const GONE_MS = 6000; // a drop not mended in this long: 'off'
 export const LAUNCH_ASK_MS = 500; // the app being started on demand: asked again this often…
 export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other time
 // Margin.app running but sending no link (the handler said appOpen, nothing came): asked
@@ -93,6 +98,14 @@ export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other t
 // (app/platforms/macos/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
 export const NO_LINK_ASK_MS = 5000;
 export const NO_LINK_ASKS = 3;
+// Safari refusing the native message itself because another copy of Margin's extension handler (the same
+// identifier, another build of Margin) is in use: "Invalid call to runtime.sendNativeMessage(). Other version in
+// use" (2026-11-17 real-apps: an installed Margin beside the build under test; a profile's copy refused at 5 s,
+// 10 s and 20 s as it doubled, linked 10 s after the other handler went idle, or never). Asked again this often,
+// this many times in a row (the other handler goes idle ~5 s after its last use), then as any other time.
+export const BUSY_ASK_MS = 1000;
+export const BUSY_ASKS = 20;
+export const handlerBusy = (error: unknown) => /other version in use/i.test(String(error ?? ''));
 // The extension handler's answer to wantLink, waited for this long at most. Safari 27.2 answers
 // only one of several native messages its profiles' copies send at once (2026-11-06: five copies
 // starting together, one answered, the other four promises never settled), so the link is taken
@@ -125,34 +138,37 @@ const FAST_CLOSE_MS = 100; // a kept link closed this soon: refused (nothing lis
 // The stored values the app's UI draws from (as pages read them, before
 // shared/stored.ts fromStorage). Not the theme package (sent as `theme`), the
 // data set's times, this link's own key, page zoom or user themes.
-export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'favicons', 'owner'];
+export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'archive', 'settings', 'favicons', 'owner'];
 // What the app's UI may ask (ui/actions.ts, shared/search.ts rows,
 // app/platforms/macos/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([
   'activateTab', 'closeTab', 'newTab', 'pinTab', 'unpin', 'moveTabToSpace', 'moveTab', 'openPin', 'movePin',
+  'resetPin', 'renamePin', 'renameTab', 'nestFolder',
+  'addFavorite', 'removeFavorite', 'openFavorite', 'resetFavorite', 'renameFavorite', 'moveFavorite',
+  'addAirTrafficRule', 'removeAirTrafficRule', 'toggleAirTrafficRule', 'routeUrl',
+  'createSplit', 'addToSplit', 'openSplit', 'breakOutSplit', 'removeFromSplit', 'closeSplitPane', 'swapSplit', 'resizeSplit', 'toggleSplitAxis',
+  'duplicateTab', 'muteTab', 'unloadTab', 'restoreLastArchive',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
-  'renameSpace', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
+  'renameSpace', 'setSpaceTheme', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
   'newWindow', 'search', 'toggleFullscreen', 'updateSettings', 'updateThemeSettings', 'navigate', 'sidebarScroll',
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
   // A button of one of Margin's notices the overlay put up (background/notices.ts).
   'noticeAction',
-  // Margin.app's switch to another profile's space (app/platforms/macos/shell/ProfileSwitch.swift) and its order across profiles.
-  'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
-  // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
-  'paletteDropped',
-  // DEV-HOOK: the app's dev hook's tab-move probe (app/engines/webkit/safari/DevHooks.swift `probe`; Test A only).
-  'devTabMoveProbe',
-  // The profile handoff (docs/HANDOFF.md §3.3): a window's state without taking focus, the frames of
-  // its tab in front, and its drafts before a close.
-  'setWindowState', 'frameProbe', 'windowDrafts',
+  // Margin.app's host (app/platforms/macos/shell/HostedSession.swift): a window it made closed, a window's state
+  // without taking focus.
+  'closeWindow', 'setWindowState', 'hostFocusWindow',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
+  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.
+  'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate', 'hostPromotePeek',
+  // The preview card (background/peek.ts, hosted.ts): the app's answer to a page's click, the card's page closed.
+  'peekAnswer', 'hostCardClose',
+  // The mini player's buttons for an item's page (M2.4, background/hosted.ts media).
+  'hostMedia',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
-// from the handoff, and only one runs per window at a time (docs/HANDOFF.md §1.9).
-export const WINDOW_CALLS = new Set(['setWindowState', 'focusWindow', 'closeWindow']);
-// What a parked window's `parkedActivity` says happened there (docs/PROTOCOL.md "The handoff").
-export const PARKED_WHY = new Set(['tab', 'focus', 'raise']);
+// from the app, and only one runs per window at a time (background/handoff.ts).
+export const WINDOW_CALLS = new Set(['setWindowState', 'closeWindow', 'hostFocusWindow']);
 
 // A windows call that mustn't run, and its answer: past its `notAfter` (milliseconds since 1970, the
 // app's clock and this copy's being the same), `{ refused: 'late', pastMs }`; another windows call for
@@ -172,12 +188,20 @@ const clock = (ms: number) => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 };
 const random = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${String(Math.random()).slice(2)}`;
-// What `promise` gives within `ms`, else null (it's left: Safari may never settle it).
-const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> => new Promise<any>((resolve) => {
-  const timer = setTimeout(() => resolve(null), ms);
-  promise.then((value) => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(null); });
-});
 const PROFILE = /^[A-Za-z0-9_.:-]{1,64}$/;
+// The app's requests this copy remembers per epoch (running or answered), for a repeated id (docs/LINK-RESILIENCE.md §1
+// rule 11), and the largest reply kept to be sent again (a picture's isn't: answered that it's no longer kept).
+export const SEEN_REQUESTS = 64;
+const KEPT_REPLY = 64 * 1024;
+// A timed wait that judges (gives up on something) and ran later than this many times what it asked for ran through a
+// pause: it judges nothing (§2 rule 6). The same evidence as a link check that ran late.
+const LATE = 1.5;
+// The window a `hostShow` is for (its payload's, else the req's): the newest show for a window wins (§1 rule 13).
+const showWindow = (m: Said) => {
+  if (m?.type !== 'hostShow') return null;
+  const w = m.payload?.windowId ?? m.windowId;
+  return Number.isInteger(w) ? (w as number) : null;
+};
 
 /** The app's keys from the settings (`keys`: docs/PROTOCOL.md): each command's combinations. */
 export function keyBindings(settings: any, commandKeys = {}) {
@@ -191,6 +215,8 @@ export function keyBindings(settings: any, commandKeys = {}) {
   }
   add('palette', 'Meta+KeyT');
   add('toggle-sidebar', settings?.sidebarShortcut ?? 'Alt+KeyS');
+  // Margin.app's own keys (Settings' appKeys): every one named, [] when off, so the app never falls back to its default.
+  Object.assign(out, appKeyBindings(settings));
   return out;
 }
 
@@ -229,8 +255,6 @@ export function createLink({
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),
-  // Whether a window is one the app had parked before Safari quit (background/parked-restore.ts): told on its entry.
-  wasParked = (_windowId: number) => false,
   log = (...args) => console.info('[margin] link:', ...args),
   sha256 = webSha256,
   // A monotonic clock (ms) for how long the app's been quiet and whether a check ran late.
@@ -248,16 +272,15 @@ export function createLink({
   data?: { pendingQueue: (since: number) => Promise<any[]>, snapshot: () => Promise<any>, adopt: (set: any, options?: { changes?: any[], omitted?: any[] }) => Promise<unknown>, take: (changes: any[]) => Promise<unknown>, onChanges: (cb: (changes: any[]) => void) => unknown } | null,
   theme?: () => Promise<any>,
   commandKeys?: () => Record<string, string>,
-  wasParked?: (windowId: number) => boolean,
   log?: (...args: any[]) => void,
   sha256?: (bytes: Uint8Array) => Promise<string>,
   now?: () => number,
-  timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, offFor: number, replyWait: number, stuck: number }>,
+  timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, busyAsk: number, busyAsks: number, offFor: number, replyWait: number, stuck: number }>,
 }) {
   const T = {
     ping: PING_MS, dead: DEAD_MS, check: CHECK_MS, linkWait: LINK_WAIT_MS, openWait: OPEN_WAIT_MS, keptWait: KEPT_WAIT_MS,
     reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS,
-    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, offFor: OFF_MS, replyWait: REPLY_WAIT_MS, stuck: STUCK_MS, ...timing,
+    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, busyAsk: BUSY_ASK_MS, busyAsks: BUSY_ASKS, offFor: OFF_MS, replyWait: REPLY_WAIT_MS, stuck: STUCK_MS, ...timing,
   };
   // What the link does, in the background's console and, through the lasting
   // native port, in Margin.app's own log (the extension handler writes it to
@@ -322,7 +345,7 @@ export function createLink({
   let busySince = 0;
   let askAgain = false;
   let askMs = 0;
-  let askTimer: Timer | null = null;
+  let askTimer: Wait | null = null;
   let lastHeard = 0;
   // When a late check (a pause) last probed the app: its quiet is counted from then at the earliest.
   let resumedAt = -Infinity;
@@ -348,8 +371,8 @@ export function createLink({
   let hung: { count: number, at: number } | null = null;
   let toldWorker = false;
   // What pages see (storage.local appLink).
-  // (`why`, `offAt`, `offUntil`: while off, why; `lastLayouts`: the layouts of an older epoch, kept for the first paint.)
-  let pageState: { state: string, epoch: any, at: number, layouts: Record<number, any>, drawn: Record<number, boolean>, lastLayouts?: Record<number, any>, why?: string, offAt?: number, offUntil?: number } = { state: 'off', epoch: null, at: 0, layouts: {}, drawn: {} };
+  // (`why`, `offAt`, `offUntil`: while off, why.)
+  let pageState: { state: string, epoch: any, at: number, drawn: Record<number, boolean>, why?: string, offAt?: number, offUntil?: number } = { state: 'off', epoch: null, at: 0, drawn: {} };
   let goneTimer: Timer | null = null;
   let layoutTimer: Timer | null = null;
   let stateWrite = Promise.resolve();
@@ -369,28 +392,90 @@ export function createLink({
   const session = () => api.storage?.session;
   const listeners = new Set<any>();
 
-  const send = (message: any) => {
+  const sendText = (text: string) => {
     if (ws?.readyState !== 1) return false;
     try {
-      ws.send(JSON.stringify(message));
+      ws.send(text);
       return true;
     } catch {
       return false;
     }
   };
+  const send = (message: any) => sendText(JSON.stringify(message));
+
+  // ---- the link's own waits (docs/LINK-RESILIENCE.md §2 rules 5–7) ------------------------------------------
+  // Each timed wait (the ask's pacing and the reconnect's, the extension handler's answer, the app's `link`, the
+  // welcome) is due at a time. Its timer runs it, and so does any extension event this background hears (`due()`:
+  // windows and tabs events, a page's message, the native port's), whichever comes first: Safari's events come on time
+  // while a slowed background's timers and socket don't. One that judges (gives up on what it waited for) and ran late,
+  // its time gone over LATE × what it asked for (a pause), judges nothing: it's armed again for its whole time from now,
+  // so whatever came during the pause is seen first; only one that ran on time with nothing come gives up. A try in
+  // which that happened isn't counted in the ask's doubling (`lateInTry`): its next one is paced from when it could act.
+  type Wait = { ms: number, since: number, judges: string | null, fire: () => void, timer: Timer | null };
+  const waits = new Set<Wait>();
+  let lateInTry = false;
+  // `judges`: what it waits for (for the log), or null for a wait that only paces.
+  function after(ms: number, fire: () => void, judges: string | null = null): Wait {
+    const w: Wait = { ms, since: 0, judges, fire, timer: null };
+    waits.add(w);
+    arm(w);
+    return w;
+  }
+  function arm(w: Wait) {
+    clearTimeout(w.timer);
+    w.since = now();
+    w.timer = setTimeout(() => runWait(w), w.ms);
+  }
+  function runWait(w: Wait) {
+    if (!waits.has(w)) return;
+    const gone = now() - w.since;
+    if (gone < w.ms) {
+      // (A timer a moment early, by its clock's rounding: the rest.)
+      clearTimeout(w.timer);
+      w.timer = setTimeout(() => runWait(w), w.ms - gone);
+      return;
+    }
+    if (w.judges && gone > LATE * w.ms) {
+      lateInTry = true;
+      note(`${w.judges}: its ${w.ms} ms wait ran late (${Math.round(gone)} ms): nothing judged, waited again from now`);
+      arm(w);
+      return;
+    }
+    stopWait(w);
+    w.fire();
+  }
+  function stopWait(w: Wait | null) {
+    if (!w) return;
+    waits.delete(w);
+    clearTimeout(w.timer);
+    w.timer = null;
+  }
+  // An extension event heard: every wait past its time run, once what the event itself settles has been taken (a
+  // microtask later: a `link` that came on the native port ends its wait first).
+  let dueSoon = false;
+  function due() {
+    if (dueSoon || !waits.size) return;
+    dueSoon = true;
+    queueMicrotask(() => {
+      dueSoon = false;
+      for (const w of [...waits]) if (now() - w.since >= w.ms) runWait(w);
+    });
+  }
+  // What `promise` gives within `ms`, else null (it's left: Safari may never settle it). `what`: what it waits for.
+  const within = <T>(promise: Promise<T>, ms: number, what: string): Promise<T | null> => new Promise<T | null>((resolve) => {
+    const w = after(ms, () => resolve(null), what);
+    promise.then((value) => { stopWait(w); resolve(value); }, () => { stopWait(w); resolve(null); });
+  });
 
   // ---- what pages see -------------------------------------------------------
-  // A new state is written at once; layouts a moment later (several at once in one write).
-  // A new epoch's hello, or off: what the app said of each window is another epoch's (its
-  // layouts and whether it draws them), and goes; a new link says it again. The layouts are kept
-  // as `lastLayouts`, only for the first paint's registration to start from (registered.ts
-  // chooseLayout): no page takes its box from them.
+  // A new state is written at once; what the app draws a moment later (several at once in one write).
+  // A new epoch's hello, or off: what the app said of each window (whether it draws it) is another
+  // epoch's, and goes; a new link says it again.
   function setPageState(state: string) {
     if (state === pageState.state && pageState.epoch === epoch) return;
     const changed = state !== pageState.state;
     const fresh = state === 'off' || (state === 'linked' && epoch !== pageState.epoch);
-    const last = Object.keys(pageState.layouts ?? {}).length ? pageState.layouts : pageState.lastLayouts ?? {};
-    pageState = { ...pageState, state, epoch, at: Date.now(), ...(fresh ? { layouts: ofEpoch(pageState.layouts, epoch), drawn: {}, lastLayouts: last } : {}) };
+    pageState = { ...pageState, state, epoch, at: Date.now(), ...(fresh ? { drawn: {} } : {}) };
     if (state !== 'off') {
       delete pageState.why;
       delete pageState.offAt;
@@ -399,7 +484,6 @@ export function createLink({
     if (changed) for (const cb of [...listeners]) cb(state);
     writePageState(0);
   }
-  const ofEpoch = (layouts: Record<number, any>, at: string | null) => Object.fromEntries(Object.entries(layouts ?? {}).filter(([, l]) => at != null && l?.epoch === at));
   function writePageState(ms: number) {
     if (!isOwner()) return;
     clearTimeout(layoutTimer);
@@ -420,7 +504,6 @@ export function createLink({
     clearTimeout(goneTimer);
     goneTimer = null;
     setPageState('off');
-    forgetParked('off');
   }
   // Why there's no link, for the new-tab page: 'no-link' (Margin.app is
   // running but sent none), 'sockets-off' (the socket guard turned the link
@@ -447,7 +530,8 @@ export function createLink({
       return (port = null);
     }
     const mine = port;
-    port.onMessage?.addListener((m: Said) => onNative(m));
+    // (Any message on the port is an event heard, a ping's answer too: the waits due run after it's taken.)
+    port.onMessage?.addListener((m: Said) => { onNative(m); due(); });
     port.onDisconnect?.addListener(() => { if (port === mine) { port = null; portLost(); } });
     portBack();
     flushHeld();
@@ -525,7 +609,7 @@ export function createLink({
       askAgain = true;
       return busy;
     }
-    clearTimeout(askTimer);
+    stopWait(askTimer);
     askTimer = null;
     return attempt(async () => {
       if (kept && !appUp) {
@@ -543,6 +627,7 @@ export function createLink({
   // later changes nothing. Ended unlinked with something having asked meanwhile: asked again now.
   function attempt(run: () => Promise<boolean>) {
     askAgain = false;
+    lateInTry = false;
     busySince = now();
     // (Declared first: the finally can't come before it's set, even if `run` threw at once.)
     let mine: Promise<boolean> | null = null;
@@ -588,6 +673,7 @@ export function createLink({
   // hasn't given yet (none kept from an answer before) waits for the answer to say hello with it.
   async function ask() {
     if (!on) return false;
+    if (standDown()) return false;
     if (noSocketHere()) return failed();
     if (socketGuard && await noSockets()) return failed({ socketsOff: true });
     appUp = false;
@@ -601,6 +687,7 @@ export function createLink({
         .then(() => api.runtime.sendNativeMessage(APP, { type: 'wantLink', nonce: mine }))
         .then((reply) => ({ reply }), (err) => ({ error: String(err?.message ?? err) })),
       T.replyWait,
+      'the extension handler\'s answer',
     );
     const first = await Promise.race([given.then((value) => ({ link: value })), answered]);
     let got = first && 'link' in first ? first.link : null;
@@ -624,6 +711,12 @@ export function createLink({
       }
       const reply = 'reply' in answer ? answer.reply : null;
       if ('error' in answer) note('wantLink: the extension handler didn\'t answer:', answer.error);
+      if ('error' in answer && handlerBusy(answer.error)) {
+        taken();
+        if (!on) return false;
+        if (busies === 0) note(`wantLink: Safari refused it (another copy of Margin's extension handler in use): asked again every ${T.busyAsk} ms, ${T.busyAsks} times at most`);
+        return failed({ busy: true });
+      }
       await heardFrom(reply);
       if (reply?.appOpen !== true || !on) {
         taken();
@@ -644,7 +737,7 @@ export function createLink({
         got = { port: inReply.port, token: inReply.token, key: inReply.key };
         note(`wantLink: the link in the extension handler's answer (${Math.round(now() - asked)} ms)`);
       } else {
-        got = await within(given, T.linkWait);
+        got = await within(given, T.linkWait, "the app's link");
       }
     }
     taken();
@@ -658,24 +751,29 @@ export function createLink({
     return failed(tried.how === 'sockets off' ? { socketsOff: true } : {});
   }
   // No app to link to: asked again later (and when a page starts, or the app
-  // says it's up). Pages lose their box once it's clear.
+  // says it's up). Pages hear it's off once it's clear.
   let launches = 0;
   let noLinks = 0;
+  let busies = 0;
   // `lost`: the handler's answer never came (and no link): asked again like `noLink`, a little
   // apart from the other copies that asked with it, and pages told nothing new.
-  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false, lost = false } = {}) {
+  // `busy`: Safari refused the native message (another copy's handler in use): asked again soon (BUSY_ASK_MS).
+  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false, lost = false, busy = false } = {}) {
     if (appGone || socketsOff) gone();
     else if (pageState.state !== 'off' && !goneTimer) dropping();
     if (socketsOff) setWhy('sockets-off', { offAt: guard?.at ?? Date.now(), offUntil: guard?.until ?? undefined });
     else if (noLink || appGone || launching) setWhy(noLink ? 'no-link' : undefined);
     if (!noLink && !lost) noLinks = 0;
+    if (!busy) busies = 0;
     // Starting: every LAUNCH_ASK_MS for a while (its appUp may come first).
     if (launching && launches++ < T.launchAsks) askMs = T.launchAsk;
+    else if (busy && busies++ < T.busyAsks) askMs = T.busyAsk;
     // Running, no link: NO_LINK_ASK_MS a few times (it may be quitting for a new build), then as below.
     else if ((noLink || lost) && noLinks++ < T.noLinkAsks) askMs = lost ? Math.round(T.noLinkAsk * (1 + Math.random() / 2)) : T.noLinkAsk;
-    else askMs = Math.min(Math.max(askMs * 2, T.ask[0]), T.ask[1]);
-    clearTimeout(askTimer);
-    askTimer = on ? setTimeout(() => { askTimer = null; void link({ kept: false }); }, askMs) : null;
+    // (A try one of whose waits ran through a pause isn't counted: the next is paced as this one was.)
+    else askMs = Math.min(Math.max(lateInTry ? askMs : askMs * 2, T.ask[0]), T.ask[1]);
+    stopWait(askTimer);
+    askTimer = on ? after(askMs, () => { askTimer = null; void link({ kept: false }); }) : null;
     return false;
   }
   function noSocketHere() {
@@ -765,14 +863,15 @@ export function createLink({
       const done = (ok: boolean, how: string) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        stopWait(timer);
         resolve({ ok, how });
       };
       const giveUp = (why: string, how = why) => {
         closeSocket(socket, why);
         done(false, how);
       };
-      const timer = setTimeout(() => { if (!welcomed) giveUp(`no welcome within ${waitMs} ms`, `no welcome within ${waitMs} ms (slow)`); }, waitMs);
+      // (Judged only by a wait that ran on time: one that ran through a pause waits again, the welcome seen first.)
+      const timer = after(waitMs, () => { if (!welcomed) giveUp(`no welcome within ${waitMs} ms`, `no welcome within ${waitMs} ms (slow)`); }, 'the welcome');
       socket.onopen = () => { if (!on || ws) giveUp('not needed: linked already, or stopped'); };
       socket.onerror = () => {};
       socket.onclose = (event) => {
@@ -806,6 +905,12 @@ export function createLink({
 
   // ---- linked ------------------------------------------------------------------
   function linked(socket: WebSocket, { port: at, token, key }: KeptLink) {
+    // (A copy no longer in charge says no hello: the app would close it, and it would open again at once.)
+    if (!isOwner()) {
+      closeSocket(socket, 'not the copy in charge');
+      standDown();
+      return;
+    }
     ws = socket;
     epoch = random();
     seq = 0;
@@ -814,13 +919,12 @@ export function createLink({
     askMs = 0;
     launches = 0;
     noLinks = 0;
+    busies = 0;
     lastWindows = '';
-    lastList = null;
     lastKeys = '';
     lastTheme = '';
     clearTimeout(goneTimer);
     goneTimer = null;
-    forgetParked('a new link');
     void Promise.resolve(session()?.set({ [SESSION_KEY]: { port: at, token, key, ...(browserPid ? { pid: browserPid } : {}) } })).catch(() => {});
     setLast('linked', `on port ${at}`);
     const { origin, since } = copy();
@@ -840,33 +944,50 @@ export function createLink({
       sendKeys();
       await dataHello();
     })();
-    // Every CHECK_MS: nothing heard from the app for DEAD_MS drops the link. A check that ran
-    // late (over 3 checks: the background was paused, or the Mac slept) judges nothing itself: it
-    // notes the pause, sends the app a tock (it hears this copy is back), and the link is judged
-    // after what came in meanwhile (a setTimeout of 0, after the socket's queued messages), the
-    // app's quiet counted from that probe, never from before the pause.
-    let lastCheck = now();
-    const judge = () => {
-      if (ws === socket && now() - Math.max(lastHeard, resumedAt) > T.dead) drop(`no word from the app for ${Math.round(DEAD_MS / 1000)} s`);
-    };
+    seen = new Map();
+    heldReqs = [];
+    holding = false;
+    shows = new Map();
+    running = new Map();
+    lastCheck = now();
     timers = [
       setInterval(() => {
         if (!isOwner()) return stop('a newer copy of Margin is running');
-        const t = now();
-        const gap = t - lastCheck;
-        lastCheck = t;
-        if (gap > 3 * T.check) {
-          resumedAt = t;
-          note(`paused ${(gap / 1000).toFixed(1)} s (a link check ran late); probing the app, judged from now`);
-          send({ k: 'tock', at: Date.now() });
-          setTimeout(judge, 0);
-          return;
-        }
-        judge();
+        if (paused()) return;
+        lastCheck = now();
+        judge(socket);
       }, T.check),
       setInterval(() => void windowsNow(), T.windows),
     ];
     note('linked on', at);
+  }
+  // Every CHECK_MS: nothing heard from the app for DEAD_MS drops the link. A check that ran late (over 3 checks: the
+  // background was paused, or the Mac slept) judges nothing itself: it notes the pause, sends the app a tock (it hears
+  // this copy is back), and the link is judged after what came in meanwhile (a setTimeout of 0, after the socket's
+  // queued messages), the app's quiet counted from that probe, never from before the pause.
+  let lastCheck = 0;
+  function judge(socket: WebSocket | null) {
+    if (socket && ws === socket && now() - Math.max(lastHeard, resumedAt) > T.dead) drop(`no word from the app for ${Math.round(DEAD_MS / 1000)} s`);
+  }
+  // Whether the copy was just paused: its link check due over 3 checks ago. Seen by the check itself or by the app's
+  // first message after the pause (whichever runs first), and then the requests read meanwhile are held one turn of the
+  // event loop (§1 rule 14), the same step the judging waits for: the newest show and any cancel behind it seen first.
+  function paused() {
+    const t = now();
+    const gap = t - lastCheck;
+    if (!ws || gap <= 3 * T.check) return false;
+    lastCheck = t;
+    resumedAt = t;
+    note(`paused ${(gap / 1000).toFixed(1)} s (a link check ran late); probing the app, judged from now`);
+    send({ k: 'tock', at: Date.now() });
+    const socket = ws;
+    setTimeout(() => judge(socket), 0);
+    if (!holding) {
+      holding = true;
+      const at = epoch;
+      setTimeout(() => { if (epoch === at) release(); }, 0);
+    }
+    return true;
   }
   function drop(why: string) {
     const socket = ws;
@@ -874,7 +995,7 @@ export function createLink({
     dropped(why);
     closeSocket(socket, why);
   }
-  // `bye`: the app said goodbye (it quit): pages lose their box at once, and
+  // `bye`: the app said goodbye (it quit): pages hear it's off at once, and
   // the app is asked for later. Else a drop: tried again.
   function dropped(why: string, { bye = false } = {}) {
     if (!ws) return;
@@ -886,6 +1007,8 @@ export function createLink({
     pending = null;
     pendingTimer = null;
     sentIcons = null;
+    heldReqs = []; // (this epoch's: the app decides again what it still wants of a new link)
+    holding = false;
     note('dropped:', why);
     setLast('dropped', why);
     if (bye || !on) {
@@ -894,15 +1017,26 @@ export function createLink({
       if (on) failed();
       return;
     }
+    if (standDown()) return;
     dropping();
     void reconnect();
+  }
+  // A copy that isn't the one in charge of its profile's state any more (a newer copy of Margin claimed it: an update,
+  // or another build of Margin's beside this one): its link stops for good, as the link's check does while it's linked.
+  // Never asked again or reconnected: the app closes a hello from a copy not in charge (1008), and each close was
+  // followed by a reconnect (2026-11-17 real-apps: one profile's copy opened a socket every ~470 ms for 40 s).
+  function standDown() {
+    if (!on || isOwner()) return false;
+    note('not the copy in charge of this profile\'s state any more (a newer copy of Margin runs): the link stops');
+    stop('a newer copy of Margin is running');
+    return true;
   }
   async function reconnect() {
     if (busy && !stuck()) return busy;
     return attempt(async () => {
       let n = 0;
       for (const ms of T.reconnect) {
-        await new Promise<any>((resolve) => setTimeout(resolve, ms));
+        await new Promise<void>((resolve) => { after(ms, resolve); });
         if (!on || ws) return !!ws;
         const kept = appUp ? null : await keptLink();
         if (!kept) {
@@ -927,17 +1061,17 @@ export function createLink({
       return;
     }
     lastHeard = now();
+    paused(); // (the first word after a pause can come before the late check)
     switch (message?.k) {
       case 'tick':
-        return void send({ k: 'tock', at: Date.now() });
+        // Its number echoed: the app knows this copy read everything sent before that tick (§1 rule 3).
+        return void send({ k: 'tock', at: Date.now(), ...(Number.isInteger(message.seq) ? { seq: message.seq } : {}) });
       case 'req':
-        return void request(message);
-      case 'setLayout':
-        return setLayout(message);
+        return take(message);
+      case 'cancel':
+        return cancel(message);
       case 'drawn':
         return drawn(message);
-      case 'parked':
-        return parkedSaid(message);
       case 'resync':
         if (message.epoch === epoch) void snapshot();
         return;
@@ -965,35 +1099,120 @@ export function createLink({
         return; // unknown kinds are left (docs/PROTOCOL.md)
     }
   }
-  async function request({ id, epoch: theirs, windowId, type, payload }: Said) {
-    if (!Number.isInteger(id)) return;
-    if (theirs !== epoch) return send({ k: 'reply', id, ok: false, error: 'stale epoch' });
-    if (!APP_REQUESTS.has(type)) return send({ k: 'reply', id, ok: false, error: `not a request Margin's UI makes: ${type}` });
-    if (windowId != null && !Number.isInteger(windowId)) return send({ k: 'reply', id, ok: false, error: 'no window' });
+  // ---- the app's requests (docs/LINK-RESILIENCE.md §1 rules 11–14) ----
+  // This epoch's requests by id, the last SEEN_REQUESTS: held (read after a pause, not started), running, answered
+  // (its reply's text, unless it was too big to keep), or cancelled. `stop`: cancelled while it ran.
+  // (`read`: when it was read, for its reply's `took`: the copy's own time on it, which the app's log says beside a slow
+  // request's ack, development diagnostics.)
+  type Seen = { state: 'held' | 'running' | 'answered' | 'cancelled', reply?: string | null, stop?: boolean, read?: number };
+  let seen: Map<number, Seen> = new Map();
+  // Requests read while the copy knows it was just paused, started one turn later (`release`).
+  let heldReqs: Said[] = [];
+  let holding = false;
+  // The newest `hostShow` asked for each window, and the one running there: Safari switches one tab at a time in a
+  // window (2026-11-25, measured on the real Mac: shows overlapping, every 110 ms of a held key, each took Safari
+  // ~210 ms and none was drawn until the run ended; one at a time, 25-40 ms), so a newer show waits for the running
+  // one to finish, and one overtaken while it waits is answered `overtaken` with no Safari call.
+  let shows: Map<number, number> = new Map();
+  let running: Map<number, Promise<unknown>> = new Map();
+  function remember(id: number, entry: Seen) {
+    seen.delete(id);
+    seen.set(id, entry);
+    while (seen.size > SEEN_REQUESTS) seen.delete(seen.keys().next().value!);
+    return entry;
+  }
+  // A `req` read: acked at once, before anything runs (the app knows it's taken); an id seen this epoch runs once (one
+  // running or held: left, its reply comes; one answered: its reply again; one cancelled: nothing).
+  function take(m: Said) {
+    if (!Number.isInteger(m.id)) return;
+    send({ k: 'ack', id: m.id });
+    // (Another epoch's id is none of this epoch's: refused, not remembered.)
+    if (m.epoch !== epoch) return void send({ k: 'reply', id: m.id, ok: false, error: 'stale epoch' });
+    const was = seen.get(m.id);
+    if (was) {
+      if (was.state !== 'answered') return;
+      if (was.reply) sendText(was.reply);
+      else send({ k: 'reply', id: m.id, ok: false, error: 'answered before; that answer is no longer kept' });
+      return;
+    }
+    remember(m.id, { state: 'held', read: Date.now() });
+    if (holding) heldReqs.push(m);
+    else void request(m);
+  }
+  // The held requests started, the queue read: of the shows for one window only the newest runs, the older ones
+  // answered `overtaken` (a cancelled one was taken out as it was read).
+  function release() {
+    holding = false;
+    const list = heldReqs;
+    heldReqs = [];
+    const newest = new Map<number, Said>();
+    for (const m of list) { const w = showWindow(m); if (w != null) newest.set(w, m); }
+    for (const m of list) {
+      const w = showWindow(m);
+      if (w != null && newest.get(w) !== m) answer(m.id, { ok: false, error: 'overtaken' });
+      else void request(m);
+    }
+  }
+  // `cancel { id }`: the app no longer waits for it. Not started: dropped. Running: its check says stop (a show stops
+  // before its next Safari call). Neither is answered.
+  function cancel(m: Said) {
+    if (!Number.isInteger(m.id)) return;
+    const was = seen.get(m.id);
+    if (!was) return void remember(m.id, { state: 'cancelled' });
+    if (was.state === 'held') {
+      heldReqs = heldReqs.filter((h) => h.id !== m.id);
+      was.state = 'cancelled';
+    } else if (was.state === 'running') {
+      was.stop = true;
+    }
+  }
+  // A request's reply, sent and kept for a repeated id (unless it's over KEPT_REPLY).
+  function answer(id: number, body: Said) {
+    const read = seen.get(id)?.read;
+    const text = JSON.stringify({ k: 'reply', id, ...body, ...(read != null ? { took: Date.now() - read } : {}) });
+    const entry = seen.get(id) ?? remember(id, { state: 'answered' });
+    entry.state = 'answered';
+    entry.reply = text.length <= KEPT_REPLY ? text : null;
+    sendText(text);
+  }
+  async function request(m: Said) {
+    const { id, epoch: theirs, windowId, type, payload } = m;
+    const entry = seen.get(id) ?? remember(id, { state: 'running' });
+    entry.state = 'running';
+    if (theirs !== epoch) return answer(id, { ok: false, error: 'stale epoch' });
+    if (!APP_REQUESTS.has(type)) return answer(id, { ok: false, error: `not a request Margin's UI makes: ${type}` });
+    if (windowId != null && !Number.isInteger(windowId)) return answer(id, { ok: false, error: 'no window' });
     const message = { ...(payload && typeof payload === 'object' ? payload : {}), type };
     if (message.windowId == null && windowId != null) message.windowId = windowId;
+    // A show for its window: after the one running there (one tab switch at a time), unless a newer one is asked first.
+    const window = showWindow(m);
+    if (window != null) {
+      shows.set(window, id);
+      const before = running.get(window);
+      if (before) await before.catch(() => {});
+      if (epoch !== theirs) return;
+      if (entry.stop) return void (entry.state = 'cancelled');
+      if (shows.get(window) !== id) return answer(id, { ok: false, error: 'overtaken' });
+    }
+    const stopped = () => entry.stop === true;
     // The page's sender, as the app's window: handlers that use the page's
     // sender.tab.windowId get the window the UI was drawn for; nothing has a
-    // tab id (the app's UI isn't a page).
+    // tab id (the app's UI isn't a page). `stopped()` (not enumerable: the sender's shape is a page's): whether the app
+    // cancelled it, checked between its Safari calls.
     const sender = { app: true, tab: windowId != null ? { windowId } : undefined };
+    Object.defineProperty(sender, 'stopped', { value: stopped, enumerable: false });
     const at = epoch;
-    const answer = await route(message, sender).catch((err) => ({ ok: false, error: String(err?.message ?? err) }));
+    const run = route(message, sender).catch((err) => ({ ok: false, error: String(err?.message ?? err) }));
+    if (window != null) running.set(window, run);
+    const result = await run;
+    if (window != null && running.get(window) === run) running.delete(window);
+    if (window != null && shows.get(window) === id) shows.delete(window);
     if (epoch !== at) return;
-    send({ k: 'reply', id, ...(answer && typeof answer === 'object' ? answer : { ok: true, result: answer ?? null }) });
+    if (entry.stop) return void (entry.state = 'cancelled');
+    answer(id, result && typeof result === 'object' ? result : { ok: true, result: result ?? null });
   }
-  // Each window's layout, newest per window (a new epoch starts its count again).
-  function setLayout(m: Said) {
-    if (m.epoch !== epoch || !Number.isInteger(m.windowId) || !m.insets || !Number.isInteger(m.seq)) return;
-    const had = pageState.layouts[m.windowId];
-    if (had && had.epoch === m.epoch && had.seq >= m.seq) return;
-    const layout = { insets: m.insets, radius: m.radius ?? 0, radii: m.radii ?? null, container: m.container ?? null, mode: m.mode ?? 'fullscreen', seq: m.seq, epoch: m.epoch };
-    pageState = { ...pageState, layouts: { ...pageState.layouts, [m.windowId]: layout } };
-    writePageState(T.layoutWrite);
-    for (const cb of [...layoutListeners]) cb(m.windowId, layout);
-  }
-  const layoutListeners = new Set<any>();
   // Whether the app draws over a window (its binding, not whether its overlay is on screen now):
-  // false, its pages get no box (shared/app-link.ts layoutFor). Only a change is sent; this
+  // false, Margin's keys there go the unlinked way (shared/app-link.ts drawsWindow). Only a change is sent; this
   // epoch's only.
   function drawn(m: Said) {
     if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
@@ -1004,38 +1223,15 @@ export function createLink({
     for (const cb of [...drawnListeners]) cb(m.windowId, m.on);
   }
   const drawnListeners = new Set<any>();
-  // Which of this copy's windows the app has parked (docs/HANDOFF.md §2.5): out of sight in a private
-  // Space of their own, alive and normal. Kept per window as the app says it, this epoch's only: a
-  // new link, the link going off and the window closing forget it (a new link says it again). Not
-  // stored: no page reads it. windowId → when the app parked it.
-  const parked: Map<number, number> = new Map();
-  function parkedSaid(m: Said) {
-    if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
-    if (parked.has(m.windowId) === m.on) return;
-    if (m.on) parked.set(m.windowId, Number.isFinite(m.at) ? m.at : Date.now());
-    else parked.delete(m.windowId);
-    note(`the app ${m.on ? 'parked' : 'no longer parks'} window ${m.windowId}`);
-    for (const cb of [...parkedListeners]) cb(m.windowId, m.on);
-  }
-  function forgetParked(why: string) {
-    if (!parked.size) return;
-    note(`parked windows forgotten (${why}): ${[...parked.keys()].join(', ')}`);
-    const ids = [...parked.keys()];
-    parked.clear();
-    for (const id of ids) for (const cb of [...parkedListeners]) cb(id, false, true); // (forgotten: not the app's word)
-  }
-  const parkedListeners = new Set<any>();
   // A window gone: what the app said of it goes too.
   function forgetWindows(ids: string[]) {
-    const layouts = { ...pageState.layouts };
     const drawnNow = { ...pageState.drawn };
     let changed = false;
     for (const id of ids) {
-      if (id in layouts) { delete (layouts as Record<string, unknown>)[id]; changed = true; }
       if (id in drawnNow) { delete (drawnNow as Record<string, unknown>)[id]; changed = true; }
     }
     if (!changed) return;
-    pageState = { ...pageState, layouts, drawn: drawnNow };
+    pageState = { ...pageState, drawn: drawnNow };
     writePageState(T.layoutWrite);
   }
 
@@ -1049,7 +1245,6 @@ export function createLink({
       if (!raw || epoch !== at) return;
       sentIcons = iconsOf(raw.favicons);
       lastWindows = JSON.stringify(windows);
-      lastList = windows;
       send({ k: 'snapshot', epoch, seq: ++seq, state: raw, windows });
       noteFlags(windows);
     })();
@@ -1088,81 +1283,32 @@ export function createLink({
     const sent = send(message);
     if ('openTabs' in message.changes) switchLog.delta(sent);
   }
+  // Each window's place, state and focus. Not its tab in front: the app never read it, and asking Safari for it (and
+  // for the list on every tab switch, to keep it current) was in the next switch's way (docs/PROTOCOL.md "windows").
   async function windowList() {
-    const [wins, fronts] = await Promise.all([
-      Promise.resolve(api.windows?.getAll?.()).catch((): BrowserWindow[] | null => null),
-      Promise.resolve(api.tabs.query({ active: true })).catch((): BrowserTab[] => []),
-    ]);
+    const wins = await Promise.resolve(api.windows?.getAll?.()).catch((): BrowserWindow[] | null => null);
     return (wins ?? ([] as BrowserWindow[])).filter((w) => w?.id != null).map((w) => known({
       windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
-      state: w.state ?? 'normal', focused: !!w.focused, activeTabId: (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null,
+      state: w.state ?? 'normal', focused: !!w.focused,
       ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
       ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
     }));
   }
-  // What only this copy knows, on a window's entry: its tab in front's word (the inspector, whether
-  // it's shown, are a tab's: docs/PROTOCOL.md `viewport`, `visible`), and the last blur it heard.
+  // What only this copy knows, on a window's entry: the last blur it heard.
   function known(entry: { windowId: number, [field: string]: any }) {
-    const { viewport: _vp, visible: _v, visibleAt: _va, blurredAt: _b, ...rest } = entry;
-    const vp = viewports.get(rest.windowId);
-    const seen = rest.activeTabId != null ? visibility.get(rest.activeTabId) : null;
-    return {
-      ...rest,
-      ...(vp && vp.tabId === rest.activeTabId ? { viewport: vp.rect, ...(vp.times ? { viewportTimes: vp.times } : {}) } : {}),
-      ...(seen && seen.windowId === rest.windowId ? { visible: seen.visible, visibleAt: seen.at } : {}),
-      ...(blurredAt != null ? { blurredAt } : {}),
-      ...(wasParked(rest.windowId) ? { wasParked: true } : {}),
-      ...(rest.activeTabId != null && fullscreens.get(rest.windowId) === rest.activeTabId ? { pageFullscreen: true } : {}),
-    };
+    return { ...entry, ...(blurredAt != null ? { blurredAt } : {}) };
   }
-  // Where each window's tab in front says its page area sits in the window, when that's less than
-  // all of it (content/core.ts viewportNow: the docked Web Inspector): windowId → { tabId, rect }.
-  // (`times`: when the page was resized, said it, and this copy heard it, for Margin.app's log.)
-  const viewports: Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean }, times?: { resized?: number, said?: number, heard: number } }> = new Map();
-  // Windows whose tab in front is in full screen (a page's own, or Safari's video full screen: content/core.ts): windowId → tabId.
-  const fullscreens = new Map();
-  // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
-  // app tells same-bounds windows apart by them (app/platforms/macos/shell/WindowMatcher.swift). Not kept past the background.
+  // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the app
+  // knows the windows a copy restored from the ones made since by `createdAt` (HostedSession.swift). Not kept
+  // past the background.
   const focusedAt: Map<number, number> = new Map();
   const createdAt: Map<number, number> = new Map();
   // When this copy last heard windows.onFocusChanged with WINDOW_ID_NONE (none of its windows
   // focused: Safari left the front, or another profile's window took it). Null: not heard.
   let blurredAt: number | null = null;
-  // Whether each tab's page says it's shown (content/core.ts, newtab.ts: document.visibilityState),
-  // and when it last said so: tabId → { windowId, visible, at }. A window's is its tab in front's,
-  // and only that tab's. Missing is unknown (never hidden): a page Margin's script can't run in, one
-  // not loaded yet, one whose window just showed another tab (cleared, the new tab asked again).
-  // Margin.app tells same-bounds full-screen windows of different profiles apart by it
-  // (app/platforms/macos/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
-  // (`source`, `heard`: what said it and when the background heard it, for the log.)
-  const visibility: Map<number, { windowId: number, visible: boolean, at: number, source?: string, heard?: number }> = new Map();
-  // Each page in front asked to say again whether it's shown (the background starting, a tab shown).
-  const askVisibility = (tabId: number) => { void Promise.resolve(api.tabs.sendMessage?.(tabId, { type: 'reportVisibility' })).catch(() => {}); };
-  // Each window shown or hidden, as its tab in front says (a tab behind isn't the window's word): one
-  // line in Margin.app's log per change, with when the page saw it, what said it and how late the
-  // background heard it (ids and times only). Whether a full-screen window on a Space that isn't
-  // showing says hidden, and how fast, is read from these. Looked at VISIBLE_NOTE_MS after a word,
-  // so the tab left behind as another is shown (it says hidden first) isn't taken for the window.
-  const VISIBLE_NOTE_MS = 150;
-  const visibleSaid: Map<number, boolean> = new Map();
-  const visibleNoting: Map<number, any> = new Map();
-  /** @param tabId the tab that spoke (the window's, if its tab in front isn't known) */
-  function noteVisibility(windowId: number, tabId: number) {
-    if (visibleNoting.has(windowId)) return;
-    visibleNoting.set(windowId, setTimeout(() => {
-      visibleNoting.delete(windowId);
-      const front = lastList?.find((w) => w.windowId === windowId)?.activeTabId ?? tabId;
-      const word = visibility.get(front);
-      if (!word || word.windowId !== windowId || visibleSaid.get(windowId) === word.visible) return;
-      visibleSaid.set(windowId, word.visible);
-      note(`window ${windowId} ${word.visible ? 'shown' : 'hidden'} at ${clock(word.at)} (${word.source ?? 'unknown'}, tab ${front}, heard ${Math.max(0, (word.heard ?? word.at) - word.at)} ms later)`);
-    }, VISIBLE_NOTE_MS));
-  }
-  // The focus flags and visibility of each windows report, in Margin.app's log when they change
-  // (ids and times only), so the log says what Safari's flags were when the app bound a window.
-  // A line when the flags change (the times in it aren't a change: each focus and each window's shown
-  // or hidden has its own line), at most one each FLAGS_NOTE_MS: a change within it is said once it's
-  // over, as it is then (a run of tab switches changes the shown word twice a switch).
+  // The focus flags of each windows report, in Margin.app's log when they change (ids and times only).
+  // A line when the flags change (the times in it aren't a change: each focus has its own line), at
+  // most one each FLAGS_NOTE_MS: a change within it is said once it's over, as it is then.
   const FLAGS_NOTE_MS = 1000;
   let lastFlags = '';
   let flagsAt = -Infinity;
@@ -1173,7 +1319,7 @@ export function createLink({
     if (flagsTimer) return;
     const flags = (times: boolean) => {
       const at = (t: number) => (times ? ` ${clock(t)}` : '');
-      const line = flagsList.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard${at(w.focusedAt)})` : ''}${'visible' in w ? ` ${w.visible ? 'shown' : 'hidden'}${at(w.visibleAt)}` : ''}`).join('; ');
+      const line = flagsList.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard${at(w.focusedAt)})` : ''}`).join('; ');
       return `${line}${blurredAt != null ? `; blur heard${at(blurredAt)}` : ''}`;
     };
     if (flags(false) === lastFlags) return;
@@ -1183,35 +1329,22 @@ export function createLink({
     flagsAt = Date.now();
     note(`windows report at ${clock(Date.now())}: ${flags(true) || 'no windows'}`);
   }
-  // Sent when any of it changed; a closed window's layout goes too.
+  // Sent when any of it changed; what the app said of a closed window goes too.
   async function windowsNow() {
     if (!ws || snapshotting) return;
     const at = epoch;
     const list = await windowList();
     if (!ws || epoch !== at) return;
     const ids = new Set(list.map((w) => w.windowId));
-    forgetWindows([...Object.keys(pageState.layouts), ...Object.keys(pageState.drawn ?? {})].filter((id) => !ids.has(Number(id))));
+    forgetWindows(Object.keys(pageState.drawn ?? {}).filter((id) => !ids.has(Number(id))));
     const json = JSON.stringify(list);
     if (json === lastWindows) return;
     lastWindows = json;
-    lastList = list;
     send({ k: 'windows', epoch, seq: ++seq, list });
     noteFlags(list);
   }
   // The last list sent, for a change only this copy knows (a page's area: the docked inspector),
   // sent at once without asking Safari again; windowsNow follows with Safari's own.
-  let lastList: any[] | null = null;
-  function windowsFromKnown() {
-    if (!ws || snapshotting || !lastList) return false;
-    const list = lastList.map(known);
-    const json = JSON.stringify(list);
-    if (json === lastWindows) return true;
-    lastWindows = json;
-    lastList = list;
-    send({ k: 'windows', epoch, seq: ++seq, list });
-    noteFlags(list);
-    return true;
-  }
   async function sendTheme() {
     if (!ws) return;
     const at = epoch;
@@ -1359,8 +1492,7 @@ export function createLink({
       const ids = Array.isArray(wins) ? new Set(wins.map((w) => String(w?.id))) : null;
       const listed = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([id]) => !ids || ids.has(id)));
       const off = before.state === 'off';
-      const last = before.layouts && typeof before.layouts === 'object' && Object.keys(before.layouts).length ? before.layouts : before.lastLayouts ?? {};
-      pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), layouts: off ? {} : listed(before.layouts), drawn: off ? {} : listed(before.drawn), lastLayouts: last };
+      pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), drawn: off ? {} : listed(before.drawn) };
     }
     if (pageState.state !== 'off') writePageState(0);
     return was;
@@ -1382,9 +1514,6 @@ export function createLink({
     ensurePort();
     const [kept, last] = await Promise.all([keptLink(), Promise.resolve(session()?.get(LAST_KEY)).then((g) => g?.[LAST_KEY], () => null)]);
     note(`background started (kept link: ${kept ? 'yes' : 'no'}, page state before: ${before}, last stop: ${lastStop(last)})`);
-    // The pages in front say again whether they're shown (what they said before this background
-    // started is gone with the one before).
-    void Promise.resolve(api.tabs.query({ active: true })).then((tabs) => { for (const t of tabs ?? []) if (Number.isInteger(t?.id)) askVisibility(t.id); }, () => {});
     pingTimer = setInterval(() => { ping(); watch(); }, T.ping);
     ping();
     await link();
@@ -1399,9 +1528,8 @@ export function createLink({
     setLast('stopped', why);
     gone();
     clearInterval(pingTimer);
-    clearTimeout(askTimer);
-    for (const timer of visibleNoting.values()) clearTimeout(timer);
-    visibleNoting.clear();
+    stopWait(askTimer);
+    askTimer = null;
     clearTimeout(flagsTimer);
     flagsTimer = null;
     try { port?.disconnect(); } catch {}
@@ -1425,6 +1553,7 @@ export function createLink({
       askMs = 0;
       launches = 0;
       noLinks = 0;
+      busies = 0;
       void link({ kept: false });
       return true;
     },
@@ -1445,6 +1574,7 @@ export function createLink({
       askMs = 0;
       launches = 0;
       noLinks = 0;
+      busies = 0;
       void link({ kept: false });
       return true;
     },
@@ -1470,22 +1600,16 @@ export function createLink({
     push(windowId: number | null | undefined, msg: Record<string, any>) {
       return !!ws && send({ k: 'push', epoch, windowId: windowId ?? null, msg });
     },
-    // One of this copy's parked windows used while out of sight (docs/HANDOFF.md §6.1): told to the
-    // app, which hands off to it. `why`: 'tab' (a tab Margin didn't open made there), 'focus' (focus
-    // landed there, not Margin's doing) or 'raise' (Margin's UI asked for a tab that's only there);
-    // 'tab' and 'raise' name their tab. Ids only in the log.
-    parkedActivity(windowId: number, why: 'tab' | 'focus' | 'raise', tabId: number | null = null) {
-      if (!Number.isInteger(windowId) || windowId < 0 || !PARKED_WHY.has(why)) return false;
-      if (why !== 'focus' && !Number.isInteger(tabId)) return false;
-      if (!ws) return false;
-      note(`parkedActivity window ${windowId}${Number.isInteger(tabId) ? ` (tab ${tabId})` : ''}: ${why}`);
-      return send({ k: 'push', epoch, windowId, msg: { type: 'parkedActivity', windowId, ...(Number.isInteger(tabId) ? { tabId } : {}), why } });
-    },
+    // An extension event heard (tabs.onUpdated, a page's runtime message: background.ts; the windows and tabs events
+    // below call it too): the link's waits past their time run now (§2 rule 5), as Safari's events come on time while a
+    // slowed background's timers don't.
+    due,
     // Windows opened, closed, focused, moved, a tab shown: looked at now.
-    windowsChanged: () => void windowsNow(),
+    windowsChanged() { due(); void windowsNow(); },
     // windows.onFocusChanged and onCreated, with their time. WINDOW_ID_NONE (none of this copy's
     // windows focused) is kept as the copy's `blurredAt`. Each focus is a line in Margin.app's log.
     windowFocused(windowId: number, at = Date.now()) {
+      due();
       if (!Number.isInteger(windowId)) return;
       if (windowId >= 0) focusedAt.set(windowId, at);
       else blurredAt = at;
@@ -1493,101 +1617,35 @@ export function createLink({
       void windowsNow();
     },
     windowCreated(windowId: number, at = Date.now()) {
+      due();
       if (Number.isInteger(windowId) && windowId >= 0) createdAt.set(windowId, at);
       void windowsNow();
     },
-    // A page in front saying where its area sits in its window (handlers.ts viewport; null: all of it).
-    viewport(windowId: number, tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean } | null, times: { resized?: number, said?: number, heard: number } | null = null) {
-      if (!Number.isInteger(windowId) || !Number.isInteger(tabId)) return;
-      const had = JSON.stringify(viewports.get(windowId) ?? null);
-      if (rect) viewports.set(windowId, { tabId, rect, ...(times ? { times } : {}) });
-      else if (viewports.get(windowId)?.tabId === tabId || rect === null) viewports.delete(windowId);
-      if (JSON.stringify(viewports.get(windowId) ?? null) === had) return;
-      windowsFromKnown();
-      void windowsNow();
-    },
-    // A page in front gone into full screen or back (handlers.ts pageFullscreen): its window's `pageFullscreen` while it's
-    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/platforms/macos/shell/Shell.swift).
-    pageFullscreen(windowId: number, tabId: number, on: boolean) {
-      if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof on !== 'boolean') return;
-      const had = fullscreens.get(windowId);
-      if (on) fullscreens.set(windowId, tabId);
-      else if (had === tabId) fullscreens.delete(windowId);
-      if (fullscreens.get(windowId) === had) return;
-      windowsFromKnown();
-      void windowsNow();
-    },
-    // A page saying whether it's shown (handlers.ts visibility), at `at` (its Date.now()): its
-    // window's `visible` and `visibleAt` while it's that window's tab in front. `source`: what said
-    // it ('content script', 'new-tab page' or 'unknown'), for the log.
-    visibility(windowId: number, tabId: number, visible: boolean, at: number, source: string = 'unknown') {
-      if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof visible !== 'boolean' || !Number.isFinite(at)) return;
-      const had = visibility.get(tabId);
-      if (had && had.windowId === windowId && had.at > at) return; // an older word than the one kept
-      // The same word again (the page's visibilitychange, then its answer to reportVisibility): it has
-      // said so since the first; nothing new to send.
-      if (had && had.windowId === windowId && had.visible === visible) return;
-      visibility.set(tabId, { windowId, visible, at: Math.min(at, Date.now()), source, heard: Date.now() });
-      noteVisibility(windowId, tabId);
-      if (!windowsFromKnown()) void windowsNow();
-    },
-    // A tab shown in its window (tabs.onActivated): what its window's tabs said is forgotten (the
-    // window's is the new tab's now, and it's asked again).
-    tabActivated(tabId: number, windowId: number) {
-      for (const [id, v] of visibility) if (v.windowId === windowId || id === tabId) visibility.delete(id);
-      // The window's tab in front is this one now, before Safari's list says so: the tab left behind
-      // saying it's hidden isn't taken for the window (nor sent as its word).
-      if (lastList && Number.isInteger(tabId)) lastList = lastList.map((w) => (w.windowId === windowId ? { ...w, activeTabId: tabId } : w));
-      if (Number.isInteger(tabId)) askVisibility(tabId);
-      void windowsNow();
-    },
-    // A tab's page replaced (a navigation committed, webNavigation's `timeStamp`), the tab gone,
-    // replaced or moved to another window: what it said is forgotten (a new page says again).
-    /** @param before only a word said before this */
-    tabGone(tabId: number, before: number = Infinity) {
-      const had = visibility.get(tabId);
-      if (!had || had.at > before) return;
-      visibility.delete(tabId);
-      void windowsNow();
-    },
+    // A tab shown in its window (tabs.onActivated): an event heard (the window list doesn't change with it).
+    tabActivated() { due(); },
     // A switch's timeline (background/switch-log.ts) and other lines for Margin.app's log.
     note: (...args: any[]) => note(...args),
     windowClosed(windowId: number) {
+      due();
       focusedAt.delete(windowId);
       createdAt.delete(windowId);
-      viewports.delete(windowId);
-      fullscreens.delete(windowId);
-      for (const [id, v] of visibility) if (v.windowId === windowId) visibility.delete(id);
-      visibleSaid.delete(windowId);
-      clearTimeout(visibleNoting.get(windowId));
-      visibleNoting.delete(windowId);
       forgetWindows([String(windowId)]);
-      parked.delete(windowId);
       void windowsNow();
     },
-    // The window list looked at and sent now if it changed (a handoff's windows call landed: the app
-    // and its overlays hear the new state without WINDOWS_MS's wait).
+    // The window list looked at and sent now if it changed (a windows call for the app landed: it
+    // hears the new state without WINDOWS_MS's wait).
     windowsNow: () => windowsNow(),
-    // Whether the app said it parked the window (this epoch).
-    parked: (windowId: number | null | undefined) => windowId != null && parked.has(windowId),
-    parkedWindows: () => [...parked.keys()],
-    /** `forgot`: forgotten as a link went or came, not the app's word. */
-    onParked(cb: (windowId: number, on: boolean, forgot?: boolean) => void) { parkedListeners.add(cb); return () => parkedListeners.delete(cb); },
     linked: () => !!ws,
     // 'linked', 'reconnecting' or 'off', as pages see it.
     pageState: () => pageState.state,
-    layout: (windowId: number) => pageState.layouts[windowId] ?? null,
-    layouts: () => ({ ...pageState.layouts }),
-    // What the app said of each window, for the first paint (background/registered.ts): this
-    // epoch's layouts and whether it draws each window.
-    view: () => ({ epoch: pageState.epoch, layouts: { ...pageState.layouts }, drawn: { ...pageState.drawn }, lastLayouts: { ...pageState.lastLayouts } }),
+    // What the app said of each window this epoch: whether it draws it.
+    view: () => ({ epoch: pageState.epoch, drawn: { ...pageState.drawn } }),
     // Whether the app said it draws over the window (true, false), or hasn't said (undefined).
     drawn: (windowId: number | null | undefined) => (windowId == null ? undefined : pageState.drawn?.[windowId]),
     // Whether the app draws Margin around the window: linked or reconnecting, and not said
     // otherwise for it (shared/app-link.ts drawsWindow).
     drawsWindow: (windowId: number | null | undefined) => pageState.state !== 'off' && (windowId == null || pageState.drawn?.[windowId] !== false),
     onPageState(cb: (state: string) => void) { listeners.add(cb); return () => listeners.delete(cb); },
-    onLayout(cb: (windowId: number, layout: any) => void) { layoutListeners.add(cb); return () => layoutListeners.delete(cb); },
     onDrawn(cb: (windowId: number, on: boolean) => void) { drawnListeners.add(cb); return () => drawnListeners.delete(cb); },
     profile: () => profile,
     acked: () => acked,

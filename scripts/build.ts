@@ -5,16 +5,15 @@
 // Each build takes only its own engine's code: shared code reaches it as `#engine` and `#engine/capabilities`
 // (package.json "imports"), which the build resolves by its engine's condition (CONDITIONS); unbuilt (unit
 // tests), they pick either engine's by the extension's URL. Usage: node scripts/build.ts
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { buildSync, transformSync } from 'esbuild';
+import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
-import { allLayoutFiles, firstPaintCss, firstPaintFile } from '../extension/shared/page-box.ts';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
-import { WIDTH } from '../extension/themes/arcadia/theme.ts';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
+// The built-in themes' packages (Margin's window's UI: app/shared/ui/).
+const THEMES = new URL('app/shared/ui/themes/', root);
 // The builds by their name (shared/capabilities.ts Capabilities.name: what saved data and the link call them), each
 // one's dist/ folder by its engine, and the package.json "imports" condition that gives `#engine` its engine's code.
 export type Target = 'chrome' | 'safari';
@@ -65,11 +64,11 @@ export function buildTo(outDir: string | URL, { profile, manifest = profile }: {
   // The files pages load as they are. Skip Finder's .DS_Store files (git-ignored) so a Mac build matches CI, and
   // extension/engines/ (each engine's code is bundled from there; its manifest goes through manifestFor).
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') && !isEngines(src) });
+  // The built-in themes' files, at themes/<id>/ as before they moved to app/shared/ui/themes/ (2026-11-22): the
+  // background still reads the active one from its own URL (background/theme-package.ts) until step 4 removes it.
+  cpSync(fileURLToPath(THEMES), `${out}/themes`, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
   const built = manifestFor(manifest);
   bundle(out, built, profile);
-  // The one plain script registered as a file, not bundled (background/registered.ts FULLSCREEN_ONLY_JS).
-  const plain = `${out}/content/page/fullscreen-only`;
-  writeFileSync(`${plain}.js`, transformSync(readFileSync(`${plain}.ts`, 'utf8'), { loader: 'ts', tsconfigRaw: TSCONFIG }).code);
   dropSources(out);
   writeFileSync(`${out}/manifest.json`, `${JSON.stringify(built, null, 2)}\n`);
   return out;
@@ -84,38 +83,9 @@ export function buildTo(outDir: string | URL, { profile, manifest = profile }: {
 const BUNDLES = {
   content: 'content/content.bundle.js',
   background: 'background.bundle.js',
-  page: 'content/page.bundle.js',
   newtab: 'newtab/newtab.bundle.js',
   away: 'away/away.bundle.js',
 };
-// The first paint (shared/page-box.ts, background/registered.ts): the
-// layout's digit files and at.css, and each built-in theme's
-// first-paint file, the box with the theme's look (themes/<id>/first-paint.css).
-export const FIRST_PAINT_THEMES = PACKAGE_THEMES.filter((id) => existsSync(new URL(`themes/${id}/first-paint.css`, SOURCE)));
-function firstPaintFiles(out: string) {
-  mkdirSync(`${out}/content/layout`, { recursive: true });
-  for (const [file, css] of allLayoutFiles()) writeFileSync(`${out}/${file}`, css);
-  for (const id of FIRST_PAINT_THEMES) writeFileSync(`${out}/${firstPaintFile(id)}`, firstPaintCss(id, readFileSync(new URL(`themes/${id}/first-paint.css`, SOURCE), 'utf8')));
-}
-// Safari keeps registrations across launches and loads none of them if a file
-// one lists is missing (DECISIONS.md, 2026-10-25: WebKit validates them all
-// together at load, and `getRegisteredContentScripts` then lists none, so the
-// background can't drop them). The build before Margin 2 Phase 3 registered
-// a first-paint placeholder per sidebar width and a file per left edge for the
-// page's script: they stay as empty files until no Safari has that
-// registration, so an update from that build loads its registrations, and
-// the background replaces them (background/registered.ts). Remove after a
-// release or two of Phase 3.
-const WIDTHS = Array.from({ length: (WIDTH.max - WIDTH.min) / WIDTH.step + 1 }, (_, i) => WIDTH.min + i * WIDTH.step);
-export const LEGACY_FILES = [
-  ...WIDTHS.map((w) => `themes/arcadia/docked/w-${w}.css`),
-  'themes/arcadia/docked/closed.css',
-  ...[8, ...WIDTHS].map((left) => `content/page/at-${left}.js`),
-  // Neubrutalism's first paint by its name until 2026-11-10 (Neo-brutalism): registered while it was the theme,
-  // so kept, empty, as the files above, until no Safari has that registration.
-  'content/layout/theme-neo-brutalism.css',
-];
-
 // What every bundle is built with: its engine's code for `#engine` (package.json "imports"), on top of
 // esbuild's own conditions.
 const engineOptions = (profile: Target) => ({ conditions: [CONDITIONS[profile]], tsconfigRaw: TSCONFIG });
@@ -139,12 +109,6 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
     logLevel: 'warning',
   });
 
-  firstPaintFiles(out);
-  for (const file of LEGACY_FILES) {
-    mkdirSync(dirname(`${out}/${file}`), { recursive: true });
-    writeFileSync(`${out}/${file}`, '');
-  }
-
   // Margin's content script (its core on web pages, with the UI runtime).
   const [sidebar] = manifest.content_scripts;
   write(BUNDLES.content, sidebar.js);
@@ -160,9 +124,6 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
   if (bg.service_worker) bg.service_worker = BUNDLES.background;
   else bg.scripts = [BUNDLES.background];
 
-  // The page's box, in the page's world (registered by the background).
-  write(BUNDLES.page, ['content/page/main.ts']);
-
   // The new-tab page and the stand-in for a tab shown in another window (modules: they await at the top level).
   for (const [page, file] of [['newtab', BUNDLES.newtab], ['away', BUNDLES.away]]) {
     const html = readFileSync(`${out}/${page}/${page}.html`, 'utf8');
@@ -174,17 +135,33 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
 }
 
 // Margin.app's overlay page (app/shared/host/: the UI runtime with the app's
-// host, extension/ui/host-app.ts) as one script and its page, for the app's
+// host, app/shared/ui/host-app.ts) as one script and its page, for the app's
 // Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
-// (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
-export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', 'handoff-cover.html', 'handoff-cover.js'];
+// (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5). The library's rules are margin-core's since step 4's
+// switch (docs/CORE-REFACTOR.md): library.js is no longer the app's (buildLibraryScript: the vectors' recorder's).
+export const LIBRARY_FILE = 'library.js';
+// Every built-in theme's package, for Margin.app to hand its window when that theme is chosen (ShellThemes.swift
+// BuiltinThemes): the window's page has only Arcadia of its own (FALLBACK_FILE), and the others came only from a
+// browser's copy, so choosing one in Margin's own Settings changed nothing (2026-11-19).
+export const BUILTIN_THEMES = ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass', 'material'];
+export const builtinThemeFile = (id: string) => `theme.${id}.json`;
+export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', ...BUILTIN_THEMES.map(builtinThemeFile)];
 export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   // The page's entry and the extension's modules it imports, with the profile's engine's code.
-  for (const entry of ['overlay', 'handoff-cover']) buildSync({
-    entryPoints: [fileURLToPath(new URL(`app/shared/host/${entry}.ts`, root))],
+  bundleScript(out, 'overlay', 'host', profile);
+  cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
+  writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
+  for (const id of BUILTIN_THEMES) writeFileSync(`${out}/${builtinThemeFile(id)}`, JSON.stringify(themePackage(id)));
+  return out;
+}
+
+// app/shared/<from>/<entry>.ts as one script, <out>/<entry>.js.
+function bundleScript(out: string, entry: string, from: string, profile: Target) {
+  buildSync({
+    entryPoints: [fileURLToPath(new URL(`app/shared/${from}/${entry}.ts`, root))],
     ...engineOptions(profile),
     bundle: true,
     format: 'iife',
@@ -196,10 +173,15 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
     outfile: `${out}/${entry}.js`,
     logLevel: 'warning',
   });
-  cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
-  cpSync(fileURLToPath(new URL('app/shared/host/handoff-cover.html', root)), `${out}/handoff-cover.html`);
-  writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
-  return out;
+}
+
+// The library's rules as one script (app/shared/library/library.ts over state/model.ts: LIBRARY_FILE in `outDir`), as
+// Margin.app ran them in JavaScriptCore until step 4's switch: for the shared vectors' recorder only
+// (tests/library-vectors/record.ts runs it in JSC, whose answers the vectors keep). Built into no app.
+export function buildLibraryScript(outDir: string, { profile = 'safari' }: { profile?: Target } = {}) {
+  mkdirSync(outDir, { recursive: true });
+  bundleScript(outDir, 'library', 'library', profile);
+  return `${outDir}/${LIBRARY_FILE}`;
 }
 
 // Arcadia, bundled with the overlay (docs/phase6-themes.md §3): what it draws
@@ -209,13 +191,16 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
 // message's shape (background/theme-package.ts ThemeMessage), loaded only
 // when it's needed (app/shared/host/overlay.ts fallBack).
 export const FALLBACK_FILE = 'arcadia.js';
-export function fallbackPackage() {
-  const dir = new URL('themes/arcadia/', SOURCE);
+export function fallbackPackage() { return themePackage('arcadia'); }
+// A built-in theme's package in the `theme` message's shape ({ id, manifest, html, css, files }: its fonts and images
+// as base64).
+export function themePackage(id: string) {
+  const dir = new URL(`${id}/`, THEMES);
   const manifest = readFileSync(new URL('theme.json', dir), 'utf8');
   const raw = JSON.parse(manifest);
   const named: string[] = [...(raw.fonts ?? []).map((f: { file: string }) => f.file), ...(raw.images ?? [])];
   const files = Object.fromEntries(named.map((p) => [p, readFileSync(new URL(p, dir)).toString('base64')]));
-  return { id: 'arcadia', manifest, html: readFileSync(new URL('theme.html', dir), 'utf8'), css: readFileSync(new URL('theme.css', dir), 'utf8'), files };
+  return { id, manifest, html: readFileSync(new URL('theme.html', dir), 'utf8'), css: readFileSync(new URL('theme.css', dir), 'utf8'), files };
 }
 function fallbackScript() {
   return `// Arcadia for Margin.app's overlay to fall back on (scripts/build.ts fallbackPackage).\nglobalThis.marginFallbackTheme = ${JSON.stringify(fallbackPackage())};\n`;

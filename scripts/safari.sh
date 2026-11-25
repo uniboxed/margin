@@ -52,7 +52,7 @@ npm run build
 MADE_FROM="xcode/.made-from"
 # (The app's Swift folders: app/platforms/macos/swift-sources.txt, each folder's own *.swift.)
 SWIFT_FOLDERS=$(grep -v '^#' app/platforms/macos/swift-sources.txt | sed '/^$/d')
-FROM=$({ find app/platforms/macos/startup app/engines/webkit/safari/handler app/platforms/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/webkit && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
+FROM=$({ find app/platforms/macos/startup app/engines/webkit/safari/handler app/platforms/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py brand/margin-logo/macos/AppIcon.appiconset -type f | LC_ALL=C sort | xargs shasum; (cd dist/webkit && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
 if [ ! -d xcode/Margin/Margin.xcodeproj ] || [ "$(cat "$MADE_FROM" 2>/dev/null)" != "$FROM" ]; then
   sh scripts/make-xcode.sh
   echo "$FROM" > "$MADE_FROM"
@@ -110,6 +110,11 @@ VERSIONS="MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=$VERSION"
 # converter's project leaves both to the building Mac (its SDK's macOS as the minimum, its own
 # architecture), so a build on macOS 26.5 wouldn't open on 14, 15 or an Intel Mac.
 VERSIONS="$VERSIONS MACOSX_DEPLOYMENT_TARGET=14.0 ARCHS=\$(ARCHS_STANDARD) ONLY_ACTIVE_ARCH=NO"
+# The hosting core (app/platforms/macos/ffi: margin-core's host module, Rust) for both kinds of Mac, linked through
+# `import MarginCore` (its module map's `link` line): only where Swift finds the module and the linker the library.
+CORE_LIB=$(sh scripts/build-core.sh) || { echo "safari.sh: the hosting core didn't build" >&2; exit 1; }
+# (Dead code stripped: the converter's project leaves it off, which would ship every part of the core the app never calls.)
+VERSIONS="$VERSIONS SWIFT_INCLUDE_PATHS=$PWD/app/platforms/macos/ffi/include LIBRARY_SEARCH_PATHS=$CORE_LIB DEAD_CODE_STRIPPING=YES"
 
 # shellcheck disable=SC2086
 if [ -n "$IDENTITY_NAME" ] && [ "$UNSIGNED" = false ]; then
@@ -217,9 +222,24 @@ if launchctl print "$HELPER_AGENT" >/dev/null 2>&1; then
 fi
 [ "$REGISTERED" = true ] || echo "warning: the system doesn't list Margin's extension; open $DEST once so Safari sees it." >&2
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a
-# second Margin in Safari, with storage of its own.
+# second Margin in Safari, with storage of its own. And any other copy with the
+# extension in it, wherever it is (a build made in a scratch folder, a worktree's):
+# with two versions of the extension known, Safari refuses the extension's native
+# messages ("Other version in use") until it settles on one, so the link to
+# Margin.app waited 13 s at a launch (2026-11-25, four such copies). The copies
+# stay on disk; opening one makes it known again.
 "$LSREGISTER" -dump 2>/dev/null | sed -n 's/^path: *\(.*Margin\.app\) (0x[0-9a-f]*)$/\1/p' | sort -u | while read -r other; do
-  case "$other" in "$DEST" | *.Trash*) ;; *DerivedData*|"$DERIVED"/*) "$LSREGISTER" -u "$other" && echo "Unregistered another copy: $other" ;; esac
+  case "$other" in
+    "$DEST" | *.Trash*) ;;
+    *DerivedData*|"$DERIVED"/*) "$LSREGISTER" -u "$other" && echo "Unregistered another copy: $other" ;;
+    *) [ -d "$other/Contents/PlugIns/Margin Extension.appex" ] || continue
+       pluginkit -r "$other/Contents/PlugIns/Margin Extension.appex" 2>/dev/null || true
+       "$LSREGISTER" -u "$other" && echo "Unregistered another copy with the extension: $other" ;;
+  esac
+done
+# (What the system still lists as an extension elsewhere, gone from LaunchServices' list: its plug-in record too.)
+pluginkit -mDAvvv -i com.unibox.margin.Extension 2>/dev/null | sed -n 's/^[[:space:]]*Path = \(.*Margin Extension\.appex\)$/\1/p' | while read -r appex; do
+  case "$appex" in "$DEST"/*) ;; *) pluginkit -r "$appex" 2>/dev/null && echo "Removed another copy of the extension: $appex" ;; esac
 done
 
 echo

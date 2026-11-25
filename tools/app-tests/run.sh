@@ -1,45 +1,26 @@
 #!/bin/bash
 # Margin.app's shell (app/platforms/macos/shell/), tested with no browser: npm run test:app.
 #   unit: each app folder's own tests/ (app/platforms/macos/shell/tests/, app/platforms/macos/private/tests/,
-#         app/engines/webkit/safari/tests/): tests.swift, data-tests.swift and
-#         window-tests.swift, the shell's logic on its own (no
-#         window, no link), the lasting data's merge (tests/fixtures/data-merge/),
-#         its files (in a temporary folder) and its messages; spaces across
-#         profiles (profiles-tests.swift: the order, the names' file, the
-#         cross-profile switch against a fake world and clock); Safari's profile
-#         names and iCloud Tabs read from stand-ins for Safari's files
-#         (safari-profiles-tests.swift, cloud-tabs-tests.swift); macOS's private calls'
-#         launch check and wrappers against a fake resolver (private-calls-tests.swift);
-#         the handoff's freezer on a fake clock and fake functions (handoff-tests.swift);
-#         the Space reads, the parker and its cross-process self-test against a fake
-#         world and a stand-in child, nothing spawned, and the parking registry with its crash
-#         marker in a temporary folder (parking-tests.swift); the switch's setting in
-#         browser.json and its notices by kind (handoff-ui-tests.swift); the dev-only test hook
-#         against a fake world, and no title or address in the switch's lines (devhooks-tests.swift);
-#         the user themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder)
-#   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
-#         accessory app that never activates) against a stand-in for the
-#         extension (fake-extension.mts, Node), and a picture of the overlay
-#         drawing Arcadia (MARGIN_APP_SHOT, default build/overlay.png); then
-#         e2e-data.swift, the lasting data over the real link, in a temporary
-#         folder (never ~/Library/Application Support/Margin); and e2e-profiles.swift,
-#         two profiles' copies and the app driving a switch between them with
-#         stand-in windows, the close-based one with the handoff's gate off, then
-#         the handoff with stand-ins for macOS's Spaces, the parker and the freeze
-#         (parking, showing, the keys mid-switch, a wake, a parked window used, a
-#         dialog, the shown window closed, a crash's marker, quit); and e2e-windows.swift, which window is which with
-#         two profiles and several same-bounds windows, Spaces played by
-#         on-screen flags and the copies' focus flags lagging; and e2e-keyboard.swift,
-#         the overlay's keyboard and its page's focus through shows, put-aways and relinks;
-#         e2e-overlays.swift, overlays through a window closing, a link dropping and Safari's
-#         own sidebar sliding in; and e2e-cloud.swift, iCloud Tabs from a stand-in for
-#         Safari's file drawn live in the overlay; and e2e-themes.swift, a theme the overlay
-#         can't draw replaced by Arcadia, and said
-# window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
-# WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
-# Built with swiftc as the app target builds it (Swift 5, main actor by
-# default), no XCTest. Exits 1 if a check failed. Nothing shows on screen and
-# nothing reaches Safari. ./run.sh [unit|e2e|all] (default all).
+#         app/engines/webkit/safari/tests/): tests.swift and data-tests.swift, the shell's logic on its own (no
+#         window, no link), the lasting data's merge (tests/fixtures/data-merge/), its files (in a temporary folder)
+#         and its messages; a browser's profiles (profiles-tests.swift: the order, the names' file); Safari's profile
+#         names read from stand-ins for Safari's files (safari-profiles-tests.swift); macOS's private calls' launch
+#         check and wrappers against a fake resolver
+#         (private-calls-tests.swift); the dev-only test hook against a fake world (devhooks-tests.swift); the user
+#         themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder); the app's own
+#         spaces (library-tests.swift: margin-core's library object, its files and the import in temporary folders); the host engine on a stand-in window manager (host-tests.swift), the library, the
+#         engine and the Safari copies joined (hosted-tests.swift), Margin's own window (margin-window-tests.swift),
+#         installed apps (apps-tests.swift), Chrome's and Edge's relay (relay-tests.swift)
+#   e2e:  e2e.swift, the harness (a stand-in for the extension: fake-extension.mts, Node; scripted apps and keys);
+#         e2e-data.swift, the lasting data over the real link, in a temporary folder (never
+#         ~/Library/Application Support/Margin); e2e-link.swift, requests to a stalled copy (the fake's stall and lose
+#         modes) ending on evidence only; e2e-hosted.swift, Margin's own window off every display with the real
+#         page: its page area published, the pointer through it, the menu's New Tab opening the palette, its sidebar,
+#         full screen, resize; and e2e-glue.swift, the hosted parts joined: the library's first run, an app and a web
+#         item picked, the host engine on a stand-in window manager given the page area from the tiles, the copy's
+#         newWindow and hostShow
+# Built with swiftc as the app target builds it (Swift 5, main actor by default), no XCTest. Exits 1 if a check
+# failed. Nothing shows on screen and nothing reaches Safari. ./run.sh [unit|e2e|all] (default all).
 # MARGIN_APP_TESTS is set for every binary here: macOS's private calls refuse to
 # run under it (PrivateCalls.swift), so no test calls one or freezes the screen.
 set -u
@@ -59,15 +40,33 @@ while read -r folder; do
 done < ../../app/platforms/macos/swift-sources.txt
 # The stand-in for Safari's folder, for the unit checks and the end-to-end ones.
 FAKE_SAFARI=../../app/engines/webkit/safari/tests/fake-safari.swift
-FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
+# Chameleon's switches (tools/screen-tests/apps/Chameleon): the unit checks' stand-in world plays them (behaviour-world.swift).
+CHAMELEON_SWITCHES=../screen-tests/apps/Chameleon/Switches.swift
+# The hosting core (app/platforms/macos/ffi, Rust: margin-core's host module) the shell links through `import MarginCore`:
+# built for this Mac (scripts/build-core.sh host), its module map's `link` line linking it.
+CORE_LIB=$(sh ../../scripts/build-core.sh host) || exit 1
+CORE=(-I ../../app/platforms/macos/ffi/include -L "$CORE_LIB")
+FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault "${CORE[@]}")
 # Compiled on every core (batch mode): about 4x faster than one job.
 JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
 NODE="${NODE:-$(command -v node || echo /opt/homebrew/bin/node)}"
 WHAT="${1:-all}"
 
+# dist/app (scripts/build.ts), the page the checks load and read (the built-in themes' packages): built when missing or
+# older than any of its sources (the code, and the themes' CSS, HTML and JSON), before the unit checks and before the
+# end-to-end checks, either of which may run alone.
+app_page() {
+  local page="$PWD/../../dist/app/overlay.js"
+  if [ ! -f "$page" ] || [ -n "$(find ../../app/shared ../../extension \( -name '*.ts' -o -name '*.css' -o -name '*.html' -o -name '*.json' \) -newer "$page" 2>/dev/null | head -1)" ]; then
+    "$NODE" ../../scripts/build.ts >/dev/null || exit 1
+  fi
+}
+
 build() { # name sources...
   local name="$1"; shift
   if [ ! -x "$BUILD/$name" ] || [ -n "$(find "$@" -newer "$BUILD/$name" 2>/dev/null)" ]; then
+    swiftc "${FLAGS[@]}" "${JOBS[@]}" "$@" -o "$BUILD/$name" || exit 1
+  elif [ "$CORE_LIB/libmargin_ffi.a" -nt "$BUILD/$name" ]; then
     swiftc "${FLAGS[@]}" "${JOBS[@]}" "$@" -o "$BUILD/$name" || exit 1
   fi
 }
@@ -78,7 +77,7 @@ build() { # name sources...
 XCODE_FLAGS=(-swift-version 5 -default-isolation MainActor
   -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault
   -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature GlobalActorIsolatedTypesUsability
-  -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature MemberImportVisibility)
+  -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature MemberImportVisibility "${CORE[@]}")
 warnings() { # label flags... -- sources...
   local label="$1"; shift
   local out
@@ -104,13 +103,13 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1
   CONNECTOR="$(cd ../.. && pwd)/target/release/margin-connector"
-  build tests "${UNIT_TESTS[@]}" "${SHELL_SOURCES[@]}"
-  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
+  app_page
+  build tests "${UNIT_TESTS[@]}" "$CHAMELEON_SWITCHES" "${SHELL_SOURCES[@]}"
+  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_LINK_VECTORS="$PWD/../../tests/fixtures/link-protocol.json" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
-  [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
-  MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" \
-    MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
+  app_page
+  build e2e e2e.swift e2e-data.swift e2e-link.swift e2e-hosted.swift e2e-glue.swift e2e-split.swift e2e-resilience.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
+  MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" "$BUILD/e2e" || status=1
 fi
 exit $status

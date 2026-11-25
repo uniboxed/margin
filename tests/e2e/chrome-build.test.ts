@@ -12,7 +12,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HOST_RULES, startSite, searchResults } from './site/server.ts';
 import { ENGINES, SIZE } from './harness/margin.ts';
-import { pageBox } from './harness/ui.ts';
 import { shoot } from './harness/shots.ts';
 import type { BrowserContext, Worker } from 'playwright';
 
@@ -96,11 +95,10 @@ test('Chrome\'s own site icons: nothing fetched', async () => {
   await page.close();
 });
 
-test('pages get nothing of Margin\'s: no box, no gesture blocking, the bounce left alone', async (t) => {
+test('pages get nothing of Margin\'s: no gesture blocking, the bounce left alone', async (t) => {
   const page = await context.newPage();
   await page.goto(site.url('harbor.test', '/'));
   await new Promise((r) => setTimeout(r, 500));
-  assert.equal(await pageBox(page), null, 'no box');
   assert.equal(await page.evaluate(() => innerWidth), SIZE.width);
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY), 'auto', 'the bounce left alone');
   await page.evaluate(() => { (window as typeof window & { __wheel: boolean[] }).__wheel = []; document.addEventListener('wheel', (e) => (window as typeof window & { __wheel: boolean[] }).__wheel.push(e.defaultPrevented)); });

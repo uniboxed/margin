@@ -2,9 +2,8 @@
 // Margin.app or not. The background's side, against a fake of the browser's
 // API: not linked, ⌘T and the palette's key open Margin's new-tab page (once
 // a press, whichever way it came), a new tab made by the browser stays (no
-// palette to hand it to), and nothing is registered for the first paint, so
-// a page has no box or frame; linked (or reconnecting), the first-paint box
-// is registered again, and dropped once the link is off.
+// palette to hand it to); and what the page box left from before its removal
+// (2026-11-16: its registration, its kept sheet walks) is dropped at start.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeBrowser } from './fake-browser.ts';
@@ -91,6 +90,10 @@ fake.local.settings = { fullscreenOnly: false }; // Chrome's profile (this file'
 fake.session.alive = true;
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now();
+// Left by a build with the page box.
+fake.registered.set('margin-page', { id: 'margin-page', js: ['content/page.bundle.js'], css: [], matches: ['<all_urls>'] });
+fake.local.sheetWalkIndex = { 'https://a.test': [1, 1, 1] };
+fake.local['sheetWalk:https://a.test'] = { v: 'x', files: {} };
 
 const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
 function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
@@ -101,33 +104,13 @@ function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
 
 await import('../extension/background.ts');
 const store = await import('../extension/background/store.ts');
-const { queueRegistrations, whenRegistered } = await import('../extension/background/registered.ts');
-const { layoutFiles } = await import('../extension/shared/page-box.ts');
 for (let i = 0; i < 100 && !store.isSynced(); i++) await sleep(10);
 assert.ok(store.isSynced(), 'synced');
-const settled = async () => { await sleep(30); await whenRegistered(); await sleep(10); };
 
-test('not linked: nothing is registered for the first paint (no box, no frame); linked or reconnecting, the first paint is; off again, the same at no box (updated, never taken away); the build before\'s placeholder dropped', async () => {
-  await settled();
-  assert.deepEqual([...fake.registered.keys()], [], 'not linked: nothing');
-  fake.registered.set('margin-docked', { id: 'margin-docked', css: ['themes/arcadia/docked/w-260.css'] }); // the build before Phase 3's
-  await chrome.storage.local.set({ appLink: { state: 'linked', layouts: {} } });
-  await settled();
-  assert.deepEqual([...fake.registered.keys()], ['margin-page'], 'the build before\'s placeholder dropped');
-  const page = fake.registered.get('margin-page');
-  assert.deepEqual(page.js, ['content/page.bundle.js']);
-  assert.deepEqual(page.css, [...layoutFiles({ left: 8, top: 8, right: 8, bottom: 8, radius: 6.25 }), 'content/layout/theme-arcadia.css'], 'no window measured yet: the frame from the settings');
-  assert.equal(page.world, 'MAIN');
-  await chrome.storage.local.set({ appLink: { state: 'reconnecting', layouts: { 1: { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 10 } } } });
-  await settled();
-  assert.ok(fake.registered.get('margin-page')?.js, 'reconnecting: still there');
-  void queueRegistrations(); // (the link's layouts settled: background.ts layoutsChanged)
-  await settled();
-  assert.deepEqual(fake.registered.get('margin-page').css.slice(0, -1), layoutFiles({ left: 260, top: 8, right: 8, bottom: 8, radius: 10 }), 'at the window\'s layout');
-  await chrome.storage.local.set({ appLink: { state: 'off', layouts: {} } });
-  await settled();
-  assert.deepEqual([...fake.registered.keys()], ['margin-page']);
-  assert.deepEqual(fake.registered.get('margin-page').css, [...layoutFiles({ left: 0, top: 0, right: 0, bottom: 0, radius: 0 }), 'content/layout/theme-arcadia.css'], 'off: no box');
+test('the page box\'s registration and kept sheet walks, left from before its removal, are dropped at start; nothing is registered', async () => {
+  for (let i = 0; i < 50 && (fake.registered.size || 'sheetWalkIndex' in fake.local); i++) await sleep(10);
+  assert.equal(fake.registered.size, 0);
+  assert.ok(!('sheetWalkIndex' in fake.local) && !('sheetWalk:https://a.test' in fake.local));
 });
 
 test('not linked: ⌘T and the palette\'s key open Margin\'s new-tab page, once a press however it came; the sidebar\'s key does nothing; no page is asked to draw a palette', async () => {

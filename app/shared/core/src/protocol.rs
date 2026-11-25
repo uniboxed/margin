@@ -1,4 +1,4 @@
-//! What Margin's extension and the app say on their link, version 2 (app/platforms/macos/shell/LinkMessage.swift; docs/PROTOCOL.md
+//! What Margin's extension and the app say on their link, version 2 (the one copy: the Mac's LinkMessage.swift maps it, step 1.5; docs/PROTOCOL.md
 //! describes every message and the order they come in): one JSON object per message, `k` naming its kind.
 //! [`LinkMessage`] is what an extension copy sends, [`AppMessage`] what the app does. The state comes as the
 //! extension's stored values, left as they are ([`crate::mirror::StateMirror`] keeps them).
@@ -18,7 +18,7 @@ pub const VERSION: i64 = 2;
 /// `LinkProtocol.maxAppMessage`: the largest message the app sends, as UTF-8 JSON (Chrome closes a native port on a
 /// bigger one from the host; the same cap is kept for every browser).
 pub const MAX_APP_MESSAGE: usize = 1_000_000;
-/// The largest message the app takes in (LinkSocket.swift `FrameReader.maxMessage`; Chrome's own limit to a host is
+/// The largest message the app takes in (`websocket::MAX_MESSAGE`; Chrome's own limit to a host is
 /// 64 MB): a first snapshot holds every site icon.
 pub const MAX_INCOMING: usize = 64 * 1024 * 1024;
 /// `LinkProtocol.chunkBytes`: a chunk's bytes before base64 (about 683 KB as text, well inside the 1 MB cap).
@@ -44,10 +44,11 @@ fn count(s: &str) -> usize {
     s.chars().count()
 }
 
-/// `PageLayout`: where the theme put the page in one browser window (ui/host.ts Geometry): `<m-page>`'s content box
-/// as insets from the window's edges, in points (CSS pixels at zoom 1 in the overlay, which is exactly over the
-/// window).
-#[derive(Clone, Debug, PartialEq)]
+/// `PageLayout`: where the theme put the page in one browser window or in Margin's own window (ui/host.ts Geometry,
+/// the Mac's PageLayout.swift): `<m-page>`'s content box as insets from the window's edges, in points (CSS pixels at
+/// zoom 1 in the overlay, which is exactly over the window), its corners, and in Margin's own window what it was
+/// measured for, the colours around its corners and a split's panes.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct PageLayout {
     pub left: f64,
     pub top: f64,
@@ -60,11 +61,52 @@ pub struct PageLayout {
     pub width: f64,
     pub height: f64,
     pub mode: String,
+    /// Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
+    pub outside: bool,
+    /// Measured while hosting in its page area (`pageHosted`): the sidebar as the person keeps it, not the launcher's.
+    /// A hosted window is placed only by such a layout.
+    pub hosted: bool,
+    /// What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts
+    /// cornerFill): each corner's colour outside the card (CSS colours, top left clockwise; "": not said), four or none.
+    pub fills: Vec<String>,
+    /// A split shown (docs/PEEK-SPLIT.md §4): its id, and each pane's box as Margin's renderer laid it out in `<m-page>`
+    /// (`<m-pane>`, in the page's coordinates, top left), in the split's order; none: no split.
+    pub split: Option<String>,
+    pub panes: Vec<PagePane>,
+}
+
+/// One pane of a split as the page laid it out (`PageLayout::panes`): its item and its box in the page, top left.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PagePane {
+    pub item: String,
+    pub rect: Rect,
+}
+
+impl PagePane {
+    /// An item's id as a pane names it: 1 to 256 ASCII letters, digits and `-_:.`.
+    pub fn id_ok(s: &str) -> bool {
+        !s.is_empty() && s.len() <= 256 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(&b))
+    }
+
+    /// `{ id, rect: [x, y, width, height] }`, a finite box with a size; `None` for anything else.
+    fn from_json(v: &Value) -> Option<PagePane> {
+        let o = v.as_object()?;
+        let item = json::string(o.get("id")).filter(|s| Self::id_ok(s))?;
+        let r = json::array(o.get("rect")).filter(|r| r.len() == 4)?;
+        let n: Vec<f64> = r.iter().filter_map(|v| json::num(Some(v))).collect();
+        if n.len() != 4 || !(n[2] > 0.0 && n[3] > 0.0) {
+            return None;
+        }
+        Some(PagePane { item: item.to_owned(), rect: Rect::new(n[0], n[1], n[2], n[3]) })
+    }
 }
 
 impl PageLayout {
-    /// `init?(geometry:)`: from the page's report (`{ insets, radius, radii, container, mode }`); `None` if it isn't
-    /// one (insets and a positive size needed).
+    /// `init?(geometry:)`: from the page's report (`{ insets, radius, radii, container, mode, pageOutside, pageHosted,
+    /// fills, split, panes }`); `None` if it isn't one (insets and a positive size needed). What's past the box is
+    /// read as the Swift read it: a bool as `as? Bool` (a number 1 is one), at most four fills each a string of at
+    /// most 80 Unicode scalars (else ""; the Swift counted characters), a split only with 2 to 4 panes, each a finite
+    /// box with a size and an item of its own.
     pub fn from_geometry(g: &Object) -> Option<Self> {
         let insets = json::object(g.get("insets"))?;
         let left = json::num(insets.get("left"))?;
@@ -81,18 +123,46 @@ impl PageLayout {
         let radii: Vec<f64> = json::array(g.get("radii"))
             .map(|a| a.iter().filter_map(|v| json::num(Some(v))).collect())
             .unwrap_or_default();
-        Some(Self {
-            left,
-            top,
-            right,
-            bottom,
-            radius: radius.max(0.0),
-            // (As the Swift: four radii or the radius as given, before it's kept from going below 0.)
-            radii: if radii.len() == 4 { radii } else { vec![radius; 4] },
-            width,
-            height,
-            mode: json::string(g.get("mode")).unwrap_or("fullscreen").to_owned(),
-        })
+        Some(
+            Self {
+                left,
+                top,
+                right,
+                bottom,
+                radius: radius.max(0.0),
+                // (As the Swift: four radii or the radius as given, before it's kept from going below 0.)
+                radii: if radii.len() == 4 { radii } else { vec![radius; 4] },
+                width,
+                height,
+                mode: json::string(g.get("mode")).unwrap_or("fullscreen").to_owned(),
+                outside: json::flag(g.get("pageOutside")) == Some(true),
+                hosted: json::flag(g.get("pageHosted")) == Some(true),
+                fills: Self::fills(g),
+                split: None,
+                panes: Vec::new(),
+            }
+            .with_split(g),
+        )
+    }
+
+    fn fills(g: &Object) -> Vec<String> {
+        let Some(said) = json::array(g.get("fills")) else { return Vec::new() };
+        if said.len() < 4 {
+            return Vec::new();
+        }
+        said.iter().take(4).map(|v| json::string(Some(v)).filter(|s| count(s) <= 80).unwrap_or("").to_owned()).collect()
+    }
+
+    fn with_split(mut self, g: &Object) -> Self {
+        let Some(id) = json::string(g.get("split")).filter(|s| PagePane::id_ok(s)) else { return self };
+        let Some(list) = json::array(g.get("panes")).filter(|l| (2..=4).contains(&l.len())) else { return self };
+        let parsed: Vec<PagePane> = list.iter().filter_map(PagePane::from_json).collect();
+        let unique = parsed.iter().enumerate().all(|(i, p)| parsed[..i].iter().all(|q| q.item != p.item));
+        if parsed.len() == list.len() && unique {
+            self.split = Some(id.to_owned());
+            self.panes = parsed;
+        }
+        self
     }
 
     /// `inWindow(overlay:window:)`: measured in an overlay at `overlay` over a window at `window` (both top left),
@@ -112,10 +182,12 @@ impl PageLayout {
             width: window.width,
             height: window.height,
             mode: self.mode.clone(),
+            ..self.clone()
         }
     }
 
-    /// `rounded`: to half a point, what the page box can show (and what's compared before sending again).
+    /// `rounded`: to half a point, what the page box can show (and what's compared before sending again): the box and
+    /// its corners only (what Margin's own window reads past them isn't sent).
     pub fn rounded(&self) -> PageLayout {
         let half = |v: f64| (v * 2.0).round() / 2.0;
         PageLayout {
@@ -128,6 +200,7 @@ impl PageLayout {
             width: half(self.width),
             height: half(self.height),
             mode: self.mode.clone(),
+            ..PageLayout::default()
         }
     }
 
@@ -247,6 +320,25 @@ impl Hello {
     }
 }
 
+impl Hello {
+    /// As JSON, every field named (`null` when not said): what margin-ffi hands the Mac's Swift.
+    pub fn object(&self) -> Object {
+        let text = |v: &Option<String>| v.clone().map_or(Value::Null, Value::from);
+        let mut o = Object::new();
+        o.insert("epoch".into(), self.epoch.clone().into());
+        o.insert("profile".into(), self.profile.clone().into());
+        o.insert("browser".into(), self.browser.clone().into());
+        o.insert("ext".into(), text(&self.ext));
+        o.insert("owner".into(), self.owner.into());
+        o.insert("instanceId".into(), text(&self.instance_id));
+        o.insert("origin".into(), text(&self.origin));
+        o.insert("since".into(), self.since.and_then(number).unwrap_or(Value::Null));
+        o.insert("pid".into(), self.pid.map_or(Value::Null, Value::from));
+        o.insert("socketsOff".into(), text(&self.sockets_off));
+        o
+    }
+}
+
 /// `LinkMessage.profilePattern`: `^[A-Za-z0-9_.:-]{1,64}$`.
 pub fn is_profile_id(s: &str) -> bool {
     (1..=64).contains(&s.len())
@@ -317,7 +409,16 @@ pub enum LinkMessage {
         id: i64,
         body: Object,
     },
-    Tock,
+    /// `ack { id }`: the copy read that `req` and takes it (docs/LINK-RESILIENCE.md §1 rule 2), said before it runs. An
+    /// older copy never sends one.
+    Ack {
+        id: i64,
+    },
+    /// The answer to `tick`, its `seq` echoed. None from an older copy, or from the copy's own probe after a pause: then
+    /// it says only that the copy is alive.
+    Tock {
+        seq: Option<i64>,
+    },
     Bye {
         why: String,
     },
@@ -360,7 +461,8 @@ impl LinkMessage {
                     profile: profile.to_owned(),
                     browser: browser.to_owned(),
                     ext: text("ext"),
-                    owner: json::boolean(m.get("owner")).unwrap_or(false),
+                    // (Read as Swift's `as? Bool` read it: 1 and 0 too.)
+                    owner: json::flag(m.get("owner")).unwrap_or(false),
                     instance_id: text("instanceId"),
                     origin: text("origin"),
                     since: json::num(m.get("since")),
@@ -398,8 +500,8 @@ impl LinkMessage {
                 let epoch = epoch?;
                 let msg = json::object(m.get("msg"))?;
                 let window_id = json::int(m.get("windowId"));
-                if json::string(msg.get("type")) == Some(ParkedActivity::TYPE) {
-                    let activity = ParkedActivity::from_msg(msg, window_id)?;
+                // (A malformed one is a plain push, as the Mac's Swift had it: the message isn't lost.)
+                if let Some(activity) = ParkedActivity::from_msg(msg, window_id) {
                     return Some(Self::ParkedActivity { epoch, activity });
                 }
                 Some(Self::Push { epoch, window_id, msg: msg.clone() })
@@ -426,10 +528,115 @@ impl LinkMessage {
                 body.remove("id");
                 Some(Self::Reply { id, body })
             }
-            "tock" => Some(Self::Tock),
+            "ack" => Some(Self::Ack { id: json::int(m.get("id"))? }),
+            "tock" => Some(Self::Tock { seq }),
             "bye" => Some(Self::Bye { why: json::string(m.get("why")).unwrap_or("").to_owned() }),
             other => Some(Self::Other(other.to_owned())),
         }
+    }
+}
+
+impl LinkMessage {
+    /// The message as its wire form again, once read here (what margin-ffi hands the Mac's Swift, which then reads
+    /// nothing twice): `k` and the fields its kind has, each as decoded (a delta's changes as `{ newValue }` or `{}`,
+    /// a reply's body beside its `id`, a data message's body as it came). A parked window's activity is the push it
+    /// came as (the Mac reads it as one); a kind not known is `{ k }` alone.
+    pub fn object(&self) -> Object {
+        let mut o = Object::new();
+        let kind = |o: &mut Object, k: &str| {
+            o.insert("k".into(), k.into());
+        };
+        match self {
+            Self::Hello(h) => {
+                o = h.object();
+                kind(&mut o, "hello");
+                o.insert("v".into(), VERSION.into());
+            }
+            Self::Snapshot { epoch, seq, state, windows } => {
+                kind(&mut o, "snapshot");
+                o.insert("epoch".into(), epoch.clone().into());
+                o.insert("seq".into(), (*seq).into());
+                o.insert("state".into(), Value::Object(state.clone()));
+                o.insert("windows".into(), Value::Array(windows.iter().cloned().map(Value::Object).collect()));
+            }
+            Self::Delta { epoch, seq, changes, favicons } => {
+                kind(&mut o, "delta");
+                o.insert("epoch".into(), epoch.clone().into());
+                o.insert("seq".into(), (*seq).into());
+                let mut c = Object::new();
+                for (key, change) in changes {
+                    let mut v = Object::new();
+                    if let Change::Set(value) = change {
+                        v.insert("newValue".into(), value.clone());
+                    }
+                    c.insert(key.clone(), Value::Object(v));
+                }
+                o.insert("changes".into(), Value::Object(c));
+                if let Some(f) = favicons {
+                    let mut fo = Object::new();
+                    fo.insert("set".into(), Value::Object(f.set.clone()));
+                    fo.insert("del".into(), Value::Array(f.del.iter().cloned().map(Value::from).collect()));
+                    o.insert("favicons".into(), Value::Object(fo));
+                }
+            }
+            Self::Windows { epoch, seq, list } => {
+                kind(&mut o, "windows");
+                o.insert("epoch".into(), epoch.clone().into());
+                o.insert("seq".into(), (*seq).into());
+                o.insert("list".into(), Value::Array(list.iter().cloned().map(Value::Object).collect()));
+            }
+            Self::Push { epoch, window_id, msg } => {
+                kind(&mut o, "push");
+                o.insert("epoch".into(), epoch.clone().into());
+                o.insert("windowId".into(), window_id.map_or(Value::Null, Value::from));
+                o.insert("msg".into(), Value::Object(msg.clone()));
+            }
+            Self::ParkedActivity { epoch, activity } => {
+                kind(&mut o, "push");
+                o.insert("epoch".into(), epoch.clone().into());
+                o.insert("windowId".into(), activity.window_id.into());
+                o.insert("msg".into(), Value::Object(activity.msg()));
+            }
+            Self::Theme { epoch, chunk } => {
+                o = chunk.fields();
+                kind(&mut o, "theme");
+                o.insert("epoch".into(), epoch.clone().into());
+            }
+            Self::Keys { epoch, bindings } => {
+                kind(&mut o, "keys");
+                o.insert("epoch".into(), epoch.clone().into());
+                let b: Object = bindings
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::Array(v.iter().cloned().map(Value::from).collect())))
+                    .collect();
+                o.insert("bindings".into(), Value::Object(b));
+            }
+            Self::Reply { id, body } => {
+                o = body.clone();
+                kind(&mut o, "reply");
+                o.insert("id".into(), (*id).into());
+            }
+            Self::Ack { id } => {
+                kind(&mut o, "ack");
+                o.insert("id".into(), (*id).into());
+            }
+            Self::Tock { seq } => {
+                kind(&mut o, "tock");
+                if let Some(seq) = seq {
+                    o.insert("seq".into(), (*seq).into());
+                }
+            }
+            Self::Bye { why } => {
+                kind(&mut o, "bye");
+                o.insert("why".into(), why.clone().into());
+            }
+            Self::Data { kind: k, body } => {
+                o = body.clone();
+                kind(&mut o, k);
+            }
+            Self::Other(k) => kind(&mut o, k),
+        }
+        o
     }
 }
 
@@ -450,8 +657,15 @@ pub enum AppMessage {
     Welcome {
         key: String,
     },
-    /// Every 5 s; the copy answers `tock`.
-    Tick,
+    /// Every 5 s; the copy answers `tock` with the same `seq` (counted from 1 on each link).
+    Tick {
+        seq: i64,
+    },
+    /// `cancel { id }`: the app no longer waits for that `req` (the pick it was for was overtaken). Not started yet, it
+    /// never is; under way, it stops at its next check. Neither is answered.
+    Cancel {
+        id: i64,
+    },
     /// An action from a window's UI, answered with `reply` (the same id).
     Req {
         id: i64,
@@ -512,9 +726,14 @@ impl AppMessage {
                 put("v", VERSION.into());
                 put("key", key.clone().into());
             }
-            Self::Tick => {
+            Self::Tick { seq } => {
                 put("k", "tick".into());
                 put("at", at);
+                put("seq", (*seq).into());
+            }
+            Self::Cancel { id } => {
+                put("k", "cancel".into());
+                put("id", (*id).into());
             }
             Self::Req { id, epoch, window_id, kind, payload } => {
                 put("k", "req".into());
@@ -676,6 +895,7 @@ impl WindowState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum HandoffRequest {
     /// B to full screen and focused, or A to normal without taking focus (not focusWindow, which always focuses).
+    /// (A window the app hosts: hosted_browser's `Ask::SetWindowState` with `land` false.)
     SetWindowState {
         window_id: i64,
         state: WindowState,
@@ -794,6 +1014,8 @@ impl HandoffRequest {
 /// an earlier call for that window is stuck (behind a hung tab).
 #[derive(Clone, Debug, PartialEq)]
 pub enum WindowCallAnswer {
+    /// setWindowState with `land: false`: the browser took the ask (no word on the state).
+    Asked { window_id: i64, state: String },
     /// setWindowState: the browser says the window is in that state (`landedAt`).
     Landed { window_id: i64, state: String, at: f64 },
     /// setWindowState: asked, not in that state within 3 s.
@@ -807,8 +1029,9 @@ pub enum WindowCallAnswer {
 }
 
 impl WindowCallAnswer {
+    /// (Its flags read as Swift's `as? Bool` read them: 1 and 0 too.)
     pub fn from_result(result: &Object) -> Self {
-        if json::boolean(result.get("busy")) == Some(true) {
+        if json::flag(result.get("busy")) == Some(true) {
             return Self::Busy;
         }
         if let Some(why) = json::string(result.get("refused")) {
@@ -816,7 +1039,10 @@ impl WindowCallAnswer {
         }
         let state = json::string(result.get("state")).map(str::to_owned);
         if let (Some(window_id), Some(state)) = (json::int(result.get("windowId")), &state) {
-            if json::boolean(result.get("timedOut")) == Some(true) {
+            if json::flag(result.get("asked")) == Some(true) {
+                return Self::Asked { window_id, state: state.clone() };
+            }
+            if json::flag(result.get("timedOut")) == Some(true) {
                 return Self::TimedOut { window_id, state: state.clone() };
             }
             if let Some(at) = json::num(result.get("landedAt")) {
@@ -1018,6 +1244,53 @@ mod tests {
     }
 
     #[test]
+    fn owner_reads_as_swift_read_it() {
+        let owner = |v: Value| match decode(
+            json!({"k":"hello","v":2,"epoch":"e","profile":"p","browser":"safari","owner":v}),
+        ) {
+            Some(LinkMessage::Hello(h)) => h.owner,
+            _ => panic!("a hello"),
+        };
+        assert!(owner(json!(true)) && owner(json!(1)) && owner(json!(1.0)));
+        assert!(!owner(json!(0)) && !owner(json!(false)) && !owner(json!("true")) && !owner(json!(2)));
+    }
+
+    #[test]
+    fn messages_as_their_wire_form_again() {
+        for v in [
+            json!({"k":"hello","v":2,"epoch":"e1","profile":"P","browser":"chrome","pid":4,"owner":1,"since":5}),
+            json!({"k":"snapshot","epoch":"e","seq":1,"state":{"a":[1]},"windows":[{"windowId":3}]}),
+            json!({"k":"delta","epoch":"e","seq":2,"changes":{"pins":{"newValue":[]},"folders":{},"x":{"newValue":null}},"favicons":{"set":{"u":{"icon":"i"}},"del":["v"]}}),
+            json!({"k":"delta","epoch":"e","seq":2,"changes":{}}),
+            json!({"k":"windows","epoch":"e","seq":3,"list":[{"windowId":1}]}),
+            json!({"k":"push","epoch":"e","windowId":4,"msg":{"type":"loading","tabIds":[1]}}),
+            json!({"k":"push","epoch":"e","msg":{"type":"toast","text":"x"}}),
+            json!({"k":"push","epoch":"e","windowId":3,"msg":{"type":"parkedActivity","windowId":3,"why":"focus"}}),
+            json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","why":"hover"}}),
+            json!({"k":"theme","epoch":"e","id":"a","transfer":"f".repeat(64),"part":0,"parts":1,"size":3,"data":"YWJj"}),
+            json!({"k":"keys","epoch":"e","bindings":{"palette":["Meta+KeyT"]}}),
+            json!({"k":"reply","id":7,"ok":true,"result":{"a":1}}),
+            json!({"k":"tock"}),
+            json!({"k":"bye","why":"x"}),
+            json!({"k":"data.hello","epoch":"e","format":1}),
+            json!({"k":"later"}),
+        ] {
+            let Some(m) = decode(v.clone()) else { panic!("{v}") };
+            let again = LinkMessage::from_value(&Value::Object(m.object()));
+            assert_eq!(again.as_ref(), Some(&m), "{v}");
+        }
+        let Some(LinkMessage::Hello(h)) =
+            decode(json!({"k":"hello","v":2,"epoch":"e1","profile":"P","browser":"edge"}))
+        else {
+            panic!()
+        };
+        assert_eq!(
+            Value::Object(h.object()),
+            json!({"epoch":"e1","profile":"P","browser":"edge","ext":null,"owner":false,"instanceId":null,"origin":null,"since":null,"pid":null,"socketsOff":null})
+        );
+    }
+
+    #[test]
     fn hellos_that_are_not() {
         let not = |v: Value| assert_eq!(decode(v.clone()), None, "{v}");
         not(json!({"k":"hello","v":1,"epoch":"e1","owner":true,"profile":"p","browser":"safari"}));
@@ -1145,7 +1418,7 @@ mod tests {
         assert_eq!(id, 7);
         assert_eq!(Value::Object(body), json!({"ok":false,"error":"x","stale":true}), "the answer without k and id");
         assert_eq!(decode(json!({"k":"reply","ok":true})), None, "a reply needs its id");
-        assert_eq!(decode(json!({"k":"tock","at":1})), Some(LinkMessage::Tock));
+        assert_eq!(decode(json!({"k":"tock","at":1})), Some(LinkMessage::Tock { seq: None }));
         assert_eq!(decode(json!({"k":"bye","why":"turned off"})), Some(LinkMessage::Bye { why: "turned off".into() }));
         assert_eq!(decode(json!({"k":"bye"})), Some(LinkMessage::Bye { why: String::new() }));
         assert_eq!(decode(json!({"k":"later"})), Some(LinkMessage::Other("later".into())));
@@ -1173,6 +1446,53 @@ mod tests {
         let Some(LinkMessage::Data { kind, body }) = decode(json!({"k":"data.hello","format":1})) else { panic!() };
         assert_eq!(kind, "data.hello");
         assert_eq!(body.get("format"), Some(&json!(1)));
+    }
+
+    /// The link's words shared with the copy's tests and the Mac's (tests/fixtures/link-protocol.json).
+    #[test]
+    fn the_shared_link_vectors() {
+        let path =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/link-protocol.json");
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+        let app = v["app"].as_array().cloned().unwrap_or_default();
+        let copy = v["copy"].as_array().cloned().unwrap_or_default();
+        assert!(app.len() >= 2 && copy.len() >= 5, "the vectors read: {}", path.display());
+        for case in app {
+            let m = &case["message"];
+            let message = match m["k"].as_str() {
+                Some("tick") => AppMessage::Tick { seq: m["seq"].as_i64().unwrap_or(0) },
+                Some("cancel") => AppMessage::Cancel { id: m["id"].as_i64().unwrap_or(0) },
+                other => panic!("a message the vectors don't make: {other:?}"),
+            };
+            let at = case["at"].as_f64().unwrap_or(0.0);
+            let sent = message.encode(at).and_then(|t| serde_json::from_str::<Value>(&t).ok());
+            assert_eq!(sent.as_ref(), Some(&case["text"]), "{}", case["about"]);
+        }
+        for case in copy {
+            let read = decode(case["text"].clone()).map(|m| Value::Object(m.object()));
+            assert_eq!(read.unwrap_or(Value::Null), case["reads"], "{}", case["about"]);
+        }
+    }
+
+    #[test]
+    fn ack_cancel_and_the_numbered_tick_and_tock() {
+        assert_eq!(decode(json!({"k":"ack","id":7})), Some(LinkMessage::Ack { id: 7 }));
+        assert_eq!(decode(json!({"k":"ack"})), None, "an ack needs its id");
+        assert_eq!(decode(json!({"k":"ack","id":1.5})), None);
+        assert_eq!(decode(json!({"k":"tock","at":1,"seq":4})), Some(LinkMessage::Tock { seq: Some(4) }));
+        assert_eq!(decode(json!({"k":"tock","at":1})), Some(LinkMessage::Tock { seq: None }), "an older copy's");
+        assert_eq!(
+            decode(json!({"k":"tock","seq":"4"})),
+            Some(LinkMessage::Tock { seq: None }),
+            "not a number: life only"
+        );
+        assert_eq!(Value::Object(LinkMessage::Ack { id: 7 }.object()), json!({"k":"ack","id":7}));
+        assert_eq!(Value::Object(LinkMessage::Tock { seq: Some(4) }.object()), json!({"k":"tock","seq":4}));
+        assert_eq!(Value::Object(LinkMessage::Tock { seq: None }.object()), json!({"k":"tock"}));
+        let tick = sent(&AppMessage::Tick { seq: 3 });
+        assert_eq!(Value::Object(tick), json!({"k":"tick","at":1_800_000_000_000_i64,"seq":3}));
+        assert_eq!(Value::Object(sent(&AppMessage::Cancel { id: 5 })), json!({"k":"cancel","id":5}));
     }
 
     // ---- tests.swift appMessages() ----
@@ -1207,6 +1527,7 @@ mod tests {
             width: 1280.0,
             height: 800.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         };
         let s = sent(&AppMessage::SetLayout { epoch: "e".into(), window_id: 7, seq: 2, layout: layout.clone() });
         assert_eq!(s.get("k"), Some(&json!("setLayout")));
@@ -1229,7 +1550,7 @@ mod tests {
         );
         assert_eq!(sent(&AppMessage::Resync { epoch: "e".into() }).get("epoch"), Some(&json!("e")));
         assert_eq!(sent(&AppMessage::Bye { why: "quit".into() }).get("why"), Some(&json!("quit")));
-        assert_eq!(sent(&AppMessage::Tick).get("k"), Some(&json!("tick")));
+        assert_eq!(sent(&AppMessage::Tick { seq: 1 }).get("k"), Some(&json!("tick")));
 
         let data = sent(&AppMessage::Data { kind: "data.ack".into(), body: obj(json!({"k":"x","upTo":4})) });
         assert_eq!(Value::Object(data), json!({"k":"data.ack","upTo":4}), "the kind wins over the body's k");
@@ -1271,9 +1592,10 @@ mod tests {
             width: 1.0,
             height: 1.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         };
         assert_eq!(AppMessage::SetLayout { epoch: "e".into(), window_id: 1, seq: 1, layout }.encode(AT), None);
-        assert_eq!(AppMessage::Tick.encode(f64::INFINITY), None);
+        assert_eq!(AppMessage::Tick { seq: 1 }.encode(f64::INFINITY), None);
         assert_eq!(HandoffRequest::frame_probe(1, f64::NAN, 1.0).payload(), None);
     }
 
@@ -1311,6 +1633,73 @@ mod tests {
         assert_eq!(bare.mode, "fullscreen");
     }
 
+    // ---- T/session-rules-tests.swift pageLayoutReportTests: what Margin's own window reads past the box ----
+
+    #[test]
+    fn layout_reports_past_the_box() {
+        let base = json!({"insets":{"left":260,"top":8,"right":8,"bottom":8},"container":{"width":1512,"height":949}});
+        let layout = |extra: Value| {
+            let mut g = obj(base.clone());
+            g.extend(obj(extra));
+            PageLayout::from_geometry(&g)
+        };
+        let Some(bare) = layout(json!({})) else { panic!("a report") };
+        assert_eq!(
+            (bare.outside, bare.hosted, bare.fills.len(), bare.split.as_deref(), bare.panes.len()),
+            (false, false, 0, None, 0)
+        );
+        let flags = layout(json!({"pageOutside":1,"pageHosted":true})).map(|l| (l.outside, l.hosted));
+        assert_eq!(flags, Some((true, true)), "a number 1 is a bool, as Swift reads one");
+        assert_eq!(
+            layout(json!({"pageOutside":"true","pageHosted":2})).map(|l| (l.outside, l.hosted)),
+            Some((false, false))
+        );
+        assert_eq!(layout(json!({"radius":4,"radii":[1,"2",3,4,5]})).map(|l| l.radii), Some(vec![1.0, 3.0, 4.0, 5.0]));
+        assert_eq!(layout(json!({"mode":3})).map(|l| l.mode), Some("fullscreen".to_owned()));
+        let fills = layout(json!({"fills":["#111",2,"c".repeat(81),"#444","#555"]})).map(|l| l.fills);
+        assert_eq!(fills, Some(vec!["#111".to_owned(), String::new(), String::new(), "#444".to_owned()]));
+        assert_eq!(layout(json!({"fills":["#111","#222"]})).map(|l| l.fills.len()), Some(0));
+        let pane = |id: Value, rect: Value| json!({"id": id, "rect": rect});
+        let two = layout(
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([260,8,600,900])), pane(json!("b:c.d_e-f"), json!([870,8,600,900]))]}),
+        );
+        let Some(two) = two else { panic!("a split") };
+        assert_eq!(two.split.as_deref(), Some("sp-1"));
+        assert_eq!(
+            two.panes,
+            vec![
+                PagePane { item: "a".into(), rect: Rect::new(260.0, 8.0, 600.0, 900.0) },
+                PagePane { item: "b:c.d_e-f".into(), rect: Rect::new(870.0, 8.0, 600.0, 900.0) }
+            ]
+        );
+        let refused = [
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1]))]}),
+            json!({"split":"sp-1","panes":(0..5).map(|i| pane(json!(format!("p{i}")), json!([0,0,1,1]))).collect::<Vec<_>>()}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("a"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,0,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,true]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b c"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("é"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!(""), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("x".repeat(257)), json!([2,0,1,1]))]}),
+            json!({"split":"sp 1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
+            json!({"split":7,"panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":"a"}),
+        ];
+        for r in refused {
+            let l = layout(r.clone());
+            assert!(l.is_some_and(|l| l.split.is_none() && l.panes.is_empty()), "{r}: no split, the layout kept");
+        }
+        let wide = layout(
+            json!({"split":"s","panes":[pane(json!("x".repeat(256)), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
+        );
+        assert_eq!(wide.map(|l| l.panes.len()), Some(2), "a 256-character id is one");
+        // (What's past the box isn't what's sent, nor what's compared before sending again.)
+        let Some(full) = layout(json!({"pageHosted":true,"fills":["a","b","c","d"]})) else { panic!() };
+        assert_eq!(full.rounded(), bare.rounded());
+    }
+
     #[test]
     fn layout_in_window() {
         let l = PageLayout {
@@ -1323,6 +1712,7 @@ mod tests {
             width: 800.0,
             height: 600.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         };
         let window = Rect::new(0.0, 0.0, 1000.0, 700.0);
         assert_eq!(l.in_window(window, window), l);
@@ -1352,12 +1742,18 @@ mod tests {
             decode(json!({"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","why":"focus"}})),
             Some(LinkMessage::ParkedActivity { activity, .. }) if activity.window_id == 5
         ));
-        let not = |v: Value| assert_eq!(decode(v.clone()), None, "{v}");
-        not(json!({"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","windowId":6,"why":"focus"}}));
-        not(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"hover"}}));
-        not(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"tab"}}));
-        not(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","why":"focus"}}));
-        not(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":-1,"why":"focus"}}));
+        // A malformed one: a plain push, the message kept (as the Mac's Swift passed it on).
+        let plain = |v: Value| {
+            assert!(
+                matches!(decode(v.clone()), Some(LinkMessage::Push { msg, .. }) if msg.get("type") == Some(&json!("parkedActivity"))),
+                "{v}"
+            )
+        };
+        plain(json!({"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","windowId":6,"why":"focus"}}));
+        plain(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"hover"}}));
+        plain(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"tab"}}));
+        plain(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","why":"focus"}}));
+        plain(json!({"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":-1,"why":"focus"}}));
         assert_eq!(
             ParkedActivity::from_msg(&obj(json!({"type":"parkedActivity","windowId":6,"why":"raise"})), None),
             None
@@ -1389,6 +1785,34 @@ mod tests {
         let normal =
             HandoffRequest::SetWindowState { window_id: 4, state: WindowState::Normal, focused: false, not_after: 1.0 };
         assert_eq!(normal.payload().map(Value::Object), Some(json!({"windowId":4,"state":"normal","notAfter":1})));
+        // (hosted-tests.swift's setWindowState: Margin.app's, for a window it hosts: `land: false`, hosted_browser's
+        // Ask, the whole milliseconds as here.)
+        use crate::hosted_browser::{Ask, State};
+        let hosted = Ask::SetWindowState {
+            window_id: 90,
+            state: State::Fullscreen,
+            focused: true,
+            not_after: Some(1_800_000_002_000.6),
+            land: false,
+        };
+        assert_eq!(
+            hosted.payload().ok().map(Value::Object),
+            Some(
+                json!({"windowId":90,"state":"fullscreen","notAfter":1_800_000_002_001_i64,"land":false,"focused":true})
+            )
+        );
+        let out = Ask::SetWindowState {
+            window_id: 90,
+            state: State::Normal,
+            focused: false,
+            not_after: Some(3.0),
+            land: false,
+        };
+        assert_eq!(
+            out.payload().ok().map(Value::Object),
+            Some(json!({"windowId":90,"state":"normal","notAfter":3,"land":false})),
+            "normal: never focused"
+        );
         let probe = HandoffRequest::frame_probe(4, 1512.0, 982.0).payload().map(Value::Object);
         assert_eq!(
             probe,
@@ -1425,6 +1849,23 @@ mod tests {
         );
         assert_eq!(a(json!({"busy":true})), WindowCallAnswer::Busy);
         assert!(!a(json!({"busy":true})).called());
+        assert_eq!(a(json!({"busy":1})), WindowCallAnswer::Busy, "1 is true, as Swift read it");
+        assert_eq!(
+            a(json!({"windowId":4,"state":"fullscreen","asked":true})),
+            WindowCallAnswer::Asked { window_id: 4, state: "fullscreen".into() },
+            "land: false's answer: asked, never Done"
+        );
+        assert!(a(json!({"windowId":4,"state":"normal","asked":true})).called());
+        assert_eq!(
+            a(json!({"windowId":4,"state":"normal","asked":1,"landedAt":3})),
+            WindowCallAnswer::Asked { window_id: 4, state: "normal".into() },
+            "asked first, as Swift read it"
+        );
+        assert_eq!(
+            a(json!({"windowId":4,"state":"normal","timedOut":1})),
+            WindowCallAnswer::TimedOut { window_id: 4, state: "normal".into() }
+        );
+        assert_eq!(a(json!({"state":"normal","asked":true})), WindowCallAnswer::Done { state: Some("normal".into()) });
         assert_eq!(
             a(json!({"refused":"late","pastMs":210})),
             WindowCallAnswer::Refused { why: "late".into(), past_ms: Some(210.0) }

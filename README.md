@@ -30,7 +30,6 @@ page, and you can pick one, change one or write your own.
 - **A command palette** on ⌘T: open a page, search, jump to any tab or space, run any action.
 - **Sleeping tabs** that free their memory when they haven't been used for a while, and an **archive** of tabs closed
   for being idle, to bring back.
-- **iCloud Tabs** from your other devices, in Safari.
 - **Keyboard first**: next tab and space on ⌥⌘ + arrows in Safari and ⌃⌘ + arrows in Chrome and Edge, all changeable
   in Settings.
 
@@ -41,11 +40,12 @@ page, and you can pick one, change one or write your own.
 | **Arcadia** (the default) | a gray frame around the page as a rounded card, space chips, pins and tabs, a dark command bar; inspired by Arc |
 | **Neubrutalism** | a dotted ground in the space's color, bordered cards with hard offset shadows |
 | **Pixel** | an 8-bit game: the PICO-8 palette on a dotted night ground, notched pixel borders, pixel type |
+| **Liquid Glass** | macOS's own glass: a floating glass sidebar, glass capsules and a glass command bar over a soft ground in the space's color (the system's real glass in Margin.app on macOS 26 and later, translucent fills elsewhere) |
 
 A theme is HTML and CSS only, no JavaScript. Margin renders it from its own data, runs its buttons as checked
 actions, and gives it behaviors like drag and drop, resizing and menus through attributes. Imported themes are
 sanitized and drawn in a page that can't run scripts or reach the network, and a security suite attacks that page on
-every change. [Writing a theme](extension/themes/README.md) explains the files, the bindings and how to import one.
+every change. [Writing a theme](app/shared/ui/themes/README.md) explains the files, the bindings and how to import one.
 
 ## Browsers and systems
 
@@ -103,6 +103,7 @@ app/                Margin.app
   engines/          the app's per-browser side
   platforms/        macos (Swift), windows (Rust), linux (later)
 docs/               the protocol, the data, the profile switch, the Windows notes
+brand/              Margin's logo: the app icon, the mark, the lockups, web icons (and how to use them)
 ```
 
 ## Contributing

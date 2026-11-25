@@ -1,4 +1,4 @@
-// Pixel as a theme package (extension/themes/pixel/, the "Sidebar ·
+// Pixel as a theme package (app/shared/ui/themes/pixel/, the "Sidebar ·
 // Pixel / 8-bit" board) in real engines: Playwright's WebKit and Chromium,
 // headless, every network request refused. It loads as a built-in theme with
 // nothing removed and its two fonts from bundled bytes; draws the board's
@@ -7,19 +7,17 @@
 // hidden with and without the frame, peek, the width setting); never paints
 // over the page's box (checked on screen, pixel by pixel); caps the palette
 // and drives it from the keyboard; draws every part with Margin's words only;
-// blinks only while its setting is on and motion is allowed; and its first
-// paint draws the card's pixel border and the ground around the box, nothing
-// inside it. `npm run test:theme`. (Its iCloud Tabs, loading, gestures,
-// notices and behaviors run in cloud.test.ts, feedback.test.ts and
-// behaviors.test.ts with the other themes.)
+// and blinks only while its setting is on and motion is allowed.
+// `npm run test:theme`. (Its loading, gestures, notices and behaviors run in
+// feedback.test.ts and behaviors.test.ts with the other themes.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, PIXEL } from './package.ts';
-import { firstPaintCss, layoutOwnCss } from '../../extension/shared/page-box.ts';
+import { pageLoaderChecks, rgba } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
+import { settingsPageChecks } from './settings-page.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
@@ -29,7 +27,6 @@ const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 const pkg = themeForPage(PIXEL);
 const FONTS = ['Press Start 2P', 'Pixelify Sans'];
-const FIRST_PAINT = firstPaintCss('pixel', readFileSync(new URL('first-paint.css', `file://${PIXEL}`), 'utf8'));
 
 // A screenshot's pixels (Playwright's PNGs: 8-bit RGB or RGBA, not interlaced).
 function decodePng(buf: Buffer) {
@@ -298,13 +295,8 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await ev(() => T.rtRefused()), []);
       });
 
-      await t.test('dedicated Settings has a heading and controls without a start-page field', async () => {
-        await mount({ inNewTab: true });
-        await ev(() => T.rtSetUi({ settingsPage: true }));
-        assert.equal(await count('.launcher h1'), 1);
-        assert.equal(await count('.launcher-query'), 0);
-        assert.equal(await count('.launcher .archive-row, .launcher .tile'), 0);
-        assert.ok(await count('.settings-form input') > 0);
+      await t.test('dedicated Settings: its own page, as System Settings (the categories beside the chosen one\'s settings); never under the search field in Margin.app\'s window', async () => {
+        await settingsPageChecks(page);
       });
 
       await t.test('the new-tab page: a title screen, the > field focused, pinned tiles, the archive; Settings in Pixel\'s inputs', async () => {
@@ -365,23 +357,65 @@ for (const [name, engine] of ENGINES) {
         await ev(() => T.unmountRuntime());
       });
 
-      await t.test('first paint: the card\'s light pixel border and the night ground around the box, nothing inside it', async () => {
-        const fp = await context.newPage();
-        await fp.setContent(`<!doctype html><html data-margin-at="pixel"><head><meta charset="utf-8"><style>${FIRST_PAINT}\n${layoutOwnCss({ left: 286, top: 16, right: 16, bottom: 16, radius: 0 })}</style></head><body style="margin:0;background:#ff00ff"><p style="margin:0">a page</p></body></html>`);
-        await fp.waitForTimeout(60);
-        const shot = decodePng(await fp.screenshot());
-        assert.equal(shot.at(700, 450), '#ff00ff', 'the page inside its box');
-        assert.equal(shot.at(287, 17), '#ff00ff', 'right to its corner');
-        assert.equal(shot.at(700, 14), '#f1f1f1', 'the border above');
-        assert.equal(shot.at(284, 450), '#f1f1f1', 'and at its left');
-        assert.equal(shot.at(284, 14), '#1d1b33', 'a notched corner');
-        assert.equal(shot.at(100, 450), '#1d1b33', 'the ground where the sidebar will be');
-        assert.equal(shot.at(1436, 896), '#1d1b33');
-        // Not marked for Pixel (another theme's, or none): nothing at all.
-        await fp.evaluate(() => document.documentElement.removeAttribute('data-margin-at'));
-        await fp.waitForTimeout(60);
-        assert.equal(decodePng(await fp.screenshot()).at(100, 450), '#ff00ff');
-        await fp.close();
+      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, opaque, never a see-through hole', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', appWindow: true }));
+        const e = await page.evaluate(() => T.rtEmptyPage());
+        assert.ok(e.page && e.launcher, 'a launcher drawn in the page card');
+        const [px, py, pw, ph] = e.page!, [lx, ly, lw, lh] = e.launcher!;
+        assert.ok(Math.abs(px + pw / 2 - (lx + lw / 2)) <= 1 && Math.abs(py + ph / 2 - (ly + lh / 2)) <= 1 && lw >= pw - 8 && lh >= ph - 8, `the page's box covered: ${e.page} ${e.launcher}`);
+        const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
+        assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // Pixel's own page loader (Margin.app, while an item opens): the night ground, a meter of eight cells that
+      // fills in steps in the space's color, over it an hourglass (an icon: the words there are Margin's, guarded),
+      // Margin's words in the pixel type and a blinking block cursor.
+      await pageLoaderChecks(t, browser, {
+        id: 'pixel', dir: PIXEL, script,
+        label: '.opening-label', mark: '.opening-frame',
+        animations: ['px-blink', 'px-fill', 'px-glass'],
+        icon: { size: 32, rendering: 'pixelated' },
+        skeleton: [['.space-name', ''], ['.today', '::before']],
+        starting: ['px-fill', 'px-wait'],
+        look: async (page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, fill: T.rtRect('.opening-fill')!, frame: T.rtRect('.opening-frame')!, head: T.rtRect('.opening-head')!, slot: T.rtRect('m-page-loader')!,
+            color: T.rtComputed('.opening-fill', 'background-color'), timing: T.rtComputed('.opening-fill', 'animation-timing-function'), border: T.rtComputed('.opening-frame', 'box-shadow'), radius: T.rtComputed('.opening-frame', 'border-top-left-radius'),
+            font: T.rtComputed('.opening-label', 'font-family'), upper: T.rtComputed('.opening-label', 'text-transform'), caret: T.rtComputed('.opening-caret', 'animation-name'), glass: T.rtCount('m-page-loader svg.opening-glass path') }));
+          const a = await read();
+          assert.deepEqual(rgba(a.card), [29, 27, 51, 1], 'the night ground');
+          assert.match(a.font ?? '', /Press Start 2P/, 'Margin\'s words in the pixel type');
+          assert.equal(a.upper, 'uppercase');
+          assert.equal(await ev(() => document.fonts.check('12px "Press Start 2P"')), true, 'its bundled font');
+          assert.equal(a.glass, 2, 'an hourglass, drawn (an svg: no words of the theme\'s in a guarded part)');
+          assert.equal(a.caret, 'px-blink', 'a blinking block cursor (the theme\'s setting is on)');
+          assert.match(a.timing ?? '', /^steps\(/, 'the meter fills in steps');
+          assert.deepEqual([a.frame.width, a.frame.height, a.radius], [246, 28, '0px'], 'the meter\'s frame: eight cells, square');
+          assert.equal((a.border ?? '').split('rgb').length - 1, 4, 'a notched pixel border (four hard shadows)');
+          assert.doesNotMatch((a.border ?? '').replace(/rgba?\([^)]*\)/g, ''), /[1-9]\d*px \d+px [1-9]/, 'none blurred');
+          assert.ok(Math.abs(a.frame.x - a.slot.x) <= 1 && Math.abs(a.frame.y - a.slot.y) <= 1, 'in the card\'s middle');
+          assert.ok(a.head.bottom <= a.frame.top - 8 && Math.abs(a.head.x - a.frame.x) <= 1, 'the hourglass, the words and the cursor over it');
+          assert.deepEqual(rgba(a.color), [255, 210, 63, 1], 'filled in the space\'s color');
+          // Cell by cell: the fill's width is always a whole number of cells (30 px each), from its left end.
+          const widths = new Set<number>();
+          for (let i = 0; i < 12; i++) {
+            const b = await read();
+            assert.ok(Math.abs(b.fill.left - b.frame.left) <= 0.5, 'the fill starts at the frame\'s left end');
+            widths.add(Math.round(b.fill.width));
+            await page.waitForTimeout(110);
+          }
+          assert.deepEqual([...widths].filter((w) => w % 30 !== 0 || w > 240), [], `whole cells only (${[...widths]})`);
+          assert.ok(widths.size >= 4, `… and filling (${[...widths]})`);
+          // "Blinking cursor" off: its cursor stands still, the meter still fills.
+          await ev(() => T.rtSettings({ themes: { pixel: { blink: false } } }));
+          assert.deepEqual(await ev(() => [T.rtComputed('.opening-caret', 'animation-name'), T.rtComputed('.opening-fill', 'animation-name')]), ['none', 'px-fill']);
+          await ev(() => T.rtSettings({ themes: { pixel: { blink: true } } }));
+        },
+        looks: [
+          ['a light system mode: the same look', { colorScheme: 'light' }, async (_page, ev) => {
+            assert.deepEqual(rgba((await ev(() => T.rtLoader()))!.background), [29, 27, 51, 1]);
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {

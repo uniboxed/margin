@@ -10,7 +10,7 @@ Plan, 2026-11-06, on `feat/pixel-user-themes` (from `feat/margin-app`). `PLAN.md
 
 ## What exists today
 
-- **Themes.** `extension/themes/arcadia/` and `neubrutalism/` are packages (`theme.json`, `theme.html`, `theme.css`, `first-paint.css`; Neo bundles four woff2 with `OFL-*.txt` and `SOURCES.txt`). `themes/packages.ts` lists them (`PACKAGE_THEMES`, `PACKAGE_THEME_NAMES`). Arcadia also has `theme.ts`, its settings for the background (the one JS file a theme folder keeps).
+- **Themes.** `app/shared/ui/themes/arcadia/` and `neubrutalism/` are packages (`theme.json`, `theme.html`, `theme.css`, `first-paint.css`; Neo bundles four woff2 with `OFL-*.txt` and `SOURCES.txt`). `themes/packages.ts` lists them (`PACKAGE_THEMES`, `PACKAGE_THEME_NAMES`). Arcadia also has `theme.ts`, its settings for the background (the one JS file a theme folder keeps).
 - **Runtime.** `ui/theme-loader.ts` checks and loads a package: `checkPackage` (caps, file kinds), `sanitizeTheme` (manifest, template, CSS), fonts as `FontFace` from bytes. It can also store a user theme (`encodeStoredTheme`, `saveUserTheme`, `loadUserTheme`) in `storage.local` under `userTheme:<id>` and an index `userThemes`. Nothing calls those three yet.
 - **Packages reach the app** from the extension: `background/theme-package.ts` reads the active built-in theme and sends it in `theme` chunks (`docs/PROTOCOL.md` "Chunks"). An unknown `settings.theme` falls back to Arcadia there, in `registered.ts` (first paint) and in Settings.
 - **The overlay** (`app/shared/host/overlay.ts`) loads whatever package the app hands it. If `loadTheme` refuses it, the overlay logs an error and draws nothing: there's no fallback, and the app never shows the overlay (it waits for `ready`).
@@ -22,7 +22,7 @@ Plan, 2026-11-06, on `feat/pixel-user-themes` (from `feat/margin-app`). `PLAN.md
 
 ## 1. Pixel
 
-A new package, `extension/themes/pixel/`, from `Pixel.dc.html`. Dark only: the board has no light version, and Pixel looks the same in both system modes (as Arcadia's palette does).
+A new package, `app/shared/ui/themes/pixel/`, from `Pixel.dc.html`. Dark only: the board has no light version, and Pixel looks the same in both system modes (as Arcadia's palette does).
 
 ### Files
 
@@ -68,7 +68,7 @@ pixel/
 | Menu, space editor, notice, prompt | dark `#1d1b33` boxes with the light pixel border; menu items with hover `#3b3870` and yellow text, danger red; the notice and prompt as the board's RPG text box, a blinking `▼` as an svg. All words are Margin's (below) |
 | Launcher (new-tab page) | a "title screen": the `>` field, pinned tiles with the dark pixel border, the recent archive as a list |
 | Settings | Margin's inputs styled: dark fields with the `#5f5aa8` border, toggles as pixel boxes with a check, the choice as a dark select, buttons as press buttons |
-| iCloud Tabs | a folder in the same style, device names as tags in Press Start 2P 8 px, `▼`/`▶` as svg (a guarded part), stale devices dimmed |
+| iCloud Tabs (removed 2026-11-17) | a folder in the same style, device names as tags in Press Start 2P 8 px, `▼`/`▶` as svg (a guarded part), stale devices dimmed |
 | Gestures | pixel arrow and reload badges over the page that fill with `--gesture` |
 | Drag and drop | yellow 3 px before/after lines, the ghost with the light pixel border, the resize handle a dotted line on hover |
 | Loading | a stepped bar marching along the page card's top border (`tab.loading`), seen with the sidebar hidden too |
@@ -115,6 +115,8 @@ Everything else is there in both: the cloud-tabs part, notices, prompts, editor,
 
 ### The first paint before Margin.app has measured
 
+> Removed 2026-11-16 with the page box (`DECISIONS.md` "Hosted only"): no first paint, no `first-paint.css`.
+
 `registered.ts layoutFromSettings` uses Arcadia's geometry for every theme (8 px frame, radius 6.25, Arcadia's width) until the app's first `setLayout`. With Neo or Pixel, a page that loads before that gets Arcadia's box for a moment. Fix: `theme.json` `layout` gains the docked and hidden box (`dockedInsets`, `hiddenInsets`, `radius`), read by the background for built-in themes. Neo: 16 px gutters, the card at `16 + width + 16`, radius 18. Pixel: 16 px and 18 px, radius 0.
 
 ## 3. User themes
@@ -141,7 +143,7 @@ Today nothing reads either: `scripts/build.ts` copies the built-in folders as th
 - **By Margin.app, for the whole Mac, not per profile.** A theme is the person's look, the same in every browser and profile. `~/Library/Application Support/Margin/themes/<id>.json` holds the stored package in `encodeStoredTheme`'s format (format 2, files as base64), written as `DataStore` writes (a temporary file, `fsync`, `.bak`, rename). `themes/index.json` is the short list: `id`, `name`, `version`, `author`, `bytes`, `savedAt`.
 - **The extension gets only the index,** never a package. It goes in each profile's data set as the `userThemes` collection, with the index entry as the item's value (a few hundred bytes, so no `omitted`), and the copy keeps it in `storage.local` `userThemes`. That's the key `handlers.ts updatePackageThemeSettings` already reads. `updateSettings` then accepts a `theme` that's in the index. `docs/DATA.md`'s `userThemes` row changes from "the stored package" to "the index entry". The `userTheme:<id>` storage keys go, unused: import was never built, so no copy has any.
 - **Which package an overlay draws:** the app's own when the profile's `settings.theme` is in its index. Otherwise the built-in the copy sends (the copy sends Arcadia for an id it doesn't ship).
-- **First paint:** a user theme has no `first-paint.css` (registrations are build files). Pages get a plain one: the box at the layout, nothing around it (`content/layout/theme-plain.css`, built like the others). Not Arcadia's frame, which would flash a different look.
+- **First paint (removed 2026-11-16 with the page box):** a user theme has no `first-paint.css` (registrations are build files). Pages get a plain one: the box at the layout, nothing around it (`content/layout/theme-plain.css`, built like the others). Not Arcadia's frame, which would flash a different look.
 
 ### Import, step by step
 
@@ -185,7 +187,7 @@ The form stays `ui/settings-form.ts` fields (guarded part, Margin's words, Margi
 
 Arcadia, Neubrutalism and Pixel each already draw `isInfo`, `isButton`, `isGroup`, `isChoice`, `isToggle` and `isNumber` fields generically. Each gets `setting-color` and a check that the new rows look right.
 
-### The guide (for `extension/themes/README.md`, written with the import commit)
+### The guide (for `app/shared/ui/themes/README.md`, written with the import commit)
 
 > **Making and importing a theme.** Start from a copy of `neubrutalism/` (it uses everything). Keep the folder's layout: `theme.json`, `theme.html` and `theme.css` at the top, fonts in `fonts/`, images in `images/`, licences as `.txt` or `.md`. Give it your own `id` (lower-case letters, digits and dashes) and bump `version` when you change it. Fonts: woff2 only, with their licence; no font services. To share it, zip the folder and name the file `something.margintheme` (`npm run theme:pack my-theme/` does it). In Margin: Settings › Theme › Import Theme…, pick the folder or the file, look at the preview, and choose Use Theme. Importing the same `id` again replaces it. If Margin can't draw your theme, it uses Arcadia and says so; Settings shows why. Margin checks every theme when it's imported and every time it loads; the rules are under "Security rules" below.
 
@@ -238,7 +240,7 @@ Run time:
 
 ### CI later (not added now)
 
-There's no CI in the repo, and none is added. When there is, a macOS runner can run `npm ci`, Playwright's WebKit and Chromium, `npm test` and `npm run test:security`, on every push that touches `extension/ui/`, `extension/themes/` or `tests/`. `test:app` needs Xcode and the Swift toolchain, so it'd be a second job on the same runner. Until then, the gate below runs it before every commit.
+There's no CI in the repo, and none is added. When there is, a macOS runner can run `npm ci`, Playwright's WebKit and Chromium, `npm test` and `npm run test:security`, on every push that touches `app/shared/ui/`, `app/shared/ui/themes/` or `tests/`. `test:app` needs Xcode and the Swift toolchain, so it'd be a second job on the same runner. Until then, the gate below runs it before every commit.
 
 ## 5. Work items, in order
 

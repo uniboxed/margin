@@ -3,17 +3,10 @@
 // (in zsh, `log` is a builtin). Only what the app does and how long it took:
 // never a page's title or address.
 //
-// The profile handoff's lines (docs/HANDOFF.md §8.1), ids, window numbers, Space ids, counts, modes,
-// results and milliseconds only:
+// Lines carry ids, window numbers, Space ids, counts, modes, results and milliseconds only:
 //   private calls on macOS …: freeze ok, spaces ok, park ok (…)     the launch check (PrivateCalls.swift)
 //   private calls: macOS build changed from … to …                  a new macOS build
-//   private calls: cross-process self-test park N ms, …             the self-test (BridgeParker.swift)
-//   private calls: park off | freeze off for this session: …        a demotion (Handoff.swift, Freezer.swift)
-//   handoff: safari:s-a#3 → safari:s-b#7 (park+freeze, parked target), frozen 1214 ms (result 0): shown 9, …
-//                                                                   one summary per switch (Handoff.swift)
-//   handoff: parked window N (…) in its Space S in 9 ms (…)         the registry (Parking.swift)
-//   profile switch: aftercare: window N …                           the aftercare (Handoff.swift)
-//   <link>: setWindowState window 3: …                              the copy's side (background/handoff.ts)
+//   host: …                                                         the host engine (HostEngine.swift)
 //   dev hook: …                                                     the dev-only hook (DevHooks.swift; DEV-HOOK)
 // Words that come from outside the app (a copy's error, a browser's message) go through scrub()
 // before they reach a line: Margin doesn't choose them, and a browser's error can name a page.

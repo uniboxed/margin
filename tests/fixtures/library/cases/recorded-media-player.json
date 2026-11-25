@@ -1,0 +1,31 @@
+{
+  "about": "tests/media-player.test.ts's calls of library.ts, as the test made them (npm run library:vectors).",
+  "from": "recorded",
+  "cases": [
+    {
+      "about": "media-player.test.ts: mini player: the library's mediaControl: a request for the hosting, nothing changed; focus and mute as activateTab and muteTab",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {"t-app1":{"url":"app://com.apple.Notes","title":"Notes","spaceId":"a","order":1,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}},"t-web1":{"url":"https://music.example/","title":"Music","spaceId":"a","order":0,"target":{"kind":"web","browser":"safari","profile":null}}},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"mediaControl","payload":{"tabId":"t-web1","command":"toggle","windowId":3},"env":{"now":1002,"ids":["x1","x2","x3","zq000001x","zq000002x"]},"expect":{"ok":true,"result":{"item":"t-web1"},"changes":[],"requests":[{"type":"mediaControl","windowId":3,"item":"t-web1","url":"https://music.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","command":"toggle"}]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-web1","command":"prev"},"env":{"now":1003,"ids":["x1","x2","x3","zq000049x","zq000050x"]},"expect":{"ok":true,"result":{"item":"t-web1"},"changes":[],"requests":[{"type":"mediaControl","windowId":null,"item":"t-web1","url":"https://music.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","command":"prev"}]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-web1","command":"next"},"env":{"now":1004,"ids":["x1","x2","x3","zq000097x","zq000098x"]},"expect":{"ok":true,"result":{"item":"t-web1"},"changes":[],"requests":[{"type":"mediaControl","windowId":null,"item":"t-web1","url":"https://music.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","command":"next"}]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-web1","command":"mute"},"env":{"now":1005,"ids":["x1","x2","x3","zq000145x","zq000146x"]},"expect":{"ok":true,"result":{"item":"t-web1"},"changes":[],"requests":[{"type":"muteTab","windowId":null,"item":"t-web1","url":"https://music.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-web1","command":"focus","windowId":3},"env":{"now":1006,"ids":["x1","x2","x3","zq000193x","zq000194x"]},"expect":{"ok":true,"result":{"shown":"t-web1"},"changes":[{"collection":"tabs","id":"t-web1","value":{"url":"https://music.example/","title":"Music","icon":"","spaceId":"a","order":0,"lastUsed":1006,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"windows","id":"3","value":{"spaceId":"a"}}],"requests":[{"type":"activateTab","windowId":3,"item":"t-web1","url":"https://music.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-web1","command":"rm"},"env":{"now":1007,"ids":["x1","x2","x3","zq000241x","zq000242x"]},"expect":{"ok":false,"result":null,"error":"not a media command","changes":[],"requests":[]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-app1","command":"toggle"},"env":{"now":1008,"ids":["x1","x2","x3","zq000289x","zq000290x"]},"expect":{"ok":false,"result":null,"error":"only a web item plays in the mini player","changes":[],"requests":[]}},
+      {"perform":"mediaControl","payload":{"tabId":"t-none","command":"toggle"},"env":{"now":1009,"ids":["x1","x2","x3","zq000337x","zq000338x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}}
+      ]
+    }
+  ]
+}

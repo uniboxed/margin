@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # (No npm ci: the plan is plain Node, with the theme list from extension/themes/packages.ts.)
+      # (No npm ci: the plan is plain Node, with the theme list from app/shared/ui/themes/packages.ts.)
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -134,7 +134,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
       - if: matrix.kind == 'e2e'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
+      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad
         run: defaults write -g AppleShowScrollBars -string WhenScrolling
       - name: The build (the tests load it)
         run: node scripts/build.ts
@@ -147,10 +147,6 @@ jobs:
           MARGIN_E2E_SLOW: "3"
         # ($FILES unquoted: a list of test files, or a glob in the fallback.)
         run: node --test --test-concurrency=1 --test-shard="$SHARD" $FILES
-      # (Once, on the first half's Mac: Chrome for Testing's own setting, which outweighs the runner's above.)
-      - name: The box patterns with classic scroll bars, always shown and taking space, as on a Mac with a mouse (GitHub issue #17)
-        if: ${{ !cancelled() && matrix.kind == 'e2e' && matrix.shard == '1/2' }}
-        run: node scripts/scroll-bars.mts always node --test tests/e2e/box-patterns.test.ts
       - name: Test results, when something failed
         if: failure()
         uses: actions/upload-artifact@v7
@@ -211,16 +207,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: The app's Swift checks
         run: node scripts/build.ts && tools/app-tests/run.sh unit
-      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
+      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad
         run: defaults write -g AppleShowScrollBars -string WhenScrolling
       - name: The WebKit host (Safari's extension engine), its waits three times as long on a virtual Mac
         env:
           MARGIN_HOST_SLOW: "3"
         run: npm run test:webkit
-      # (The host's own setting, its argument domain, over the runner's above: tools/webkit-host/run.sh.)
-      - name: The WebKit host's box patterns with classic scroll bars, always shown and taking space (GitHub issue #17)
-        if: ${{ !cancelled() }}
-        env:
-          MARGIN_HOST_SLOW: "3"
-          MARGIN_SCROLL_BARS: always
-        run: tools/webkit-host/run.sh box-patterns

@@ -9,14 +9,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { deflateRawSync } from 'node:zlib';
-import { packageFromFiles, packageFromZip, checkImport, missingWaysOut, readThemeFile, removedSummary, crc32, type ReadResult } from '../extension/ui/theme-import.ts';
-import type { ThemePackage } from '../extension/ui/theme-loader.ts';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
+import { packageFromFiles, packageFromZip, checkImport, missingWaysOut, readThemeFile, removedSummary, crc32, type ReadResult } from '../app/shared/ui/theme-import.ts';
+import type { ThemePackage } from '../app/shared/ui/theme-loader.ts';
+import { PACKAGE_THEMES } from '../app/shared/ui/themes/packages.ts';
 import { packTheme, zipFiles, folderFiles } from '../scripts/pack-theme.ts';
 import { readTheme } from './theme/package.ts';
 
 const enc = (s: string) => new TextEncoder().encode(s);
-const THEMES = new URL('../extension/themes/', import.meta.url).pathname;
+const THEMES = new URL('../app/shared/ui/themes/', import.meta.url).pathname;
 const WAYS_OUT = '<div class="r"><m-page></m-page><m-launcher></m-launcher><m-prompt></m-prompt><m-notice></m-notice>'
   + '<template m-part="launcher"><main><m-settings></m-settings></main></template>'
   + '<template m-part="settings"><div></div></template><template m-part="prompt"><div></div></template><template m-part="notice"><div></div></template></div>';
@@ -210,7 +210,7 @@ test('readThemeFile: what Margin.app hands over, folder or zip, as base64; its e
 for (const id of PACKAGE_THEMES) {
   test(`round trip: ${id} through npm run theme:pack and the reader is the same package`, async () => {
     const { bytes, left } = packTheme(join(THEMES, id));
-    assert.ok(left.every((f) => /^(first-paint\.css|theme\.ts)$/.test(f)), left.join());
+    assert.ok(left.every((f) => /^theme\.ts$/.test(f)), left.join());
     const r = (await packageFromZip(bytes)) as Read;
     assert.equal(r.ok, true, JSON.stringify(r.errors));
     const disk = readTheme(join(THEMES, id));

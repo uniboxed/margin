@@ -1,0 +1,247 @@
+{
+  "about": "tests/arc-data.test.ts's calls of library.ts, as the test made them (npm run library:vectors).",
+  "from": "recorded",
+  "cases": [
+    {
+      "about": "arc-data.test.ts: arc data: library: an item moved to another space closes into the archive (closeTab checks the pin of its own space)",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/inbox","title":"Inbox"},"env":{"now":1000000,"ids":["id0001","zq000001x","zq000002x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id0001"},"env":{"now":1000001,"ids":["id0002","zq000049x","zq000050x"]},"expect":{"ok":true,"result":"p-id0002","changes":[{"collection":"pins","id":"p-id0002","value":{"spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0002"}}],"requests":[]}},
+      {"perform":"addItem","payload":{"spaceId":"a","windowId":1,"url":"https://linear.example/issue/1","title":"Issue","front":true,"pinnedBy":"p-id0002"},"env":{"now":1000002,"ids":["id0003","zq000097x","zq000098x"]},"expect":{"ok":true,"result":{"tabId":"t-id0003"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0002"}},{"collection":"tabs","id":"t-id0003","value":{"url":"https://linear.example/issue/1","title":"Issue","icon":"","spaceId":"a","order":1,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0002"}}],"requests":[]}},
+      {"perform":"moveTabToSpace","payload":{"tabId":"t-id0003","spaceId":"b"},"env":{"now":1000003,"ids":["id0004","zq000145x","zq000146x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0003","value":{"url":"https://linear.example/issue/1","title":"Issue","icon":"","spaceId":"b","order":1,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id0003"},"env":{"now":1000004,"ids":["id0005","zq000193x","zq000194x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0003","deleted":true},{"collection":"archive","id":"a-id0005","value":{"url":"https://linear.example/issue/1","title":"Issue","spaceId":"b","icon":"","closedAt":1000004,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"closeTab","item":"t-id0003","url":"https://linear.example/issue/1","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b","next":null}]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library: closing a sticky pin's item keeps the pin, not open, nothing archived; the pin opens fresh again",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/inbox","title":"Inbox"},"env":{"now":1000000,"ids":["id0001","zq000241x","zq000242x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id0001"},"env":{"now":1000001,"ids":["id0002","zq000289x","zq000290x"]},"expect":{"ok":true,"result":"p-id0002","changes":[{"collection":"pins","id":"p-id0002","value":{"spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0002"}}],"requests":[]}},
+      {"perform":"updateItem","payload":{"tabId":"t-id0001","url":"https://linear.example/issue/9","title":"Issue"},"env":{"now":1000002,"ids":["id0003","zq000337x","zq000338x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/issue/9","title":"Issue","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0002"}}],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id0001"},"env":{"now":1000003,"ids":["id0004","zq000385x","zq000386x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0001","deleted":true}],"requests":[{"type":"closeTab","item":"t-id0001","url":"https://linear.example/issue/9","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","next":null}]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":"work"}],"pins":[{"id":"p-id0002","spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}],"favorites":[],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"1":"a"},"awayByWindow":{},"keptTabs":{}}}},
+      {"perform":"openPin","payload":{"pinId":"p-id0002","windowId":1},"env":{"now":1000004,"ids":["id0005","zq000433x","zq000434x"]},"expect":{"ok":true,"result":{"pin":"p-id0002","item":null},"changes":[],"requests":[{"type":"openPin","windowId":1,"pin":"p-id0002","item":null,"url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library: pinTab keeps the item as the new pin's tab (pinnedBy): not in Today, the pin open and active, its address shown",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/inbox","title":"Inbox"},"env":{"now":1000000,"ids":["id0001","zq000481x","zq000482x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"renameTab","payload":{"tabId":"t-id0001","title":"My Inbox"},"env":{"now":1000001,"ids":["id0002","zq000529x","zq000530x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"customTitle":"My Inbox"}}],"requests":[]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id0001"},"env":{"now":1000002,"ids":["id0003","zq000577x","zq000578x"]},"expect":{"ok":true,"result":"p-id0003","changes":[{"collection":"pins","id":"p-id0003","value":{"spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","customTitle":"My Inbox","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0003","customTitle":"My Inbox"}}],"requests":[]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":"work"}],"pins":[{"id":"p-id0003","spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","customTitle":"My Inbox","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}],"favorites":[],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"1":"a"},"awayByWindow":{},"keptTabs":{"t-id0001":{"id":"t-id0001","url":"https://linear.example/inbox","title":"Inbox","favIconUrl":"","spaceId":"a","order":0,"lastActive":1000000,"wasActive":true,"keptAt":1000000,"why":"library","target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0003","customTitle":"My Inbox"}}}}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":"work"}],"pins":[{"id":"p-id0003","spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","customTitle":"My Inbox","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}],"favorites":[],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"1":"a"},"awayByWindow":{},"keptTabs":{"t-id0001":{"id":"t-id0001","url":"https://linear.example/inbox","title":"Inbox","favIconUrl":"","spaceId":"a","order":0,"lastActive":1000000,"wasActive":true,"keptAt":1000000,"why":"library","target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0003","customTitle":"My Inbox"}}}}},
+      {"perform":"openPin","payload":{"pinId":"p-id0003","windowId":1},"env":{"now":1000003,"ids":["id0004","zq000625x","zq000626x"]},"expect":{"ok":true,"result":{"pin":"p-id0003","item":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000003,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0003","customTitle":"My Inbox"}}],"requests":[{"type":"openPin","windowId":1,"pin":"p-id0003","item":"t-id0001","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://docs.example/","title":"Docs"},"env":{"now":1000004,"ids":["id0005","zq000673x","zq000674x"]},"expect":{"ok":true,"result":{"tabId":"t-id0005"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000003,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0003","customTitle":"My Inbox"}},{"collection":"tabs","id":"t-id0005","value":{"url":"https://docs.example/","title":"Docs","icon":"","spaceId":"a","order":1,"lastUsed":1000004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0005","url":"https://docs.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"createFolder","payload":{"windowId":1,"tabId":"t-id0005"},"env":{"now":1000005,"ids":["id0006","zq000721x","zq000722x","zq000723x"]},"expect":{"ok":true,"result":"f-id0006","changes":[{"collection":"pins","id":"p-zq000721x","value":{"spaceId":"a","url":"https://docs.example/","title":"Docs","folderId":"f-id0006","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id0006","value":{"spaceId":"a","name":"New Folder","open":true,"pos":1}},{"collection":"tabs","id":"t-id0005","value":{"url":"https://docs.example/","title":"Docs","icon":"","spaceId":"a","order":1,"lastUsed":1000004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-zq000721x"}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library: a pinned item's close isn't archived (the pin stays, not open); unpinned, the item is Today's again",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/inbox","title":"Inbox"},"env":{"now":1000000,"ids":["id0001","zq000769x","zq000770x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id0001"},"env":{"now":1000001,"ids":["id0002","zq000817x","zq000818x"]},"expect":{"ok":true,"result":"p-id0002","changes":[{"collection":"pins","id":"p-id0002","value":{"spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0002"}}],"requests":[]}},
+      {"perform":"unpin","payload":{"pinId":"p-id0002"},"env":{"now":1000002,"ids":["id0003","zq000865x","zq000866x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"pins","id":"p-id0002","deleted":true},{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"unpin","pin":"p-id0002","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":"work"}],"pins":[],"favorites":[],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"1":"a"},"awayByWindow":{},"keptTabs":{"t-id0001":{"id":"t-id0001","url":"https://linear.example/inbox","title":"Inbox","favIconUrl":"","spaceId":"a","order":0,"lastActive":1000000,"wasActive":true,"keptAt":1000000,"why":"library","target":{"kind":"web","browser":"safari","profile":null}}}}}},
+      {"perform":"pinTab","payload":{"tabId":"t-id0001"},"env":{"now":1000003,"ids":["id0004","zq000913x","zq000914x"]},"expect":{"ok":true,"result":"p-id0004","changes":[{"collection":"pins","id":"p-id0004","value":{"spaceId":"a","url":"https://linear.example/inbox","title":"Inbox","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://linear.example/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0004"}}],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id0001"},"env":{"now":1000004,"ids":["id0005","zq000961x","zq000962x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0001","deleted":true}],"requests":[{"type":"closeTab","item":"t-id0001","url":"https://linear.example/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","next":null}]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: openPin by address skips a tab or item another pin or a favorite has (model, view, library)",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://cal.example/","title":"Cal"},"env":{"now":1000000,"ids":["id0001","zq001009x","zq001010x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://cal.example/","title":"Cal","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://cal.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"addFavorite","payload":{"tabId":"t-id0001","windowId":1},"env":{"now":1000001,"ids":["id0002","zq001057x","zq001058x"]},"expect":{"ok":true,"result":"fav-id0002","changes":[{"collection":"favorites","id":"fav-id0002","value":{"scope":"global","url":"https://cal.example/","title":"Cal","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://cal.example/","title":"Cal","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"favoriteId":"fav-id0002"}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://cal.example/","title":"Cal"},"env":{"now":1000002,"ids":["id0003","zq001105x","zq001106x"]},"expect":{"ok":true,"result":{"tabId":"t-id0003"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://cal.example/","title":"Cal","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"favoriteId":"fav-id0002"}},{"collection":"tabs","id":"t-id0003","value":{"url":"https://cal.example/","title":"Cal","icon":"","spaceId":"a","order":1,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0003","url":"https://cal.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id0003"},"env":{"now":1000003,"ids":["id0004","zq001153x","zq001154x"]},"expect":{"ok":true,"result":"p-id0004","changes":[{"collection":"pins","id":"p-id0004","value":{"spaceId":"a","url":"https://cal.example/","title":"Cal","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0003","value":{"url":"https://cal.example/","title":"Cal","icon":"","spaceId":"a","order":1,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id0004"}}],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id0003"},"env":{"now":1000004,"ids":["id0005","zq001201x","zq001202x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id0003","deleted":true}],"requests":[{"type":"closeTab","item":"t-id0003","url":"https://cal.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","next":"t-id0001"}]}},
+      {"perform":"openPin","payload":{"pinId":"p-id0004","windowId":1},"env":{"now":1000005,"ids":["id0006","zq001249x","zq001250x"]},"expect":{"ok":true,"result":{"pin":"p-id0004","item":null},"changes":[],"requests":[{"type":"openPin","windowId":1,"pin":"p-id0004","item":null,"url":"https://cal.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"resetPin","payload":{"pinId":"p-id0004","windowId":1},"env":{"now":1000006,"ids":["id0007","zq001297x","zq001298x"]},"expect":{"ok":true,"result":{"pin":"p-id0004","item":null},"changes":[],"requests":[{"type":"resetPin","windowId":1,"pin":"p-id0004","item":null,"url":"https://cal.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library addFavorite takes its scope from the app's favoritesScope and the window's space profile, never the page's scope; 12 per scope",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://one.example/","title":"One"},"env":{"now":1000000,"ids":["id0001","zq001345x","zq001346x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://one.example/","title":"One","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"addFavorite","payload":{"tabId":"t-id0001","windowId":1,"scope":"profile:evil"},"env":{"now":1000001,"ids":["id0002","zq001393x","zq001394x"]},"expect":{"ok":true,"result":"fav-id0002","changes":[{"collection":"favorites","id":"fav-id0002","value":{"scope":"global","url":"https://one.example/","title":"One","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0001","value":{"url":"https://one.example/","title":"One","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"favoriteId":"fav-id0002"}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://two.example/","windowId":1,"favoritesScope":"profile","scope":"global"},"env":{"now":1000002,"ids":["id0003","zq001441x","zq001442x"]},"expect":{"ok":true,"result":"fav-id0003","changes":[{"collection":"favorites","id":"fav-id0003","value":{"scope":"profile:default","url":"https://two.example/","title":"https://two.example/","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[]}},
+      {"perform":"setSpace","payload":{"windowId":1,"spaceId":"b"},"env":{"now":1000003,"ids":["id0004","zq001489x","zq001490x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[{"collection":"windows","id":"1","value":{"spaceId":"b"}}],"requests":[{"type":"setSpace","windowId":1,"spaceId":"b","item":null}]}},
+      {"perform":"addFavorite","payload":{"url":"https://three.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000004,"ids":["id0005","zq001537x","zq001538x"]},"expect":{"ok":true,"result":"fav-id0005","changes":[{"collection":"favorites","id":"fav-id0005","value":{"scope":"profile:work","url":"https://three.example/","title":"https://three.example/","pos":0,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":"work"}],"pins":[],"favorites":[{"id":"fav-id0002","scope":"global","url":"https://one.example/","title":"One","pos":0,"target":{"kind":"web","browser":"safari","profile":null}},{"id":"fav-id0003","scope":"profile:default","url":"https://two.example/","title":"https://two.example/","pos":0,"target":{"kind":"web","browser":"safari","profile":null}},{"id":"fav-id0005","scope":"profile:work","url":"https://three.example/","title":"https://three.example/","pos":0,"target":{"kind":"web","browser":"safari","profile":"work"}}],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"1":"b"},"awayByWindow":{},"keptTabs":{"t-id0001":{"id":"t-id0001","url":"https://one.example/","title":"One","favIconUrl":"","spaceId":"a","order":0,"lastActive":1000000,"wasActive":true,"keptAt":1000000,"why":"library","target":{"kind":"web","browser":"safari","profile":null},"favoriteId":"fav-id0002"}}}}},
+      {"perform":"addFavorite","payload":{"url":"https://w0.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000005,"ids":["id0006","zq001585x","zq001586x"]},"expect":{"ok":true,"result":"fav-id0006","changes":[{"collection":"favorites","id":"fav-id0006","value":{"scope":"profile:work","url":"https://w0.example/","title":"https://w0.example/","pos":1,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w1.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000006,"ids":["id0007","zq001633x","zq001634x"]},"expect":{"ok":true,"result":"fav-id0007","changes":[{"collection":"favorites","id":"fav-id0007","value":{"scope":"profile:work","url":"https://w1.example/","title":"https://w1.example/","pos":2,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w2.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000007,"ids":["id0008","zq001681x","zq001682x"]},"expect":{"ok":true,"result":"fav-id0008","changes":[{"collection":"favorites","id":"fav-id0008","value":{"scope":"profile:work","url":"https://w2.example/","title":"https://w2.example/","pos":3,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w3.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000008,"ids":["id0009","zq001729x","zq001730x"]},"expect":{"ok":true,"result":"fav-id0009","changes":[{"collection":"favorites","id":"fav-id0009","value":{"scope":"profile:work","url":"https://w3.example/","title":"https://w3.example/","pos":4,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w4.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000009,"ids":["id0010","zq001777x","zq001778x"]},"expect":{"ok":true,"result":"fav-id0010","changes":[{"collection":"favorites","id":"fav-id0010","value":{"scope":"profile:work","url":"https://w4.example/","title":"https://w4.example/","pos":5,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w5.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000010,"ids":["id0011","zq001825x","zq001826x"]},"expect":{"ok":true,"result":"fav-id0011","changes":[{"collection":"favorites","id":"fav-id0011","value":{"scope":"profile:work","url":"https://w5.example/","title":"https://w5.example/","pos":6,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w6.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000011,"ids":["id0012","zq001873x","zq001874x"]},"expect":{"ok":true,"result":"fav-id0012","changes":[{"collection":"favorites","id":"fav-id0012","value":{"scope":"profile:work","url":"https://w6.example/","title":"https://w6.example/","pos":7,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w7.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000012,"ids":["id0013","zq001921x","zq001922x"]},"expect":{"ok":true,"result":"fav-id0013","changes":[{"collection":"favorites","id":"fav-id0013","value":{"scope":"profile:work","url":"https://w7.example/","title":"https://w7.example/","pos":8,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w8.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000013,"ids":["id0014","zq001969x","zq001970x"]},"expect":{"ok":true,"result":"fav-id0014","changes":[{"collection":"favorites","id":"fav-id0014","value":{"scope":"profile:work","url":"https://w8.example/","title":"https://w8.example/","pos":9,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w9.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000014,"ids":["id0015","zq002017x","zq002018x"]},"expect":{"ok":true,"result":"fav-id0015","changes":[{"collection":"favorites","id":"fav-id0015","value":{"scope":"profile:work","url":"https://w9.example/","title":"https://w9.example/","pos":10,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w10.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000015,"ids":["id0016","zq002065x","zq002066x"]},"expect":{"ok":true,"result":"fav-id0016","changes":[{"collection":"favorites","id":"fav-id0016","value":{"scope":"profile:work","url":"https://w10.example/","title":"https://w10.example/","pos":11,"target":{"kind":"web","browser":"safari","profile":"work"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"url":"https://w11.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000016,"ids":["id0017","zq002113x","zq002114x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"setSpace","payload":{"windowId":1,"spaceId":"a"},"env":{"now":1000017,"ids":["id0018","zq002161x","zq002162x"]},"expect":{"ok":true,"result":{"spaceId":"a","shown":"t-id0001"},"changes":[{"collection":"windows","id":"1","value":{"spaceId":"a"}}],"requests":[{"type":"setSpace","windowId":1,"spaceId":"a","item":"t-id0001","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":null}}]}},
+      {"perform":"addFavorite","payload":{"url":"https://a-side.example/","windowId":1,"favoritesScope":"profile"},"env":{"now":1000018,"ids":["id0019","zq002209x","zq002210x"]},"expect":{"ok":true,"result":"fav-id0019","changes":[{"collection":"favorites","id":"fav-id0019","value":{"scope":"profile:default","url":"https://a-side.example/","title":"https://a-side.example/","pos":1,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: a favorite is a web page or a Mac app only (no extension page, about:, new-tab or Margin page)",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"openMarginPage","payload":{"windowId":1,"page":"settings"},"env":{"now":1000000,"ids":["id0001","zq002257x","zq002258x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"margin","page":"settings"}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"margin://settings","target":{"kind":"margin","page":"settings"},"spaceId":"a"}]}},
+      {"perform":"addFavorite","payload":{"tabId":"t-id0001","windowId":1},"env":{"now":1000001,"ids":["id0002","zq002305x","zq002306x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"addItem","payload":{"spaceId":"a","target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}},"env":{"now":1000002,"ids":["id0003","zq002353x","zq002354x"]},"expect":{"ok":true,"result":{"tabId":"t-id0003"},"changes":[{"collection":"tabs","id":"t-id0003","value":{"url":"app://com.apple.Music","title":"Music","icon":"","spaceId":"a","order":1,"lastUsed":1000002,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"tabId":"t-id0003","windowId":1},"env":{"now":1000003,"ids":["id0004","zq002401x","zq002402x"]},"expect":{"ok":true,"result":"fav-id0004","changes":[{"collection":"favorites","id":"fav-id0004","value":{"scope":"global","url":"app://com.apple.Music","title":"Music","pos":0,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}}},{"collection":"tabs","id":"t-id0003","value":{"url":"app://com.apple.Music","title":"Music","icon":"","spaceId":"a","order":1,"lastUsed":1000002,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"},"favoriteId":"fav-id0004"}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library splits: ratios read to match the panes, panes of items gone leave as any action is done",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://a.example/","title":"https://a.example/"},"env":{"now":1000000,"ids":["id0001","zq002449x","zq002450x"]},"expect":{"ok":true,"result":{"tabId":"t-id0001"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://a.example/","title":"https://a.example/","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0001","url":"https://a.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://b.example/","title":"https://b.example/"},"env":{"now":1000001,"ids":["id0002","zq002497x","zq002498x"]},"expect":{"ok":true,"result":{"tabId":"t-id0002"},"changes":[{"collection":"tabs","id":"t-id0001","value":{"url":"https://a.example/","title":"https://a.example/","icon":"","spaceId":"a","order":0,"lastUsed":1000000,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0002","value":{"url":"https://b.example/","title":"https://b.example/","icon":"","spaceId":"a","order":1,"lastUsed":1000001,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0002","url":"https://b.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://c.example/","title":"https://c.example/"},"env":{"now":1000002,"ids":["id0003","zq002545x","zq002546x"]},"expect":{"ok":true,"result":{"tabId":"t-id0003"},"changes":[{"collection":"tabs","id":"t-id0002","value":{"url":"https://b.example/","title":"https://b.example/","icon":"","spaceId":"a","order":1,"lastUsed":1000001,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0003","value":{"url":"https://c.example/","title":"https://c.example/","icon":"","spaceId":"a","order":2,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0003","url":"https://c.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"createSplit","payload":{"panes":["t-id0001","t-id0002","t-id0003"],"windowId":1,"ratios":[0.5,0.25,0.25]},"env":{"now":1000003,"ids":["id0004","zq002593x","zq002594x"]},"expect":{"ok":true,"result":{"splitId":"spv-id0004"},"changes":[{"collection":"splits","id":"spv-id0004","value":{"spaceId":"a","axis":"horizontal","panes":["t-id0001","t-id0002","t-id0003"],"ratios":[0.5,0.25,0.25]}},{"collection":"tabs","id":"t-id0003","value":{"url":"https://c.example/","title":"https://c.example/","icon":"","spaceId":"a","order":2,"lastUsed":1000003,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"showSplit","windowId":1,"splitId":"spv-id0004","item":"t-id0003","axis":"horizontal","ratios":[0.5,0.25,0.25],"panes":[{"item":"t-id0001","url":"https://a.example/","target":{"kind":"web","browser":"safari","profile":null}},{"item":"t-id0002","url":"https://b.example/","target":{"kind":"web","browser":"safari","profile":null}},{"item":"t-id0003","url":"https://c.example/","target":{"kind":"web","browser":"safari","profile":null}}]}]}},
+      {"perform":"itemClosed","payload":{"tabId":"t-id0002"},"env":{"now":1000004,"ids":["id0005","zq002641x","zq002642x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"splits","id":"spv-id0004","value":{"spaceId":"a","axis":"horizontal","panes":["t-id0001","t-id0003"],"ratios":[0.6667,0.3333]}},{"collection":"tabs","id":"t-id0002","deleted":true},{"collection":"archive","id":"a-id0005","value":{"url":"https://b.example/","title":"https://b.example/","spaceId":"a","icon":"","closedAt":1000004,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[]}},
+      {"perform":"removeItem","payload":{"tabId":"t-id0003"},"env":{"now":1000005,"ids":["id0006","zq002689x","zq002690x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"splits","id":"spv-id0004","deleted":true},{"collection":"tabs","id":"t-id0003","deleted":true}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library splits: ratios read to match the panes, panes of items gone leave as any action is done #2",
+      "values": {
+        "spaces": {"a":{"name":"A"}},
+        "splits": {"g":{"spaceId":"a","panes":["t-1",5,"t-2","t-1"],"ratios":[2,9,1,3]}}
+      },
+      "steps": [
+      {"normal":true,"expect":{"spaces":{"a":{"name":"A","emoji":"","color":"","order":0,"browser":"safari","profile":null}},"pins":{},"favorites":{},"airTraffic":{},"splits":{"g":{"spaceId":"a","axis":"horizontal","panes":["t-1","t-2"],"ratios":[0.6667,0.3333]}},"folders":{},"tabs":{},"archive":{},"windows":{},"imports":{}}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: library splits: ratios read to match the panes, panes of items gone leave as any action is done #3",
+      "values": {
+        "spaces": {"a":{"name":"A"}},
+        "splits": {"g":{"spaceId":"a","panes":["t-1",7],"ratios":[1,1]}}
+      },
+      "steps": [
+      {"normal":true,"expect":{"spaces":{"a":{"name":"A","emoji":"","color":"","order":0,"browser":"safari","profile":null}},"pins":{},"favorites":{},"airTraffic":{},"splits":{},"folders":{},"tabs":{},"archive":{},"windows":{},"imports":{}}}
+      ]
+    },
+    {
+      "about": "arc-data.test.ts: arc data: linkRules.remove and linkRules.toggle: checked, sent, done by the library; the tab menu removes the rule routing it",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"addAirTrafficRule","payload":{"pattern":"linear.example","spaceId":"b"},"env":{"now":1000000,"ids":["id0001","zq002737x","zq002738x"]},"expect":{"ok":true,"result":"atc-id0001","changes":[{"collection":"airTraffic","id":"atc-id0001","value":{"pattern":"linear.example","spaceId":"b","enabled":true,"order":0}}],"requests":[]}},
+      {"perform":"toggleAirTrafficRule","payload":{"ruleId":"atc-id0001"},"env":{"now":1000001,"ids":["id0002","zq002785x","zq002786x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"airTraffic","id":"atc-id0001","value":{"pattern":"linear.example","spaceId":"b","enabled":false,"order":0}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/x"},"env":{"now":1000002,"ids":["id0003","zq002833x","zq002834x"]},"expect":{"ok":true,"result":{"tabId":"t-id0003"},"changes":[{"collection":"tabs","id":"t-id0003","value":{"url":"https://linear.example/x","title":"https://linear.example/x","icon":"","spaceId":"a","order":0,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0003","url":"https://linear.example/x","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"toggleAirTrafficRule","payload":{"ruleId":"atc-id0001"},"env":{"now":1000003,"ids":["id0004","zq002881x","zq002882x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"airTraffic","id":"atc-id0001","value":{"pattern":"linear.example","spaceId":"b","enabled":true,"order":0}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/y"},"env":{"now":1000004,"ids":["id0005","zq002929x","zq002930x"]},"url":true,"expect":{"ok":true,"result":{"tabId":"t-id0005"},"changes":[{"collection":"tabs","id":"t-id0005","value":{"url":"https://linear.example/y","title":"https://linear.example/y","icon":"","spaceId":"b","order":1,"lastUsed":1000004,"selected":true,"target":{"kind":"web","browser":"safari","profile":"work"}}},{"collection":"windows","id":"1","value":{"spaceId":"b"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0005","url":"https://linear.example/y","target":{"kind":"web","browser":"safari","profile":"work"},"spaceId":"b"}]}},
+      {"perform":"removeAirTrafficRule","payload":{"ruleId":"atc-id0001"},"env":{"now":1000005,"ids":["id0006","zq002977x","zq002978x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"airTraffic","id":"atc-id0001","deleted":true}],"requests":[]}}
+      ]
+    }
+  ]
+}

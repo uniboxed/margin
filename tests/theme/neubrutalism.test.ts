@@ -7,16 +7,15 @@
 // eight rows (then it scrolls, the selected row in view) with the board's
 // tags and each row's icon, inside the window with 200 tabs; "keep the frame
 // when hidden" off, the page edge to edge; nothing painted over the page's box
-// (on screen); one look in light and dark system modes; and the first paint
-// drawn around the box, not over it. `npm run test:theme`.
+// (on screen); and one look in light and dark system modes. `npm run test:theme`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, NEO } from './package.ts';
-import { firstPaintCss, layoutOwnCss } from '../../extension/shared/page-box.ts';
+import { pageLoaderChecks, rgba } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
+import { settingsPageChecks } from './settings-page.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
@@ -25,7 +24,6 @@ declare const __rt: HarnessRt;
 const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 const pkg = themeForPage(NEO);
-const FIRST_PAINT = firstPaintCss('neubrutalism', readFileSync(new URL('first-paint.css', `file://${NEO}`), 'utf8'));
 const INK = '#111111';
 const PAGE = '#ff00ff';
 
@@ -315,13 +313,8 @@ for (const [name, engine] of ENGINES) {
         await page.emulateMedia({ colorScheme: null });
       });
 
-      await t.test('dedicated Settings has a heading and controls without a start-page field', async () => {
-        await mount({ inNewTab: true });
-        await ev(() => T.rtSetUi({ settingsPage: true }));
-        assert.equal(await count('.launcher h1'), 1);
-        assert.equal(await count('.launcher-query'), 0);
-        assert.equal(await count('.launcher .archive-row, .launcher .tile'), 0);
-        assert.ok(await count('.settings-form input') > 0);
+      await t.test('dedicated Settings: its own page, as System Settings (the categories beside the chosen one\'s settings); never under the search field in Margin.app\'s window', async () => {
+        await settingsPageChecks(page);
       });
 
       await t.test('Settings: toggles drawn as Neo switches, buttons on one line', async () => {
@@ -334,22 +327,63 @@ for (const [name, engine] of ENGINES) {
         await ev(() => T.unmountRuntime());
       });
 
-      await t.test('first paint: the card\'s border, shadow and ground around the box, nothing inside it', async () => {
-        const fp = await context.newPage();
-        await fp.setContent(`<!doctype html><html data-margin-at="neubrutalism"><head><meta charset="utf-8"><style>${FIRST_PAINT}\n${layoutOwnCss({ left: 291, top: 19, right: 19, bottom: 19, radius: 15 })}</style></head><body style="margin:0;background:${PAGE}"><p style="margin:0">a page</p></body></html>`);
-        await fp.waitForTimeout(60);
-        const shot = decodePng(await fp.screenshot());
-        assert.equal(shot.at(700, 450), PAGE, 'the page inside its box');
-        assert.equal(shot.at(292, 450), PAGE, 'right to its left edge');
-        assert.equal(shot.at(700, 20), PAGE, 'and its top');
-        assert.equal(shot.at(700, 17), INK, 'the border above');
-        assert.equal(shot.at(289, 450), INK, 'and at its left');
-        assert.equal(shot.at(1424, 450), INK, 'the hard shadow at its right');
-        assert.equal(shot.at(100, 450), '#ffd23f', 'the ground where the sidebar will be');
-        await fp.evaluate(() => document.documentElement.removeAttribute('data-margin-at'));
-        await fp.waitForTimeout(60);
-        assert.equal(decodePng(await fp.screenshot()).at(100, 450), PAGE, 'not marked for Neubrutalism: nothing');
-        await fp.close();
+      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, opaque, never a see-through hole', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', appWindow: true }));
+        const e = await page.evaluate(() => T.rtEmptyPage());
+        assert.ok(e.page && e.launcher, 'a launcher drawn in the page card');
+        const [px, py, pw, ph] = e.page!, [lx, ly, lw, lh] = e.launcher!;
+        assert.ok(Math.abs(px + pw / 2 - (lx + lw / 2)) <= 1 && Math.abs(py + ph / 2 - (ly + lh / 2)) <= 1 && lw >= pw - 8 && lh >= ph - 8, `the page's box covered: ${e.page} ${e.launcher}`);
+        const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
+        assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // Neubrutalism's own page loader (Margin.app, while an item opens): a cream card, Margin's words in the heavy
+      // type over a chunky bar in the space's color (a thick ink border, a hard offset shadow), a striped block
+      // running along it.
+      await pageLoaderChecks(t, browser, {
+        id: 'neubrutalism', dir: NEO, script,
+        label: '.opening-label', mark: '.opening-run',
+        animations: ['nb-run'],
+        icon: { size: 32 },
+        skeleton: [['.space-name', ''], ['.folders', '::before'], ['.today', '::before'], ['.chips', '::before'], ['.chips', '::after']],
+        starting: ['nb-run', 'nb-wait'],
+        look: async (page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, bar: T.rtRect('.opening-bar')!, run: T.rtRect('.opening-run')!, label: T.rtRect('.opening-label')!, slot: T.rtRect('m-page-loader')!,
+            fill: T.rtComputed('.opening-bar', 'background-color'), border: [T.rtComputed('.opening-bar', 'border-top-width'), T.rtComputed('.opening-bar', 'border-top-style'), T.rtComputed('.opening-bar', 'border-top-color')],
+            shadow: T.rtComputed('.opening-bar', 'box-shadow'), stripes: T.rtComputed('.opening-run', 'background-image'),
+            font: T.rtComputed('.opening-label', 'font-family'), size: parseFloat(T.rtComputed('.opening-label', 'font-size') ?? '0'), upper: T.rtComputed('.opening-label', 'text-transform'), ink: T.rtComputed('.opening-label', 'color') }));
+          const a = await read();
+          assert.deepEqual(rgba(a.card), [255, 253, 247, 1], 'a cream card');
+          assert.deepEqual([a.border[0], a.border[1], rgba(a.border[2])], ['3px', 'solid', [17, 17, 17, 1]], 'a thick ink border');
+          assert.match(a.shadow ?? '', /6px 6px 0px/, 'a hard offset shadow (no blur)');
+          assert.deepEqual(rgba(a.fill), [255, 210, 63, 1], 'the bar in the space\'s color');
+          assert.match(a.stripes ?? '', /repeating-linear-gradient/, 'a striped block');
+          assert.ok(Math.abs(a.bar.x - a.slot.x) <= 1 && Math.abs(a.bar.y - a.slot.y) <= 1, 'the bar in the card\'s middle');
+          assert.ok(a.label.bottom <= a.bar.top - 8 && Math.abs(a.label.x - a.bar.x) <= 1, 'the words over it');
+          assert.match(a.font ?? '', /Archivo Black/);
+          assert.deepEqual([a.upper, rgba(a.ink)], ['uppercase', [17, 17, 17, 1]], 'heavy, upper case, ink');
+          assert.ok(a.size >= 28, `large (${a.size}px)`);
+          assert.equal(await ev(() => document.fonts.check('30px "Archivo Black"')), true, 'its bundled font');
+          // The block runs along the bar, always inside its border.
+          const seen = new Set<number>();
+          for (let i = 0; i < 8; i++) {
+            const b = await read();
+            assert.ok(b.run.left >= b.bar.left + 3 && b.run.right <= b.bar.right - 3 && b.run.top >= b.bar.top + 3 && b.run.bottom <= b.bar.bottom - 3, `the block inside the bar (${JSON.stringify([b.run, b.bar])})`);
+            seen.add(Math.round(b.run.left));
+            await page.waitForTimeout(90);
+          }
+          assert.ok(seen.size >= 3, `… and moving (${[...seen]})`);
+          await ev(() => T.rtApply('switchSpace', 'work'));
+          assert.deepEqual(rgba((await read()).fill), [127, 179, 255, 1], 'another space, its color');
+          await ev(() => T.rtApply('switchSpace', 'personal'));
+        },
+        looks: [
+          ['Dark Mode: the same look', { colorScheme: 'dark' }, async (_page, ev) => {
+            assert.deepEqual(rgba((await ev(() => T.rtLoader()))!.background), [255, 253, 247, 1]);
+            assert.deepEqual(rgba(await ev(() => T.rtComputed('.opening-label', 'color'))), [17, 17, 17, 1]);
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {

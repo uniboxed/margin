@@ -9,9 +9,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
 import * as V from '../extension/shared/view.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
-import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
+import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
 import { rankPalette } from '../extension/shared/search.ts';
 import type { KeptTab, State } from '../types/margin.d.ts';
 
@@ -333,7 +333,7 @@ test('menus: a kept tab\'s menu is a tab\'s (pin, folders, move to a space, clos
   const id = Object.keys(s.keptTabs)[0];
   const vm = buildViewModel({ state: s, ui: { windowId: 1, tabId: 1 } });
   const items = menuItems({ kind: 'tab', id }, { state: s, space: vm.space });
-  assert.deepEqual(items.filter((i) => !i.separator).map((i) => [i.label, i.action]), [['Pin Tab', 'tab.pin'], ['New Folder with Tab', 'folder.newWithTab'], ['Move to 🏠 Personal', 'tab.moveToSpace'], ['Close Tab', 'tab.close']]);
+  assert.deepEqual(items.filter((i) => !i.separator).map((i) => [i.label, i.action]), [['Pin Tab', 'tab.pin'], ['Add to Favorites', 'favorite.add'], ['Add to Split View', 'split.add'], ['New Folder with Tab', 'folder.newWithTab'], ['Rename Tab', 'tab.rename'], ['Copy URL', 'tab.copyUrl'], ['Duplicate Tab', 'tab.duplicate'], ['Always Open b.test in This Space', 'linkRules.addHost'], ['Move to 🏠 Personal', 'tab.moveToSpace'], ['Close Tab', 'tab.close']]);
   assert.deepEqual(menuItems({ kind: 'tab', id: 't-gone' }, { state: s, space: vm.space }), []);
 });
 

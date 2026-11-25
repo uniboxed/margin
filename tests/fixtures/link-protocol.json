@@ -1,0 +1,19 @@
+{
+  "about": "The link's words for requests that end on evidence (docs/LINK-RESILIENCE.md §1, docs/PROTOCOL.md): what the app sends as margin-core encodes it (app/shared/core/src/protocol.rs), what a copy sends as the core reads it, and what a copy (extension/background/link.ts) answers to each. Read by protocol.rs's tests, the Mac's unit checks (tests.swift, through the core) and tests/link.test.ts. Old and new both ways: an older copy's tock has no seq (life only), an older app's tick has none (its tock has none).",
+  "app": [
+    { "about": "a tick, numbered from 1 on each link", "message": { "k": "tick", "seq": 3 }, "at": 5000, "text": { "k": "tick", "at": 5000, "seq": 3 } },
+    { "about": "a cancel: the app no longer waits for that req", "message": { "k": "cancel", "id": 7 }, "at": 5000, "text": { "k": "cancel", "id": 7 } }
+  ],
+  "copy": [
+    { "about": "a tock with its tick's number: the copy read everything sent before that tick", "text": { "k": "tock", "at": 1, "seq": 3 }, "reads": { "k": "tock", "seq": 3 } },
+    { "about": "an older copy's tock: life only", "text": { "k": "tock", "at": 1 }, "reads": { "k": "tock" } },
+    { "about": "a seq that isn't a whole number: life only", "text": { "k": "tock", "seq": "3" }, "reads": { "k": "tock" } },
+    { "about": "an ack: the copy read that req and takes it", "text": { "k": "ack", "id": 7 }, "reads": { "k": "ack", "id": 7 } },
+    { "about": "an ack needs its id", "text": { "k": "ack" }, "reads": null }
+  ],
+  "answers": [
+    { "about": "a numbered tick: its number echoed", "app": { "k": "tick", "at": 1, "seq": 3 }, "copy": { "k": "tock", "seq": 3 } },
+    { "about": "an older app's tick: a tock with no number", "app": { "k": "tick", "at": 1 }, "copy": { "k": "tock" }, "none": ["seq"] },
+    { "about": "a req: acked as it's read, before it runs", "app": { "k": "req", "id": 9, "windowId": null, "type": "updateSettings", "payload": {}, "at": 1 }, "copy": { "k": "ack", "id": 9 } }
+  ]
+}

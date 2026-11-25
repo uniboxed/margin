@@ -140,14 +140,11 @@ test('linked, the page\'s own keys: its next-tab key moves one tab; ⌘T only te
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(await frontId(), rows[2], 'exactly one');
 
-  // ⌘T is the app's hot key while it draws: a page that hears it anyway does nothing but say so.
+  // ⌘T is the app's hot key while it draws: a page that hears it anyway does nothing.
   const next = (await m.pageOf(rows[2]))!;
   const tabs = (await m.tabs()).length;
-  const from = m.shell.received.length;
   await next.keyboard.press('Meta+KeyT');
-  const heard = await m.until(() => pushes('keyHeard', from)[0], { what: 'keyHeard' });
-  assert.deepEqual({ command: heard.command, from: heard.from }, { command: 'palette', from: 'page' });
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 600));
   assert.equal((await m.tabs()).length, tabs, 'no new tab');
   assert.equal((await view()).palette, false, 'no palette: the app\'s key opens it, not the page');
 });

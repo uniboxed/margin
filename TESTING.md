@@ -1,17 +1,6 @@
 # Testing Margin
 
-## Live profile cover acceptance (pending, 2026-11-11)
-
-The launch default stays off. [Component results](tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md)
-include actual owned renderer allocation/crash checks and the full local suite;
-they do not establish real OS delivery or physical composition. The
-[lab rules](tools/handoff-lab/README.md) require approval before anything runs on screen.
-
-- [ ] Run the new [MATCHED protocol](tools/handoff-lab/VALIDATION.md) on one display: 50 guarded Test A/Test B requests, same process/topology, complete resource samples, separate degraded freeze reveal and verified completion. Preserve prior failed runs.
-- [x] On 26B131 (2026-11-11), run the [actual 20-second watchdog and cancel/reuse checks](tools/handoff-lab/WATCHDOG-SESSION-VALIDATION.md): three passive corner appearances, independent alpha observation during the owned main-thread block, verified cleanup and no stale deadline affecting reuse.
-- [ ] Check real lock/unlock and system sleep/wake, including a profile still connecting:cover disposed, source restored or visible fallback, no stale queued/late-link transition, fresh deliberate switch after allowed wake.
-- [ ] With the available second monitor, connect/disconnect during early preparation and a moving handoff. Verify immediate cover disposal, bounded source recovery, no late close/repark, then fresh two-display conservative keep/no-freeze behavior. This fallback is not the single-display live-cover goal.
-- [ ] Observe/record physical transitions for flashes, sliding Safari/Desktop, theme animation and final sidebar alignment. Metadata alpha/readiness alone cannot pass this check. Other macOS builds retain separate acceptance.
+Margin is hosted only since 2026-11-16 (DECISIONS.md, "Hosted only: the overlay over Safari removed"): Margin.app's own window, Safari and other apps hosted in its page area. The app-side checks of the overlay drawn over the person's Safari windows (opening Margin into its browser, the slot, the profile handoff and its live cover, prepared layouts across full-screen Spaces, the startup splash and covers) went with it; older sections below that describe them are history.
 
 ## Automated (cloud / any machine with Node 22)
 
@@ -26,7 +15,7 @@ npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and We
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
 - every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
-- the Swift unit checks when `app/platforms/macos/shell`, `app/platforms/macos/startup` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
+- the Swift unit checks when `app/platforms/macos/shell`, `app/platforms/macos/startup` or `tools/app-tests` changed (compiled on every core);
 - any e2e file that itself changed.
 
 At the end it lists what only the gate runs: the e2e suite, the WebKit host, the app's e2e checks. Options:
@@ -62,16 +51,15 @@ What each file covers:
 
 | File | What |
 |---|---|
-| `link` | linking, the page box at once, the app starting late |
+| `link` | linking, the overlay following the state, the app starting late |
 | `link-drops` | a drop mended, the app gone a moment and past 6 s, a goodbye, a wrong welcome key |
 | `data` | the app's set as the cache, changes sent, changes queued while unlinked, a wiped profile refilled |
 | `tabs`, `spaces`, `pins-folders` | the sidebar in the overlay |
 | `palette`, `newtab`, `archive` | the palette, the launcher, searches, the archive |
 | `icons-titles`, `navigation` | site icons and titles, next and previous, history |
 | `sleep` | sleeping tabs: idle pages closed and kept, busy ones awake |
-| `page-box`, `scroll` | every site in its box, fixed and sticky parts, frames, gestures |
+| `scroll` | scrolling, sticky parts, gestures |
 | `loading` | a streamed page, leaving, a reload, a page that stays |
-| `cloud-tabs` | iCloud Tabs in the sidebar and the palette |
 | `themes` | each built-in theme chosen in Settings and drawn with real content |
 | `chrome-build` | the Chrome build on its own |
 | `site` | the test site itself |
@@ -84,6 +72,178 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
 - the app's data files and the real Swift link.
 
+## The real-screen suite (2026-11-17)
+
+`npm run test:screen` (tools/screen-tests/README.md): Margin hosting the behaviour test app, Chameleon, on the real window server, one scenario per behaviour class of docs/HOSTING-CORE.md plus check10's steps; opt-in, the person's own apps (`-- --real-apps`). Required before every install; never in CI. It refuses to start unless the Mac has been idle 180 s and isn't locked, prints its whole plan first, stops at the first sign of the person and puts everything back (Margin's defaults, the test apps removed, the starting Space). `-- --dry-run` prints the plan and touches nothing. Each part runs under a hard 10-minute limit; all the Chameleon parts take about half an hour. Many behaviour scenarios fail against today's engine: that's the baseline the reconciler turns green. Rule: a real-screen bug isn't fixed until its behaviour class exists in Chameleon, the stand-in world (`app/platforms/macos/shell/tests/behaviour-world.swift`) and the suite, and the suite fails without the fix.
+
+## Track 2 — Arc/Dia Feature Suite (2026-11-20)
+
+Manual verification checklist in real Safari + Margin.app (automated unit, Rust, security, theme, and headless E2E suites verify model/state/view-model/UI/layout logic; real macOS window hosting, the mini player in real Safari pages, and Safari Web Extension behavior require manual verification):
+
+- [ ] **M2.1 QoL & Shortcuts:** Press `⇧⌘C` on any web page → URL copied to clipboard and a `"Copied URL"` toast pill fades in/out. Press `⌘L` → palette opens pre-filled and selected with the current URL. Press `⌘D` → toggles pin. Press `⇧⌘T` → reopens last archived tab. Press `⌃1`–`⌃9` → jumps to Spaces 1–9; `⌘1`–`⌘9` → jumps to Favorites then Pins then Today tabs. Right-click a tab → Mute/Unmute, Duplicate, and Unload (Sleep) work cleanly.
+- [ ] **M2.2 Sticky Pins, Inline Rename & Nested Folders:** Open a pinned tab and click a link to a subpage → tab stays bound to the pin row (does not jump to Today), shows a drifted reset button (`pin.reset`), and clicking reset navigates back to the pinned root URL. Closing a sticky pinned tab unloads it without archiving it. Double-click or choose Rename on a tab/pin → custom title persists across reloads. Create subfolders up to 4 levels deep (`depth` 0–3); verify depth 5 is refused and drag-and-drop rejects cycles.
+- [ ] **M2.3 Favorites Grid:** Add up to 12 web tabs and macOS apps to Favorites via context menu or dragging into the Favorites grid. Switch Spaces → global Favorites remain fixed above Space swipes. Switch Settings → Tabs → Favorites scope to `Per-profile` and confirm per-profile filtering. `⌘1`–`⌘9` jumps to Favorites first.
+- [ ] **M2.4 Background Mini Player (Safari tabs in Margin.app):** In a Margin window, play audio/video in a web item (YouTube, YouTube Music, Spotify Web, SoundCloud), then show another item (a web item or a Mac app) → the mini player appears in the sidebar with the title, artist and artwork (the page's Media Session artwork; the site icon or a letter while it loads, or when Safari won't let the copy read it); returning to the playing item hides it. Play/Pause, Mute and the title (shows the item) work on every site; Next and Previous where the site has its own Next/Previous buttons (Previous otherwise restarts the track). Pause from the mini player → it stays (paused) for 30 s, then goes. Close the playing item, or navigate it to another site → the mini player goes at once. Quit and reopen Safari (tab ids change) and update Margin with media playing → the mini player comes back once the page plays (or at once after an update, as the content script is put in again). Media inside a frame (an embedded player) or an `Audio()` never put in the page: shown from Safari's `audible` (the tab's title), Play/Pause may do nothing there. Check that the Safari copy has the "Allow on every website" permission for artwork from other sites. Hosted Mac apps (Spotify, Music) in the mini player: later (MediaRemote is closed to third parties since macOS 15.4), not part of this check.
+- [ ] **M2.5 The preview card and Quick Tab (Margin.app, real Safari; DECISIONS.md "Peek and Little Arc in Margin.app", their first names).** Auto-preview is on by default on this branch. Watch Margin's log alongside: `/usr/bin/log show --predicate 'process == "Margin"' --last 5m --style compact | grep -E "Preview|Quick Tab|layout:|card"`.
+  - [ ] **Shift+click a link** in a web item → the page area dims (the item still visible through it), the card scales in (≈150 ms) with its bar; the first time, its page area shows a spinner until Safari's card window is in place, then the page shows through, exactly inside the card frame (no gap, no Safari toolbar showing). Log: `Peek asked by a page: shown`, `Safari window N made for hosting (its card)`, `layout: 2 item(s) shown`. Nothing of the page card's own loader ever covers the item under the card.
+  - [ ] Shift+click the same kind of link again after closing → the card comes back fast (no new window: no `made for hosting (its card)` line), the item under it never flickers or reloads.
+  - [ ] **Auto-preview:** in a pinned tab or a favorite, click a link to another site → card; a link to the same site → navigates as usual; a Google/Apple/Microsoft sign-in link → navigates as usual (never a card). A link the page handles itself (Gmail's message list, a menu, a range selection with Shift) works as before. In a Safari window of your own (not Margin's) nothing is intercepted.
+  - [ ] **Not drawn by Margin:** quit Margin.app and Shift+click in Safari → nothing intercepted (Safari's own Shift+click: Reading List). Back in Margin, a link in a window Margin doesn't host (a Safari window of your own) → Safari's own behaviour, at most a ½ s pause the first time (the app refuses: log `Peek asked by a page: refused (not a window Margin hosts)`), then the link opens once (a `target=_blank` one in a new tab).
+  - [ ] **Bar:** Back, Forward (the card's own history), Copy URL (toast; paste it), the host text follows navigation inside the card, Open in Space (Expand: the page becomes the space's tab in the sidebar, shown as the main page, logged in still, same scroll; the card goes; log `Peek: expanded into item`), ✕ closes (reverse animation, then gone; log `Peek: the card closed (its close)`).
+  - [ ] **Close every way:** Esc in the card's page (not while typing in a field there; a page that uses Esc itself, e.g. a lightbox, keeps it), ⌘W while the card has the keys (closes the card, never the item under it: check the sidebar still has it), a click on the dimmed area around the card. After each, typing goes to the item under it again.
+  - [ ] **⌘↩** in the card's page (not in a field) expands it.
+  - [ ] **Keys/focus:** with the card open, type in the card's page (keys reach it); open the palette (⌘T) and Esc it → the keys come back to the card, not the item under it.
+  - [ ] **Attached to its opener:** with a card open, pick another item in the sidebar → the card goes (no animation glitch), the other item shows alone; pick the first item again → the card is back with its page as it was. Pick an item in another space and come back → same.
+  - [ ] **A new tab inside the card** (a `target=_blank` link in the card's page) → the card shows that page (no extra Safari tab shows up anywhere).
+  - [ ] **Quick Tab (⌥⌘N):** the card's field appears over the item, focused; type an address → Return → the card loads it; type words → a search with Safari's engine; Esc or a click outside closes the field. With nothing hosted (the launcher), ⌥⌘N then an address → it opens as the space's new tab (decided: there's no page under a card there).
+  - [ ] **Look:** all five themes (Settings → Appearance), light and dark: the bar drawn in the theme, the dim over the page area only (not over the sidebar), the card's corners; Reduce Motion (System Settings → Accessibility → Display) → a fade only.
+  - [ ] **Its window:** never Safari's empty new-tab page with its toolbar down in the card; Safari's own full-screen toolbar of the card window never shows over the page or moves (log: no `park strip` for it; `host: … its full-screen toolbar` lines only). Leave the card closed 15 minutes → its Safari window is closed (log `the card window unused for 15 minutes: closed`); quitting the item's Safari window (closing its last tab from Safari) closes the card window too.
+  - [ ] **Resize:** with the card open, drag the sidebar's edge or change theme → the card's window follows its new place (or is placed once the drag ends).
+  - [ ] **Over a split (M2.7):** in a split of a web page and an app, Shift+click a link in the web pane → the card over both panes, both still visible (dimmed) at their places; ⌘W → only the card closes, the split stays with the pane that had the keys focused; open it again and drag the sidebar's edge → the panes and the card all land at their new places; click the dim → the card goes, the split stays. Log: `layout: 3 item(s) shown`, then `layout: 2 item(s) shown`.
+  - [ ] **Card over a split, the card window's FIRST open (fix/screen-card):** quit Safari's card window first (or start fresh); a STACKED split [web page (main), Notes below], main focused; Shift+click a link in main → the card's page shows the linked page only (never main's page in its top half), no dark stripe across it where the panes meet, and with the pointer left still where it was (just above the card's page, under its bar) no Safari tooltip ("Tab Group picker") appears. Window server order (front to back) must have the card's window and its toolbar above main's. A line `focused, not in front of the other visible hosts once fronted … raised again` in the log means a raise didn't take (say so). Then add a third pane (Add to Split View): its window in front, its own band above it, the keys in it.
+- [ ] **M2.6 Link Rules:** Right-click a tab → `Always Open <host> in This Space` adds a link rule. Open a link matching that host from another Space → tab auto-routes and switches to the target Space. Edit/disable/remove rules in library/settings.
+- [ ] **M2.7 Split View in Margin.app (docs/PEEK-SPLIT.md §4, feat/split).** Read Margin's log alongside:
+  `/usr/bin/log show --last 10m --style compact --predicate 'subsystem == "com.unibox.margin"'` (or `scripts/margin-log.sh 10`).
+  Each step says what the log should have; "nothing" lines must not appear.
+  1. **Two Safari tabs.** In a space with two web items A and B (same profile), right-click B → **Add to Split View**.
+     A and B side by side, an 8–12 pt gap between them with the theme's grip, B focused (ring). Log: `hosted: layout: 2
+     item(s) shown in Margin's window <n>, <B> focused`, `Safari window <id> made for hosting (its pane1)` the first time,
+     `host: layout: safari:p… main shown, safari:p…#pane1 pane shown`, `Margin's window <n>: 2 hosted windows visible`.
+     The pane window shows B's page from its first frame; **Safari's toolbar never comes down over either pane** (no
+     address field focused). Never: `didn't lay its panes out`, `not laid out`, `below its window's minimum`.
+  2. **An app pane.** Right-click a Mac app item (TextEdit, Notes) → **Add to Split View**: three panes, the app at the
+     right (`host: layout: … app:com.apple.TextEdit pane shown`). Typing goes to the app.
+  3. **Keys and focus.** Click in A: the ring moves to A, the sidebar's capsule lights A, typing goes to A. Click in the
+     app: the same for it. ⌘L, ⌘T, the palette closed with Escape: the keys go back to the pane that had them, never
+     another.
+  4. **Divider.** Drag the divider between A and B: with tiles on, both windows follow live (`host: live resize: …
+     followed …`), the holes follow without a black gap; with tiles off (a plain member), the windows stay put, then
+     jump to the new sizes under the loader at release (`hosted: page area changed`). A divider stops where a pane would
+     go below its window's minimum (Weather, Maps have one). Double-click: equal sizes. Quit and relaunch: the ratios kept.
+  5. **Sidebar drag.** Drag the sidebar's edge: every pane follows (live with tiles), the sidebar stops where the panes
+     wouldn't fit.
+  6. **Stacked.** Right-click a pane's row in the capsule → **Stacked**: the panes one above the other; **Side by Side**
+     back. **Swap Panes**: the first two change places (in a split of two, each window keeps its tab: no page reloads).
+  7. **Leaving and coming back.** Pick an item outside the split in the sidebar: it alone, the panes' windows gone from
+     sight (not in Mission Control, not on the Desktop). Click a pane in the capsule: the whole split again, that pane
+     focused, no new Safari window (`made for hosting` not said again).
+  8. **⌘W.** With three panes, ⌘W in the focused pane: its tab closes, the other two stay split, the next pane focused.
+     ⌘W again: one item left, shown alone (in the profile's main window; `Safari window … made` not said). The pane
+     window, unused, is closed 15 minutes later (`Safari window of …'s pane1 unused for 15 minutes: closed`).
+  9. **Remove / Break Out.** On a pane: **Remove from Split View** shows the rest; **Break Out of Split View** shows that
+     pane alone.
+  10. **⌃⇧=.** With a tab in front and another used before: ⌃⇧= splits them (the one used last added). In a space with
+     only one item: the palette opens; the tab picked there is added beside the one in front.
+  11. **No room.** In a small window (or with 3 panes), add a pane that can't fit: a toast "Not enough room for another
+     pane", nothing changes.
+  12. **All 5 themes**, light and dark: the gap, the grip (hover, drag), the focused ring, the capsule row.
+  13. **Real use (fix/split-real-use, 2026-11-21).** Display 1512×982, page area 1264×933 (sidebar 240).
+     a. **Split from a Safari page, its first pane window.** A shown alone; right-click B → **Add to Split View**. Seen:
+        no slide to another Space and back; A stays full width while B's box shows "Opening …" over A's right part, then A
+        and B appear side by side together. Log: `hosted: Safari window <id> made for hosting (its pane1)`;
+        `host: safari:p…#pane1 opened (…): window … (by the window server, under the freeze from its ask)` (maybe
+        `1 Space change undone under the freeze`); `host: safari:p…#pane1: full screen by the early path in … ms (born in
+        full screen, listed …, reserved …, …, the freeze let go …, in place, its Space gone …), under the freeze`;
+        `host: layout: safari:p… laid out again with safari:p…#pane1 in … ms, once it was in place`. Side by side, never
+        `out to a private Space and back` for pane1 (fix/pane-fronting: panes that don't overlap aren't ordered; step g).
+        Never: `place safari:p…#pane1 attempt`,
+        `its tile sized to the page area 240,41 628×933` before pane1's lines, `pane1, focused, not in front`, `its copy
+        asked to bring it in front`. The Dock's log (`/usr/bin/log show --last 2m --predicate 'process == "Dock"' | grep
+        becameCurrent`): a `becameCurrent` of the new Space, if any, is never seen on screen (it falls between pane1's
+        ask and its `the freeze let go` mark), and Margin's Space is current after. The freeze (the loader's spinner still)
+        lasts about the time the window took to open plus ~0.1–0.3 s.
+     b. **A third Safari pane.** With A and B side by side, right-click C → Add to Split View: the toast "Not enough room
+        for another pane", nothing opened (no `made for hosting (its pane2)`, no `#pane2` line at all). Once per Safari
+        version: `host: com.apple.Safari …: its windows' minimum 574×220 kept for it`. Quit Margin, relaunch, split A and B
+        again, add C: refused at once (the minimum from minimums.json beside routes.json, before any pane window exists).
+     c. **Stacked that can't fit.** In a small page area (a wide sidebar) with two panes whose minimums don't fit stacked,
+        **Stacked** from the pane menu: the toast "Not enough room to stack these panes", nothing changes.
+     d. **A pane that fails** (hard to cause by hand; if it happens): `hosted: split …: <item>: out of the split (…)`, a
+        toast "… couldn't open in Split View" (or "Not enough room for …"), the rest re-laid with no empty box; one left:
+        `host: layout: safari:p… left alone of the layout asked: at the page area 240,41 1264×933`.
+     e. **Divider drag between two Safari panes**, ~10 s back and forth. Log: `hosted: a split's divider dragged in
+        Margin's window <n>: 2 hosted windows follow it live` (never "the hosted window follows it live"), then `host: live
+        resize: in … ms: <n> page area changes (every … ms, p95 …), <m> sent to every window that follows (… coalesced),
+        followed … (median … ms, p95 … ms) …; <x> of <y> sends with more than one window at once; each: safari:p… <k> sent,
+        landed median … ms, p95 … ms; safari:p…#pane1 …`. Compare with 13:26:47's `median 26.0 ms, p95 48.8 ms` (each
+        window's own median now; a sidebar drag with one window was 4–5 ms) and send the line to Claude. Never a pane
+        below 574 wide (the divider stops).
+     f. **Nothing else changed**: the preview card over the split (Shift+click), stacked bands (Stacked: the 52 pt band
+        with the pane's name above the lower Safari pane), ⌘W in each pane, an item outside the split then a pane again
+        (the whole split back, no `made for hosting`), a sidebar drag with the split up (both follow), a single item
+        shown alone (as before).
+     g. **A new pane fronted once, its toolbar never over it (fix/pane-fronting).** As a: A shown alone (B's tab open in
+        A's window, as at 14:29:59), Add to Split View for B, side by side. Seen: B's box keeps "Opening …" a little longer
+        (until its page is in), then B appears with **no Safari toolbar over its top** at any moment; A untouched. Log
+        (one first open): `host: safari:p…#pane1: full screen by the early path … born in full screen …`, `host: layout:
+        safari:p… laid out again with safari:p…#pane1 …`, `host: layout: safari:p… main shown, safari:p…#pane1 pane shown,
+        focused safari:p…#pane1 in … ms`, `hosted: layout: 2 item(s) shown …`, then `hosted: page area changed: 1264×933`
+        with nothing between them about pane1's order. If its toolbar was still out when its tab came in: `host:
+        safari:p…#pane1: its full-screen toolbar out over its page by 52 pt at its reveal: resting after … ms` (under
+        ~150 ms; `still out (revealed anyway)` after 500 ms means it didn't go back up: send the log). The toolbar trace
+        (`its full-screen toolbar 2xxxx (first seen)`) should say `resting above its window` at its first read, never `OUT
+        over its window` after the reveal. Never, for pane1: `out to a private Space and back`, `focused, not in front of
+        the other visible hosts`, `its copy asked to bring it in front`, `brought in front by its copy`. Typing goes to B
+        right away (its keys). Then Stacked from the pane menu, and a card over the split (Shift+click a link in A): the
+        card in front of both panes on its first open (its out and back may still show for the card: that's expected).
+     h. **The first click in another pane goes through (feat/pane-click-tap, DECISIONS.md 2026-11-21).** One click, never
+        two, in the pane WITHOUT the keys. Read the log alongside; each held click says one line: `host: <id>: a click in
+        its pane while <other id> had the keys: its window <n> key in <ms> ms (in its own app | its app made the front
+        app): the click delivered`. Expect about 5–15 ms within Safari, 25–80 ms across apps, up to ~65 ms the first click
+        after the split appears. When the split appears: `pane clicks: on (an event tap on left presses, its own
+        thread): …`; when it goes (one pane, another item, another Space for a second): `pane clicks: off (no split shown
+        on the current Space)`; at quit `pane clicks: off (Margin quits)`. Never: `not key within`, `macOS turned the
+        event tap off`, `the event tap wasn't made`, `Accessibility isn't granted`.
+        - **Safari + Safari** (two web items side by side, A focused): click a **link** in B: it opens in B at once;
+          **Shift+click** a link in B: the preview card at once (one click); click B's page's **text field** and type:
+          the letters in B's field; **double-click** a word in B: selected (and a page's dblclick fires); **drag-select**
+          text in B from a press in B: the selection follows the drag; then ⌘W: B's tab closes (the clicked pane had the
+          keys and the sidebar's highlight moved to it with the click).
+        - **Safari + Notes** (Notes the app pane): with Safari focused, click into a note's text in Notes: the caret where
+          clicked, typing goes there; double-click a word in Notes: selected; drag-select in Notes. With Notes focused,
+          click a link in Safari: it opens at once; Shift+click: the card; type in a Safari field after one click.
+        - **Unchanged:** ⌘-click and right-click in the other pane (as before: Safari takes them without the keys); a
+          click in the pane that has the keys (no log line); the divider's drag, a double-click on the divider; the
+          stacked band; the sidebar and its edge's drag; the card's bar and the dim around a card (closes it); the
+          palette over a split (a click in a pane closes it as before); a menu or popup of the focused pane over the other
+          one (a `<select>`'s list, a context menu: the item picked, never the pane under it focused; its line says `a
+          click in its pane over another window there (window …, layer 101): let go as before`); a hosted app's own
+          menus and sheets; a single item shown (no `pane clicks: on` at all); scrolling the other pane (never held).
+        - **Costs:** with the split up and nothing touched, Activity Monitor's Margin CPU at 0 as before (the tap waits
+          for presses only); `npm run test:screen -- --part pane-clicks` says Margin's idle cost with the tap on.
+     i. **Every pane draws active (feat/panes-active, DECISIONS.md 2026-11-21 "Every pane of a split draws active").**
+        At launch the host's line ends `…; panes active ok` (else `panes active off: <why>`: then only the focused pane
+        draws active, as before; send the line). Read the log alongside: each change says one line, `panes active: <id>
+        kept active (its window <n> (pid <p>)) … (the keys: <id>; <n> kept)`, or `<id> let go (<why>; …)`.
+        - **Safari + Notes** side by side, Safari focused: Notes draws active too (its toolbar not greyed, its text
+          caret blinking where it was, its selection highlighted in colour, not grey), and Safari's page is active (its
+          field's caret, a blue selection). `panes active: app:com.apple.Notes kept active …` when the split appears.
+        - **Typing goes to the last pane clicked, only there:** type: the letters go to Safari; click once into a note
+          in Notes and type: the letters go to Notes only, Safari's caret still showing (it stays active, the line says
+          `safari:… kept active`); back and forth a few times. The menu bar always shows the last clicked app's menus
+          (Safari's, then Notes'); ⌘C/⌘V act in the last clicked pane.
+        - **The ring:** the focused pane's ring is the only one, in every theme, light and dark (Arcadia's has a thin
+          edge in the frame's text colour).
+        - **The moment between:** with each click across apps, watch the pane that had the keys: at most one frame of an
+          inactive look (the research measured ~30 ms between macOS deactivating it and Margin activating it again).
+          Report any visible flicker.
+        - **⌘-Tab away and back:** ⌘-Tab to an app outside Margin (Finder): both panes inactive at once (`… let go
+          (another app in front …`); ⌘-Tab back to Margin: both active again.
+        - **Two panes of one app** (Safari + Safari): only the focused one active (as before: AppKit has one key window per
+          app); nothing in the log for them.
+        - **The split hidden:** pick another item: about a second later `… let go (its pane gone …`; the split again:
+          kept again. A preview card over the split (Shift+click): nothing in the log for the panes under the dim.
+        - **Quit Margin** with the split up: `… let go (Margin quits …` before the quit's lines; afterwards no app draws
+          active but the front one (Notes and Safari as usual).
+        - **Crash recovery:** with the split up, `kill -9` Margin's process (Activity Monitor › Force Quit): Notes (the
+          kept one) still draws active although another app is in front: that's the crash. Open Margin again: its log
+          says `panes active: a crashed Margin kept 1 app active: 1 let go (deactivated) …` and Notes draws inactive.
+        - **Costs:** with the split up and nothing touched, Margin's CPU at 0 in Activity Monitor; `npm run test:screen
+          -- --part panes-active` says the idle cost with both panes active. `defaults write com.unibox.margin
+          MarginPanesActive -bool NO` and a relaunch: only the focused pane draws active again (`panes active: off
+          (MarginPanesActive is NO)…`).
+- [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
+
 ## Safari startup (2026-11-10)
 
 - [ ] With Safari closed, Activity Monitor shows only the resident `margin-helper`. Open Safari: a second `margin-helper --splash …` briefly shows a small “Getting things ready for you” card before Margin.app's full-window cover/layout. The child goes when the app draws. Switching to another app after the card appears or quitting Safari dismisses it; a failed startup dismisses it within six seconds. No Dock icon or keyboard-focus change.
@@ -93,9 +253,9 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - [ ] Open a window with Margin disabled: no splash. A normal window is left alone. Quitting Safari while a splash is up removes it; a startup failure releases the cover after at most six seconds.
 - [ ] Read `npm run log:app -- 5`: `Accessibility: window … is …` must name the currently linked profile, followed by `overlay page drawn … in … ms`, `overlay shown over …`, and `startup layout over window … ready after … ms` when a splash was used. A link reaching the app and an overlay drawing do not themselves prove that the overlay was shown.
 
-Automated coverage: `npm run test:app` checks historical copy IDs against the current Safari mapping, invalidation and relearning of an old window identity, ambiguous profile names, cover removal/timeout rules, and the native splash off screen in both appearances (`tools/app-tests/build/startup-{light,dark}.png`). These checks use stand-in browser windows; real Safari's extension launch delay and first-frame coverage still need the checks above.
+(Superseded 2026-11-16: the splash and the covers were removed with the overlay over Safari; `npm run test:app` still checks historical copy IDs against the current Safari mapping and ambiguous profile names.)
 
-`tools/app-tests/helper-test.sh` also tests the real helper and its splash child over a fake browser window off every display: resident memory before/during/after, idle CPU time, app startup, early and late handoff messages, pid isolation, timeout and browser quit. `helper-splash-test.sh` refuses any on-screen test frame. Fixture folders and browser IDs are unique per run. The app's end-to-end checks exercise its actual notification responder too. To compare an older helper in the same session, pass `MARGIN_HELPER_BASELINE=/absolute/path/to/the/old/helper`; it is run only against the fake browser. Logs and the launch-card snapshot stay in the fixture folder printed in failure output (`build/helper-splash-test-*/`).
+`tools/app-tests/helper-test.sh` tests the real helper against a fake browser and a fake Margin.app: it starts Margin as the browser opens, and at once when it's open already, and stays small. (Its splash child went with the overlay on 2026-11-16.)
 
 ## Prepared layouts across full-screen Spaces (2026-11-10)
 
@@ -108,7 +268,7 @@ Known open issue: the user confirmed detached/scaled Mission Control thumbnails 
 - [ ] Close one window, exit full screen, resize, move a full-screen window between displays, and use a page's video full-screen mode. Margin hides or follows as appropriate; there must be no leftover sidebar or invisible pointer catcher in the previous Space.
 - [ ] Leave the browsers open but idle, then quit them. The resident helper's idle behavior and the app's existing idle quit stay as before. No additional web views or screenshot cache are used for switching.
 
-Automated: `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` (build with `npm run build` first), also included in `npm run test:app`. Real off-screen WKWebViews and Shell run against stand-in windows and a fake Space bridge. A ready background layout must be placed within one second of its ready callback; twenty Space visits reuse both native windows and their pages without another Space move. Missing batch reads retain the layout only with fresh independent window/owner/size and full-screen Space confirmation for all active overlay panels. Unknown membership, a closed/resized/reused window number, or a misplaced panel/catcher must still conceal. Real Space move refusals keep their five-second cooldown. These tests never move a real browser or call the real private bridge; they do not measure macOS's compositor or guarantee a cold window is drawn before WebKit is ready.
+(Superseded 2026-11-16, its automated check removed with the overlay:) `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` was: Real off-screen WKWebViews and Shell run against stand-in windows and a fake Space bridge. A ready background layout must be placed within one second of its ready callback; twenty Space visits reuse both native windows and their pages without another Space move. Missing batch reads retain the layout only with fresh independent window/owner/size and full-screen Space confirmation for all active overlay panels. Unknown membership, a closed/resized/reused window number, or a misplaced panel/catcher must still conceal. Real Space move refusals keep their five-second cooldown. These tests never move a real browser or call the real private bridge; they do not measure macOS's compositor or guarantee a cold window is drawn before WebKit is ready.
 
 ## Chrome and Edge on the Mac (2026-11-09)
 
@@ -758,6 +918,8 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 
 ## Margin 2: the profile handoff, live in Test A and Test B (2026-11-06)
 
+(Superseded 2026-11-16: the profile handoff, its live cover, the dev hook's switch kinds and `tools/handoff-lab/` were removed with the overlay over Safari; the lab and its results are in git history before that date. Kept as history.)
+
 The freeze-based switch between profiles, with the window you leave parked out of sight (`docs/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
 
 Set-up:
@@ -831,7 +993,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 
-Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R extension/themes/neubrutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
+Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R app/shared/ui/themes/neubrutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
 
 1. **Import a folder over full screen.** Safari in full screen, Margin's new-tab page, Settings › Import Theme…. The file panel shows over full-screen Safari, not on another Space. Choose `my-neo`. The window draws My Neo at once, with a dark bar at the top: "Previewing “My Neo” 1.0.0 by Margin. Use this theme?". The pages move to My Neo's box.
 2. **Cancel.** Press Cancel: the theme from before comes back. Import again and press Escape: the same. Import again and wait 30 s: it ends by itself and Settings says so.
@@ -964,7 +1126,7 @@ Before: after an update or a quick quit and restart of Margin.app, often only th
 - [ ] Quit Margin.app from its menu and open it again, once with each profile's window in front and once with another app in front. Every profile links within about 4 s each time.
 - [ ] Lines like `wantLink: no answer from the extension handler within 3000 ms …` are fine (Safari lost that answer; the copy asks again). Send me any `the link's try has been under way N s …` or `unlinked with no try under way or to come …` line, with the time.
 
-## Margin 2: iCloud Tabs (2026-11-05)
+## Margin 2: iCloud Tabs (2026-11-05) — removed 2026-11-17 (to be rebuilt later); these checks no longer apply
 
 `npm run safari` from `feat/icloud-tabs` (Margin.app changes; the Xcode project is made again because shell files were added). Margin.app has Full Disk Access. Have Safari open on at least one other device signed in to the same Apple Account (an iPhone with a few tabs is enough), and keep `npm run log:app -- --stream` open.
 
@@ -1914,7 +2076,7 @@ The user observed a return gap with the transient fallback. The new candidate va
 - [ ] Repeat partial swipes, reversals, rapid Space changes, background browser Spaces, multiple browsers/profiles and displays. Check clicks, palette focus, browser resize/full-screen exit and page full-screen.
 - [ ] Launch diagnostics say `geometry ok`. A scaled CG rectangle logs `model stays ...: native geometry retained`; the trace's logical overlay frames remain full size, and return needs no hide/show or placement. A getter failure logs the hidden fallback. These logs establish the code path, not visual composition.
 
-Automated native playback uses real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.
+(Superseded 2026-11-16, removed with the overlay.) Automated native playback used real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.
 
 Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is present before Safari finishes returning from Mission Control. Layout still disappears on entry and reappears during exit; the user accepts this for now. Continuous aligned preview visibility is **not** verified. Real product logs show 11 model-retention/return episodes without an order-out/show cycle or getter error; the native trace retains canonical dimensions. Keep the broader display/browser/reversal checklist open.
 
@@ -1923,16 +2085,18 @@ Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is 
 - [ ] In full-screen Safari, click a tab in the sidebar and press ⌘R: the selected page reloads once. Repeat with a palette/search field, a rename field and Settings focused; the underlying selected browser tab reloads while Margin's field text/focus stay in place.
 - [ ] With two browser windows/profiles on different pages, reload from each one's focused layout: only its own selected page reloads. Hold ⌘R briefly: it must not build up repeated reload requests. Confirm ordinary page-focused ⌘R still uses the browser's behavior. Repeat in Chrome/Edge.
 
-Automated: `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercises AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.
+(Superseded 2026-11-16, removed with the overlay.) `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercised AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.
 
 ## Small snap after a Space swipe (2026-11-10)
 
 - [ ] Swipe from full-screen Safari to a different Space and back several times in both directions, including slow/partial swipes. As the slide settles, Margin stays aligned with the page without a final sideways bounce. Repeat after visiting each window, on another display and browser if available.
 - [ ] A real browser move/resize, display arrangement change, full-screen exit and page full-screen still update or hide Margin appropriately.
 
-The provided recording measured a two-pixel reversal on a Retina recording at roughly 3.125, 6.317 and 9.692 seconds; native trace frames show a corresponding logical one-point move and reversal. The off-screen `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` regression replays the positional tail without hiding or moving the layout, verifies no model reads once settled, and checks that a genuine one-point model move remains followed. It supplements the real visual check rather than proving compositor behavior.
+The provided recording measured a two-pixel reversal on a Retina recording at roughly 3.125, 6.317 and 9.692 seconds; native trace frames show a corresponding logical one-point move and reversal. The off-screen `MARGIN_E2E_ONLY=window-ready` regression (removed with the overlay, 2026-11-16) replayed the positional tail without hiding or moving the layout, verifies no model reads once settled, and checks that a genuine one-point model move remains followed. It supplements the real visual check rather than proving compositor behavior.
 
 ### Issue #15: gated live profile cover
+
+(Superseded 2026-11-16: the profile handoff, its live cover, the dev hook's switch kinds and `tools/handoff-lab/` were removed with the overlay over Safari; the lab and its results are in git history before that date. Kept as history.)
 
 The implementation is opt-in (`MarginLiveProfileCover`, read at app launch), default off until acceptance. Private capability/setup failure logs a degraded freeze/slide fallback. No PR is authorized for this work.
 
@@ -2084,3 +2248,251 @@ unit and 555 native integration checks pass; handoff lab compile and signed
 Release build pass. Installed via the standard same-team updater and verified
 with deep/strict codesign checks. No browser was running at the final check,
 so this update does not claim a new real switch or physical power-toggle run.
+
+## Margin as the app, joined (2026-11-15)
+
+`defaults write com.unibox.margin MarginHosted -bool YES` (off again: `-bool NO`). Smallest first; stop at the first thing that's wrong. After each: Mission Control lists one Space (Margin's), nothing new on the Dock, `defaults read` of the hosted app unchanged.
+
+1. **An app (TestPane, the kit's).** Open Margin: its window, the library's spaces (or Personal in the space editor the first time). ⌘T, type TestPane, Enter: Margin's window goes full screen, narrows to the sidebar, TestPane fills the rest (no title strip, no Dock icon). The sidebar's TestPane row is lit. The sidebar's resize handle is gone while hosting (its width doesn't change while Margin's window is a tile). Close its row (×): TestPane quits, Margin's window its whole width again.
+2. **Safari Technology Preview** (`defaults write com.unibox.margin MarginHostedSafari com.apple.SafariTechnologyPreview`, STP not running, Margin's extension on in it). ⌘T, type an address: STP starts with no Dock icon, its copy links (up to 20 s), a window of its own comes in beside the sidebar, the page loads in it, no toolbar band. A second address: a tab switch (no Space animation). The TestPane row: TestPane back, STP parked; the STP row: STP back. Quit Margin: STP quits.
+3. **The fixes of 2026-11-15 (after Tirth's first try).** (a) Open Margin with nothing hosted: its page area is the theme's launcher, opaque, the window's edges opaque and its corners rounded, in Arcadia, Neubrutalism and Pixel. (b) Host an app, then a web item, switch back and forth five times: the log's `reserving` is the same every time (never growing), `tile` is about 0 ms after the first (`narrowed … in N ms` only the first time, under 600), each switch's total about 2 s less than before, no `no full-screen layout from its page`, no `switch chain … back on a tab it had passed`. (c) With an app shown, ⌃⌘F (or the green button): the app is gone at once (`parked, nothing shown`), no Space of its own in Mission Control, no Dock icon; click its row: Margin full screen again, the app back beside it. (d) Click the hosted app, then ⌘T or File › New Tab: the palette's field has the keys. (e) Quit with a Safari window shown, and again with it parked: the log says `closed by its copy (Margin quits)`, no `wasn't closed`; Safari has no window of Margin's left.
+4. **Real Safari** (only with Tirth's OK while he's away, as before): the same with Safari not running, then with Safari open the normal way (a new window of Margin's own in it, his windows untouched, Safari not restarted, its Dock icon stays).
+
+## Window mode and apps already open (2026-11-15)
+
+`MarginHosted` on. Before: `defaults read com.apple.FaceTime | grep "NSWindow Frame"` and the same for `com.apple.calculator` and `com.apple.mobilephone`, kept to compare. Stop at the first thing that's wrong. After each: those lines unchanged, Mission Control one Space (Margin's), no new Dock icon.
+
+1. **FaceTime, not running.** ⌘T, FaceTime: no Dock icon, the log says `shown in window mode` (not `full screen failed` after 6 s unless its AXFullScreen read settable); its window fills Margin's page area (its own title bar on top), Margin's window its whole width (no narrowing), the sidebar beside it. Click the sidebar: FaceTime stays in front of Margin's page area. Click Margin's page area outside FaceTime (if any shows): FaceTime has the keys. Toggle the sidebar: FaceTime follows the page area. Close its row: FaceTime quits; its `NSWindow Frame` line is the one from before.
+2. **Calculator, not running.** Centred in the page area at its own size, no launcher around it, its keys its own (type digits). Switch to a full-screen app's item (TestPane) and back twice: Calculator comes back centred, TestPane beside the sidebar's tile each time, Margin's window narrows only for TestPane. Quit Margin: Calculator quits, its saved frame unchanged.
+3. **Phone, already running** (only with Tirth's OK: it's his running app). Its window on his Desktop; note where it is. Its row: Phone in the page area (window mode), its Dock icon still there. Close its row: Phone's window back on his Desktop exactly where it was, Phone still running. Again, then quit Margin: the same. Its saved frame unchanged.
+4. **An app the person has in full screen** (any, in its own Space): picking it says why it isn't hosted; its window and Space untouched.
+5. **Tile → window, quit with an iPad app parked** (after the 20:37 fixes). TestPane's row, then Calculator's: shown in well under a second, the log's `Margin's window` step small and either `its page measured there after N asks` or `worked out from its docked layout` (then the sizes it read). FaceTime's row, then Calculator's (FaceTime parked), then quit Margin: the log says `its window closed before its quit` for FaceTime and its quit takes well under a second, no `now a normal app with a Dock icon`, no Dock icon seen, FaceTime's `NSWindow Frame` unchanged. FaceTime's own log (`/usr/bin/log show --last 2m --predicate 'process == "FaceTime" && category == "Lifecycle"'`) has no `Watchdog: App took too long`.
+
+
+## Hosted apps as members (2026-11-15)
+
+`MarginHosted` on. Only the kit's own test apps: TestPane (`/tmp/margin-toolbar-test/kit/TestPane.app`) and its second copy, bundle id `test.margin.pane2` (`/tmp/margin-toolbar-test/kit/TestPane2.app`), both registered (`lsregister -f`) and not running. Stop at the first thing that's wrong. After each step: Mission Control (`SLSCopyManagedDisplaySpaces`, or the kit's `mc()`) lists Margin's Space only, no new Dock icon, and the log has no `Mission Control still lists`.
+
+1. **Always full screen.** Open Margin: no windowed frame is seen, it comes up in full screen (`into full screen before it's seen`, then `shown, in full screen`). View has no Enter/Exit Full Screen; ⌃⌘F does nothing (`leaving full screen refused`). ⌘N: the new window comes up in full screen the same way.
+2. **First open.** ⌘T, TestPane: its row lit at once and the theme's loading bar on the page card's top edge (no spinner), then TestPane fills exactly the page area with the theme's frame (borders, spacing) around it, Margin's sidebar its whole width. The log's `shown in N ms (...)` has every step; `full screen` small, one freeze.
+3. **Instant switch.** ⌘T, TestPane 2 (its first open, same as 2). Then click the two rows back and forth ten times: each `switched in N ms` well under 100, no spinner, no frozen screen, no Space animation; the one clicked has the keys (type in it).
+4. **The theme's frame.** Switch themes (Arcadia, Neubrutalism, Pixel) with TestPane shown: the loading bar shows, TestPane is placed again at the new page area (`placed again`); click TestPane 2: placed again then (lazily), then switches instant again.
+5. **macOS takes Margin out of full screen.** Green button (if offered) or Mission Control's drag out: Margin goes straight back into full screen and TestPane comes back (`back in full screen: … hosted again`); Mission Control Margin's Space only.
+6. **Quit.** With TestPane shown and TestPane 2 parked: both leave full screen and quit (`defaults read test.margin.pane` / `test.margin.pane2` `NSWindow Frame` not the page area's), nothing left in Mission Control. Then kill Margin (`kill -9`) with both hosted and open it again: the log's `a marker from a Margin that didn't quit cleanly`, both apps out of full screen and quit, nothing left.
+7. **Resizing a member (one try, to settle the open question).** With TestPane shown, the kit's AXSize on its window (a size 100 pt narrower): note whether its bounds change and whether it stays full screen; then quit as in 6.
+
+## Hosting: Dictionary, the loading bar, Margin's keys, the corners (2026-11-15)
+
+`MarginHosted` on. TestPane and TestPane2 only, except step 1 (Dictionary, run by the main session while Tirth is away: `defaults read com.apple.Dictionary` before and after, its `NSWindow Frame` lines unchanged). Stop at the first thing that's wrong; after each step Mission Control lists Margin's Space only and no new Dock icon.
+
+1. **Dictionary, not running.** ⌘T, Dictionary: its window never seen on its own over Margin (Margin's page with the loading bar until it's in place); the log has `its app was hidden: unhidden` and `Accessibility found its window in Margin's Space` (or `… after AXEnhancedUserInterface was on`), then `shown`. Its row closed: Dictionary quits. If it isn't hosted, the log says why and its window never shows over Margin while it quits (`its window out of sight before its quit`).
+2. **The loading bar.** ⌘T, TestPane (first open): the theme's bar on the page card's top edge while it opens, gone once it's shown; TestPane's row lit at once. ⌘T, type a slow address (a web item): the bar while Safari's tab loads, gone when it's loaded. Switch back and forth between TestPane and TestPane2: no bar (instant).
+3. **Margin's keys.** With TestPane in front (type in it first): ⌥⌘↓ and ⌥⌘↑ go to the next and previous item of the space (TestPane2, a web item…), each shown as a sidebar click would; held, they repeat. ⌘T opens Margin's palette, Escape closes it. With Margin itself in front, the same. Switch to Finder (⌘-Tab): ⌥⌘↓ and ⌘T are Finder's again (no Margin log line `Margin's keys held`). TestPane never also gets the press (type ⌘T in a TestPane field: no new TestPane window or tab).
+4. **The page card's corners.** TestPane shown, Arcadia: the card's four corners rounded over TestPane's window (zoom in with the screenshot tool), the frame's grey around them, nothing else of TestPane's covered; click right at a corner: TestPane gets the click. Neubrutalism: its ink border and the bottom right's ink shadow round the corners; Pixel: square corners, nothing drawn. Open TestPane's own menu and a sheet: both above the corners. Switch Spaces (another Desktop): no corner squares there or over any other app; back: they're there. Close TestPane's row (nothing hosted): no corner squares left.
+
+## Hosting: the window chosen, the corners again (2026-11-16)
+
+`MarginHosted` on, dark mode. Stop at the first thing that's wrong.
+
+1. **Dictionary, not running** (as step 1 above): hosted full screen at the page area. The log says `its window N chosen as …` (Accessibility's main window, or the one in a Space) and, if it was started hidden, maybe `chosen again before it's moved`; never a 3 s wait then `didn't list its window`.
+2. **The corners, Arcadia, TestPane shown.** Zoomed screenshot of each of the four corners: rounded at the card's own radius (compare with the launcher's corners with nothing hosted), the frame's grey outside, no dark arc or line anywhere along the page area's edges; TestPane's window flush with the page area (the log's `place` line and the window's bounds the same rect). Switch to another Desktop and back, then ⌘-Tab away and back: the corners still there. Neubrutalism: the ink border and bottom-right shadow round the corners; Pixel: square, nothing drawn. Calculator (window mode): the page area around it the window's own colour, not the frame's grey.
+
+## Hosted: the quit prompt and the sidebar's edge (2026-11-17)
+
+On the real screen, with the kit's TestPane (a full-screen member), Calculator (window mode) and one web item open in Margin. None of this could be seen off screen: what the eye sees, and the window server's timing. Stop at the first thing that's wrong; after each step Mission Control lists Margin's Space only and Margin is still full screen.
+
+**The quit prompt.** Before: `defaults read com.unibox.margin MarginAskBeforeQuit` (not set, or 1).
+
+1. **⌘Q with a hosted app in front** (click in TestPane first, then in a Safari page): Margin's prompt in the middle of Margin's window, above the app (and above the page card's corners), the app still the active one (its menu bar title unchanged). It reads "Are you sure you want to quit Margin?" and a line with numbers only (`Margin will close N open tabs and quit N apps it opened…`), no title, address or app's name. The log: `⌘Q with Margin or an app it hosts in front: Margin's quit prompt (…)`.
+2. **Cancel.** Escape: the prompt goes, nothing closed, typing goes to the app again at once. Again, then click in the app, in Margin's sidebar, and on another display or Desktop: gone each time, never left up. Again, then ⌘-Tab to Finder: gone.
+3. **Light and dark.** System Settings › Appearance, each way: a light card with dark text, a dark card with light text; the red Quit button in both. Switch while it's up: it follows.
+4. **⌘Q with Margin itself in front** (click the sidebar first): the same prompt. Margin's menu › Quit Margin (clicked) and the Dock's Quit: no prompt, Margin quits (as before).
+5. **Quit.** ⌘Q, then Return (and once more with ⌘Q twice): Margin quits as before (`Margin's quit … gave every host back`), TestPane and Calculator quit, their saved frames unchanged (`defaults read test.margin.pane | grep "NSWindow Frame"`), nothing left in Mission Control or the Dock.
+6. **An app Margin doesn't host** (Finder, TextEdit opened from the Dock): ⌘Q quits that app as ever, no prompt. The person's own Safari window on a Desktop (Safari opened the normal way, with a hosted window of Margin's in it too): ⌘Q there is Safari's.
+7. **Always quit.** ⌘Q, click Always quit: Margin quits; `defaults read com.unibox.margin MarginAskBeforeQuit` is 0. Open Margin, host a web item, ⌘Q in it: no prompt, and Margin quits as a whole (everything given back; never Safari alone: DECISIONS.md "The quit key after Always quit"). With Margin's sidebar clicked first: Margin's own Quit, the same. Back on: `defaults delete com.unibox.margin MarginAskBeforeQuit`, then ⌘Q asks again within a second (no relaunch).
+
+**The sidebar's edge.** In Arcadia, then Neubrutalism and Pixel. The handle is the last few points of the sidebar's right edge (the part over the page area is the hosted app's).
+
+1. **A full-screen member shown (TestPane), wider.** Drag the edge right, slowly: the sidebar follows the pointer, TestPane stays in sight and is covered by the sidebar as it grows (clipped by the page card, its corners round), never drawn over the sidebar. No flash as the drag begins (the moment Margin's window comes in front). Let go: the page area in the frame's colour with the theme's loading bar, then TestPane at the new page area in about 1–1.5 s, once (`the sidebar's edge dragged…`, one `placed again`, one `page area changed`), the corners at the new page area.
+2. **Narrower.** Drag left: the gap between the sidebar and TestPane is the frame's colour (never black, never the Desktop); let go: one placing, as above.
+3. **Safari's window shown.** The same two drags over a web page. Let go: Safari's window leaves and comes back once at the new size, its page not reloaded.
+4. **Window mode (Calculator, FaceTime).** The same: in sight while dragged, moved (FaceTime: resized) once when let go, with no blank page area in between; its saved frame unchanged after Margin quits.
+5. **A parked one.** After a drag with TestPane shown, click the web item's row: it's placed for the new page area as it comes in (the loading bar, once, about as long as step 1), never seen at its old size; back to TestPane: an instant switch.
+6. **Double-click on the handle:** the theme's default width, one placing. A press on the handle with no move: nothing happens.
+7. **Still full screen.** Through all of it Margin never leaves full screen (no `out of full screen by macOS`), its window its whole width, `host: place … reserving` the new page area's edges alone each time (never growing), nothing reserved on Margin's own Space.
+8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
+9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
+
+## Edit Theme Color's ticks (M2.9 step 6, 2026-11-25)
+
+Margin.app, Arcadia's panel, then Material's picker; the built-in trackpad, then the Magic Trackpad; a mouse when one
+is at hand. The logic was tested off screen; nothing here was felt or heard. Note each step's answer, as these settle
+the spike's open question (which evidence tap-to-click gives).
+
+1. **A physical click.** Settings › Appearance › Edit Theme Color's ticks: Automatic. Open the panel and press each
+   appearance button with a real click: a haptic tick each time, no sound.
+2. **Tap-to-click.** The same with a tap (System Settings › Trackpad › Tap to click on): a haptic, or a click sound?
+   (Either is acceptable; note which.)
+3. **Dragging.** Drag the slider across its tenths, and the dial's ring round its steps: a tick at each, never a
+   buzz-pile, nothing doubled. A fast drag: fewer ticks, not late ones.
+4. **The dial's texture.** Click the dial: a different, firmer haptic (the level's change). Scroll on the dial with two
+   fingers: ticks as its amount steps.
+5. **A mouse** (when one is at hand), or the Magic Mouse: the same gestures give a soft click (or, on a Magic Mouse,
+   possibly silence: note it). Haptics only: nothing heard with the mouse.
+6. **Settings.** Sound: clicks on the trackpad too. Off: nothing. With System Settings › Sound › "Play user interface
+   sound effects" off: no clicks in Automatic or Sound, the haptics still in Automatic.
+7. **Material.** Its segmented buttons, chips and sliders tick the same.
+8. **macOS's haptics off.** System Settings › Trackpad › Point & Click › "Force Click and haptic feedback" off, then
+   within 10 s press in the panel on the trackpad: a click sound in Automatic, not silence; nothing in Haptics only.
+   Turn it on again: haptics again in Automatic (within 10 s).
+
+## A space's picture (M2.9 step 7, 2026-11-25)
+
+Margin.app, Arcadia first, then Material, Neubrutalism and Pixel (their own pickers); a hosted app shown, and the
+launcher. Off screen: the store, the scheme and the page's requests (`tools/app-tests/run.sh unit|e2e`), the panel and
+the drawing in WebKit and Chromium (`tests/theme/picker-picture.test.ts`, `background-picture.test.ts`); none of this
+was seen on the real screen. Stop at the first thing that's wrong and note which step.
+
+1. **Choose one.** Edit Theme Color… › Add Picture…: the file picker comes over Margin's full-screen window (not on
+   another Space), titled Choose a Picture; only pictures can be picked. Pick a large photo from Photos or an iPhone
+   HEIC: within a second or two the space's background is the photo, filling the window; the panel shows its
+   thumbnail, Fill chosen. The log says `backgrounds: a picture kept (chosen)`, no name or path.
+2. **The keys after.** With the file picker closed, the panel still open: Escape puts back what the space had (and
+   closes it); open it again, ⌘Z steps back. If a hosted app was shown, it has the keys again once the panel closes.
+3. **Text reads.** Sidebar text over a dark photo and a light one, in light and dark appearance: always readable (the
+   photo washed only as much as it needs); a busy photo still recognisable. The window resized (leave full screen if
+   needed): still right.
+4. **Fit, Tile, Fill.** Each drawn so (Fit: the whole photo, the underlay round it; Tile: at its own size from the
+   top left). Cancel the file picker: nothing changes. A GIF or a PDF: not pickable, or refused with words under the
+   row.
+5. **Drop.** Drag a photo from Finder onto the open panel: dashed outline while it's over, then the photo. A text file
+   dropped: "That isn't a picture.", nothing else changes; Margin's window never opens the file itself.
+6. **Remove, and after.** Remove Picture: the colours as they were (or the theme's own ground, with none). Quit and
+   open Margin: a picture still used is kept; one no space uses is gone from
+   `~/Library/Application Support/Margin/data/app/backgrounds/` (the log: `… picture file(s) no space names removed`).
+7. **Themes.** In Material, Neubrutalism and Pixel: their own Add Picture…, the fit and Remove Picture, the refusal's
+   words in their own look; in Safari's sidebar (the extension): no picture controls at all, a space with a picture
+   drawn with its colours only.
+
+## A theme's own Edit Theme Color (M2.9 step 5b, 2026-11-24)
+
+Margin.app (or Safari's sidebar), Material, then Neubrutalism, then Pixel; light and dark where the theme has both. Off screen they were drawn by the real runtime in WebKit (`tools/glass-shots/run.sh <dir> material`, the `picker` pictures); none of this was seen on the real screen.
+
+1. **Its own.** Right-click a space's chip › Edit Theme Color…: the theme's picker (Material's dialog, Neubrutalism's card, Pixel's dialog), not Margin's glass panel; where the menu was, inside the window; no `overlay system appearance … on` in the log.
+2. **Everything works.** Drag in the field (Pixel: the knobs jump from cell to cell); −/+; the rule; a preset; the pages; the intensity (Material and Neubrutalism: the bar, dragged; Pixel: a block); a texture (Material: a chip; Neubrutalism: a tile; Pixel: the arrows); an amount (Material: its slider; the others: a block); the background changes as you go, each change saved once.
+3. **Keys.** Tab moves through the picker and stays in it; Escape puts back what the space had; ⌘Z a step back; arrows on the field's key and on a slider.
+4. **Closing.** Done; a click outside; switching spaces.
+5. **Looks.** Material in its space's colours, light and dark; Neubrutalism light in both modes; Pixel dark in both. Labels readable everywhere, nothing clipped at the window's edge, the picker scrolls if the window is short.
+
+## Edit Theme Color's glass (M2.9 step 5, 2026-11-24)
+
+Margin.app on macOS 26 or later, Arcadia. Off screen it was measured (`DECISIONS.md` "M2.9 step 5 spike") and photographed (`tools/glass-shots/run.sh <dir> arcadia`, the `picker` pictures); none of this was seen on the real screen. Stop at the first thing that's wrong and note which step.
+
+1. **The glass.** Right-click the space's chip › Edit Theme Color…. The log says `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): on`. The panel is real glass: the sidebar and the space's colours blur through it, with a bright rim, and no shadow ring round it. Done: the log says `… off`, and nothing else in the window changed while it was open or as it closed.
+2. **Light and dark.** Give the space a dark appearance (☾) while the Mac is light, and the other way round: the glass follows the space (smoky with ☾, milky with ☀), every label readable on it.
+3. **Over the page.** With a Safari tab hosted beside it, open the picker so that it lies over the page area: what shows through is what's under it in Margin's window.
+4. **Settings.** Open Margin's Settings tab, then the picker from the space's menu: the panel is solid (no `on` in the log). Open the picker first and then Settings (⌘,): the picker closes, the log says `off`. With Neubrutalism in Dark Mode and Settings shown, the number fields keep their ⌃⌄ steppers throughout.
+5. **Accessibility.** Increase Contrast on: the panel is solid. Reduce Transparency on: the glass turns solid by macOS's own doing; text readable.
+6. **Liquid Glass.** The picker there is glass too (its switch is on throughout: no `on`/`off` lines as it opens and closes).
+7. **Off.** `defaults write com.unibox.margin MarginSystemAppearance -bool NO`, restart: the picker is solid. `defaults delete` it again.
+
+## Liquid Glass (2026-11-17)
+
+Margin.app on macOS 26 or later, Settings › Theme › Liquid Glass. Nothing of this was seen on the real screen; off screen it's `tools/glass-shots/run.sh` (pictures and each glass layer's box). Stop at the first thing that's wrong and note which step.
+
+1. **The switch.** Choose Liquid Glass. The log says `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): on` once. The sidebar is real glass: it bends and blurs the ground's colors at its edges, with a bright rim. Choose Arcadia: the log says `… off`, Arcadia looks exactly as before. Back to Liquid Glass: glass again, at once, with no flash of the plain look.
+2. **Other themes untouched.** With Neubrutalism in Dark Mode, open Settings: the number fields' steppers and the page's scroll bars are light, as before this change (they'd be dark if the switch leaked).
+3. **The shapes.** The panel is 8 pt in from the window's left, top and bottom edges and stops 8 pt short of the page card; its glass is exactly that box (no glass under the gap or past the window's edge). The address pill, the back/forward/reload capsule and the space switcher are quieter glass inside it; the tab in front is a lit capsule; no other row has glass.
+4. **Light and dark, each space.** Switch spaces: the ground's colors change, the glass picks them up. Labels readable over every space color in both modes (dark text on the milky light glass, white on the smoky dark one), secondary text too.
+5. **The command bar** (⌘T): a large glass panel in the middle, what's under it blurred through it; the typed text and each row readable; the selected row a faint fill; Escape closes it. Then with a Safari tab hosted: what the panel shows over the page area (the hosted window is under Margin's then).
+6. **A menu** (right-click a tab), **the space editor** (right-click a space chip › Edit Space…), **a notice** (click a tab closed elsewhere): each a glass panel of its own, over the sidebar's glass without looking doubled. Menu items highlight in the accent.
+7. **Moving.** Scroll the tab list so the lit tab passes under the list's top and bottom: its glass is cut cleanly, never drawn over the header or the space switcher. Drag a tab: its copy under the pointer is plain, the drop line in the accent. Swipe between spaces: the lit tab slides with the list. Resize the sidebar by the gap beside the panel: the glass follows without lag.
+8. **Smoothness and cost.** Scroll a long list and move the pointer over rows for a minute: no dropped frames (`MarginFrameProbe`), no fan; compare Activity Monitor's GPU and Energy for Margin with Arcadia.
+9. **Accessibility.** System Settings › Accessibility › Display: Reduce Transparency on (the glass should turn solid by macOS's own doing; text still readable), Increase Contrast on (the theme's plain look: solid fills, stronger text and hairlines, no glass), Reduce Motion on (the loading light is a still bar, the reload button doesn't spin).
+10. **Off.** `defaults write com.unibox.margin MarginSystemAppearance -bool NO`, restart Margin: Liquid Glass draws its plain look (translucent fills, hairlines), the log says `off: MarginSystemAppearance is NO`. `defaults delete` it again.
+11. **Loading.** Load a slow page: a light runs along the gutter above the page card, the reload button turns, the row's icon breathes.
+
+## Margin's window in front of what it hosts (2026-11-17)
+
+Nothing of this was seen on the real screen. `/tmp/margin-toolbar-test/hosted/check10.swift` checks the numbers there (the window order, where clicks land, the page card's alpha, two drags in a row) with the kit's test panes; these steps are what only eyes can judge. Arcadia first, then Neubrutalism, Pixel and Liquid Glass. The log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'`.
+
+1. **Open Margin and that's it.** Quit Safari and Margin. Open Margin: its window in full screen with the theme's sidebar and launcher at once, never a see-through or black page area, and nothing of Safari seen at any moment (no window of Safari's flashing over Margin while `host: com.apple.Safari started with no Dock icon, to be prepared` and `browser prepared` go by in the log). The log says `in front by its level (1, held by the window server)`; if it says `its raised level isn't held … kept in front by its order instead`, note it (everything below should still hold).
+2. **The first web item.** Click a tab's row: the app's page in the page area within a blink, no loader (`switched in N ms`, then `page shown`). It stays: no `parked, nothing shown` a second later, no launcher coming back, no second click needed. If the log says `shown, found out of Margin's Space (…): brought back`, copy that whole line (it says what moved the window); the page should not have flickered to the launcher.
+3. **The frame over the app.** With a page shown: the theme's frame all round it and the page card's rounded corners are drawn over the page, all four, always (scroll, switch tabs, switch to another app and back, ⌘-Tab away and back, click in the page): the border never disappears. No dark sliver at any edge; no pixel of the app outside the card's curve.
+4. **The pointer.** Click, scroll, select text, drag an image, hover links (the pointing hand, tooltips) right up to each edge of the page area and in its corners: all the app's. On the sidebar, the frame's strip and the resize handle: Margin's (a scroll over the sidebar never scrolls the page). Start a text selection in the page and drag out over the sidebar: it stays the page's. Move from the page onto a sidebar row and click at once: the click lands on the row (if the first click after crossing is ever lost, note it: the pointer's hand-over is decided as it moves).
+5. **⌘T over a hosted app.** With Safari's page in front and its field focused, ⌘T: the palette appears over the page at once, typing goes to it. Escape: it's gone and typing goes to the page again without a click. ⌘T, pick another item: it opens. A right-click menu on a tab row, the space editor, a notice: each drawn over the page where it reaches there, clickable.
+6. **A first open** (an app not opened yet, from the palette): the page card turns opaque with a spinner and "Opening <name>…" at once, the app appears only when it's in place (no window of it seen flying in, no Desktop, no black), the card fades out over it in about a tenth of a second. With Reduce Motion on: no fade, no spin.
+7. **Switches.** Between two items already open (two apps, an app and a tab): instant, no loader flash, nothing of Margin's page area seen between them.
+8. **The sidebar's edge.** Drag it wider over a hosted page: the sidebar slides over the page live, smoothly, the page still (it doesn't follow until you let go); narrower: the gap is the frame's colour. Let go: the card turns opaque with the loader, the page comes back at the new size (about a second), once. Drag again right away, three times in a row, also within a second of the last one: the page always comes back; the window is never lost; no `full screen failed` in the log. If it ever says `kept as it was` (the page still at its old size, a gap or the sidebar over its edge) or `not shown again after its placing failed` (the launcher, the tab's row still there: click it), note the lines before it.
+9. **A hosted app's other windows.** In a hosted Safari: ⌘, (Settings), a download's "Show in Finder" sheet, File › New Window. A window that reaches over Margin's sidebar comes in front of Margin within a quarter of a second (`another window (N) in its Space: let in front of it`) and Margin's window is in front again once it's closed; one wholly inside the page area just works. A pop-up menu, a tooltip, the colour panel: above Margin's window always.
+10. **Mission Control, ⌘-Tab, Spaces.** Mission Control still lists one Space for Margin and shows its window; swiping to a Desktop and back, ⌘-Tab to another app and back, the Dock's icon: Margin's window comes back whole, the hosted page under it. Nothing of Margin's floats over another app's windows on a Desktop.
+11. **Idle cost.** With a page shown and nothing moving for a minute: Margin's CPU in Activity Monitor at rest (0.0-0.3%), as before; moving the pointer over the page: no more than before (the pointer's hand-over is one comparison per move).
+12. **The other way.** `defaults write com.unibox.margin MarginFront order`, restart Margin: steps 3-5 again (the frame may blink for a frame after a click in the app: that's why the level is the default). `defaults delete com.unibox.margin MarginFront`.
+
+## Margin in front, after the real screen (2026-11-17)
+
+Three fixes after check10's four runs (DECISIONS.md, the entry of the same name). None has run on the real screen. `/tmp/margin-toolbar-test/hosted/check10.swift` asserts the numbers with the kit's test panes: Margin in full screen whatever Space it was opened from (it says which), the hosted window on screen and in Margin's Space only a second after the first show, after a prepared switch and after each of five placings in a row, and Margin opened again showing the test pane by itself. Run it once from another app's full-screen Space and once from a Desktop. By hand:
+
+1. **Opened from another app's full-screen Space.** With another app in full screen and in front (as his Mac usually is), open Margin from Spotlight or the Dock. Nothing of Margin is seen windowed at any moment: macOS slides to a Desktop, then to Margin's own Space, and the first thing seen of Margin is its themed full-screen window. The log: `full screen not asked yet (… on the current Space false …): waiting`, then one ask, no `macOS didn't take it to full screen`. If it's refused, it says `asked again` 0.3 s later, then less often; note how many times. If Margin is ever seen windowed (`shown as it is`, after 10 s), note the lines before it.
+2. **Left behind.** Open Margin from that Space and go straight back to the other app (⌘-Tab) before Margin shows. Margin doesn't pull you back more than three times in the first seconds, and not at all after. Go to Margin later: it goes full screen then.
+3. **The last item.** With a tab shown, quit Margin and open it: the page card is opaque with the loader and that tab's name from the first frame, its row lit in the sidebar, never the launcher; then the page (a cold Safari takes 4-5 s behind the loader). The same with an app as the last item. With nothing ever shown in the space: the launcher. Click another row while the loader is still up: that one opens, the first is dropped.
+4. **It stays.** After every open, and after every drag of the sidebar's edge (five in a row), the page is there a second later and stays: never an empty page area with the frame around nothing. The log has no `in no Space`; if it says `its window was in no Space after its move into Margin's (N times): put back` or `shown, found out of Margin's Space (its window in no user Space …): brought back`, copy the line and say whether the page blinked.
+5. **The pace.** A first open's full-screen step and a placing after a drag take about 0.85 s, every time (never the quick 0.25 s ones: those lost the window), with the screen held still on the loader meanwhile; a switch between open items is as instant as before.
+6. `defaults write com.unibox.margin MarginResumeLast -bool NO`, open Margin: the launcher, as before. `defaults delete com.unibox.margin MarginResumeLast`.
+
+
+### After check10's fifth and sixth runs (2026-11-17)
+
+The check now also says how Margin came to the front at each launch (by itself, after `open` named it again, or after System Events), and where a hosted window isn't where it should be, what the window server has: both windows in its on-screen list or not, each display's current Space and whether it's listed. Its step R makes sure Margin is in front before it asserts. By hand, besides the steps above:
+
+7. **No other Space flashes.** Open an app not open yet, then drag the sidebar's edge a few times: at no moment is another Space, the Desktop or the app's own full-screen Space seen; the loader stands still for under a second, then the page. The log's line has `in its Space N, …, macOS's switch undone N, moved in N` in that order and `under the freeze`, never `moved in` before `in its Space`.
+8. **Nothing lost.** After ten placings in a row the page is there each time. If the log ever says `shown, not on screen (…)`, copy the whole line (it has both windows, their Spaces and each display's current Space) and the one after it (`on screen again in N ms`, or `out of full screen and placed again`), and say what the screen showed. The same for `host: poll: …` (a read that isn't what it should be) and `macOS made Space N current … once the engine was done`.
+9. **It doesn't pull you back.** With a page shown, swipe to another Space or a Desktop, and open Mission Control and leave it: Margin never switches the Space back by itself. Minimize or hide (⌘H) the hosted app: nothing is placed again; the log says once that its window is off screen.
+10. **Opened by a script.** From Terminal in another app's full-screen Space: `open -a Margin`. Margin comes to the front by itself within about two seconds (`brought forward by its own activation`, then `through LaunchServices` in the log if the first didn't do it) and goes full screen with the last item behind the loader.
+
+## Swiping Spaces with Margin hosting (2026-11-17)
+
+His session of 06:24-06:36 (DECISIONS.md, "Margin in front: the person's own Spaces, and a fallback that stayed"): Margin let his own full-screen apps' windows of other Spaces in front as he swiped, then went on by its order for good, so Safari came over Margin's window at every activation. `/tmp/margin-toolbar-test/hosted/check10.swift` step s swipes with the kit's test panes (Mission Control's ⌃← / ⌃→, read from his settings); these steps are the person's own. Have Safari hosted with a page shown, and at least two other apps in full screen in their own Spaces (his Claude app, Arc). The log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'`.
+
+1. **Swipe away and back.** Three-finger swipe (or ⌃→ / ⌃←) from Margin's Space to the next full-screen app and back, ten times, fast and slow, and once stopping half-way and going back. Each time back: the theme's frame and the page card's four rounded corners over the page, the page under it. The log has no `another window (N) in its Space: let in front of it` at all (no window of another app is ever let in front), and no `isn't held by the window server`.
+2. **Mission Control.** Open it from Margin's Space (F3, the swipe up), hover the other Spaces, pick Margin's again; then pick another app's Space and come back with ⌘-Tab. Same as step 1.
+3. **⌘-Tab to his own apps.** From a page in Margin, ⌘-Tab to his Claude app (its own full-screen Space) and back to Safari (Margin's Space), five times. Back in Margin: Margin's frame over the page, ⌘T draws the palette over the page at once, Escape gives the page the keys.
+4. **Then Safari again and again.** After the steps above, click in the page, ⌘-Tab away and back, click a link: the corners never go and ⌘T is always over the page. If the log ever says `kept in front by its order instead`, copy the line and the ten before it; within about 5 s it should say `its raised level held by the window server again` (Margin tries the level again), and until then the corners may blink after a click.
+5. **A hosted app's own window still comes in front.** In the hosted Safari, ⌘, (Settings) or File › New Window over the sidebar: it comes in front within about half a second (two polls; `let in front of it` names it) and Margin's frame is over the page again once it's closed.
+6. **While on another Space.** Stay on his Claude app's Space for a minute, activate apps there: nothing of Margin's changes there (no line `let in front`, `in front again` or `in front of it again` while away). Back in Margin's Space: as step 1.
+
+## An app that restores its window in full screen (2026-11-17)
+
+DECISIONS.md, "Hosting: an app that restored its window in full screen, a refused ask, a fallback tried again". With Maps not running and last quit in full screen (open it from the Dock, make it full screen, quit it), pick Maps in Margin: the loader, then Maps full screen in the page area within about a second; the log says `its window came up in full screen in a Space of its own (…): placed from there`, never `shown in window mode`. Mission Control afterwards lists Margin's Space only. If the log ever says `backed out, shown in window mode (it can go full screen: tried again the next time it's shown)`, pick another item and Maps again: the loader, then full screen. A window-mode app whose frame Accessibility refuses (the Phone after a park): copy the line `Accessibility refused its frame (error N)`.
+
+## Margin's UI never makes the hosted app inactive (2026-11-17)
+
+His recording: every use of Margin's sidebar put the hosted Messages in its inactive look (grey selection, a dim band in its top bar) and a click in it brought it back. Margin's UI is now a non-activating panel over its full-screen window (DECISIONS.md, the entry of the same name). Nothing of this has run on the real screen. `/tmp/margin-toolbar-test/hosted/check10.swift` asserts the numbers with the kit's test panes (k1, c1, c1b, c2: the frontmost app, the panel key or not, the palette's field length, a plain key reaching the pane); these steps are what only eyes and hands can judge. Host Messages (or any app with a selection and a toolbar: Mail, Notes, Finder-like lists) and Safari with a page. The log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'`.
+
+1. **The sidebar.** With Messages shown and a conversation selected, click around Margin's sidebar: an empty spot, a space's name, a folder's arrow, the scroll of the list, the resize handle (drag it). Messages keeps its active look the whole time: its selection blue (not grey), its top bar never dimmed or blurred, its window's traffic lights in colour. No flicker at any click. The menu bar stays Messages'. Then type at once (no click in Messages): the letters go to Messages' message field.
+2. **Hover and the pointer.** Without clicking, move over the sidebar's rows: their hover look follows the pointer, the pointing hand over buttons, tooltips if the theme has them, while Messages is the active app. Scroll the sidebar's list with the trackpad: it scrolls (Messages doesn't). A right-click on a row: the theme's menu, its items clickable, Messages still active.
+3. **A switch.** Click another item's row (Safari's page): the page shows and Safari is the active app (its menu bar), with its active look; click back to Messages: the same.
+4. **The palette.** ⌘T with Messages shown: the palette over the page, its field focused with a blinking caret, Messages still the active app (its menu bar) and still in its active look. Type: the letters go to the palette, not to Messages. Try an accented letter with a dead key (⌥E then E: é), the Japanese or Chinese input source if installed (the candidate window by the field), ⌘A, ⌘C, ⌘V, ⌘X, ⌘Z in the field, ← → and ↑ ↓ through the results, Return to open one. Escape: the palette goes, and typing goes to Messages again at once, no click.
+5. **Other fields of Margin's.** Double-click a row to rename it, open the space editor, Settings' fields: each takes the typing while the app shown keeps its active look; Return or Escape, then type: the app has the keys again. Click the hosted page while a rename is open: the rename ends and the page has the keys.
+6. **What still makes Margin active, on purpose.** Margin's Dock icon or ⌘-Tab to Margin: Margin's menu bar, the hosted app inactive (as any app switch). Use one of Margin's menu items (File › New Tab, View › Toggle Sidebar): it runs and the app shown is the active one again right after. Settings › Import Theme…: the file picker in front (Margin active), and after it closes the app shown is active again. ⌘Q's prompt over a hosted app: the app stays active behind it; Cancel, then type: the app has the keys.
+7. **Nothing hosted.** With the launcher (no item shown), a click in it makes Margin the active app (its menu bar), typing in its field works as before.
+8. **Still in front, still whole.** Every step of "Margin's window in front of what it hosts" above (the frame and rounded corners over the page, the pointer through the page area, the loader, the sidebar's drag, a hosted app's own Settings window in front, Mission Control showing Margin's Space with its UI, swiping Spaces) holds as before. In Mission Control, Margin's Space's thumbnail shows its UI, and the sidebar is never left on another Space or a Desktop after a swipe. If the log ever says `its panel wasn't its child any more`, `wasn't on screen` or `wasn't in Margin's Space`, copy the line and the five before it. If it says `didn't become key for a field of Margin's … as a last resort`, note what you'd just done (the hosted app then goes inactive, as before this change).
+9. **Cost.** With a page shown and nothing moving, Margin's CPU in Activity Monitor as before (0.0-0.3 %); its memory within a few MB of before.
+
+### After check10's run with the panel (2026-11-17)
+
+The panel kept the keys from Margin's launch on, so a key after a click in the sidebar, or after the palette's Escape, went to Margin instead of the app shown (DECISIONS.md, "Margin's UI in a panel: the keys after check10's run"). By hand, besides the steps above:
+
+10. **Right after launch.** Open Margin with an item shown by itself (the last item), click nothing, type: the letters go to the app shown. The same after Margin's Dock icon, then a click in the page.
+11. **A key right after a click.** Click an empty spot of the sidebar and type at once, fast (within a tenth of a second): every letter reaches the app shown, none is lost or beeps. If the log says `a key reached Margin while the keyboard is the app shown's … sent on to it`, note how fast you typed: those letters went on to the app (none should be missing in it).
+
+## His session of 14:05: Maps, the Phone, Mail, a woken Safari window (2026-11-17)
+
+DECISIONS.md, "Hosting: his session of 14:05". Nothing of this has run on the real screen. The log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'`. `/tmp/margin-toolbar-test/hosted/check10.swift` step x covers step 4's refusal and step 5 with the kit's test panes (written, not run; it needs the panes rebuilt from `kit/testpane.swift`); the rest only his real apps can show.
+
+1. **A Safari profile with no window, at launch.** With a space whose Safari profile has no window open (or Safari not running) and an app as the last item (Maps): open Margin. Maps shows behind the loader; no Safari window is ever seen, in the page area or anywhere. The log says either `not woken (what it was for isn't wanted any more)` with `browser not prepared`, or, if it was woken first, `the window … it opened only to wake a profile parked out of sight` and, within about 5 s, `the window opened to wake the profile closed (…): ok`. Afterwards Safari has no empty "Margin.app hasn't placed this window yet" window (its Window menu, or Mission Control's Desktop if Safari is his own).
+2. **Maps parked for a while.** Show Maps, switch to another item, leave it two minutes or more, then click Maps: it switches in at once. The log never says `app:com.apple.Maps quit, not by Margin` while Maps still runs (Activity Monitor), and never `an app the person opened` for it; it may say `its app was said to have quit, its process N still runs: kept, still Margin's` (copy it: that was the termination attempt, now harmless). Margin's ⌘Q quits Maps.
+3. **The Phone (window mode).** Show the Phone. Nothing jumps and the sidebar stays. If the log says `shown in window mode, not on screen though it's in Margin's Space, the current one (…)`, copy the whole line (it names any other window of the Phone's that is on screen): that is the window Margin should have chosen. It never says `Margin's Space made current again` for it.
+4. **Mail, not running.** Quit Mail, then pick it in Margin: the loader, then Mail full screen in the page area. The log may say `Accessibility didn't take its full screen at first (…): taken at try N` or `went into full screen all the same`; never `shown in window mode` with Mail at the display's size, never a strip across the top over Margin's frame, the sidebar never covered. If it does fall back: Mail either fits the page area or isn't shown at all (the launcher, Mail's row kept, the log `kept out of sight, tried again at its next show`); click it again.
+5. **A hosted app's window over the sidebar.** In Mail, open a new message and drag its window over most of Margin's sidebar: it stays under the sidebar (no `let in front of it`). Drag it so it only reaches a little past the sidebar's edge: it comes in front within half a second, as before (step 5 of "Swiping Spaces with Margin hosting" now holds only for a window like that).
+6. **If the sidebar ever disappears.** The line `Margin's keys let go: another app is in front (<bundle id>)` now names the app that took the front: copy it with the five lines before it.

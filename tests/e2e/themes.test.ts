@@ -1,7 +1,7 @@
 // Every built-in theme (themes/packages.ts PACKAGE_THEMES: a theme Phase 6
 // adds is picked up here as it is), chosen in Settings, sent to the app in
 // pieces again and drawn by the overlay with real content: the sidebar with
-// tabs, pins, a folder and iCloud Tabs; the page box at the theme's gutters;
+// tabs, pins and a folder; the page's slot at the theme's gutters;
 // the palette with results; the launcher with the archive; a menu; the space
 // editor; a notice; the hidden sidebar and its peek. Pictures of each part
 // for each theme. Only what every theme has is read (class names the themes
@@ -9,9 +9,9 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
-import { SPACES, cloudTabsOf } from './harness/seed.ts';
-import { pageBox, slot, settled } from './harness/ui.ts';
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../../extension/themes/packages.ts';
+import { SPACES } from './harness/seed.ts';
+import { slot, settled } from './harness/ui.ts';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../../app/shared/ui/themes/packages.ts';
 import type { Page } from 'playwright';
 import type { ShotOptions } from './harness/shots.ts';
 
@@ -42,13 +42,11 @@ const ORDER = [...PACKAGE_THEMES.slice(1), PACKAGE_THEMES[0]];
 const text = () => ui.evaluate(() => document.body.innerText.toLowerCase());
 const row = (title: string) => ui.locator('.tab:not(.pin)', { hasText: title }).first();
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const sides = (b: Awaited<ReturnType<typeof pageBox>>) => b && { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
 // What each theme drew, for the checks after the pictures (kept as todo while a theme has it wrong).
 const drawnBy: Record<string, { address: string, notice?: { width: number, lines: number } }> = {};
 
 before(async () => {
   m = await startMargin({ name: 'themes', seed: SEED });
-  m.shell.setCloudTabs(cloudTabsOf(m.url));
   windowId = m.shell.frontWindowId();
   for (const [host, path] of [['dispatch.test', '/2026/11/the-quiet-city'], ['shop.test', '/p/canvas-tote'], ['docs.test', '/guide/getting-started']]) await m.open(host, path);
   ui = await m.ui();
@@ -90,18 +88,18 @@ for (const id of ORDER) {
     await shot('launcher', { page: nt });
     await nt.close();
 
-    // ---- the sidebar with tabs, pins, a folder and iCloud Tabs; the page in its box ---------------
+    // ---- the sidebar with tabs, pins and a folder; the page's slot ---------------------------------
     await row('The Quiet City').click();
     const article = await m.until(async () => { const f = await m.front(); return f?.url.includes('the-quiet-city') && f; }, { what: 'the article in front' });
-    const page = (await m.pageOf(article.id))!;
     // Where the theme puts the page: its slot, inside any border it draws (the layout the app is sent).
     const s = await m.until(() => { const l = m.shell.layoutsSent.findLast((x) => x.windowId === windowId); return l && Date.now() - l.at < 60_000 && l.insets; }, { what: 'the theme\'s layout' });
-    await m.until(async () => JSON.stringify(sides(await pageBox(page))) === JSON.stringify(s), { what: `the page in ${name}'s slot ${JSON.stringify(s)}` });
     const drawn = (await slot(ui))!;
-    for (const k of ['left', 'top', 'right', 'bottom'] as const) assert.ok(s[k] >= drawn[k] && s[k] - drawn[k] <= 4, `the box inside the slot ${name} draws (${k}: ${s[k]} in ${drawn[k]})`);
-    const words = await text();
-    for (const w of ['Inbox — Post', 'Daily', 'Overview · Metrics', 'Canvas Tote', 'Getting started']) assert.ok(words.includes(w.toLowerCase()), `${name} draws "${w}"`);
-    assert.equal(await ui.locator('.cloud-device').count(), 3, 'three devices in iCloud Tabs');
+    for (const k of ['left', 'top', 'right', 'bottom'] as const) assert.ok(s[k] >= drawn[k] && s[k] - drawn[k] <= 4, `the layout inside the slot ${name} draws (${k}: ${s[k]} in ${drawn[k]})`);
+    // (Every row's words, once the theme has drawn them all: a theme switch draws in more than one frame.)
+    const want = ['Inbox — Post', 'Daily', 'Overview · Metrics', 'Canvas Tote', 'Getting started'];
+    let words = '';
+    await m.until(async () => { words = await text(); return want.every((w) => words.includes(w.toLowerCase())); }, { what: `${name}'s rows drawn`, timeout: 5000 }).catch(() => {});
+    for (const w of want) assert.ok(words.includes(w.toLowerCase()), `${name} draws "${w}"`);
     await shot('sidebar');
 
     // ---- the palette with results ----------------------------------------------------------------
@@ -159,7 +157,6 @@ for (const id of ORDER) {
     // ---- the hidden sidebar and its peek ---------------------------------------------------------
     m.shell.key('toggle-sidebar');
     const hidden = await m.until(() => { const l = m.shell.layoutsSent.findLast((x) => x.windowId === windowId)!; return l.insets.left < s.left && l.insets; }, { what: 'the hidden sidebar\'s layout' });
-    await m.until(async () => JSON.stringify(sides(await pageBox(page))) === JSON.stringify(hidden), { what: 'the page widened' });
     await pause(100);
     await settled(ui);
     await shot('hidden');
@@ -167,7 +164,7 @@ for (const id of ORDER) {
     await m.until(async () => (await text()).includes('inbox — post'), { what: 'the sidebar out over the page' });
     await pause(100);
     await settled(ui);
-    assert.deepEqual(sides(await pageBox(page)), hidden, 'the page stays where it is for a peek');
+    assert.deepEqual(m.shell.layoutsSent.findLast((x) => x.windowId === windowId)!.insets, hidden, 'the page\'s slot stays where it is for a peek');
     await shot('peek');
     m.shell.key('toggle-sidebar');
     await m.shell.request('updateSettings', { patch: { sidebarPinnedOpen: true } }, windowId);

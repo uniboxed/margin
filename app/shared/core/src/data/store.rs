@@ -15,19 +15,26 @@
 //! in case don't meet on a case-insensitive disk, as NTFS and APFS both are); Margin's own collections keep their
 //! names, any other is written out the same way after `x-`. The real names are inside the files.
 //!
-//! The Swift store writes on a queue of its own and calls back; this one writes at once, in the caller's thread
-//! (the Swift unit tests' `background: false`): `save` returns once it's all on disk. Run the data on a thread
-//! of its own if a write mustn't hold anything up.
+//! **Writing.** The data sets are kept in memory once read. [`DataStore::submit`] changes the memory at once and hands
+//! the files to a writer that writes them in order; each one's result waits in a done queue the owner drains
+//! ([`DataStore::take_done`]) and acts on (the link confirms a change only then). Made with
+//! [`DataStore::background`], the writer is a thread of its own, which wakes the owner after each save (the Mac: a hop
+//! to its main thread; a write never holds the UI up); made with [`DataStore::new`], it writes at once, in the
+//! caller's thread (the tests, the Windows shell for now). [`DataStore::save`] is a submit that waits for its own
+//! result. `flat` ([`DataStore::flat`]): one data set in the root itself (Margin.app's library: `data/app/set.json`
+//! and `items/`), not one per browser and profile under it.
 //!
 //! On Windows: `std::fs::rename` over an existing file replaces it (MoveFileExW with REPLACE_EXISTING), and
 //! `hard_link` works on NTFS (where it doesn't, the backup is a copy). A folder can't be flushed there
 //! (`FlushFileBuffers` needs a file handle), so the renames' lasting is NTFS's journal's; the folders are
 //! flushed on unix only.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread::JoinHandle;
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -114,11 +121,163 @@ impl From<io::Error> for SaveError {
 }
 
 /// Margin's own collections (docs/DATA.md), which differ in more than case, keep their names on disk.
-pub const KNOWN_COLLECTIONS: [&str; 9] =
-    ["spaces", "pins", "folders", "tabs", "archive", "settings", "themeSettings", "siteIcons", "userThemes"];
+pub const KNOWN_COLLECTIONS: [&str; 12] = [
+    "spaces",
+    "pins",
+    "favorites",
+    "airTraffic",
+    "splits",
+    "folders",
+    "tabs",
+    "archive",
+    "settings",
+    "themeSettings",
+    "siteIcons",
+    "userThemes",
+];
+
+/// A save handed to the writer ([`DataStore::submit`]); its [`Done`] says the same.
+pub type Ticket = u64;
+
+/// How a save's files went.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    /// All on disk.
+    Saved,
+    /// A test's crash stopped the store mid-write: nothing more is said.
+    Crashed,
+    /// A write failed (the memory was dropped: the next load reads the files).
+    Failed(String),
+}
+
+/// A save written (or not), as the owner drains it ([`DataStore::take_done`]): its ticket, profile, the rev it wrote.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Done {
+    pub ticket: Ticket,
+    pub profile: DataProfile,
+    pub rev: String,
+    pub outcome: Outcome,
+}
+
+/// One save's files for the writer, or several saves of one profile made one while they waited ([`Job::merge`]).
+/// `set.json` is made as it's written: first (when the set has one already and a collection changes) with the new rev
+/// and the acked from before, then the collections, then last with the new acked.
+struct Job {
+    /// The saves it writes, in order: each one's ticket and the rev it gave the set.
+    saves: Vec<(Ticket, String)>,
+    profile: DataProfile,
+    /// `set.json`'s path; the folders made and synced (`items/`, the set's own).
+    set_json: PathBuf,
+    dirs: Vec<PathBuf>,
+    /// The set had a `set.json` on disk before the first of the saves (without one it's written only last).
+    had_set: bool,
+    /// The acked `set.json` is written with first, beside the new rev (None: no such first write: a first set, or no
+    /// collection changed).
+    first_acked: Option<f64>,
+    /// The newest save's rev, acked and time, as `set.json` has them last.
+    rev: String,
+    acked: f64,
+    saved_at: f64,
+    /// The changed collections' files, each once, with its newest text.
+    collections: Vec<(PathBuf, Vec<u8>)>,
+    allowed: Option<usize>,
+}
+
+/// A job written, and how many of its files were: each of its saves' results (the same for all).
+struct Finished {
+    done: Vec<Done>,
+    written: usize,
+}
+
+impl Job {
+    /// `set.json`'s text: the set's format, browser, profile, acked, rev and time.
+    fn manifest(&self, acked: f64) -> Vec<u8> {
+        sorted_json(&json!({
+            "format": FORMAT, "browser": self.profile.browser, "profile": self.profile.profile,
+            "acked": number(acked), "rev": self.rev, "savedAt": number(self.saved_at),
+        }))
+    }
+
+    /// A later save of the same profile handed over while this one still waits for the writer, made part of it, as
+    /// if the two had been one save from this one's start: `set.json` first (if it is) with the newest rev and the
+    /// acked from before this one (or, after a save that changed no collection, the acked it wrote), each collection
+    /// once with its newest text, `set.json` last as the later save has it. What's on disk once it's written is what
+    /// the two would have left; no save's text is kept that a later one replaces.
+    fn merge(&mut self, later: Job) {
+        if self.first_acked.is_none() && self.had_set {
+            self.first_acked = later.first_acked;
+        }
+        for (path, text) in later.collections {
+            match self.collections.iter_mut().find(|(p, _)| *p == path) {
+                Some(slot) => slot.1 = text,
+                None => self.collections.push((path, text)),
+            }
+        }
+        self.rev = later.rev;
+        self.acked = later.acked;
+        self.saved_at = later.saved_at;
+        self.saves.extend(later.saves);
+    }
+
+    fn run(self) -> Finished {
+        let mut written = 0;
+        let dirs: Vec<&Path> = self.dirs.iter().map(PathBuf::as_path).collect();
+        let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(self.collections.len() + 2);
+        // The new rev first (not for a first set: without set.json, a profile has none).
+        if let Some(acked) = self.first_acked {
+            files.push((self.set_json.clone(), self.manifest(acked)));
+        }
+        let last = (self.set_json.clone(), self.manifest(self.acked));
+        files.extend(self.collections);
+        files.push(last);
+        let outcome = match write_all(&files, &dirs, self.allowed, &mut written) {
+            Ok(true) => Outcome::Saved,
+            Ok(false) => Outcome::Crashed,
+            Err(e) => Outcome::Failed(e.to_string()),
+        };
+        let profile = self.profile;
+        let done = self
+            .saves
+            .into_iter()
+            .map(|(ticket, rev)| Done { ticket, profile: profile.clone(), rev, outcome: outcome.clone() })
+            .collect();
+        Finished { done, written }
+    }
+}
+
+/// The writer's side shared with the owner: saves handed over and not written yet, and the ones written.
+#[derive(Default)]
+struct Shared {
+    /// Jobs handed over and not written yet (a merged one counts once).
+    pending: usize,
+    /// Jobs handed over and not taken by the writer yet, in order; a save of the profile the last one is for made part
+    /// of it ([`Job::merge`]), so a burst of saves while the writer is behind keeps one text of each file waiting.
+    queue: VecDeque<Job>,
+    /// A writer thread is running (it takes the queue's jobs in order until it's empty, then ends).
+    running: bool,
+    finished: VecDeque<Finished>,
+}
+
+/// The background writer: a thread started when a save is handed over and none is running, which takes the jobs in
+/// order and ends once the queue is empty (no thread waits while nothing is written).
+struct Writer {
+    shared: Arc<(Mutex<Shared>, Condvar)>,
+    wake: Arc<dyn Fn() + Send + Sync>,
+    /// The last thread started, joined when the store goes.
+    thread: Option<JoinHandle<()>>,
+}
 
 pub struct DataStore {
     root: PathBuf,
+    /// One data set in the root itself (the app's library), not one per browser and profile.
+    flat: bool,
+    /// The background writer (`None`: written at once, in the caller's thread).
+    writer: Option<Writer>,
+    next_ticket: Ticket,
+    /// Written at once (no writer), waiting to be drained as the writer's are.
+    inline: VecDeque<Finished>,
+    /// Drained from the writer, waiting for `take_done`.
+    done: VecDeque<Done>,
     /// Milliseconds since 1970 (the tombstones' age, `savedAt`, an archived folder's name).
     pub now: Box<dyn Fn() -> f64 + Send>,
     /// A test's crash: the number of files written before the store stops as the app would if it died (the next
@@ -137,9 +296,15 @@ pub struct DataStore {
 }
 
 impl DataStore {
+    /// A store that writes at once, in the caller's thread.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
+            flat: false,
+            writer: None,
+            next_ticket: 1,
+            inline: VecDeque::new(),
+            done: VecDeque::new(),
             now: Box::new(crate::time::now_ms),
             crash_after_writes: None,
             crashed: false,
@@ -151,6 +316,77 @@ impl DataStore {
             unusable: HashSet::new(),
             log: Vec::new(),
         }
+    }
+
+    /// A store whose files are written by a thread of its own, in order; `wake` runs on that thread after each save
+    /// is written (the owner then drains [`DataStore::take_done`] on its own thread).
+    pub fn background(root: impl Into<PathBuf>, wake: impl Fn() + Send + Sync + 'static) -> Self {
+        let mut store = Self::new(root);
+        store.writer = Some(Writer { shared: Arc::default(), wake: Arc::new(wake), thread: None });
+        store
+    }
+
+    /// `job` to the writer: queued (made part of the last one waiting if that's the same profile's and `merge`), and a
+    /// writer thread started if none is running (it ends once the queue is empty). False if a thread couldn't be
+    /// started (the job is then the caller's to write).
+    fn hand_over(w: &mut Writer, job: Job, merge: bool) -> Result<(), Box<Job>> {
+        let start = {
+            let mut s = w.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+            match s.queue.back_mut() {
+                Some(last) if merge && last.profile == job.profile => last.merge(job),
+                _ => {
+                    s.pending += 1;
+                    s.queue.push_back(job);
+                }
+            }
+            !std::mem::replace(&mut s.running, true)
+        };
+        if !start {
+            return Ok(());
+        }
+        let (shared, wake) = (Arc::clone(&w.shared), Arc::clone(&w.wake));
+        let spawned = std::thread::Builder::new().name("margin-data".into()).spawn(move || {
+            loop {
+                let job = {
+                    let mut s = shared.0.lock().unwrap_or_else(|e| e.into_inner());
+                    match s.queue.pop_front() {
+                        Some(job) => job,
+                        None => {
+                            s.running = false;
+                            return;
+                        }
+                    }
+                };
+                let finished = job.run();
+                {
+                    let mut s = shared.0.lock().unwrap_or_else(|e| e.into_inner());
+                    s.finished.push_back(finished);
+                    s.pending = s.pending.saturating_sub(1);
+                }
+                shared.1.notify_all();
+                wake();
+            }
+        });
+        match spawned {
+            Ok(handle) => {
+                if let Some(old) = w.thread.replace(handle) {
+                    let _ = old.join(); // (ended already: it set `running` false before this one started)
+                }
+                Ok(())
+            }
+            Err(_) => {
+                let mut s = w.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+                s.running = false;
+                s.pending -= 1;
+                s.queue.pop_back().map_or(Ok(()), |job| Err(Box::new(job)))
+            }
+        }
+    }
+
+    /// The store as one data set in its root (the app's library).
+    pub fn flat(mut self) -> Self {
+        self.flat = true;
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -202,6 +438,9 @@ impl DataStore {
     }
 
     pub fn directory(&self, p: &DataProfile) -> PathBuf {
+        if self.flat {
+            return self.root.clone();
+        }
         self.root.join(Self::file_name(&p.browser)).join(Self::file_name(&p.profile))
     }
 
@@ -211,6 +450,7 @@ impl DataStore {
     /// or it's a later format's.
     pub fn load(&mut self, p: &DataProfile) -> Option<&Stored> {
         if !self.cache.contains_key(p) {
+            self.wait_for_writes(); // (the files as the saves handed over left them)
             let stored = self.read(p)?;
             self.cache.insert(p.clone(), stored);
         }
@@ -316,13 +556,34 @@ impl DataStore {
     /// first. A save that changes anything gives the set a new `rev` (`stored.rev` is ignored), written to
     /// `set.json` before the collections too (with the acked from before), so a crash between them never leaves
     /// new items under the rev a copy has. The rev written, once it's all on disk; an error if a write failed
-    /// (the memory is dropped: it's read again from the files).
+    /// (the memory is dropped: it's read again from the files). A submit that waits for its own result.
     pub fn save(
         &mut self,
         p: &DataProfile,
         stored: Stored,
         changed: Option<&BTreeSet<String>>,
     ) -> Result<String, SaveError> {
+        let ticket = self.submit(p, stored, changed)?;
+        self.wait_for_writes();
+        self.collect();
+        let at = self.done.iter().position(|d| d.ticket == ticket).ok_or(SaveError::Crashed)?;
+        let done = self.done.remove(at).ok_or(SaveError::Crashed)?;
+        match done.outcome {
+            Outcome::Saved => Ok(done.rev),
+            Outcome::Crashed => Err(SaveError::Crashed),
+            Outcome::Failed(e) => Err(SaveError::Io(io::Error::other(e))),
+        }
+    }
+
+    /// The profile's set and acked as they are now, as [`DataStore::save`]: in memory at once, its files handed to
+    /// the writer. Its ticket (the result comes in [`DataStore::take_done`]); an error at once if the store has
+    /// crashed or the profile's data is of a later format.
+    pub fn submit(
+        &mut self,
+        p: &DataProfile,
+        stored: Stored,
+        changed: Option<&BTreeSet<String>>,
+    ) -> Result<Ticket, SaveError> {
         if self.crashed {
             return Err(SaveError::Crashed); // a dead app says nothing
         }
@@ -346,42 +607,84 @@ impl DataStore {
         };
         let dir = self.directory(p);
         let items = dir.join("items");
-        let now = (self.now)();
-        let manifest = |acked: f64| {
-            sorted_json(&json!({
-                "format": FORMAT, "browser": p.browser, "profile": p.profile,
-                "acked": number(acked), "rev": stored.rev, "savedAt": number(now),
-            }))
-        };
         let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::new();
-        // The new rev first (not for a first set: without set.json, a profile has none).
-        if let Some((_, acked)) = before.filter(|_| bumped) {
-            files.push((dir.join("set.json"), manifest(acked)));
-        }
         for collection in &collections {
             let list = stored.set.items.get(collection).map(DataSet::list_json).unwrap_or_else(|| json!({}));
             let body = json!({ "format": FORMAT, "collection": collection, "items": list });
             files.push((items.join(format!("{}.json", Self::collection_file_name(collection))), sorted_json(&body)));
         }
-        files.push((dir.join("set.json"), manifest(stored.acked)));
-        let rev = stored.rev.clone();
+        let ticket = self.next_ticket;
+        self.next_ticket += 1;
+        let first_acked = before.as_ref().filter(|_| bumped).map(|b| b.1);
+        let job = Job {
+            saves: vec![(ticket, stored.rev.clone())],
+            profile: p.clone(),
+            set_json: dir.join("set.json"),
+            had_set: before.is_some(),
+            first_acked,
+            rev: stored.rev.clone(),
+            acked: stored.acked,
+            saved_at: (self.now)(),
+            collections: files,
+            allowed: self.crash_after_writes.map(|n| n.saturating_sub(self.scheduled)),
+            dirs: vec![items, dir],
+        };
+        self.scheduled += job.collections.len() + 1 + usize::from(first_acked.is_some());
         self.cache.insert(p.clone(), stored);
-        let allowed = self.crash_after_writes.map(|n| n.saturating_sub(self.scheduled));
-        self.scheduled += files.len();
-        let mut written = 0;
-        let result = write_all(&files, &[&items, &dir], allowed, &mut written);
-        self.writes += written;
-        match result {
-            Ok(true) => Ok(rev),
-            Ok(false) => {
-                self.crashed = true;
-                self.log.push(Note::warn(format!("{p}: the store stopped mid-write (a test's crash)")));
-                Err(SaveError::Crashed)
+        // (A test's crash counts the files as they'd be written one save at a time: nothing merged then.)
+        let merge = self.crash_after_writes.is_none();
+        match self.writer.as_mut() {
+            Some(w) => {
+                if let Err(job) = Self::hand_over(w, job, merge) {
+                    self.inline.push_back(job.run()); // (no thread could be started: written here instead)
+                }
             }
-            Err(e) => {
-                self.log.push(Note::warn(format!("{p}: data not saved: {e}")));
-                self.cache.remove(p);
-                Err(SaveError::Io(e))
+            None => self.inline.push_back(job.run()),
+        }
+        Ok(ticket)
+    }
+
+    /// Waits until every save handed to the writer is written (before a load from the disk, an archive, a test).
+    pub fn wait_for_writes(&self) {
+        let Some(w) = &self.writer else { return };
+        let (lock, ready) = &*w.shared;
+        let mut s = lock.lock().unwrap_or_else(|e| e.into_inner());
+        while s.pending > 0 {
+            s = ready.wait(s).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+
+    /// The saves written since the last call, in order (a failed one has dropped its profile's memory already;
+    /// the log says each).
+    pub fn take_done(&mut self) -> Vec<Done> {
+        self.collect();
+        self.done.drain(..).collect()
+    }
+
+    /// The writer's results into `done`, each one's bookkeeping done (the counts, a crash, a failure).
+    fn collect(&mut self) {
+        let mut finished: Vec<Finished> = self.inline.drain(..).collect();
+        if let Some(w) = &self.writer {
+            finished.extend(w.shared.0.lock().unwrap_or_else(|e| e.into_inner()).finished.drain(..));
+        }
+        for f in finished {
+            self.writes += f.written;
+            for done in f.done {
+                let p = &done.profile;
+                match &done.outcome {
+                    Outcome::Saved => {}
+                    Outcome::Crashed => {
+                        if !self.crashed {
+                            self.log.push(Note::warn(format!("{p}: the store stopped mid-write (a test's crash)")));
+                        }
+                        self.crashed = true;
+                    }
+                    Outcome::Failed(e) => {
+                        self.log.push(Note::warn(format!("{p}: data not saved: {e}")));
+                        self.cache.remove(p);
+                    }
+                }
+                self.done.push_back(done);
             }
         }
     }
@@ -395,6 +698,7 @@ impl DataStore {
     /// renamed to `<browser>/.archived/<profile>-<ms>`, where `profiles` never looks, so the profile has no set
     /// any more. Nothing is deleted. Where it went, or `None` if it had no folder or the rename failed.
     pub fn archive(&mut self, p: &DataProfile) -> Option<PathBuf> {
+        self.wait_for_writes();
         let dir = self.directory(p);
         if !dir.exists() {
             return None;
@@ -407,6 +711,18 @@ impl DataStore {
         }
         self.cache.remove(p);
         Some(to)
+    }
+}
+
+impl Drop for DataStore {
+    /// Every save handed over is written before the store goes (the writer ends with its queue).
+    fn drop(&mut self) {
+        self.wait_for_writes();
+        if let Some(w) = &mut self.writer {
+            if let Some(t) = w.thread.take() {
+                let _ = t.join();
+            }
+        }
     }
 }
 
@@ -550,6 +866,263 @@ mod tests {
 
     fn name_of(store: &mut DataStore, p: &DataProfile, c: &str, id: &str) -> Option<String> {
         store.load(p)?.set.live_values(c).get(id)?.get("name")?.as_str().map(str::to_string)
+    }
+
+    #[test]
+    fn the_newer_collections_and_the_flat_library() {
+        for c in ["favorites", "airTraffic", "splits"] {
+            assert_eq!(DataStore::collection_file_name(c), c, "Margin's own: its name on disk");
+        }
+        assert_eq!(DataStore::collection_file_name("windows"), "x-windows", "the library's own, as the Mac wrote it");
+        let dir = temp();
+        let root = dir.path().to_path_buf();
+        let mut lib = test_store(&root).flat();
+        let p = DataProfile::new("app", "library");
+        lib.save(&p, Stored::new(set_of(&[change("spaces", "s1", 1.0, Some(space("Home")))]), 0.0), None)
+            .expect("saved");
+        assert!(
+            root.join("set.json").exists() && root.join("items").join("spaces.json").exists(),
+            "in the root itself"
+        );
+        assert!(!root.join("app").exists(), "no browser or profile folders");
+        let mut again = test_store(&root).flat();
+        assert_eq!(name_of(&mut again, &p, "spaces", "s1").as_deref(), Some("Home"), "read back from the root");
+    }
+
+    #[test]
+    fn written_in_the_background_in_order() {
+        let dir = temp();
+        let root = dir.path().to_path_buf();
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let tx = Mutex::new(tx);
+        let mut store = DataStore::background(&root, move || {
+            let _ = tx.lock().map(|t| t.send(()));
+        });
+        store.now = Box::new(|| 1000.0);
+        let p = DataProfile::new("safari", "P1");
+        let mut tickets = Vec::new();
+        for (i, name) in ["One", "Two", "Three"].into_iter().enumerate() {
+            let at = 1.0 + i as f64;
+            let set = set_of(&[change("spaces", "s1", at, Some(space(name)))]);
+            tickets.push(store.submit(&p, Stored::new(set, 0.0), None).expect("handed over"));
+            assert_eq!(name_of(&mut store, &p, "spaces", "s1").as_deref(), Some(name), "in memory at once");
+        }
+        rx.recv_timeout(std::time::Duration::from_secs(10)).expect("woken once a save is written");
+        // (Saves that came while one was being written are written together: a wake each written job, not each save.)
+        store.wait_for_writes();
+        let done = store.take_done();
+        assert_eq!(done.iter().map(|d| d.ticket).collect::<Vec<_>>(), tickets, "in order");
+        assert!(done.iter().all(|d| d.outcome == Outcome::Saved && d.profile == p));
+        assert!(store.take_done().is_empty(), "each once");
+        let mut fresh = test_store(&root);
+        assert_eq!(name_of(&mut fresh, &p, "spaces", "s1").as_deref(), Some("Three"), "the last one on disk");
+        // A failed write: its result says so and the memory is dropped (read again from the files).
+        let q = DataProfile::new("safari", "P2");
+        fs::create_dir_all(root.join("safari")).expect("made");
+        fs::write(root.join("safari").join(DataStore::file_name("P2")), b"a file, not a folder").expect("made");
+        store
+            .submit(&q, Stored::new(set_of(&[change("spaces", "s1", 1.0, Some(space("X")))]), 0.0), None)
+            .expect("handed over");
+        store.wait_for_writes();
+        let failed = store.take_done();
+        assert!(matches!(failed.as_slice(), [Done { outcome: Outcome::Failed(_), .. }]), "{failed:?}");
+        assert!(store.take_log().iter().any(|n| n.text.contains("data not saved")));
+        assert!(store.load(&q).is_none(), "the memory dropped: nothing on disk");
+        // save() waits for its own, whatever else is waiting.
+        store
+            .submit(&p, Stored::new(set_of(&[change("spaces", "s2", 9.0, Some(space("Four")))]), 0.0), None)
+            .expect("handed over");
+        let rev = store.save(&p, Stored::new(set_of(&[change("spaces", "s3", 10.0, Some(space("Five")))]), 0.0), None);
+        assert!(rev.is_ok());
+        assert_eq!(store.take_done().len(), 1, "the other save's result still there for its owner");
+        drop(store);
+    }
+
+    /// A writer that waits at its wake while the gate is shut (after each save it writes), so the saves handed over
+    /// meanwhile wait in the queue.
+    fn gated_writer(root: &Path) -> (DataStore, Arc<(Mutex<bool>, Condvar)>) {
+        let gate: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(true), Condvar::new()));
+        let held = Arc::clone(&gate);
+        let store = DataStore::background(root, move || {
+            let (open, turn) = &*held;
+            let mut open = open.lock().unwrap_or_else(|e| e.into_inner());
+            while !*open {
+                open = turn.wait(open).unwrap_or_else(|e| e.into_inner());
+            }
+        });
+        (store, gate)
+    }
+
+    /// The gate opened when it goes (a failed check mustn't leave the store's drop waiting for a writer held shut).
+    struct Opens(Arc<(Mutex<bool>, Condvar)>);
+    impl Drop for Opens {
+        fn drop(&mut self) {
+            set_gate(&self.0, true);
+        }
+    }
+
+    fn set_gate(gate: &(Mutex<bool>, Condvar), open: bool) {
+        *gate.0.lock().unwrap_or_else(|e| e.into_inner()) = open;
+        gate.1.notify_all();
+    }
+
+    fn queued(store: &DataStore) -> Vec<Vec<Ticket>> {
+        let w = store.writer.as_ref().expect("a writer");
+        let s = w.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+        s.queue.iter().map(|j| j.saves.iter().map(|(t, _)| *t).collect()).collect()
+    }
+
+    #[test]
+    fn saves_waiting_for_the_writer_are_written_together() {
+        // A burst of saves while the writer is behind (the library's edits, each its changed collection's whole file):
+        // the ones waiting are one job, each file's newest text only, so what waits doesn't grow with the burst; what's
+        // on disk after is what one save at a time leaves, and each save's result comes, in order, once it's written.
+        let dir = temp();
+        let root = dir.path().to_path_buf();
+        let (mut store, gate) = gated_writer(&root);
+        let _opens = Opens(Arc::clone(&gate));
+        store.now = Box::new(|| 1000.0);
+        let (p, q) = (DataProfile::new("safari", "P1"), DataProfile::new("safari", "P2"));
+        // Both profiles have a set on disk (written one at a time, the gate open).
+        store
+            .save(&p, Stored::new(set_of(&[change("spaces", "s1", 1.0, Some(space("One")))]), 0.0), None)
+            .expect("saved");
+        store
+            .save(&q, Stored::new(set_of(&[change("spaces", "s9", 1.0, Some(space("Nine")))]), 0.0), None)
+            .expect("saved");
+        let writes_before = store.writes();
+        set_gate(&gate, false);
+        let mut set = store.load(&p).cloned().expect("in memory").set;
+        let mut tickets = Vec::new();
+        for i in 0..21 {
+            let at = 2.0 + f64::from(i);
+            set.merge(&[change("tabs", "t1", at, Some(json!({ "url": format!("https://{i}.example/") })))]);
+            if i == 10 {
+                set.merge(&[change("pins", "p1", at, Some(json!({ "url": "https://pin.example/" })))]);
+            }
+            let changed: BTreeSet<String> =
+                if i == 10 { ["tabs", "pins"].map(String::from).into() } else { ["tabs".to_string()].into() };
+            tickets
+                .push(store.submit(&p, Stored::new(set.clone(), f64::from(i)), Some(&changed)).expect("handed over"));
+            if i == 0 {
+                // (The writer takes the first and waits at its wake after writing it: the rest queue behind it.)
+                while !queued(&store).is_empty() {
+                    std::thread::yield_now();
+                }
+            }
+        }
+        assert_eq!(queued(&store), [tickets[1..].to_vec()], "the 20 saves waiting are one job");
+        {
+            let w = store.writer.as_ref().expect("a writer");
+            let s = w.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+            let job = s.queue.front().expect("one job");
+            let names: Vec<String> = job.collections.iter().map(|(path, _)| file_name_of(path)).collect();
+            assert_eq!(names, ["tabs.json", "pins.json"], "each file once, in the order first changed");
+            assert_eq!(
+                (job.first_acked, job.acked),
+                (Some(0.0), 20.0),
+                "set.json first with the acked from before them"
+            );
+            assert!(s.pending <= 2, "the first (written, or being written) and one job waiting, not 21: {}", s.pending);
+        }
+        // Another profile's save after them: a job of its own, behind (the order across profiles kept).
+        let theirs = store
+            .submit(&q, Stored::new(set_of(&[change("spaces", "s9", 5.0, Some(space("Other")))]), 0.0), None)
+            .expect("handed over");
+        assert_eq!(queued(&store), [tickets[1..].to_vec(), vec![theirs]]);
+        set_gate(&gate, true);
+        store.wait_for_writes();
+        let done = store.take_done();
+        tickets.push(theirs);
+        assert_eq!(done.iter().map(|d| d.ticket).collect::<Vec<_>>(), tickets, "each save's result, in order");
+        assert!(done.iter().all(|d| d.outcome == Outcome::Saved));
+        let revs: Vec<&str> = done[..21].iter().map(|d| d.rev.as_str()).collect();
+        assert_eq!(revs.iter().collect::<HashSet<_>>().len(), 21, "each its own rev, as handed out");
+        // On disk: the newest of each file, the newest rev and acked; written as 3 + 4 + 3 files, not 21 × 3 + 3.
+        let mut fresh = test_store(&root);
+        let stored = fresh.load(&p).cloned().expect("on disk");
+        assert_eq!((stored.rev.as_str(), stored.acked), (revs[20], 20.0), "the last save's rev and acked");
+        assert_eq!(
+            stored.set.item("tabs", "t1").and_then(|i| i.value.clone()),
+            Some(json!({ "url": "https://20.example/" }))
+        );
+        assert!(stored.set.item("pins", "p1").is_some() && stored.set.item("spaces", "s1").is_some());
+        assert_eq!(name_of(&mut fresh, &q, "spaces", "s9").as_deref(), Some("Other"));
+        assert_eq!(
+            store.writes() - writes_before,
+            3 + 4 + 3,
+            "the first save's 3 files, the merged job's 4, the other's 3"
+        );
+        drop(store);
+    }
+
+    #[test]
+    fn a_test_crash_merges_nothing() {
+        // (A test's crash counts files as one save at a time writes them: with it set, nothing is merged.)
+        let dir = temp();
+        let (mut store, gate) = gated_writer(dir.path());
+        let _opens = Opens(Arc::clone(&gate));
+        let p = DataProfile::new("safari", "P1");
+        store
+            .save(&p, Stored::new(set_of(&[change("spaces", "s1", 1.0, Some(space("One")))]), 0.0), None)
+            .expect("saved");
+        store.crash_after_writes = Some(1000);
+        set_gate(&gate, false);
+        let mut set = store.load(&p).cloned().expect("in memory").set;
+        let changed: BTreeSet<String> = ["tabs".to_string()].into();
+        for i in 0..3 {
+            set.merge(&[change("tabs", "t1", 2.0 + f64::from(i), Some(json!({ "n": i })))]);
+            store.submit(&p, Stored::new(set.clone(), 0.0), Some(&changed)).expect("handed over");
+            if i == 0 {
+                while !queued(&store).is_empty() {
+                    std::thread::yield_now();
+                }
+            }
+        }
+        assert_eq!(queued(&store).len(), 2, "each its own job");
+        set_gate(&gate, true);
+        store.wait_for_writes();
+        assert_eq!(store.take_done().len(), 3);
+    }
+
+    #[test]
+    fn a_merged_save_writes_set_json_as_one_save_would() {
+        // The first write of set.json (the new rev with the acked from before, so no copy's rev ever names new items)
+        // is kept as the saves made one have it: after a first set, none (no set.json till last); after a save that
+        // changed no collection (an acked alone), the later save's own first.
+        let p = DataProfile::new("safari", "P1");
+        let job = |saves: u64, had_set: bool, first: Option<f64>, acked: f64, files: &[&str]| Job {
+            saves: vec![(saves, format!("rev{saves}"))],
+            profile: p.clone(),
+            set_json: PathBuf::from("set.json"),
+            dirs: vec![],
+            had_set,
+            first_acked: first,
+            rev: format!("rev{saves}"),
+            acked,
+            saved_at: 1.0,
+            collections: files.iter().map(|f| (PathBuf::from(*f), f.as_bytes().to_vec())).collect(),
+            allowed: None,
+        };
+        let mut a = job(1, false, None, 1.0, &["tabs.json"]);
+        a.merge(job(2, true, Some(1.0), 2.0, &["tabs.json", "pins.json"]));
+        assert_eq!(
+            (a.first_acked, a.acked, a.rev.as_str(), a.collections.len()),
+            (None, 2.0, "rev2", 2),
+            "after a first set"
+        );
+        let mut b = job(1, true, None, 5.0, &[]);
+        b.merge(job(2, true, Some(5.0), 6.0, &["tabs.json"]));
+        assert_eq!((b.first_acked, b.acked), (Some(5.0), 6.0), "after an acked alone: the later save's first");
+        let mut c = job(1, true, Some(3.0), 4.0, &["tabs.json"]);
+        c.merge(job(2, true, None, 7.0, &[]));
+        assert_eq!(
+            (c.first_acked, c.acked, c.saves.len()),
+            (Some(3.0), 7.0, 2),
+            "an acked alone after: its acked last"
+        );
+        let manifest: Value = serde_json::from_slice(&c.manifest(c.acked)).expect("json");
+        assert_eq!((manifest["rev"].clone(), manifest["acked"].clone()), (json!("rev2"), json!(7)));
     }
 
     #[test]

@@ -1,12 +1,12 @@
-// The runtime's behaviors (extension/ui/behaviors/) with Neubrutalism and
-// Pixel (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
+// The runtime's behaviors (app/shared/ui/behaviors/) with Neubrutalism,
+// Pixel and Liquid Glass (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
 // whose every network request is refused; real pointer, wheel and keyboard
 // input through Playwright. The host is the mock (ui/host.ts): each test
 // checks the messages it received. `npm run test:theme`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, themesInScope, NEO, PIXEL } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, NEO, PIXEL, GLASS } from './package.ts';
 import type { Harness } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -19,6 +19,7 @@ const script = harnessScript();
 const THEMES = [
   ['neubrutalism', NEO, { root: '.nb', docked: 291, def: 256, min: 200, max: 400, dragged: 306 }],
   ['pixel', PIXEL, { root: '.pixel', docked: 286, def: 252, min: 200, max: 360, dragged: 304 }],
+  ['liquid-glass', GLASS, { root: '.lg', docked: 281, def: 264, min: 200, max: 420, dragged: 314 }],
 ] as const;
 const SCROLL = /^(sidebarScroll|setSidebarScroll)$/;
 
@@ -226,13 +227,46 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked);
       });
 
+      // Margin.app's own window hosting another app's window above its page area (ui/host-app.ts pageHosted): the
+      // sidebar is docked there, and its width is dragged as anywhere. The app holds the hosted window's placing
+      // from the first change of the width until it's told the change is over, which comes after the last layout.
+      await t.test('resize while Margin.app hosts a window above the page area: the handle shown and dragged, live layouts, the host told when it begins and when it\'s over', async () => {
+        await mount({ hosted: true });
+        await wait(() => T.rtLayoutsAll().length > 0);
+        assert.equal((await vm()).sidebar, 'open', 'docked while hosting');
+        assert.equal(await ev((r) => T.rtAttr(r, 'm-sidebar-fixed'), th.root), null, 'not marked fixed');
+        assert.notEqual(await ev(() => T.rtDisplay('.resizer')), 'none', 'the handle is drawn');
+        const handle = await rect('.resizer');
+        assert.ok(handle && handle.width > 0 && handle.height > 0, 'the handle has a box');
+        await page.mouse.move(handle.x, handle.y);
+        await page.mouse.down();
+        assert.deepEqual(await ev(() => T.rtResizing()), [], 'a press alone: nothing told');
+        await page.mouse.move(handle.x + 20, handle.y, { steps: 2 });
+        await eventually(async () => assert.deepEqual((await ev(() => T.rtResizing())).map(([on]) => on), [true], 'told once as the width first changes'));
+        await page.mouse.move(handle.x + 50, handle.y, { steps: 3 });
+        await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked + 50);
+        const live = await ev(() => T.rtLayoutsAll());
+        assert.ok(live.filter((l) => l > th.docked && l < th.docked + 50).length >= 1, `layouts while dragging: ${live.join(', ')}`);
+        assert.deepEqual((await ev(() => T.rtResizing())).map(([on]) => on), [true], 'still one word while dragging');
+        await page.mouse.up();
+        assert.deepEqual(await lastSent('updateThemeSettings'), ['updateThemeSettings', { themeId, patch: { sidebarWidth: `${th.dragged}px` } }]);
+        assert.deepEqual((await ev(() => T.rtResizing())).at(-1), [false, th.dragged + gap], 'over: told after the page\'s place at the saved width was reported');
+        assert.equal((await ev(() => T.rtResizing())).length, 2, 'begun once, over once');
+        // Double-click: the default, as one change, its layout reported before the host hears it's over.
+        const h2 = await rect('.resizer');
+        await page.mouse.dblclick(h2.x, h2.y);
+        assert.deepEqual((await lastSent('updateThemeSettings'))![1].patch, { sidebarWidth: `${th.def}px` });
+        assert.deepEqual((await ev(() => T.rtResizing())).slice(2).map(([on]) => on), [true, false], 'the reset: begun and over');
+        assert.deepEqual((await ev(() => T.rtResizing())).at(-1), [false, th.docked], 'the default\'s layout reported first');
+      });
+
       await t.test('menus: a right-click opens the theme\'s menu part; items run checked actions, two-value ones too', async () => {
         await mount();
         const ids = await today();
         const row = await shown('.today .tab', 0);
         await page.mouse.click(row.x, row.y, { button: 'right' });
         const labels = (await vm()).menu!;
-        assert.deepEqual(labels.slice(0, 4), ['Pin Tab', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
+        assert.deepEqual(labels.slice(0, 6), ['Pin Tab', 'Add to Favorites', 'Add to Split View', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
         assert.ok(labels.includes('Move to 💼 Work') && labels.includes('Close Tab'));
         assert.equal(await ev(() => T.rtCount('m-menu .menu-item')), labels.filter((l) => l).length, 'drawn from the theme\'s part');
         const menuBox = await rect('m-menu');
@@ -257,7 +291,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const count = (await sent()).length;
         const chip = await rect('.chip', 1);
         await page.mouse.click(chip.x, chip.y, { button: 'right' });
-        assert.deepEqual((await vm()).menu, ['Edit Space…', 'Rename Space', '', 'New Space', '', 'Delete Space']);
+        assert.deepEqual((await vm()).menu, ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '', 'New Space', '', 'Delete Space']);
         let del = (await ev(() => T.rtBoxText('.menu-item', 'Delete Space')))!;
         await page.mouse.click(del.x, del.y);
         assert.equal((await vm()).menu!.at(-1), 'Really delete?');
@@ -323,6 +357,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
       await t.test('drag and drop: a tab to another place, onto a space\'s chip, into a folder', async () => {
         await mount({ replies: { moveTab: true } });
         await ev(() => T.rtApply('toggleFolder', 'personal-f0')); // Reading closed: fewer rows
+        await page.waitForTimeout(300); // (the rows below it slide up first: ui/row-motion.ts)
         await ev(() => T.rtSentClear());
         const ids = await today();
         await shown('.today .tab', 4); // the first rows in view, above the spaces bar
@@ -358,16 +393,17 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await eventually(async () => assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[1], spaceId: 'work' }]));
 
         // Into a folder (its row, below its top quarter): pinned there.
-        await shown('.folder-head', 1);
-        const folder = await settled('.folder-head', 1);
-        const start = await settled('.today .tab', 3);
+        // Scroll to the top first so Lisbon stays clear of the 36 px auto-scroll edge even with the Mini Player shown.
+        await shown('.folder-head', 0);
+        const start = await settled('.today .tab', 2);
+        const folder = await rect('.folder-head', 1);
         assert.ok(start.bottom < 830, 'the row in view');
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
         await page.mouse.move(folder.x, folder.top + folder.height * 0.7, { steps: 8 });
         await eventually(async () => assert.ok((await ev(() => T.rtClasses('.folder-head', 1)))!.includes('m-drop-into')));
         await page.mouse.up();
-        await eventually(async () => assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[3], folderId: 'personal-f1', beforeId: null }]));
+        await eventually(async () => assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[2], folderId: 'personal-f1', beforeId: null }]));
 
         // Escape: back, nothing sent.
         await shown('.today .tab', 4);

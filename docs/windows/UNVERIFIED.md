@@ -211,3 +211,106 @@ Ported from Shell.swift and tested on the Mac with fake inputs; what only Window
   draft); a profile with no window says how to open one.
 - **One clock.** The shell runs on the wall clock (`time::now`, as the copies' `focusedAt` are); a clock change while
   it runs shifts its timers once. Check: change the time in Settings while linked: nothing sticks.
+- **Hosting apps (2026-11-18, `src/hosting.rs`).** margin-core's reconcile driver (`host::driver`) with Windows's own
+  calls: a hosted window kept at the page area with `SetWindowPos` and shown with `SW_SHOWNOACTIVATE`, parked with
+  `SW_HIDE` (no taskbar button; DWM's cloak is refused for another process's windows), a minimized one put back, one
+  whose window went closing its item. Only window mode exists here (no Spaces, no full screen of the Mac's kind).
+  Compile-checked for both Windows targets and unit-checked (what a window's facts mean as a situation); not wired into
+  the Windows shell's loop yet, never run on Windows. Check: an app hosted at the page area, parked and shown again,
+  minimized and put back, its window closed by the person, its taskbar button gone while parked; `SetWindowPos` on an
+  elevated app's window (refused: said, not retried).
+  *Superseded 2026-11-22 by "Hosting (the hosted design)" below: a minimized shown window is now Margin's minimize.*
+
+## Hosting (the hosted design, 2026-11-22)
+
+docs/HOSTED-WINDOWS-CHROMIUM.md §4. Compile- and clippy-checked for `x86_64-pc-windows-msvc` and
+`aarch64-pc-windows-msvc`; the logic unit-tested against a simulated Windows on the Mac (`hosting/tests.rs`, `hole.rs`,
+`marker.rs`, `chromium.rs`, `hostcheck.rs`). Nothing here has run on Windows. Most checks use the dev mode
+`margin.exe --host-check <program | window>` (hostcheck.rs): Margin's window, plainly painted, with a sidebar's room
+(280 pt) and a title band (48 pt), one window hosted in its page area; its log is
+`%LOCALAPPDATA%\Margin\logs\host-check.log` (one line per correction and per look, with its time in µs). Quit Margin
+(the normal app) first. A window handle for `<window>` comes from Spy++ or `Get-Process | ? MainWindowTitle | ft Id,
+MainWindowHandle` (decimal is fine).
+
+### Margin's own window (appwindow.rs)
+
+- **The frame drawn by the theme.** `WM_NCCALCSIZE` gives the client the whole window; DWM's shadow from a 1 px
+  extended frame. Check: `margin.exe --host-check C:\Windows\System32\charmap.exe`: a dark window with no white title
+  bar, a shadow, rounded corners on Windows 11; no 1 px light line along its top on Windows 10 (if there is, extend the
+  frame by 0 and draw the top line in the page instead).
+- **Its hit test.** The top band drags it (`HTCAPTION`), double-click maximizes; the rightmost 138 pt of the band are
+  minimize, maximize, close (thirds); the edges resize it (8 pt). Check each, and hover the maximize third on Windows
+  11: the snap layouts flyout comes. Maximized: no resize edges, and nothing of the window past the monitor (the
+  overhang trimmed in `WM_NCCALCSIZE`).
+- **Per-monitor DPI.** Drag it to a monitor of another scale: it takes Windows' suggested size (no jump), the page area
+  is laid out again at the new scale and the hosted window follows.
+
+### The hole (hole.rs, `SetWindowRgn`)
+
+- **Clicks in the page area reach the hosted window; the rest of Margin's window is Margin's.** Check: in the check's
+  window, click, type and scroll in the hosted app; click the sidebar's room: nothing reaches the app. The 10 pt squares
+  at the page area's corners are Margin's (a click there does nothing): that's expected.
+- **The region over DirectComposition content** (the real app, with its web view, `WS_EX_NOREDIRECTIONBITMAP`): the
+  check paints with GDI instead, so this one waits for the session's step (docs/HOSTED-WINDOWS-CHROMIUM.md §11 step 6).
+  What to look for then: the page's transparent pixels show the hosted window, the theme's rounded corners are smooth,
+  clicks in the hole reach the hosted window. If the region clips the composition wrongly, the fallback is
+  `WS_EX_TRANSPARENT` toggled from the pointer's place (the overlays' way).
+
+### The hosted window (hosting.rs, hosting/win32.rs)
+
+- **Placed under Margin's window at the page area, its visible frame exactly there.** Check: with charmap or a window of
+  Notepad, its visible edges line up with the page area (Windows' invisible borders outside it: compare
+  `DWMWA_EXTENDED_FRAME_BOUNDS` with the page area in the log's placement line); Margin's window's sidebar is never
+  covered.
+- **Its taskbar button goes while it's hosted, and comes back when given back** (`ITaskbarList::DeleteTab` on another
+  process's window). Check: the taskbar shows only Margin's button while hosting; close Margin's window: the app's
+  button is back.
+- **A click in the hole raises it over Margin's window; it's put back under at once** (the foreground event, then
+  `SetWindowPos` after Margin's window, the keyboard kept). Check: click into the app 10 times quickly: the app keeps
+  the keyboard, the log says `restacked 1` each time and never `left in front`; look for a frame where the app covers
+  Margin's frame (record the screen at 120 fps if you can): none, or one frame at most.
+- **An app that raises its own window again and again** is stopped at the third time in 5 s (`restack 3 times within
+  5 s: left in front`). Hard to make on purpose; note it if the log ever says so.
+- **Alt+Tab.** Margin's window and the hosted window are both listed (decision 1 in the plan). Pick the hosted one: it
+  comes in front with the keyboard and Margin's window goes back over it (`restacked 1`). Pick Margin: its window, the
+  hosted one under it.
+- **Minimize, restore, maximize.** Minimize Margin's window (its button, Win+↓, the taskbar): the hosted window is
+  hidden with it; restore: both back, the app at the page area. Win+↓ while the app has the keyboard: Margin's window
+  minimizes too (`MinimizeMargin`). Win+↑ while the app has it: Margin's window maximizes (`MaximizeMargin`) and the
+  app is placed at the new page area. Win+D, then Win+D: both back, in order.
+- **A window that can't be resized** (charmap): centred in the page area at its own size. A window with a minimum wider
+  than the page area (make the check window narrow): at its minimum, its right edge at the page area's, the rest under
+  the sidebar's room; never a fight (the log settles after one look).
+- **Its window closed by the person** (the app's own close, Alt+F4 into it): the check ends (`closeItem` after 1 s).
+- **An elevated app.** Start Notepad as administrator, then `--host-check <its window>`: `not hosted: Elevated`, nothing
+  moved. Also check `process::integrity` reads a normal app as 0x2000 and the elevated one as 0x3000 (or fails: then
+  the refusal comes from `SetWindowPos` failing instead; the log says `Windows refused`).
+- **Virtual desktops.** Move Margin's window to another desktop (Task View, right-click, Move to): the log says
+  `OtherDesktop` once. What the session does then is step 6's.
+- **Given back as found.** Host an already open, maximized window (`--host-check <window>`), then close Margin's window:
+  the app is maximized again, where it was, with its taskbar button.
+- **Crash recovery.** Host a window, then `taskkill /f /im margin.exe`: the hosted window stays hidden or under where
+  Margin was (expected). Start `margin.exe --host-check` again (any target): the log's first lines say `recovery: window
+  … given back: true` and the window is back as it was; `%LOCALAPPDATA%\Margin\hosted.json` is gone after.
+- **The budgets.** At rest with a window hosted: `typeperf "\Process(margin)\% Processor Time" -si 1 -sc 60` reads 0
+  (no timer runs at rest; only window events wake it); Task Manager's private memory for margin.exe in the check is a
+  few MB. A look's time in the log (µs) after a click in the hole or a move of Margin's window: under 16 ms (16000 µs).
+
+### Chrome and Edge for the hosted design (chromium.rs, browsers.rs `candidates`, the extension's `newWindow { mark }`)
+
+- **The mark in the window's title.** In Chrome with Margin's extension linked (the overlay app), the copy's
+  `newWindow { mark: "abcd1234" }` opens a window whose title is `Margin abcd1234 - Google Chrome` (Edge:
+  `Margin abcd1234 - <profile> - Microsoft Edge`) until an item is shown there. Check with the e2e's stand-in app or, once
+  step 6 lands, in margin.log's binding line; `browsers::candidates` finds exactly that window.
+- **Chromium's own full screen held at a rect** (the framed route): `windows.update({ state: 'fullscreen' })` from the
+  copy, then `SetWindowPos` to the page area. Does Chrome keep it there, or refit it to its monitor (then the covered
+  route: the adapter steps down after two placements that didn't hold, `SteppedDown`)? Does a "Press F11/Esc to exit full
+  screen" bubble show, and for how long? Same for Edge.
+- **`--no-startup-window`.** `chrome.exe --profile-directory="Profile 1" --no-startup-window` with Chrome not running:
+  no window opens, the profile's copy links (margin.log `hello: chrome:p-…`), and a later `newWindow` opens one window
+  with no restored session around it. Same for `msedge.exe`.
+- **App Paths.** `chromium::executable("chrome.exe")` and `("msedge.exe")` find both browsers on a stock install
+  (per-user Chrome installs register under HKCU).
+- **A copy ↔ its profile folder** (the mark opened from the command line: `chrome.exe --profile-directory="Profile 1"
+  chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/newtab/newtab.html?mark=abcd1234`): does Chrome open an extension
+  page from its command line, in that profile? If not, the plan's mapping needs another way (§3.3).

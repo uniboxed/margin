@@ -5,8 +5,8 @@
 // the prompt Remove asks first.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveThemeField, removePrompt, userThemeList, themeText, type SettingsField } from '../extension/ui/settings-form.ts';
-import { PREVIEW_MS } from '../extension/ui/theme-preview.ts';
+import { settingsFields, saveThemeField, removePrompt, userThemeList, themeText, type SettingsField } from '../app/shared/ui/settings-form.ts';
+import { PREVIEW_MS } from '../app/shared/ui/theme-preview.ts';
 
 const LIST = [{ id: 'mine', name: 'Mine', version: '1.2.0', author: 'Me', bytes: 9 }, { id: 'arcadia', name: 'Fake Arcadia' }, { id: '../x', name: 'Bad' }, { id: 'rtl', name: 'Safe‮txt.exe', version: '1.0.0', author: 'A​B' }];
 const THEME = {
@@ -23,7 +23,7 @@ const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [
 
 test('the theme choice lists the built-ins, then the imported themes by name (only valid ids, never a built-in\'s twice)', () => {
   const f = byId(settingsFields({ theme: 'mine' }, { userThemes: LIST }));
-  assert.deepEqual(f.theme.options.map((o) => o.id), ['arcadia', 'neubrutalism', 'pixel', 'mine', 'rtl'].filter((id) => id !== 'pixel' || f.theme.options.some((o) => o.id === 'pixel')));
+  assert.deepEqual(f.theme.options.map((o) => o.id), ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass', 'material', 'mine', 'rtl'].filter((id) => id !== 'pixel' || f.theme.options.some((o) => o.id === 'pixel')));
   assert.equal(f.theme.value, 'mine');
   assert.equal(f.theme.options.find((o) => o.id === 'rtl')!.label, 'Safetxt.exe', 'bidi controls out');
   assert.equal(byId(settingsFields({ theme: 'gone' }, { userThemes: LIST })).theme.value, 'arcadia', 'an id no longer listed: Arcadia');
@@ -62,12 +62,12 @@ test('the active theme\'s own settings, from its theme.json: Margin\'s inputs, i
 });
 
 test('the theme\'s own settings come after Margin\'s, right before the keyboard shortcuts: Margin\'s rows never sit under "Settings of …"', () => {
-  const ids = settingsFields({}, { importThemes: true, userThemes: LIST, cloudTabs: true }, { theme: THEME }).map((x) => x.id);
+  const ids = settingsFields({}, { importThemes: true, userThemes: LIST }, { theme: THEME }).map((x) => x.id);
   const heading = ids.indexOf('themeSettings');
   const shortcuts = ids.indexOf('shortcuts');
   assert.ok(heading > 0 && shortcuts > heading, 'the heading before the shortcuts');
   assert.ok(ids.slice(heading + 1, shortcuts).every((id) => id.startsWith('themeSetting:')), 'only the theme\'s rows between the two headings');
-  for (const id of ['theme', 'themeImport', 'removeTheme:mine', 'engine', 'archiveAfterHours', 'frameWhenHidden', 'showCloudTabs']) assert.ok(ids.indexOf(id) < heading, `${id} before the theme's own`);
+  for (const id of ['theme', 'themeImport', 'removeTheme:mine', 'engine', 'archiveAfterHours', 'frameWhenHidden']) assert.ok(ids.indexOf(id) < heading, `${id} before the theme's own`);
   assert.equal(ids[ids.indexOf('themeImport') - 1], 'theme', 'Import Theme… right under the theme choice');
 });
 

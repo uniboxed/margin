@@ -56,6 +56,16 @@ Nothing of it runs on the Mac: there it's compile-checked (`npm run test:rust` r
    started by a browser as its host (an older registration, before the connector). To quit it: Task Manager, or
    `taskkill /im margin.exe`. The connector starts the app when a copy asks for it and it isn't running.
 
+### The hosted design's check (`--host-check`)
+
+The hosted design (docs/HOSTED-WINDOWS-CHROMIUM.md) is being built beside the overlay shell; the default launch is
+unchanged. Its Windows mechanism (Margin's own window with a hole cut for the page area, another window hosted there
+under it, kept there by margin-core's reconcile driver on window events) runs on its own with
+`margin.exe --host-check <program | window>`: a program Margin starts (its first window to come in front is hosted, and
+closed when Margin's window closes), or a window already open, by its handle (given back as it was found). Quit the
+normal Margin first. Log: `%LOCALAPPDATA%\Margin\logs\host-check.log`. What to check with it:
+docs/windows/UNVERIFIED.md, "Hosting (the hosted design)".
+
 ### The host registration
 
 `margin-connector.exe --install` (the app runs it at each launch, in the background, with no console window) writes

@@ -6,17 +6,19 @@ pub mod json;
 pub mod system;
 pub mod time;
 
-// The link (ExtensionLink.swift, LinkSocket.swift, LinkMessage.swift, Chunks.swift, StateMirror.swift): the copies'
-// WebSockets on every OS.
+// The link: the copies' WebSockets on every OS, the one copy of its rules (the Mac's through margin-ffi's link object:
+// `link_hub`, which keeps each link's `mirror`).
 pub mod chunks;
 pub mod link;
+pub mod link_hub;
 pub mod mirror;
 pub mod protocol;
 pub mod relay;
 pub mod socket;
 pub mod websocket;
 
-// The lasting data (DataSet.swift, DataStore.swift, DataSync.swift, BrowserProfiles.swift, ThemeStore.swift).
+// The lasting data and the imported themes (the Mac's through margin-ffi: DataSync.swift, BrowserProfiles.swift,
+// ThemeStore.swift are its wrappers).
 pub mod data;
 
 // Windows (WindowMap.swift, WindowMatcher.swift) and the overlays (PassThrough.swift, OverlayPlanner.swift).
@@ -32,3 +34,22 @@ pub mod switch;
 
 // The shell that joins them (Shell.swift), sans IO.
 pub mod shell;
+
+// The hosting core (HostEngine.swift's decisions: layout, window kinds, the reconciler, the loop guard, the causes,
+// the routes), sans IO: docs/ARCHITECTURE-PLAN.md.
+pub mod host;
+
+// The windows a browser's copy makes and drives for the app (hosted.ts's requests), any browser, any OS.
+pub mod hosted_browser;
+
+// The session (HostedSession.swift's flows as async steps, docs/CORE-REFACTOR.md step 3): the library's items shown in
+// Margin's windows, its executor, ports and commands.
+pub mod session;
+
+// Margin's own window's page (MarginWindowController.swift's decisions, docs/CORE-REFACTOR.md step 3 part 11): its
+// page card's state, the holes and the ground, in front of what it hosts, the page area; one per Margin window.
+pub mod page;
+
+// The library's edit rules (library.ts over model.ts, docs/CORE-REFACTOR.md step 4): the JavaScript semantics they
+// rely on first (`library::js`).
+pub mod library;

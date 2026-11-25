@@ -1,0 +1,13 @@
+{
+  "format": 2,
+  "id": "arcadia",
+  "name": "Arcadia",
+  "version": "3.0.0",
+  "author": "Margin",
+  "description": "A sidebar window in each space's colour: the page as a rounded card, an address pill, pins, folders and tabs, a floating command bar.",
+  "modes": ["fullscreen", "windowed", "inpage"],
+  "settings": {
+    "sidebarWidth": { "type": "number", "default": 260, "min": 160, "max": 500, "step": 10, "label": "Sidebar width" }
+  },
+  "layout": { "reveal": "left", "sidebarMin": 160, "sidebarMax": 500, "sidebarDefault": 260 }
+}

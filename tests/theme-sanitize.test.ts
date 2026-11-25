@@ -5,11 +5,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sanitizeTemplate, sanitizeCss, sanitizeDeclarations, checkCssValue, checkIconUrl,
-  tokenizeCss, parseInterpolation, isBundledPath, LIMITS,
-} from '../extension/ui/sanitize.ts';
-import { ACTIONS, checkAction, contextFromState, createDispatcher, isAction } from '../extension/ui/actions.ts';
-import { checkManifest } from '../extension/ui/theme-schema.ts';
-import { sanitizeTheme } from '../extension/ui/theme-loader.ts';
+  tokenizeCss, parseInterpolation, isBundledPath, LIMITS, VISUAL_EFFECTS,
+} from '../app/shared/ui/sanitize.ts';
+import { ACTIONS, checkAction, contextFromState, createDispatcher, isAction } from '../app/shared/ui/actions.ts';
+import { checkManifest, wantsSystemMaterials } from '../app/shared/ui/theme-schema.ts';
+import { sanitizeTheme } from '../app/shared/ui/theme-loader.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, ACTION_PAYLOADS, wrap } from './theme/payloads.ts';
 import { auditTree } from './theme/audit.ts';
 import { readTheme } from './theme/package.ts';
@@ -69,6 +69,19 @@ test('the sanitizer reports each removal with what, why and where', () => {
   assert.match(r.removed.find((x) => x.name === '<img> onerror')!.reason, /event handlers/); // listed just above
 });
 
+// A theme marks a decoration as never empty (a double-click there doesn't open the palette: ui/empty.ts); it can't
+// make anything empty, so `never` is the attribute's only value.
+test('m-empty: "never" kept on any element, every other value removed and reported', () => {
+  const kept = sanitizeTemplate(wrap('<div class="title" m-empty="never">Pinned</div><span m-empty="never"></span>'));
+  assert.deepEqual(kept.removed, []);
+  assert.equal(JSON.stringify(kept.tree).match(/"m-empty","never"|"m-empty":"never"/g)?.length, 2, JSON.stringify(kept.tree).slice(0, 400));
+  for (const value of ['always', 'yes', '', 'true', 'NEVER']) {
+    const r = sanitizeTemplate(wrap(`<div m-empty="${value}">x</div>`));
+    assert.deepEqual(r.removed.map((x) => [x.kind, x.name]), [['attribute', '<div> m-empty']], value);
+    assert.match(r.removed[0].reason, /unknown m-empty value/, value);
+  }
+});
+
 test('entity-encoded and obfuscated javascript: links are removed, # links kept', () => {
   for (const href of ['&#106;avascript:x', 'java&#x09;script:x', 'JAVASCRIPT:x', ' #x', 'https://evil.test', '//evil.test', '#x y']) {
     const r = sanitizeTemplate(wrap(`<a href="${href}">x</a>`));
@@ -116,6 +129,37 @@ test('bindings may only target allowed attributes', () => {
     assert.ok(r.removed.some((x) => x.kind === 'attribute'), html);
     assert.doesNotMatch(JSON.stringify(r.tree), /\{\{(tab\.url|t\.icon|c|u)\}\}/, html);
   }
+});
+
+// Margin.app's loader: the opening app's icon (ui/view-model.ts pageLoader.icon, checked with checkIconUrl as a
+// row's icon) binds as an icon does, and only in the loader.
+test('pageLoader.icon: an <img m-icon> (or an m-if or m-class test) in the page-loader part or its slot; anywhere else, or as text or another value, removed', () => {
+  const part = (inner: string) => wrap(`<m-page-loader></m-page-loader><template m-part="page-loader"><div class="opening">${inner}<span>{{pageLoader.label}}</span></div></template>`);
+  const ok = sanitizeTemplate(part('<m-if test="pageLoader.icon"><span m-class:with-icon="{{pageLoader.icon}}"><img alt="" m-icon="{{ pageLoader.icon }}"></span></m-if><m-if test="!pageLoader.icon"><i></i></m-if>'));
+  assert.deepEqual(ok.removed, [], 'in the part: an img\'s m-icon, an m-if, an m-class');
+  assert.equal(JSON.stringify(ok.tree).match(/pageLoader\.icon/g)?.length, 4);
+  assert.deepEqual(sanitizeTemplate(wrap('<m-page-loader><img alt="" m-icon="{{pageLoader.icon}}"></m-page-loader>')).removed, [], 'in the slot (its fallback)');
+  const bad = [
+    wrap('<img alt="" m-icon="{{pageLoader.icon}}">'), // (outside the loader)
+    wrap('<m-if test="pageLoader.icon"><i></i></m-if>'),
+    wrap('<template m-part="palette-row"><img alt="" m-icon="{{pageLoader.icon}}"></template>'),
+    part('<div m-icon="{{pageLoader.icon}}"></div>'), // (not an img)
+    part('<span title="{{pageLoader.icon}}"></span>'), part('<span data-icon="{{pageLoader.icon}}"></span>'),
+    part('<span m-attr:aria-label="{{pageLoader.icon}}"></span>'), part('<span m-style:--icon="{{pageLoader.icon}}"></span>'),
+    part('<img alt="" src="{{pageLoader.icon}}">'), part('<img alt="" m-attr:src="{{pageLoader.icon}}">'),
+    part('<m-for each="pageLoader.icon" as="x"><i></i></m-for>'),
+    part('<svg viewBox="0 0 1 1"><image href="{{pageLoader.icon}}"></image></svg>'),
+  ];
+  for (const html of bad) {
+    const r = sanitizeTemplate(html);
+    assert.ok(r.removed.length > 0, html);
+    assert.doesNotMatch(JSON.stringify(r.tree), /pageLoader\.icon/, html);
+  }
+  const text = sanitizeTemplate(part('<b>{{pageLoader.icon}}</b>'));
+  assert.ok(text.removed.some((x) => x.kind === 'text' && /pageLoader\.icon/.test(x.reason)), 'as text: removed');
+  assert.doesNotMatch(JSON.stringify(text.tree), /pageLoader\.icon/);
+  // (Its value is the view model's, checked as every icon: a data: image only, never an address.)
+  for (const v of ['https://evil.test/i.png', 'javascript:alert(1)', 'data:text/html;base64,PGI+', 'data:image/svg+xml,<svg/>']) assert.equal(checkIconUrl(v), false, v);
 });
 
 test('bindings are dotted paths only: no expressions, no prototype walks', () => {
@@ -235,6 +279,51 @@ test('style attributes go through the same CSS rules', () => {
   assert.equal(sanitizeDeclarations('a{color:red}').css, '');
 });
 
+test('-apple-visual-effect: the system\'s materials by name, one keyword from the list and nothing else', () => {
+  assert.deepEqual([...VISUAL_EFFECTS], ['none', '-apple-system-glass-material', '-apple-system-glass-material-subdued', '-apple-system-blur-material',
+    '-apple-system-blur-material-thin', '-apple-system-blur-material-ultra-thin', '-apple-system-blur-material-thick', '-apple-system-blur-material-chrome',
+    '-apple-system-vibrancy-label', '-apple-system-vibrancy-fill'], 'the list is exactly these');
+  for (const value of VISUAL_EFFECTS) {
+    const r = sanitizeCss(`.a{-apple-visual-effect:${value}}`);
+    assert.deepEqual([r.css, r.removed], [`.a{-apple-visual-effect:${value};}`, []], value);
+  }
+  // The pattern a theme writes: the plain look, then the material where the browser has it.
+  const pattern = '.panel{background:rgba(255,255,255,.6)}@supports (-apple-visual-effect: -apple-system-glass-material){.panel{background:none;-apple-visual-effect:-apple-system-glass-material}}';
+  const kept = sanitizeCss(pattern);
+  assert.deepEqual(kept.removed, []);
+  assert.equal(kept.css, '.panel{background:rgba(255,255,255,.6);}@supports (-apple-visual-effect: -apple-system-glass-material){.panel{background:none;-apple-visual-effect:-apple-system-glass-material;}}');
+  // Any case and `!important`: the same rule.
+  assert.equal(sanitizeCss('.a{-Apple-Visual-Effect: -APPLE-SYSTEM-BLUR-MATERIAL-THICK !important}').removed.length, 0);
+  // Never in a `style` attribute (M2.9 step 5): an element made while Edit Theme Color's panel holds the switch on
+  // would keep it, in a theme that never asked for the materials. Only in a stylesheet, read with the theme's switch.
+  const inline = sanitizeDeclarations('-apple-visual-effect: -apple-system-vibrancy-fill; color: red');
+  assert.equal(inline.css, 'color:red;');
+  assert.deepEqual(inline.removed.map((x) => [x.name, x.reason]), [['-apple-visual-effect', 'only in the theme\'s stylesheet, inside @supports']]);
+  assert.equal(sanitizeDeclarations('-Apple-Visual-Effect: none').css, '', 'any case');
+  // Refused: a material not on the list, a variable (it could hold one), two values, a wide keyword, a string, nothing,
+  // a name split by a comment.
+  for (const bad of ['-apple-system-glass-material-clear', '-apple-system-hosted-material', 'var(--material)', '-apple-system-glass-material -apple-system-blur-material',
+    'inherit', '"-apple-system-glass-material"', '', '-apple-system-glass-material/**/-subdued', '-apple-system-glass-material !important !important', 'env(material)']) {
+    const r = sanitizeCss(`.a{color:red;-apple-visual-effect:${bad}}`);
+    assert.equal(r.css, '.a{color:red;}', bad);
+    assert.deepEqual(r.removed.map((x) => [x.kind, x.reason]), [['css-declaration', 'not one of the materials Margin knows']], bad);
+  }
+  assert.equal(sanitizeDeclarations('-apple-visual-effect: -apple-system-glass-material-clear; color: red').css, 'color:red;');
+});
+
+test('theme.json: systemMaterials is a plain yes or no, read before the theme loads', () => {
+  const base = { format: 2, id: 'x', name: 'X', version: '1.0.0' };
+  const yes = checkManifest(JSON.stringify({ ...base, systemMaterials: true }));
+  assert.deepEqual([yes.errors, yes.removed, yes.manifest.systemMaterials], [[], [], true]);
+  assert.equal(checkManifest(JSON.stringify(base)).manifest.systemMaterials, undefined, 'absent: not asked for');
+  assert.match(checkManifest(JSON.stringify({ ...base, systemMaterials: 'yes' })).errors.join(), /bad systemMaterials/);
+  assert.equal(wantsSystemMaterials(JSON.stringify({ ...base, systemMaterials: true })), true);
+  for (const no of [JSON.stringify(base), JSON.stringify({ ...base, systemMaterials: false }), JSON.stringify({ ...base, systemMaterials: 'true' }), JSON.stringify({ ...base, systemMaterials: 1 }),
+    JSON.stringify([{ systemMaterials: true }]), JSON.stringify({ layout: { systemMaterials: true } }), 'not json', '', null, undefined, 7, `{"systemMaterials":true,"pad":"${'x'.repeat(LIMITS.manifestBytes)}"}`]) {
+    assert.equal(wantsSystemMaterials(no), false, String(no).slice(0, 60));
+  }
+});
+
 test('values Margin binds into CSS variables: colors and lengths, never URLs, strings or escapes', () => {
   for (const ok of ['#ffd23f', 'red', '12px', 'rgb(1 2 3 / 50%)', 'calc(100% - 4px)', 'color-mix(in srgb, red, blue)', 3, '-1.5em']) assert.equal(checkCssValue(ok), true, String(ok));
   for (const bad of ['url(https://evil.test/x)', 'u\\72l(x)', '"a"', "'x'", 'red;background:url(x)', 'image-set("x" 1x)', 'red !important', 'attr(x)', '{', 'a\nb', 'x'.repeat(300), NaN, Infinity, null, {}, 'expression(1)', 'env(x)', 'src("x")']) {
@@ -265,9 +354,30 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const step2 = ['tab.move', 'tab.pinAt', 'pin.move', 'folder.newWithTab', 'folder.newWithPin', 'folder.rename', 'folder.setName', 'folder.move', 'folder.delete', 'space.rename', 'space.setName', 'space.update', 'space.delete', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color'];
   const step3 = ['notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more'];
   const step4 = ['settings.run'];
-  const profiles = ['space.move', 'space.newIn', 'profile.edit', 'profile.forget']; // Margin 2 Phase 2 step 4: spaces across profiles
-  const cloud = ['cloud.toggle', 'cloud.toggleDevice', 'cloud.open', 'cloud.copy', 'cloud.access']; // Margin 2: iCloud Tabs
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...profiles, ...cloud].sort());
+  // Margin.app's Settings tab (2026-11-20): its categories' sidebar.
+  const settingsTab = ['settings.category'];
+  // A theme per space (2026-11-20): the editor's theme, a space's menu's and Settings' Theme.
+  const spaceThemes = ['editor.theme', 'space.setTheme'];
+  // Track 2 M2.1 (Arc QoL): copy URL, duplicate, mute, unload/sleep, reopen last archived (a toast goes by itself: no close).
+  const arcQol = ['tab.copyUrl', 'pin.copyUrl', 'tab.duplicate', 'tab.mute', 'tab.unload', 'archive.restoreLast'];
+  // Track 2 M2.2 (Sticky Pins, Inline Rename, Nested Folders).
+  const arcM22 = ['tab.rename', 'tab.setTitle', 'pin.reset', 'pin.rename', 'pin.setTitle', 'folder.newIn', 'folder.nest'];
+  // Track 2 M2.3 (Favorites Grid).
+  const arcM23 = ['favorite.open', 'favorite.add', 'favorite.addPin', 'favorite.remove', 'favorite.reset', 'favorite.rename', 'favorite.setTitle', 'favorite.move', 'favorite.copyUrl'];
+  // Track 2 M2.4 (Mini Player).
+  const arcM24 = ['media.toggle', 'media.prev', 'media.next', 'media.mute', 'media.focus'];
+  // Track 2 M2.5 (The preview card and Quick Tab).
+  const arcM25 = ['preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open'];
+  // Track 2 M2.6 (Link Rules).
+  const arcM26 = ['linkRules.addHost', 'linkRules.remove', 'linkRules.toggle'];
+  // Track 2 M2.7 (Universal Split View).
+  const arcM27 = ['split.add', 'split.open', 'split.focus', 'split.breakOut', 'split.closePane', 'split.swap', 'split.toggleAxis',
+    // (feat/split, docs/PEEK-SPLIT.md §4: split.add's README name, a pane out with the rest shown, a divider let go.)
+    'split.addPane', 'split.remove', 'split.resize'];
+  // Track 2 M2.9 (Space backgrounds, docs/SPACE-BACKGROUNDS.md §4, §5b): Edit Theme Color opened, its value saved,
+  // a theme's own picker's items.
+  const arcM29 = ['space.editBackground', 'space.setBackground', 'picker.run'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26, ...arcM27, ...arcM29].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

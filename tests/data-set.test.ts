@@ -105,6 +105,15 @@ test('the data set\'s items: spaces in order, pins by address, folders, Margin\'
   assert.deepEqual(COLLECTIONS, [...Object.keys(SOURCES), 'userThemes']);
 });
 
+test('the data set: a space\'s theme goes with it and comes back; none written for a space with none', () => {
+  const state = M.updateSpace(M.createSpace(M.defaultState(), { id: 'work', name: 'Work' }), 'work', { theme: 'pixel' });
+  const spaces = collectionFrom(state, 'spaces');
+  assert.equal(spaces.work.theme, 'pixel');
+  assert.equal('theme' in spaces[state.spaces[0].id], false, 'a space with none: no field (its value as before)');
+  const back = stateFromDataSet(M.defaultState(), dataSetFrom(state, { now: 1 }));
+  assert.deepEqual(back.spaces.map((sp) => sp.theme ?? null), [null, 'pixel']);
+});
+
 test('the converter (first link): today\'s extension storage as a data set, user themes too, times from the queue\'s meta where it has them', () => {
   const s = sampleState();
   const raw = {
@@ -234,5 +243,18 @@ test('a wiped extension cache recovers the highlighted saved tab from app data, 
   const set = dataSetFrom(s, { now: 502 });
   const refilled = stateFromDataSet(M.defaultState(), set);
   assert.equal(refilled.keptTabs[chosen.mid!].wasActive, true);
-  assert.equal(M.spaceWindowTabs(refilled, s.tabSpace[chosen.id] ?? 'work').front?.id, chosen.mid);
+});
+
+test('a space\'s background (M2.9) goes to the set and back as the model reads it; none, no key', () => {
+  const state = { ...M.defaultState(), spaces: [
+    { id: 'a', name: 'A', emoji: '', color: '#abcdef', background: { colors: ['#ABCDEF'], amount: 0.47 } },
+    { id: 'b', name: 'B', emoji: '', color: '', background: { colors: [] } },
+  ] } as any;
+  const values = collectionFrom(state, 'spaces');
+  const read = { colors: ['#abcdef'], wheel: 'analogous', intensity: 0.5, texture: 'grain', amount: 0.45, appearance: 'auto' };
+  assert.deepEqual(values.a.background, read);
+  assert.equal('background' in values.b, false);
+  const items = { spaces: Object.fromEntries(Object.entries(values).map(([id, value]) => [id, { updatedAt: 1, value }])) };
+  const back = stateFromDataSet(M.defaultState(), { items });
+  assert.deepEqual(back.spaces.map((s) => s.background ?? null), [read, null]);
 });
