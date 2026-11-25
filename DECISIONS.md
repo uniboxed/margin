@@ -9757,3 +9757,40 @@ Glass's own panels are.
   rebuild looked at `.ts` sources only, not the built-in themes' CSS, HTML and JSON it packages. Now one `app_page`
   step, before either part, over all of them. (`npm run gate` runs unit first, so it was never fooled.)
 - **Not seen on the real screen**: TESTING.md "Edit Theme Color's glass".
+
+## M2.9 step 5b, part 1: a theme may draw Edit Theme Color (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is** (plan decision 10): a theme gives a `background-picker` part and an `<m-picker>` slot, and its picker
+  is drawn in place of Margin's panel; without either, Margin's panel (glass, step 5). The built-in themes get theirs
+  in part 2 (Material, Neubrutalism, Pixel); Arcadia and Liquid Glass keep Margin's.
+- **As the theme language already works** (the menu, Settings): a guarded part, so only Margin's words show
+  (`picker` in the view model, `ui/picker/view.ts`); the theme's buttons run one action with an item's id,
+  `picker.run`, checked against the items the picker shows now (as `menu.run`, `settings.run`); the slot placed by
+  Margin where it was asked from (`--m-picker-x`, `--m-picker-y`, as `--m-menu-x`), given the keys.
+- **Margin's controls as Margin's elements** (as `<m-page>`'s panes are Margin's): `<m-picker-field
+  m-variant="dots|wheel|cells">`, `<m-picker-slider m-value="intensity|amount" m-variant="wave|bar">`,
+  `<m-picker-dial>`. Margin fills and works them; the theme's CSS draws them through attributes (`[m-knob]`,
+  `[m-thumb]`, `[m-face]`…) and variables (`--m-knob-color`, `--m-value`, `--m-face`, `--m-field-wheel`); base rules
+  give each a plain working look under the theme's. The attributes' values are one list (`ui/picker/elements.ts`) for
+  the sanitizer, which drops an unknown one, and for Margin, which then draws the first.
+- **One set of controls**: the field, the slider and the dial came out of the panel into `ui/picker/controls.ts` (the
+  gesture session too: `live`, `commit`, `burst`), used by both the panel and a theme's part. The panel drawn with
+  them was compared with a picture of it from before, pixel by pixel: identical (2 px at 1/255 in dark, the noise seen
+  before). Its words are `ui/picker/words.ts` (pure, for the view model).
+- **The part's driver** (`ui/picker/part.ts`) gives the behaviour what the panel gives it (`set`, `state`, `rect`,
+  `owns`, `parts`, `destroy`, and `run`), so saving, undo, Escape and Use for All Spaces stay one code. The view
+  model's `picker` is kept at each commit, an undo, a page of presets; a gesture's frames are drawn by the controls
+  themselves (a render per frame would cost the frame). A theme's picker asks for no glass.
+- **An element left out isn't shown** (the theme's choice; Escape and a press outside still close it). The plan said
+  "gets Margin's default"; drawing Margin's controls into a theme's layout unasked would break its layout, and a theme
+  that wants Margin's whole panel leaves out the part.
+- **Tests**:
+  - Node, `tests/ui-picker-part.test.ts`: the view model, the items each kind of button may run and what each does
+    (and none for anything else, `__proto__` and `toString` included), the attributes as kept and as read,
+    `picker.run`'s check.
+  - `tests/theme-guard.test.ts`: the part guarded, Margin's elements and their attributes kept.
+  - Chromium and WebKit, `tests/theme/picker-part.test.ts`, over Arcadia given a part: opened from the menu where it
+    was, in the window, the keys in it, no glass asked for; the field (its `wheel`), a drag saved once; every kind of
+    item; both sliders and the dial; a forged item refused; ⌘Z, Use for All Spaces, Escape, Done, a press outside, Tab
+    kept inside; the theme's own words dropped; an element left out, an unknown variant, a part with no slot. Three
+    deliberate breaks of the driver each caught.

@@ -81,6 +81,10 @@ export const ACTIONS = Object.freeze({
   // A space's background (M2.9: Edit Theme Color, ui/behaviors/background-picker.ts): the picker opened for it, and
   // what it saves (null: none, the theme's own; `color` its key colour, null: as it is).
   'space.editBackground': 'space',
+  // Edit Theme Color drawn by the theme (its `background-picker` part, M2.9 step 5b): one of the open picker's items
+  // (ui/picker/view.ts: an appearance, a colour more or fewer, the rule, a preset, a page, a texture, an amount, an
+  // intensity, Use for All Spaces, Done), what it does Margin's.
+  'picker.run': 'picker-item',
   'space.setBackground': Object.freeze({ space: 'space', background: 'background?', color: 'hex?' }),
   'space.delete': 'space',
   'today.clear': 'none',
@@ -184,6 +188,8 @@ export type ActionContext = {
   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
   hasSettingItem?(id: any): boolean,
+  /** One of the open picker's items (a theme's own picker: ui/picker/view.ts). */
+  hasPickerItem?(id: any): boolean,
   /** A theme Margin has (built in or imported: ui/space-theme.ts themeChoices). */
   hasTheme?(id: any): boolean,
 };
@@ -240,6 +246,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
     'setting-item': ctx.hasSettingItem ?? (() => false), theme: ctx.hasTheme ?? (() => false),
+    'picker-item': ctx.hasPickerItem ?? (() => false),
   };
   switch (kind) {
     case 'none':
@@ -283,7 +290,7 @@ export function createDispatcher({ context, run, log = () => {} }: { context: ()
  * rows of the palette while it's open (`paletteIds`, from ui/view-model.ts
  * paletteItems), and the open menu's items and the editor's swatches.
  * */
-export function contextFromState(state: any, paletteIds: Iterable<string> = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [], themeIds = [] }: { menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string>, settingIds?: Iterable<string>, themeIds?: Iterable<string> } = {}): ActionContext {
+export function contextFromState(state: any, paletteIds: Iterable<string> = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [], themeIds = [], pickerIds = [] }: { menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string>, settingIds?: Iterable<string>, themeIds?: Iterable<string>, pickerIds?: Iterable<string> } = {}): ActionContext {
   const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
   const kept = state?.keptTabs && typeof state.keptTabs === 'object' ? state.keptTabs : {};
   const ids = (list: unknown) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
@@ -301,6 +308,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
   const prompts = new Set(promptIds);
   const settingButtons = new Set(settingIds);
   const themes = new Set(themeIds);
+  const pickerItems = new Set(pickerIds);
   return {
     // An open tab by its browser tab's id, or a Margin tab that isn't open
     // by its own (state/model.ts keptTabs).
@@ -320,6 +328,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
     hasPromptItem: (id) => prompts.has(id),
     hasSettingItem: (id) => settingButtons.has(id),
     hasTheme: (id) => themes.has(id),
+    hasPickerItem: (id) => pickerItems.has(id),
   };
 }
 
@@ -377,6 +386,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // | menu.open          | 'add'             | local: that menu, at the button |                                       |
 // | menu.run           | item id           | the item's own action         | (ui/behaviors/menu-items.ts)            |
 // | menu.close         | none              | local                         |                                         |
+// | picker.run         | picker item id    | local: Edit Theme Color's     | (ui/picker/view.ts runItem)             |
 // | editor.save, .cancel, .delete, .color, .theme | | local: the space editor | (save: space.update; delete: twice)  |
 // | sidebar.toggle     | none              | updateSettings                | { patch: { sidebarPinnedOpen: !now } }  |
 // | archive.open       | none              | openLauncher                  | { windowId }                            |
@@ -458,6 +468,7 @@ export const ACTION_MAP = Object.freeze({
   'palette.run': 'row',
   'menu.open': 'local',
   'menu.run': 'local',
+  'picker.run': 'local',
   'menu.close': 'local',
   'editor.save': 'local',
   'editor.cancel': 'local',
@@ -506,7 +517,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
+const LOCAL = new Set(['space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'picker.run', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 

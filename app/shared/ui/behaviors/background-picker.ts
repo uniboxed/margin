@@ -23,7 +23,15 @@ import type { SpaceBackground } from '../../../../types/margin';
 import { backgroundOf } from '../../../../extension/shared/space-background.ts';
 import { backgroundFrom, stateOf } from '../picker/model.ts';
 import { createPickerPanel } from '../picker/panel.ts';
-import type { PickerPanel, TickKind } from '../picker/panel.ts';
+import type { PanelEvents, TickKind } from '../picker/panel.ts';
+import { createPickerPart, themeHasPicker } from '../picker/part.ts';
+import type { PickerState } from '../picker/model.ts';
+
+// What the panel (Margin's own) and a theme's part (its `background-picker`, M2.9 step 5b) both give this.
+type Picker = {
+  set(next: PickerState): void, readonly state: PickerState, rect(): number[] | null, owns(target: EventTarget | null): boolean,
+  parts(): unknown, destroy(): void, run?(id: string): boolean, afterRender?(): void,
+};
 
 const same = (a: SpaceBackground | null, b: SpaceBackground | null) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -32,7 +40,7 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
   /** The system's materials asked for (true) or given back (false); resolves once the page has the answer. */
   materials?: (on: boolean) => Promise<unknown>,
 } = {}) {
-  let open: { spaceId: string, panel: PickerPanel, origin: SpaceBackground | null, saved: SpaceBackground | null, undo: (SpaceBackground | null)[] } | null = null;
+  let open: { spaceId: string, panel: Picker, origin: SpaceBackground | null, saved: SpaceBackground | null, undo: (SpaceBackground | null)[] } | null = null;
   // Each open and close is a turn: an open waiting for the materials makes its panel only if it's still the last turn.
   let turn = 0;
   // The space an open is waiting for the materials for (no panel yet), or null.
@@ -90,14 +98,16 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
     // (Asked from a menu: where it was; from a theme's button: beside it; else near the window's top left.)
     const box = info?.element?.getBoundingClientRect?.();
     const point = info?.point ?? (box ? { x: box.right + 8, y: box.top } : { x: 24, y: 56 });
-    const glass = !!materials && !settingsShown() && !moreContrast();
+    // (A theme's own picker is the theme's look: no glass asked for.)
+    const themed = themeHasPicker(rt);
+    const glass = !!materials && !themed && !settingsShown() && !moreContrast();
     const mine = turn;
     const make = () => {
       if (mine !== turn) return; // closed, or opened again, meanwhile (that turn saw to the materials)
       waitingFor = null;
       // (The space gone, or Settings come, while waiting: not opened.)
       if (!hasSpace(spaceId) || (glass && settingsShown())) { void hold(false); return; }
-      makePanel(spaceId, point);
+      makePanel(spaceId, point, themed);
     };
     if (!glass) { void hold(false); make(); return true; }
     const asked = hold(true);
@@ -107,43 +117,43 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
     return true;
   }
 
-  function makePanel(spaceId: string, point: { x: number, y: number }) {
+  function makePanel(spaceId: string, point: { x: number, y: number }, themed: boolean) {
     const origin = stored(spaceId);
-    const panel = createPickerPanel({
-      doc: rt.doc, container: rt.container, state: stateOf(origin), point,
-      events: {
-        preview: (s) => rt.previewBackground(spaceId, backgroundFrom(s), { held: true }),
-        commit: (s) => {
-          if (!open) return;
-          const bg = backgroundFrom(s);
-          if (same(bg, open.saved)) { rt.previewBackground(spaceId, bg, { held: false }); return; }
-          open.undo.push(open.saved);
-          open.saved = bg;
-          save(spaceId, bg);
-        },
-        undo: () => {
-          if (!open || !open.undo.length) return;
-          const bg = open.undo.pop()!;
-          open.saved = bg;
-          open.panel.set(stateOf(bg));
-          save(spaceId, bg);
-        },
-        escape: () => {
-          if (!open) return;
-          if (!same(open.saved, open.origin)) save(spaceId, open.origin);
-          open.saved = open.origin;
-          close();
-        },
-        done: () => { close(); },
-        all: (s) => {
-          if (!open) return;
-          const bg = backgroundFrom(s);
-          if (!same(bg, open.saved)) { open.undo.push(open.saved); open.saved = bg; }
-          for (const sp of rt.state?.spaces ?? []) save(sp.id, bg, { ahead: sp.id === spaceId });
-        },
-        tick: (kind) => onTick?.(kind),
+    const events: PanelEvents = {
+      preview: (s) => rt.previewBackground(spaceId, backgroundFrom(s), { held: true }),
+      commit: (s) => {
+        if (!open) return;
+        const bg = backgroundFrom(s);
+        if (same(bg, open.saved)) { rt.previewBackground(spaceId, bg, { held: false }); return; }
+        open.undo.push(open.saved);
+        open.saved = bg;
+        save(spaceId, bg);
       },
-    });
+      undo: () => {
+        if (!open || !open.undo.length) return;
+        const bg = open.undo.pop()!;
+        open.saved = bg;
+        open.panel.set(stateOf(bg));
+        save(spaceId, bg);
+      },
+      escape: () => {
+        if (!open) return;
+        if (!same(open.saved, open.origin)) save(spaceId, open.origin);
+        open.saved = open.origin;
+        close();
+      },
+      done: () => { close(); },
+      all: (s) => {
+        if (!open) return;
+        const bg = backgroundFrom(s);
+        if (!same(bg, open.saved)) { open.undo.push(open.saved); open.saved = bg; }
+        for (const sp of rt.state?.spaces ?? []) save(sp.id, bg, { ahead: sp.id === spaceId });
+      },
+      tick: (kind) => onTick?.(kind),
+    };
+    const panel: Picker = themed
+      ? createPickerPart({ rt, spaceId, state: stateOf(origin), point, events })
+      : createPickerPanel({ doc: rt.doc, container: rt.container, state: stateOf(origin), point, events });
     open = { spaceId, panel, origin, saved: origin, undo: [] };
     rt.panelChanged();
   }
@@ -167,12 +177,15 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
     rect: () => open?.panel.rect() ?? null,
     /** Its parts, for the tests. */
     parts: () => open?.panel.parts() ?? null,
+    /** A theme's button in its own picker (`picker.run`, the item checked first): what that item does. */
+    run: (id: string) => open?.panel.run?.(id) ?? false,
     /** Another space shown, or the space gone: closed (what's saved kept); so is an open still waiting. Settings come
      *  while the materials are held for it: closed too. */
     afterRender(vm: ViewModel) {
       const id = open?.spaceId ?? waitingFor;
       if (id && (vm.space?.id !== id || !hasSpace(id))) close();
       else if (open && holding && settingsShown()) close();
+      else open?.panel.afterRender?.();
     },
     busy: () => !!open,
     destroy() { close(); },

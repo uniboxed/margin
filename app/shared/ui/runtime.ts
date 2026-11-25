@@ -42,6 +42,7 @@ import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
 import { installBackgroundPicker } from './behaviors/background-picker.ts';
+import { pickerItemIds } from './picker/view.ts';
 import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
 import { createRowMotion } from './row-motion.ts';
@@ -706,7 +707,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
     const settingIds = vm?.settingsForm?.fields.filter((f) => f.isButton && !f.disabled).map((f) => f.id) ?? [];
     const themeIds = themeChoices((host.platform as any)?.features).map((c) => c.id);
-    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds }));
+    // (Edit Theme Color drawn by the theme: its items, as it shows them now.)
+    const pickerIds = vm?.picker ? pickerItemIds(vm.picker) : [];
+    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds, pickerIds }));
     if (!verdict.ok) return refuse(name, arg, (verdict as any).reason);
     // A pane that can't fit in Margin's window's page area beside the others (each one's minimum): not added, said.
     if (name === 'split.add' || name === 'split.addPane') {
@@ -880,6 +883,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.editBackground': return behaviors.backgroundPicker.open(arg, info);
+      case 'picker.run': return behaviors.backgroundPicker.run(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'tab.rename': return behaviors.rename.start('tab', arg);

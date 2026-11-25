@@ -29,6 +29,8 @@ import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.t
 import type { MenuTarget } from './behaviors/menu-items.ts';
 import { SETTINGS_CATEGORIES, categoryNamed, fieldsIn, settingsFields } from './settings-form.ts';
 import { selectBackgroundMedia, type MediaSource } from '../../../extension/shared/media.ts';
+import { pickerView } from './picker/view.ts';
+import type { PickerUi, PickerVm } from './picker/view.ts';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -50,6 +52,9 @@ export type UiState = {
   // `query` Quick Tab's field. Themes see it as `preview` (PreviewView).
   peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean, loading?: boolean, closing?: boolean, canGoBack?: boolean | null, canGoForward?: boolean | null, query?: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
+  // Edit Theme Color drawn by the theme (its `background-picker` part, M2.9 step 5b: ui/picker/part.ts); null with
+  // Margin's own panel or none open. Themes see it as `picker` (ui/picker/view.ts PickerVm).
+  picker?: PickerUi | null,
   editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
   editor?: { spaceId?: string, name: string, emoji: string, color: string, theme?: string, confirmDelete?: boolean, fresh?: boolean } | null,
@@ -225,6 +230,7 @@ export type ViewModel = {
   hasArchive: boolean,
   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
+  picker: PickerVm | null,
   editing: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   editor: EditorView | null,
   notice: NoticeView | null,
@@ -427,7 +433,7 @@ function fresh(input: ViewModelInput): ViewModel {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -831,6 +837,7 @@ function fresh(input: ViewModelInput): ViewModel {
     hasArchive: !ui.settingsPage && archive.length > 0,
     palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected },
     menu,
+    picker: ui.picker ? pickerView(ui.picker) : null,
     editing,
     editor,
     notice,

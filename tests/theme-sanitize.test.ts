@@ -356,8 +356,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const arcM27 = ['split.add', 'split.open', 'split.focus', 'split.breakOut', 'split.closePane', 'split.swap', 'split.toggleAxis',
     // (feat/split, docs/PEEK-SPLIT.md §4: split.add's README name, a pane out with the rest shown, a divider let go.)
     'split.addPane', 'split.remove', 'split.resize'];
-  // Track 2 M2.9 (Space backgrounds, docs/SPACE-BACKGROUNDS.md §4): Edit Theme Color opened, its value saved.
-  const arcM29 = ['space.editBackground', 'space.setBackground'];
+  // Track 2 M2.9 (Space backgrounds, docs/SPACE-BACKGROUNDS.md §4, §5b): Edit Theme Color opened, its value saved,
+  // a theme's own picker's items.
+  const arcM29 = ['space.editBackground', 'space.setBackground', 'picker.run'];
   assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26, ...arcM27, ...arcM29].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);

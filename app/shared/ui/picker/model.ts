@@ -158,6 +158,11 @@ export const setIntensity = (s: PickerState, v: number): PickerState => ({ ...s,
 export const setAmount = (s: PickerState, v: number): PickerState => ({ ...s, amount: Math.round(clamp01(v) * AMOUNT_STEPS) / AMOUNT_STEPS });
 export const setAppearance = (s: PickerState, appearance: Appearance): PickerState => ({ ...s, appearance });
 
+/** A texture chosen; at amount 0 it starts showing (FIRST_AMOUNT). */
+export function setTexture(s: PickerState, texture: Texture): PickerState {
+  return TEXTURES.includes(texture) ? { ...s, texture, amount: s.amount > 0 ? s.amount : FIRST_AMOUNT } : s;
+}
+
 /** The next texture (or the one before); at amount 0 it starts showing (FIRST_AMOUNT). */
 export function cycleTexture(s: PickerState, dir: 1 | -1 = 1): PickerState {
   const i = TEXTURES.indexOf(s.texture);

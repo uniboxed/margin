@@ -124,11 +124,12 @@ Margin's slots:
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-page-loader>` | the `page-loader` part (Margin.app: the page card while an item opens) | `pageLoader` (the page card is `loading`) |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
+| `<m-picker>` | the `background-picker` part (guarded: Edit Theme Color drawn by your theme, below); placed by Margin at `--m-picker-x`, `--m-picker-y` | `picker` |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`toast`, `preview`, `launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
+`toast`, `preview`, `launcher`, `settings`, `window-controls`, `page-loader`, `background-picker`. What a theme puts
 inside a slot is used when it has no part for it.
 
 ### The preview card and Quick Tab (the `preview` part)
@@ -493,6 +494,7 @@ else is ignored and logged.
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
 - Menus: `menu.open` (`add`), `menu.run` (an item), `menu.close`.
+- Edit Theme Color drawn by your theme: `picker.run` (one of `picker`'s items, by its `id`: below).
 - The space editor: `editor.save`, `editor.cancel`, `editor.delete` (asks
   first), `editor.color` (a swatch), `editor.theme` (one of `editor.themes`'
   ids: the space's theme, saved with the rest; a space's menu offers the
@@ -591,6 +593,49 @@ A theme that does nothing keeps its own look: its ground covers the background, 
 card's rounded corners, where a pixel's worth of the edge shows a little of it. Arcadia, Material, Liquid Glass,
 Neubrutalism and Pixel take part; their `[m-background]` rules are a short example each. Liquid Glass shows the other
 way: its colours are all `light-dark()`, so it sets `color-scheme` from `m-appearance` and its whole look follows.
+
+### Edit Theme Color drawn by your theme (the `background-picker` part)
+
+Edit Theme Color (the space's menu, or your `space.editBackground` button) is Margin's own glass panel unless your
+theme draws it: give it a `background-picker` part and put `<m-picker>` where it goes (beside `<m-menu>`). Without
+either, Margin's panel. The part is guarded, as a menu is: only Margin's words show in it (bound from `picker`), and
+text you write there is removed. Margin places `<m-picker>` where it was asked from, kept inside the window (as it
+places `<m-menu>`: `--m-picker-x`, `--m-picker-y`), gives it the keys (Escape puts back what the space had, ⌘Z a step back, Tab stays inside), and
+closes it at a press outside, another space shown, or the space gone. Each change is saved as Margin's panel saves it.
+Your picker is your look: Margin asks for no glass for it.
+
+Lay out any of these, in any order (leave out what you don't want):
+
+- Margin's controls, which Margin fills and works (the pointer, the keys, a drag drawn as it goes and saved once):
+  - `<m-picker-field m-variant="dots|wheel|cells">`: the colours' field. Its knobs are `[m-knob]` (the key
+    `[m-knob="key"]`, its colour `--m-knob-color`, an `<i>` inside); `[m-picker-empty]` says what to do while there's no
+    colour. `dots` draws nothing else (draw your own ground, e.g. a dot grid); `wheel` shows the hidden wheel
+    (`--m-field-wheel`, Margin's own colours); `cells` fills it with a 16 × 10 grid of `[m-cell]`s in those colours and
+    puts the knobs on the cells' centres. Give it a size.
+  - `<m-picker-slider m-value="intensity|amount" m-variant="wave|bar">`: a slider for the intensity or the texture's
+    amount: `wave` a wave (`[m-wave]`, its `[m-lit]` and `[m-dim]` paths), `bar` a track (`[m-track]`, `[m-fill]`);
+    then `[m-thumb]`; the value as `--m-value` (0–1).
+  - `<m-picker-dial>`: the dial (turn its ring, drag its centre or scroll for the amount; click it for the next
+    texture): `[m-dot]`s round it (lit: `[m-on]`), the face `[m-face]` (the texture: `--m-face`), `[m-shade]`,
+    `[m-pointer]`, the words `[m-dial-label]`.
+
+  An unknown `m-variant` or `m-value` is removed (and reported) and Margin draws the first one listed. Margin's base
+  rules give each a plain working look; yours win.
+- Your own buttons for the rest, each `m-action="picker.run" m-arg="{{…id}}"`, from `picker`:
+  - `title`; `appearances` (each `id`, `label`, `short`, `selected`: automatic, light, dark);
+  - `empty`, `emptyLabel`; `colors.count`, `colors.countLabel`, `colors.add` and `colors.remove` (`id`, `label`,
+    `disabled`), `colors.hasRule`, `colors.rule` (`id`, `label`, `text`: Analogous or Complementary);
+  - `presets` (each `id`, `color`, `label`, `selected`: nine a page), `prev` and `next` (another page);
+  - `intensity` (`label`, `value`, `text`, and `steps`: ten, each `id`, `label`, `on` up to the value, `selected`);
+  - `texture` (`label`, `name`, `amount`, `amountText`, `text`, `showing`, and `prev`, `next`: the texture before or
+    after), `textures` (each `id`, `label`, `selected` while it shows), `amounts` (off, 25 %, 50 %, 75 %, 100 %: each
+    `id`, `label`, `selected`);
+  - `all` (Use for All Spaces: its `label` says when it's done) and `done`.
+
+  A colour is a value for your CSS: `m-style:--swatch="{{p.color}}"`. `picker.run` runs only an item the picker shows
+  right now.
+
+The built-in themes use Margin's for now.
 
 ## Motion
 
