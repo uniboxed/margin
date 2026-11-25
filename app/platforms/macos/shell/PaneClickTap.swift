@@ -252,12 +252,31 @@ nonisolated enum PanelEvents {
         return made
     }
 
-    // Made and posted to `pid` (Margin's own). True: posted.
+    // Made and posted to `pid` (Margin's own) through the window server. True: posted.
     static func post(_ e: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool {
         guard pid > 0, let made = make(from: e, window: window, content: content) else { return false }
         made.postToPid(pid)
         return true
     }
+
+    // Made and put in AppKit's own queue in this process, the window server never told (the screen run of 2026-11-25:
+    // posted to the process through the window server, a press made afresh still keyed the panel and took Margin for
+    // active; the off-screen lab never showed it, its window being off every display). From any thread: the event put
+    // in the main run loop's common modes (AppKit's tracking loops among them) in the order the tap delivers them, then
+    // AppKit's queue. True: put.
+    static func queue(_ e: CGEvent, window: Int, content: CGRect) -> Bool {
+        guard let made = make(from: e, window: window, content: content), let event = NSEvent(cgEvent: made) else { return false }
+        nonisolated(unsafe) let handed = event
+        let main = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) { MainActor.assumeIsolated { NSApp.postEvent(handed, atStart: false) } }
+        CFRunLoopWakeUp(main)
+        return true
+    }
+
+    // How the tap hands a press on the panel on (`MarginSidebarDelivery`: `queue`, the default, or `post`; read when the
+    // tap is made). DIAG: the choice is there for the screen runs that tell the two apart; one stays.
+    enum Way: String, Sendable { case queue, post }
+    static func way(_ setting: String?) -> Way { setting.flatMap(Way.init(rawValue:)) ?? .queue }
 }
 
 // The hold, apart from the event tap (the tests drive it with a stand-in focuser and a pipe of presses). A press comes in

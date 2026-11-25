@@ -558,8 +558,13 @@ nonisolated final class AXPaneFocus: PaneFocusing, @unchecked Sendable {
     // A press on Margin's own panel: an event made afresh, posted to Margin's own process (public calls only: no records,
     // nothing to another app). The window server's own record of it read only to be said.
     func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool {
-        !refuses && pid == getpid() && PanelEvents.post(event, pid: pid, window: window, content: content)
+        guard !refuses, pid == getpid() else { return false }
+        switch panelWay {
+        case .queue: return PanelEvents.queue(event, window: window, content: content)
+        case .post: return PanelEvents.post(event, pid: pid, window: window, content: content)
+        }
     }
+    var panelWay = PanelEvents.Way.queue // (MarginWindows `makePaneTap`: `MarginSidebarDelivery`)
     func record(of event: CGEvent) -> [UInt8]? { refuses ? nil : delivery?.record(of: event) }
     func windowOrigin(_ window: Int) -> CGPoint? {
         guard !refuses, let n = CGWindowID(exactly: window), let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, n) as? [[String: Any]])?.first,

@@ -9886,3 +9886,24 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   reaches the panel and opens the palette, AppKit not active before or after, no `didBecomeActive`, the panel never
   keyed: the records path can't run in the tests, so this pins the new path, not the old failure); e2e-split.swift (the
   split over: the tap stays for the panel, told no panes).
+
+## The second screen run: still keyed, a cut pane's click lost; AppKit's queue, and DIAG lines (2026-11-25)
+
+- **Seen** (d1f7ad8c): the first press's own record says 0x38-0x3b `00 00 00 20` (0x3a is 0: no make-key flag), and
+  the panel still went key (`panel … key true`, AppKit active) right after a press made afresh and posted to Margin
+  through the window server: the record theory is wrong. The off-screen lab and the e2e (both off every display) never
+  key the panel, by either way; only the real, on-screen Margin does. cut-panes: the click into the cut pane (its
+  records to Chameleon 1, delivered as before) reached no view, right after two arrow presses on Margin's panel that
+  went out through `postToPid`; in the first run, the same presses as records, it passed. That is the only change on
+  that path (the cut pane's own delivery, its decision and its cover read are the same code; `record(of:)` is read for
+  the first panel press only). The part's exit 6 is the suite's own guard: the Mac was in use before idle-cost
+  ("the Mac is in use before idle cost (idle 1 s)"), so it restored and stopped; not Margin's.
+- **Changed**: a press on the panel is now put in AppKit's own queue in Margin (`PanelEvents.queue`: the event made
+  afresh, handed to the main run loop's common modes in the tap's order, then `NSApp.postEvent`), so the window server
+  hears nothing of Margin's own presses. `MarginSidebarDelivery post` keeps the window-server way for comparison (DIAG:
+  one goes once the runs tell them apart). Both ways pass the e2e off every display; only the real screen decides.
+- **DIAG** (every line marked, to go): each mouse event the panel takes with AppKit's word before and after it
+  handles it; every press AppKit hands Margin and the window it's for; for 200 ms after a press, each `canBecomeKey`
+  asked with its caller and each page op (its name; a focus op's flag); every `allowKey` change, the panel's
+  `becomeKey` and `makeKey`, Margin's windows becoming key or main and AppKit's will/did become active, each with its
+  caller (25 frames). Lines start `DIAG `; nothing at rest, no text, title or address.

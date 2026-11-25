@@ -841,11 +841,11 @@ func glueScenario() async {
         check("the page area's double-click (what's hosted): never the palette", closed && none >= 0 && byNow == byBefore + 1, "closed \(closed) by a double-click \(byNow - byBefore)")
       } else { check("the page area to double-click", false) }
     }
-    // ---- the press tap's own delivery (PaneClickTap.swift `PanelEvents`): a double-click on the empty spot made afresh
-    // and posted to this process through the window server, as the tap posts it: the page's dblclick, the palette; AppKit
-    // never keys the panel nor takes the process for active for it (the real screen, 2026-11-24: delivered as the window
-    // server's own record, the press did both) ----
-    do {
+    // ---- the press tap's own delivery (PaneClickTap.swift `PanelEvents`), both ways it has: a double-click on the empty
+    // spot made afresh, put in AppKit's own queue (`queue`, the default) or posted to this process through the window
+    // server (`post`): the page's dblclick, the palette; AppKit never keys the panel nor takes the process for active for
+    // it (here, off every display: the screen runs of 2026-11-24 and -25 are what tell the two ways apart) ----
+    for way in [PanelEvents.Way.queue, .post] {
       _ = await until(3) { !c.pageWantsKeyboard }
       let content = MarginWindowGeometry.content(of: c.panel.frame)
       let at = CGPoint(x: content.minX + spot.x, y: content.minY + spot.y)
@@ -863,13 +863,14 @@ func glueScenario() async {
         guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: .left) else { posted = false; continue }
         e.setIntegerValueField(.mouseEventClickState, value: Int64(count))
         e.setIntegerValueField(.mouseEventNumber, value: 7200 + Int64(count))
-        posted = PanelEvents.post(e, pid: ProcessInfo.processInfo.processIdentifier, window: c.panel.windowNumber, content: content) && posted
+        posted = (way == .queue ? PanelEvents.queue(e, window: c.panel.windowNumber, content: content)
+          : PanelEvents.post(e, pid: ProcessInfo.processInfo.processIdentifier, window: c.panel.windowNumber, content: content)) && posted
       }
       let reached = await until(3) { c.panel.presses == pressesBefore + 2 }
       let said = await waitJS(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length === \(byBefore + 1)")
-      check("the press tap's delivery: a double-click made afresh and posted to Margin's own process reaches its panel (both presses) and its page (the palette, as a double-click's)",
+      check("the press tap's delivery (\(way.rawValue)): a double-click made afresh reaches the panel (both presses) and its page (the palette, as a double-click's)",
             posted && reached && said, "posted \(posted) presses \(c.panel.presses - pressesBefore) said \(said)")
-      check("the press tap's delivery: AppKit never took Margin for active for it (as before the presses: \(activeBefore)), never said it became active, never keyed the panel for it",
+      check("the press tap's delivery (\(way.rawValue)): AppKit never took Margin for active for it (as before the presses: \(activeBefore)), never said it became active, never keyed the panel for it",
             NSApp.isActive == activeBefore && heard.active == 0 && heard.key == 0 && !c.panel.isKeyWindow,
             "active \(NSApp.isActive) (before \(activeBefore)), became active \(heard.active), panel key \(heard.key) \(c.panel.isKeyWindow)")
       c.push(#"{"type":"pressOutside"}"#)

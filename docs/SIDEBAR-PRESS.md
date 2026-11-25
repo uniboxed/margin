@@ -163,3 +163,11 @@ which AppKit would honour over `canBecomeKey`; the next screen run's log line sa
 The tap now makes the event afresh from the press's public fields (`PanelEvents`) and posts it to Margin's own process;
 the first press's own record is read only to be said in the log (its bytes 0x38-0x3b), so the next screen run shows
 the field. No record is posted for the panel any more, and the panel part no longer needs the records' layout check.
+
+## The second screen run (2026-11-25)
+
+The first press's record had 0x3a = 0, so the record wasn't it: a press made afresh and posted through the window server
+keyed the panel too, on the real screen only (off every display, the lab and the e2e never did). The tap now puts
+Margin's own presses in AppKit's queue in Margin (`PanelEvents.queue`), the window server never told of them;
+`MarginSidebarDelivery post` keeps the other way for comparison. Temporary `DIAG` lines (MarginWindow.swift's
+MarginPanel, MarginWindowController.swift) log who keys the panel and who activates AppKit, with their callers.
