@@ -19,8 +19,8 @@
 //   lights go there) and its drag regions.
 // - Always in full screen (decided by Tirth, 2026-11-15, `alwaysFullScreen`, on for every Margin window:
 //   windowed Margin waits until it's built properly, Stage Manager being his daily setup): opened
-//   (by hand, again, ⌘N) it's shown only once it's in full screen (made see-through, ordered in and taken to full
-//   screen, then drawn: no windowed first frame); nothing of Margin's leaves full screen (no Enter/Exit Full Screen
+//   (by hand, again, ⌘N) it's shown only once it's in full screen (made see-through and taken to full screen before
+//   it's ever ordered in, so Stage Manager never moves anything for it; then drawn: no windowed first frame); nothing of Margin's leaves full screen (no Enter/Exit Full Screen
 //   item, ⌃⌘F and the page's own ask refused while it's full screen); if macOS takes it out anyway (the green button,
 //   Mission Control), it goes straight back in, and the session hosts what it showed again (`onEnteredFullScreen`).
 //   macOS takes the toggle only for a window of the active app that's on the current Space (opened by a script,
@@ -237,6 +237,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private var pageResizing = false // its page said a change of the sidebar's width began, and not yet that it's over
     // Always full screen: its first entry (the window see-through until it's in), and the times it went back in.
     private var enteringFirst = false
+    // Asked into full screen before it was ever ordered in (`show`), and not seen on its way in yet: ordered in
+    // see-through and asked as before only on evidence the ask wasn't taken (`unseenAskNotTaken`).
+    private(set) var askedUnseen = false
     private(set) var backIntoFullScreen = 0
     private(set) var refusedExits = 0
     // Its asks for full screen (all of them, and those asked again: the tests read them), the retries' rule, whether
@@ -330,18 +333,27 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             enteringFirst = true
             Diagnostics.note("Margin's window \(id): into full screen before it's seen")
             setAlpha(0)
-            window.makeKeyAndOrderFront(nil)
-            attachPanel("shown, see-through until it's in full screen")
-            activate("its first entry into full screen (macOS takes the toggle only for the active app)")
-            // (Its first ask; its key and first-on-screen moments here come before it.)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                guard let self else { return }
-                self.firstAsked = true
-                self.tryFullScreen("its first ask")
-            }
+            // Asked before it's ever ordered in: macOS makes its full-screen Space at once and the window zooms into it,
+            // nothing of it on the Desktop first. Ordered in first (see-through), Margin's activation had Stage Manager
+            // move the person's windows aside into its strip before the slide (Tirth, 2026-11-25). AppKit takes the ask
+            // for a window never ordered in even before Margin is active (measured 2026-11-25, an app starting as an
+            // agent made regular as Margin is: will-enter 11-25 ms after the ask, from the Desktop and over another
+            // window; nothing moved by Stage Manager; Margin itself, recorded: the Desktop left as it was, the slide,
+            // then its page). Not taken (macOS fails it, or it's not on its way in at the first look): ordered in
+            // see-through and asked as before. (Asked as the window is made, before its page is drawn, the slide came a
+            // second sooner, but the page's first frame at its new size showed plain white for 66-100 ms after it: not
+            // done, 2026-11-25.)
+            activate("its first entry into full screen")
+            firstAsked = true
+            askedUnseen = true
+            lastAskAt = Date()
+            enterFullScreen()
+            Diagnostics.note("Margin's window \(id): its first ask, before it's ordered in")
+            lookAgain()
             DispatchQueue.main.asyncAfter(deadline: .now() + options.fullScreenWithin) { [weak self] in
                 guard let self, !self.isClosed, !self.isFullScreen, self.window.alphaValue == 0 else { return }
                 Diagnostics.warn("Margin's window \(self.id): not in full screen within \(Int(self.options.fullScreenWithin)) s (\(self.fullScreenState)): shown as it is, and asked until it's in")
+                self.unseenAskNotTaken("not in within \(Int(self.options.fullScreenWithin)) s") // (ordered in first, if it never was)
                 self.setAlpha(1)
                 self.isShown = true
             }
@@ -1360,6 +1372,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         placeButtons()
         keepFront()
         if on {
+            askedUnseen = false
             retryTimer?.invalidate()
             retryTimer = nil
             retry.entered()
@@ -1416,6 +1429,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // its first ask, nor while it's on its way in.
     func tryFullScreen(_ why: String) {
         guard options.alwaysFullScreen, firstAsked, !isFullScreen, !isClosed else { return }
+        // (Its first ask made before it was ordered in: left to arrive, nothing brought forward or ordered in, until the
+        // first look or macOS failing it says it wasn't taken: `unseenAskNotTaken`.)
+        if askedUnseen { return lookAgain() }
         let entering = window.styleMask.contains(.fullScreen) || willEnterAt.map { Date().timeIntervalSince($0) < 2 } == true
         let ready = canAskFullScreen
         let since = lastAskAt.map { Date().timeIntervalSince($0) } ?? .infinity
@@ -1475,10 +1491,25 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard options.alwaysFullScreen, !isFullScreen, !isClosed, retryTimer == nil else { return }
         retryTimer = Timer.scheduledTimer(withTimeInterval: retry.nextLook(), repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.retryTimer = nil
-                self?.tryFullScreen("still not in")
+                guard let self else { return }
+                self.retryTimer = nil
+                if self.askedUnseen { self.unseenAskNotTaken("not on its way in at the first look") }
+                self.tryFullScreen("still not in")
             }
         }
+    }
+
+    // Its first ask, made before it was ordered in (`show`), not taken: on its way in (AppKit's will-enter, or its
+    // style), it's left to arrive; else ordered in see-through, and from here asked as before (`tryFullScreen`, which
+    // asks only once its window is on screen in the current Space with Margin active).
+    private func unseenAskNotTaken(_ why: String) {
+        guard askedUnseen, !isClosed else { return }
+        let entering = window.styleMask.contains(.fullScreen) || willEnterAt.map { Date().timeIntervalSince($0) < 2 } == true
+        guard !isFullScreen, !entering else { return }
+        askedUnseen = false
+        Diagnostics.note("Margin's window \(id): its first ask before it's ordered in wasn't taken (\(why), \(fullScreenState)): ordered in see-through and asked again")
+        window.makeKeyAndOrderFront(nil)
+        attachPanel("shown, see-through until it's in full screen")
     }
 
     // Margin became active (MarginWindows), or the current Space changed: macOS may take it now.
@@ -1563,6 +1594,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func windowDidFailToEnterFullScreen(_ window: NSWindow) {
         willEnterAt = nil
         Diagnostics.warn("Margin's window \(id): macOS didn't take it to full screen (\(fullScreenState)): asked again")
+        unseenAskNotTaken("macOS failed it")
         lookAgain()
     }
     // About to leave full screen while hosting: the one shown parked first, while it's still in this window's Space.
