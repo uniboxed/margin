@@ -15,6 +15,7 @@ import { siteList } from '../../../extension/shared/sleep.ts';
 import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from './themes/packages.ts';
 import { settingValueOk } from './theme-schema.ts';
 import { SETTINGS_CATEGORY_IDS } from './actions.ts';
+import { FEEDBACK_NAMES, FEEDBACK_SETTINGS, feedbackSetting } from './picker/feedback.ts';
 
 /**
  * A field of the form. `kind` and one `is…` flag (a theme's m-if tests
@@ -110,6 +111,16 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   const options = [...PACKAGE_THEMES.map((id) => ({ id, label: (PACKAGE_THEME_NAMES as Record<string, string>)[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
   list.push(field({ id: 'theme', kind: 'choice', label: spaced ? 'Theme of this space' : 'Theme', help: spaced ? 'Each space has its own theme. New spaces start with the theme of the space they’re made from.' : '', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
   list.push(...importFields(f, status, imported));
+  // Edit Theme Color's ticks (M2.9 step 6, ui/picker/feedback.ts): haptics only where Margin.app plays them (`haptics`:
+  // its own window, on the Mac), a click anywhere.
+  const feedbackChoices = FEEDBACK_SETTINGS.filter((v) => v !== 'haptics' || f.haptics);
+  const feedback = feedbackChoices.includes(feedbackSetting(s.pickerFeedback)) ? feedbackSetting(s.pickerFeedback) : 'auto';
+  list.push(field({
+    id: 'pickerFeedback', kind: 'choice', label: 'Edit Theme Color’s ticks',
+    help: f.haptics ? 'As you turn its dial or drag its sliders: haptics on a Force Touch trackpad, a soft click with a mouse.' : 'As you turn its dial or drag its sliders: a soft click.',
+    value: feedback,
+    options: feedbackChoices.map((id) => ({ id, label: f.haptics || id !== 'auto' ? FEEDBACK_NAMES[id] : 'Automatic: a click', selected: id === feedback })),
+  }));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
   const favScope = s.favoritesScope === 'profile' ? 'profile' : 'global';
   list.push(field({

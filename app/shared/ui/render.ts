@@ -22,7 +22,7 @@
 //                           <m-editor>: `space-editor`, <m-palette>: `palette`,
 //                           <m-notice>: `notice`, <m-launcher>: `launcher`,
 //                           <m-prompt>: `prompt`, <m-settings>: `settings`,
-//                           <m-page-loader>: `page-loader`)
+//                           <m-page-loader>: `page-loader`, <m-picker>: `background-picker`)
 //                           while the view model says so;
 //                           in Margin's menus, notices and prompts only bound
 //                           text shows (ui/sanitize.ts GUARDED_PARTS)
@@ -62,7 +62,7 @@ m-pane>m-pane-arrow[m-side=up]::before{transform:translateY(1.5px) rotate(135deg
 m-pane>m-pane-arrow[m-side=down]::before{transform:translateY(-1.5px) rotate(-45deg)}
 @media (prefers-reduced-motion:reduce){m-pane>m-pane-arrow{transition:none}}
 m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview,m-picker{display:block}
 m-preview-page{display:block}
 m-preview[m-default]{position:fixed;left:var(--m-page-left,0px);top:var(--m-page-top,0px);right:var(--m-page-right,0px);bottom:var(--m-page-bottom,0px);z-index:2147483630;overflow:hidden;border-radius:var(--m-page-radius,0px);pointer-events:none;color-scheme:light dark;font:13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 m-preview[m-default]:is([m-loading],[m-quick-tab]){pointer-events:auto}
@@ -85,7 +85,31 @@ m-preview[m-default]:is([m-loading],[m-closing]) m-preview-page{background:Canva
 @keyframes m-preview-fade-out{from{opacity:1}to{opacity:0}}
 @media (prefers-reduced-motion:reduce){m-preview[m-default]>[m-preview-card]{animation-name:m-preview-fade-in}m-preview[m-default][m-closing]>[m-preview-card]{animation-name:m-preview-fade-out}}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty,m-preview:empty{display:none}
+m-picker{position:fixed;left:var(--m-picker-x,0px);top:var(--m-picker-y,0px);z-index:2147483600;outline:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty,m-preview:empty,m-picker:empty{display:none}
+m-picker-field,m-picker-slider,m-picker-dial{display:block;position:relative;box-sizing:border-box;touch-action:none;-webkit-user-select:none;user-select:none}
+m-picker-field{min-height:120px;overflow:hidden}
+m-picker-field[m-variant=wheel]{background:var(--m-field-wheel)}
+m-picker-field[m-variant=cells]{display:grid;grid-template-columns:repeat(16,1fr);grid-auto-rows:1fr}
+m-picker-field [m-cell]{display:block;min-width:0;min-height:0}
+m-picker-field [m-knob]{position:absolute;left:0;top:0;translate:-50% -50%;box-sizing:border-box;width:24px;height:24px;border-radius:50%;padding:3px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:1}
+m-picker-field [m-knob=key]{width:34px;height:34px;padding:4px;z-index:2}
+m-picker-field [m-knob]>i{display:block;width:100%;height:100%;border-radius:inherit;background:var(--m-knob-color)}
+m-picker-field [m-picker-empty]{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
+m-picker-slider{height:32px;min-width:80px}
+m-picker-slider [m-wave]{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+m-picker-slider [m-wave] path{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+m-picker-slider [m-dim]{opacity:.25}
+m-picker-slider [m-track]{position:absolute;left:0;right:0;top:50%;height:4px;translate:0 -50%;border-radius:2px;background:color-mix(in srgb,currentColor 22%,transparent);overflow:hidden;pointer-events:none}
+m-picker-slider [m-fill]{height:100%;background:currentColor}
+m-picker-slider [m-thumb]{position:absolute;left:0;top:50%;translate:-50% -50%;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35);pointer-events:none}
+m-picker-dial{width:72px;height:72px;flex:none;border-radius:50%}
+m-picker-dial [m-dot]{position:absolute;width:4px;height:4px;translate:-50% -50%;border-radius:50%;background:currentColor;opacity:.22;pointer-events:none}
+m-picker-dial [m-dot][m-on]{opacity:.85}
+m-picker-dial [m-face],m-picker-dial [m-shade]{position:absolute;inset:20%;border-radius:50%;pointer-events:none}
+m-picker-dial [m-face]{background:var(--m-face,none);background-color:#9a9aa0}
+m-picker-dial [m-pointer]{position:absolute;left:50%;top:-4px;width:4px;height:10px;translate:-50% 0;border-radius:2px;background:#fff}
+m-picker-dial [m-dial-label]{position:absolute;left:50%;top:100%;translate:-50% 0;white-space:nowrap;font-size:11px}
 m-toast[m-default]{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483640;padding:7px 14px;border-radius:999px;background:rgba(28,28,32,.9);color:#f5f5f7;font:500 12.5px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.12);pointer-events:none;white-space:nowrap;max-width:min(80vw,360px);overflow:hidden;text-overflow:ellipsis;animation:m-toast-in .14s ease-out}
 @keyframes m-toast-in{from{opacity:0;transform:translate(-50%,-6px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @media (prefers-reduced-motion:reduce){m-toast[m-default]{animation:none}}
@@ -154,6 +178,8 @@ const SLOTS: Record<string, { part: string, test: string[] }> = {
   'm-settings': { part: 'settings', test: ['settingsForm'] },
   'm-toast': { part: 'toast', test: ['toast'] },
   'm-preview': { part: 'preview', test: ['preview'] },
+  // Edit Theme Color drawn by the theme (M2.9 step 5b: ui/picker/part.ts; without the part, Margin's own panel).
+  'm-picker': { part: 'background-picker', test: ['picker'] },
 };
 // Margin's own words (ui/sanitize.ts GUARDED_PARTS): inside these parts and
 // slots, text the theme wrote is dropped again here, whatever tree the
@@ -1052,6 +1078,28 @@ export class View {
           return { id: p.getAttribute('m-pane-id') ?? '', rect: [round(b.left - c.left), round(b.top - c.top), round(b.width), round(b.height)] };
         }),
       } : {}),
+    };
+  }
+
+  /**
+   * The page card's outer box (`<m-page>`'s border box) in the window's pixels, and its corners' radii (top left,
+   * clockwise; a percentage of the box's width): what a space's background is cut out of (ui/background.ts). Not part
+   * of the layout Margin.app is told. Null with no page drawn (none in the theme, or no box).
+   */
+  measurePageOuter(): { left: number, top: number, width: number, height: number, radii: number[] } | null {
+    const el = this.pageEl;
+    if (!el || !el.isConnected) return null;
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const cs = this.doc.defaultView!.getComputedStyle(el); // (as measure)
+    const radius = (v: string) => {
+      const first = String(v ?? '').trim().split(/\s+/)[0] ?? '';
+      const n = parseFloat(first) || 0;
+      return first.endsWith('%') ? (n / 100) * r.width : n;
+    };
+    return {
+      left: r.left, top: r.top, width: r.width, height: r.height,
+      radii: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(radius),
     };
   }
 

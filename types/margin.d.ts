@@ -18,6 +18,23 @@ export interface Space {
   id: string; name: string; emoji: string; color: string;
   /** its theme's id (state/model.ts spaceTheme); none: the profile's settings.theme (spaces from before 2026-11-20) */
   theme?: string;
+  /** its background (Edit Theme Color, M2.9: docs/SPACE-BACKGROUNDS.md), as state/model.ts backgroundOf reads it;
+   *  none: the theme's own */
+  background?: SpaceBackground;
+}
+/** A space's background, read by state/model.ts backgroundOf (margin-core: library/state.rs background_of). */
+export interface SpaceBackground {
+  /** 0–3 lowercase `#rrggbb`, the first the key colour (none: a picture alone) */
+  colors: string[];
+  wheel: 'complementary' | 'analogous';
+  /** 0–1, to 2 decimals */
+  intensity: number;
+  texture: 'grain' | 'sand' | 'denim' | 'tweed' | 'dots' | 'grid';
+  /** 0–1 in steps of 0.05; 0: no texture */
+  amount: number;
+  appearance: 'auto' | 'light' | 'dark';
+  /** a stored picture: its SHA-256 (64 lowercase hex), how it fits, the point kept in view (each 0–1, to 3 decimals) */
+  image?: { id: string; fit: 'cover' | 'contain' | 'tile'; focus: [number, number] };
 }
 export interface Pin {
   id: string; spaceId: string; url: string; title: string;
@@ -157,6 +174,8 @@ export interface Settings {
   favoritesScope?: 'global' | 'profile';
   /** Auto-open external-domain links from Pinned tabs and Favorites in Peek (default true) */
   autoPeekPins?: boolean;
+  /** Edit Theme Color's ticks (M2.9 step 6): haptics on a trackpad (Margin.app), a click, or nothing. */
+  pickerFeedback?: 'auto' | 'haptics' | 'sound' | 'off';
   theme: string; // app/shared/ui/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }

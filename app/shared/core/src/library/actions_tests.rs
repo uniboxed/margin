@@ -67,9 +67,8 @@ fn every_perform_vector_answers_as_library_ts() {
     let mut report = vectors::run(&mut engine);
     // A `cut` step the typed diff answers without its no-op rewrite: library.ts renames a favorite to the name it has
     // but half an emoji (its cut), whose value, the half dropped (Tirth's answer 3), is the stored one; the core's diff
-    // sees no change (favorites.rs `rename_favorite`, DECISIONS.md 2026-11-23 piece 2).
-    let known =
-        ["generated-11.json › case 24 (sequence 299 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
+    // sees no change (favorites.rs `rename_favorite`, DECISIONS.md 2026-11-23 piece 2). (`vectors::KNOWN`: its edge.)
+    let known = vectors::KNOWN;
     let (expected, rest): (Vec<String>, Vec<String>) =
         report.failures.drain(..).partition(|f| known.iter().any(|k| f.starts_with(k)));
     report.failures = rest;
@@ -81,7 +80,7 @@ fn every_perform_vector_answers_as_library_ts() {
         "the actions' vectors: {checked} perform steps checked, {skipped} skipped (the gap); by action {:?}",
         engine.by
     );
-    assert_eq!(engine.gap, 19, "the createSpace steps of the known gap");
+    assert_eq!(engine.gap, 14, "the createSpace steps of the known gap");
     assert_eq!(skipped, engine.gap, "every other perform step checked");
     assert!(checked > 8700, "{checked} perform steps");
     let names: Vec<&str> = engine.by.keys().map(String::as_str).filter(|n| ACTION_NAMES.contains(n)).collect();

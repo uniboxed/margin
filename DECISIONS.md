@@ -9927,3 +9927,592 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   fix: WebKit's own answer, true); with the palette's field wanting the keys, it does. `_NSShowNonActivatingKeyWindow`
   itself isn't reproduced in the e2e: it needs a process that was the active app, and making the e2e process active
   would take the front from the person's own app, which these runs never do.
+
+## M2.9 step 1: a space's background in the library (`feat/space-backgrounds`, 2026-11-24)
+
+- **The value** (docs/SPACE-BACKGROUNDS.md, Part B §1): a space's optional `background`, `{ colors, wheel, intensity,
+  texture, amount, appearance, image? }`, read by one rule in both copies: model.ts `backgroundOf` and margin-core's
+  `state::background_of`. Colours `#rrggbb` (lowercased, the first three); each other field its default when it isn't
+  one of its values; numbers clamped to 0–1 and rounded (intensity to 0.01, amount to 0.05, a picture's focus to
+  0.001, `Math.round`, -0 as 0); a picture only with a lowercase SHA-256 id. Neither a colour nor a picture: none (the
+  theme's own). Written only when there is one, as `theme` is, so data without one is as it was.
+- **Changed** with `renameSpace`'s `background`, `theme`'s three ways: an object sets it (as read: none when it reads
+  as none), null clears it, anything else (left out, a string, an array) leaves it. No new action (`ACTION_NAMES` stays
+  57). A new space has none, whatever the one it's made from has (it does take that one's theme). `setSpaceTheme` keeps
+  it. The extension's copies carry it (data-set.ts both ways, the `renameSpace` handler); the import of each profile's
+  set doesn't (as `theme`).
+- **The vectors re-recorded** (`npm run library:vectors`, the same commit as both copies' change): backgrounds in the
+  generated libraries and renames (drawn from a stream of their own, but a rename that now changes a space moves the
+  library's keys and so later shuffles: most sequences differ from their first such step), an edge for every reading
+  rule, and library.test.ts's new case. JavaScriptCore answers every step as Node does (`jsc: 0`); a second recording is
+  identical.
+- **The core's one decided difference moved** to a hand-written edge (edges.ts, `vectors::KNOWN`): the favorite renamed
+  through an emoji to the name it has (piece 2) was generated-11's sequence 299, which the re-recording no longer draws.
+  As an edge it has an address no re-recording moves. The known `createSpace` gap is 14 steps now (19 before): fewer
+  drawn, the rule unchanged.
+- **Rust on this Mac**: there was no toolchain; rustup's stable (1.100) installed with Tirth's OK (rustfmt, clippy; no
+  Windows targets, so `scripts/rust-test.sh` skips their checks here).
+- Tests: Rust (`state_tests`, `spaces_tests`, `snapshot_tests`: reading, the three ways, the text and the stored value),
+  TS (model, library, data-set), the vectors both sides; `npm run test:rust` green.
+
+## M2.9 step 2: a space's background drawn under every theme (`feat/space-backgrounds`, 2026-11-24)
+
+- **Margin draws it, not the theme** (docs/SPACE-BACKGROUNDS.md Part B §2): `app/shared/ui/background.ts`, one layer,
+  `<margin-background>` (not "backdrop": Margin.app has a `MarginBackdrop` window), fixed over the window at z-index
+  −2147483647, never taking the pointer, cut out of `<m-page>`'s border box and its four corner radii
+  (`View.measurePageOuter`, not in the layout Margin.app is told) with `clip-path: path(evenodd, …)`. Its content is
+  in a closed shadow root, its host pinned with `all: initial !important` (as the theme preview's bar). **Found the
+  first time:** the host's own style attribute can't carry `display` or `clip-path` (the shadow tree's `:host`
+  `!important` beats it): both are a rule inside the shadow root, after the pin. It's put in the container the first
+  time a background shows (before `<body>` in a document; after the theme's root in a shadow root, which stays its
+  container's first element: the theme harness's `rtPageHits` found the theme's root that way, and split view's test
+  caught the layer taking its place).
+- **What it's drawn from** (`background-look.ts`, pure, tested in Node): an underlay (OKLCH 0.975 or 0.17, a touch of
+  the key colour's hue), the colours as drawn (light: lightness at least 0.62; dark: 0.20–0.40, chroma 0.85×) at
+  `0.14 + 0.86 × intensity`, the texture at the amount. One description of the colours' layout gives the CSS and the
+  colour at any point (`groundAt`). The palette: `--m-fg` 4.5:1 against every sampled part of the ground (7:1 where it
+  can; with Increase contrast 7:1), `--m-fg-2` 4.5:1 (7:1), `--m-accent` 3:1; the colours' opacity lowered a twentieth
+  at a time where no text gets there. Margin's colour code: `color.ts` (OKLCH, WCAG luminance and contrast).
+- **What themes read**: `m-background` and `m-appearance` on the root (as `m-page-state`), and `--m-bg`, `--m-fg`,
+  `--m-fg-2`, `--m-accent`, `--m-hover`, `--m-selected` from Margin's own constructed sheet after the theme's settings
+  (each value checked again by `checkCssValue`); none of them while the space has no background. The view model has
+  `space.background`. The themes README's "A space's background" is the contract.
+- **Text colours on the surfaces that lie on the background, not the root** (a choice made while building): until
+  Margin.app sets the web view's appearance per space (step 3), menus and panels are drawn in the system's, which can
+  differ from the background's; Margin's text on the root would reach them (light on light, seen in Material's dark
+  shot). Each theme sets them on its docked sidebar. In Material a role mixed from another at the root comes resolved,
+  so the tonal surfaces are named one by one in the drawer. Liquid Glass needs none: every colour is `light-dark()`,
+  so it sets `color-scheme` from `m-appearance` and all of it follows.
+- **The five themes**: Arcadia and Material (the frame's spread and the docked sidebar clear, Margin's text and
+  translucent fills in the sidebar, the sidebar out over the page a card of `--m-bg`, Material's active indicator its
+  tonal container), Liquid Glass (ground `--m-bg`, lights gone, `color-scheme` followed), Neubrutalism (ink shadow
+  kept, dots gone, the space's name `--m-fg`), Pixel (pixel border kept, dots gone, its dark panel kept). Neubrutalism's
+  and Pixel's own dots become the Dots texture.
+- **A theme without the contract keeps its look**, all but a pixel's worth of the page card's rounded corners' edge
+  (both the cut and the theme's spread are smoothed there): a larger cut would leave a seam of the page round the
+  card in every theme that takes part, so the cut is exact (the test leaves those corners out, as Neubrutalism's own
+  "never paints over the page" test does).
+- **Corner fill**: `cornerFill`'s optional `ground` (the runtime's `backgroundAt`): outside the card a sharp shadow of
+  the theme's first, then Margin's colour there (`rgb(…)`, as `fill.rs` reads), then an ancestor's. The runtime says
+  when the ground changed (`onGround`); the overlay measures again.
+- **Textures**: Margin's own tiles drawn on a canvas from fixed seeds (the same pixels every load), `data:` PNGs (the
+  overlay's `img-src` allows `data:`); dots and grid CSS gradients in `--m-fg`. Two backgrounds cross-fade (0.3 s; at
+  once with reduced motion); to or from none it's at once.
+- **The CI plan**: a theme test that imports `types/margin.d.ts` by its full name reaches the extension's background
+  (the `.d.ts` imports its handlers' types) and so every theme test runs for any change there; `'…/types/margin'`, as
+  the other theme files write it, doesn't. `tests/ci-plan.test.ts` lists the new looping test.
+- **Browsers on this Mac**: Playwright 1.65 wants Chromium 1254 and WebKit 2388; the cache has Chromium 1248 and WebKit
+  2287. Not installed (CLAUDE.md). The theme tests ran in Chromium 1248 through a scratch `PLAYWRIGHT_BROWSERS_PATH`
+  of links; WebKit's halves couldn't launch (2287 hangs under 1.65). CI runs both.
+
+## M2.9 step 3: Margin's window in the space's own light or dark (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: a space's background has an appearance (Arc's ✨ ☀ ☾: automatic, light, dark). Step 2 drew the
+  background and Margin's text colours in it; now Margin.app's whole window does: its web view takes the space's
+  light or dark, so the theme draws in it everywhere (its menus, command bar, panels, Settings), with no CSS of its
+  own for it. Automatic, and a space with no background: the system's, as before. Safari's pages, and every hosted
+  window, keep theirs (Margin can't set a page's appearance per space).
+- **The path**, the per-space theme's: the core's `Library::space_appearance(window)` (the space found as its theme
+  is: the window's, else the first; its background's `light` or `dark`, None otherwise), the FFI's
+  `margin_library_space_appearance` (0 the system's, 1 light, 2 dark), `Library.spaceAppearance` (a `SpaceAppearance`:
+  the library stays Foundation's; what a view draws in is the controller's, AppKit's), the window source's
+  `spaceAppearance(window:)`, and `MarginWindowController.followAppearance`: the web view's `appearance` (`.aqua`,
+  `.darkAqua`, nil) set in `pageHello` (before the page's first frame) and in `stateChanged` before the state is pushed
+  (the two reach the page in order, so the background and the theme change together).
+- **Checked first, on this Mac** (`space-appearance-tests.swift`, a unit check kept): WebKit takes a web view's
+  appearance as the page's `prefers-color-scheme` and `light-dark()`, with its private system appearance off (most
+  themes) and on (Liquid Glass's glass); nil goes back to the window's. End to end (`e2e-glue.swift`): a space given the
+  other appearance than this Mac's turns the window's web view and its page that way, the theme's root marked;
+  automatic, another space with its own, back, and none all follow.
+- **Not yet**: Windows (its app has no library windows or per-space themes yet: its WebView2 `PreferredColorScheme`
+  comes with them), and the extension's overlay over a browser's page (the system's). So the themes still put
+  Margin's text colours on the surfaces that lie on the background, not their root (themes README).
+- **A flaky check that was there before**: "screen: a re-entry held by the loop guard's hold" (a timing check of the
+  hosting's loop guard, untouched here) fails now and then: 1 of 5 runs of the app's unit checks on this branch, 2 of
+  6 on the base (71e11707) on this Mac. The space-appearance checks passed in every run.
+
+## M2.9 step 4: Edit Theme Color, the space background picker (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: Arc's Edit Theme Color in Margin: "Edit Theme Color…" in the space's menu opens Margin's own panel
+  where the menu was (a theme's button may name `space.editBackground` too: the panel opens beside it). Its controls
+  are the prototype's: the appearance (automatic, light, dark), the field with up to three knobs, −/+ and the rule
+  (complementary, analogous), five pages of presets, the wavy slider (the intensity), the dial (the texture and its
+  amount), Use for All Spaces, Done. The picture button is step 7, the panel's glass step 5, its ticks step 6 (an
+  `onTick` hook kept for them).
+- **Three parts**, each tested where it runs: the model (`ui/picker/model.ts`, pure: the field a hidden wheel, the
+  angle the hue and the distance the lightness in OKLCH; each edit a step from one picker state to the next; what's
+  saved the model's own reading, `backgroundOf`), the panel (`ui/picker/panel.ts`: a top-layer popover in a closed
+  shadow root, its style pinned and its words its own, so it's the same in every theme), and the behaviour that saves
+  it (`ui/behaviors/background-picker.ts`).
+- **Saved per gesture, not on close** (the plan said on close): a click, a drag let go, a burst of scrolling or keys at
+  rest (350 ms) is one `space.setBackground {space, background, color}`, sent as `renameSpace` with the key colour as
+  the space's colour. While a gesture runs, Margin's layer is redrawn once a frame (`rt.previewBackground`, held), and
+  nothing is sent. Why per gesture: the window's light or dark follows the state (step 3), so a click on ☾ turns the
+  window at once, and nothing is lost when the window goes. ⌘Z goes back a saved step (saved again); Escape saves what
+  the space had when the panel opened and closes; Done, a press outside, another space shown, or the space gone close
+  it with what's saved kept. Use for All Spaces is one request per space.
+- **Its own action, not `space.update`**: `space.update` is the editor's whole save (a name, an emoji, a colour);
+  the picker knows only the background, and `renameSpace` keeps what it isn't sent. `space.setBackground` is
+  behaviour-only (an object argument: only Margin sends it), checked as the model reads it (a value that reads as none
+  is refused).
+- **No button in the space editor yet**: the editor's save sends the colour it shows and would overwrite the key colour
+  the picker saved. It waits until the editor shows the background's own.
+- **The rule moved to `extension/shared/space-background.ts`**: the picker and its action read `backgroundOf`, and the
+  UI must not load the model (tests/layering.test.ts). `state/model.ts` takes it from there and re-exports it (one copy),
+  as `pinned-rules.ts`.
+- **While it's open**, Margin.app gives the page the keys and is told the panel takes the pointer (`overlay.ts`:
+  `panelOpen`, `panelRect`), as for Margin's menus.
+- **Tests**: the model and actions in Node (`tests/ui-picker.test.ts`); the panel in WebKit and Chromium as a person
+  uses it (`tests/theme/picker.test.ts`): opening from the menu, the field, a drag, −/+, the rule, presets, the
+  slider, the dial (ring, centre, click, scroll, swipe), the appearance, the keys, ⌘Z, Tab kept inside, Use for All
+  Spaces, Escape, the three ways it closes, and every built-in theme opening it.
+
+## M2.9 step 5 spike: the default picker's glass, approach A measured (`feat/space-backgrounds`, 2026-11-24)
+
+Plan Part B §5 left two ways to put real glass behind Margin's default picker: A, WebKit's
+`-apple-visual-effect: -apple-system-glass-material` inside Margin's own web view, with the private system-appearance
+switch on while the picker is open; B, a child `NSPanel` on `NSGlassEffectView` with a second web view. A was measured
+first, as the plan said ("A if its side effect is invisible, else B"). Off screen, on this Mac (macOS 27.2), with
+`tools/glass-shots/shot` and a variant of it (the web view's own appearance; the switch turned on live; an awaited
+script), over pages of the five built-in themes drawn by the real runtime with a background on the space and the picker
+open. The picker's CSS for the run: `@supports (-apple-visual-effect: …) { .panel { background: none; box-shadow:
+none; overflow: hidden; -apple-visual-effect: -apple-system-glass-material } }` (taken out again; it comes with step 5).
+
+- **It works where the picker is.** In a closed shadow root, in the top layer (a manual popover): one glass layer,
+  exactly the panel's box (300×461), in every theme, light and dark; none with the switch off.
+- **Turned on live, then the panel made:** the page knows the property at once (`CSS.supports` true right after the
+  switch), and a panel made after it gets its glass. So the switch goes on as the picker opens and off as it closes,
+  and the panel's sheet is made after it (the order rule from "Liquid Glass").
+- **The side effect, compared pixel by pixel** (3024×1964, switch on vs off; outside the panel and 72 px round it):
+  - every theme's sidebar, with the picker closed and open, light and dark: none. (Arcadia, Material, Neubrutalism:
+    identical, or a strip of 1/255 just past the excluded box, the solid panel's shadow tail. Pixel: 16 to 36 px at
+    its pixelated icons' corners, the same between two pictures with the same setting: noise, not the switch.
+    Liquid Glass: its own glass, its switch already on.)
+  - at the moment of switching, the picker not yet open: identical, except in the next case.
+  - **Margin.app's Settings tab on screen, in a dark appearance:** Neubrutalism's number fields lose their ⌃⌄ steppers
+    (912 px: light-only, so its native steppers are drawn dark on its white field and vanish), and Pixel's select
+    changes in a 119 px sliver at its edge. Arcadia's Settings, which differed in the 2026-11-17 measurement, no
+    longer does. Nothing in light.
+- **Light or dark: the space's.** The glass follows the web view's own appearance (what step 3 sets per space), not
+  the app's: the Mac in Light Mode with the space dark gives the same picture as the Mac in Dark Mode (3 px at 1/255),
+  and the reverse is identical. (This corrects "It's light or dark with the *app's* appearance" in "Liquid Glass",
+  which was found with the app's appearance alone.)
+- **Cost:** none measured. 240 frames, each a new background drawn behind the open picker: frame pacing 17 ms median,
+  18 p95 (an off-screen window's 60 Hz), the same with the switch on and off; the work of a frame, a full state
+  change and redraw (heavier than a drag's preview, which redraws Margin's layer alone), 7 ms median either way.
+- **Unchanged by A:** no second window, so no relay of the live preview, focus and placement as for the menus, and
+  nothing new in full-screen Spaces.
+
+**So: A.** B (a second web view, a relay every frame, a child window in full-screen Spaces) isn't built. The one
+visible effect, Settings' native controls in a dark appearance, is avoided by a rule in step 5: the picker is drawn
+solid (no switch) while Margin's Settings page is on screen. It's solid too where the system has no glass (Windows, the
+extension, the switch's selectors missing, `MarginSystemAppearance` NO) and with more contrast asked for, as Liquid
+Glass's own panels are.
+
+## M2.9 step 5: Margin's default picker on real glass (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: Edit Theme Color's panel on macOS's real glass in Margin.app (macOS 26 and later), in every theme
+  without a picker of its own (all of them until step 5b; Arcadia's stays the default), in the space's own light or
+  dark. Approach A from the spike: WebKit's system appearance turned on for Margin's page while the panel is open.
+- **The switch, in one place** (`app/shared/host/materials.ts`, out of `overlay.ts`, where the theme's ask was): on
+  while the theme drawn says `systemMaterials` or the panel is open. Three rules, each with a Node test:
+  - an ask the same way as one still on its way waits for its answer (before, a second ask returned at once, before
+    the switch was on; only the theme asked then, so it never mattered);
+  - **a theme is never read with the switch on for the panel**: the sanitizer lets `-apple-visual-effect` through in
+    any theme, and only the switch being off as a sheet is read keeps it out of a theme that doesn't say
+    `systemMaterials`. So reading a theme drops the panel's want first (that panel goes with the runtime the theme
+    replaces), and a want the panel says while a theme is being read waits (that panel is drawn solid). Found while
+    building: `mount` asks before it reads the new theme and destroys the old runtime (and its open picker) after.
+  - no app (Windows, the extension, an older Margin.app): nothing turns on, every ask resolves.
+- **The picker** (`ui/behaviors/background-picker.ts`, the runtime's new `materials` option): asks and waits for the
+  answer before it makes the panel (its sheet must be read with the switch on), gives it back as it closes (after the
+  panel's gone), and doesn't ask while Margin's Settings page is shown or with more contrast asked for (drawn solid
+  then). Settings coming while it holds the switch closes it. Every way an open can end while it still waits (a press
+  outside, another space shown, the space gone, closed, opened again, the runtime gone) ends it and gives the switch
+  back; opened again while open it's made at once (the switch held and answered), and opened again before the answer
+  it waits for that same answer (found in review: it was made at once, its sheet read before the switch was on).
+- **The panel's CSS**: the spike's rule, in `@supports (-apple-visual-effect: …)` and `@media not (prefers-contrast:
+  more)`: no fill, no outer shadow (one would grow the glass past the box), `overflow: hidden`.
+- **Swift**: nothing but words (the `appearance` message was already the switch); the log line now says
+  `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): …` (TESTING.md updated).
+- **Tests**:
+  - Node, `tests/host-materials.test.ts`: the switch's rules (each broken on purpose and caught).
+  - Chromium and WebKit, `tests/theme/picker.test.ts`: the harness's host with the materials answering after 250 ms.
+    Asked before the panel is made and not before the answer; given back as it closes; opened again while open, and
+    before the answer; a press
+    outside or another space shown while it waits; Settings shown; Settings come; more contrast; the runtime gone. Four
+    deliberate breaks of the behaviour each caught.
+  - End to end in Margin.app, `e2e-glue.swift`: opened from the space's menu with a real press (a theme's action runs
+    for a trusted event only, so a script's `click()` doesn't open it), the switch on while it's open and the page
+    knowing the property, off when it's closed.
+  - `tools/glass-shots/run.sh <dir> <theme>` has a `picker` state: Arcadia and Liquid Glass photographed with the
+    picker's glass layer exactly the panel's box.
+- **Found on the way, fixed**: `tools/app-tests/run.sh e2e` alone didn't rebuild `dist/app` (only its unit part did),
+  so an e2e run after a page change used the old page (this step's e2e checks failed so, until rebuilt); and the
+  rebuild looked at `.ts` sources only, not the built-in themes' CSS, HTML and JSON it packages. Now one `app_page`
+  step, before either part, over all of them. (`npm run gate` runs unit first, so it was never fooled.)
+- **Not seen on the real screen**: TESTING.md "Edit Theme Color's glass".
+
+## M2.9 step 5b, part 1: a theme may draw Edit Theme Color (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is** (plan decision 10): a theme gives a `background-picker` part and an `<m-picker>` slot, and its picker
+  is drawn in place of Margin's panel; without either, Margin's panel (glass, step 5). The built-in themes get theirs
+  in part 2 (Material, Neubrutalism, Pixel); Arcadia and Liquid Glass keep Margin's.
+- **As the theme language already works** (the menu, Settings): a guarded part, so only Margin's words show
+  (`picker` in the view model, `ui/picker/view.ts`); the theme's buttons run one action with an item's id,
+  `picker.run`, checked against the items the picker shows now (as `menu.run`, `settings.run`); the slot placed by
+  Margin where it was asked from (`--m-picker-x`, `--m-picker-y`, as `--m-menu-x`), given the keys.
+- **Margin's controls as Margin's elements** (as `<m-page>`'s panes are Margin's): `<m-picker-field
+  m-variant="dots|wheel|cells">`, `<m-picker-slider m-value="intensity|amount" m-variant="wave|bar">`,
+  `<m-picker-dial>`. Margin fills and works them; the theme's CSS draws them through attributes (`[m-knob]`,
+  `[m-thumb]`, `[m-face]`…) and variables (`--m-knob-color`, `--m-value`, `--m-face`, `--m-field-wheel`); base rules
+  give each a plain working look under the theme's. The attributes' values are one list (`ui/picker/elements.ts`) for
+  the sanitizer, which drops an unknown one, and for Margin, which then draws the first.
+- **One set of controls**: the field, the slider and the dial came out of the panel into `ui/picker/controls.ts` (the
+  gesture session too: `live`, `commit`, `burst`), used by both the panel and a theme's part. The panel drawn with
+  them was compared with a picture of it from before, pixel by pixel: identical (2 px at 1/255 in dark, the noise seen
+  before). Its words are `ui/picker/words.ts` (pure, for the view model).
+- **The part's driver** (`ui/picker/part.ts`) gives the behaviour what the panel gives it (`set`, `state`, `rect`,
+  `owns`, `parts`, `destroy`, and `run`), so saving, undo, Escape and Use for All Spaces stay one code. The view
+  model's `picker` is kept at each commit, an undo, a page of presets; a gesture's frames are drawn by the controls
+  themselves (a render per frame would cost the frame). A theme's picker asks for no glass.
+- **An element left out isn't shown** (the theme's choice; Escape and a press outside still close it). The plan said
+  "gets Margin's default"; drawing Margin's controls into a theme's layout unasked would break its layout, and a theme
+  that wants Margin's whole panel leaves out the part.
+- **Tests**:
+  - Node, `tests/ui-picker-part.test.ts`: the view model, the items each kind of button may run and what each does
+    (and none for anything else, `__proto__` and `toString` included), the attributes as kept and as read,
+    `picker.run`'s check.
+  - `tests/theme-guard.test.ts`: the part guarded, Margin's elements and their attributes kept.
+  - Chromium and WebKit, `tests/theme/picker-part.test.ts`, over Arcadia given a part: opened from the menu where it
+    was, in the window, the keys in it, no glass asked for; the field (its `wheel`), a drag saved once; every kind of
+    item; both sliders and the dial; a forged item refused; ⌘Z, Use for All Spaces, Escape, Done, a press outside, Tab
+    kept inside; the theme's own words dropped; an element left out, an unknown variant, a part with no slot. Three
+    deliberate breaks of the driver each caught.
+
+## M2.9 step 5b, part 2: Material, Neubrutalism and Pixel draw their own Edit Theme Color (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: each of the three has a `background-picker` part and an `<m-picker>` beside its `<m-menu>`, drawn
+  from its board on the per-theme prototype (the canvas "Edit Theme Color — per-theme pickers"); Arcadia and Liquid
+  Glass keep Margin's panel (Arcadia stays Arc's; Liquid Glass gets the system's glass).
+  - **Material**: an M3 dialog on the high tonal surface: the appearance as a segmented button, the field with the
+    hidden wheel shown (`wheel`), tonal −/+ and an assist chip for the rule, round swatches ringed in the primary
+    colour, both sliders as M3's (a thick track, a bar of a handle with a gap each side: `bar`), the textures as
+    filter chips, a text button and a filled one. In the space's dynamic colour, light and dark.
+  - **Neubrutalism**: the board's cream card, 2.5 px borders and hard shadows, the chosen thing yellow: square
+    appearance buttons (an icon each), the wheel in a thick frame, square −/+ and a yellow tag for the rule, square
+    swatches, a chunky intensity bar (`bar`, filled with the space's accent), texture tiles each with a sample of its
+    pattern (the theme's own CSS), a strip of amounts, two push buttons. Light only, as the theme.
+  - **Pixel**: the board's night dialog, notched borders: appearance tiles, the field as cells (`cells`), pixel −/+
+    and the rule, square swatches, ten blocks for the intensity (`intensity.steps`, lit in the space's accent), a
+    stepper for the texture (`texture.prev`, `texture.next`), blocks for the amount. Dark only, as the theme.
+- **Words**: Margin's only (the part is guarded), so each board's own words ("DAY", "NITE", "POWER") are Margin's
+  labels here, shaped by each theme's CSS (uppercase, its fonts).
+- **Found while drawing them**: a theme's button reset outranks one class (`.m3 button { background: none }`, and
+  each theme's `.btn { all: unset }` pattern), so each part's button rules are under `.picker`, its own reset
+  `.picker button` kept to layout. And `<m-picker>` is placed by Margin's base rule, as `<m-menu>` is (part 1 had left
+  it to the theme; no theme places its menu itself).
+- **Tests**: `tests/theme/picker.test.ts`'s check of each built-in theme (in scope) now asks, in WebKit and Chromium:
+  its own picker or Margin's; in the window; for its own, its field's variant and its sliders, a colour picked on its
+  field, its appearance button saving, its Done closing it. Seen in WebKit through `tools/glass-shots` (`picker`),
+  light and dark: TESTING.md "A theme's own Edit Theme Color".
+
+## M2.9: a review of steps 1 to 5b, and its fixes (`feat/space-backgrounds`, 2026-11-25)
+
+A second reader went through the branch against SPEC.md, the themes README, the plan and these entries, by reading
+the code (no tests run). It found no mismatch between the core's and the TS twin's rules, no stuck state in the glass
+switch, and no layering break. Six things were real, each checked by reading the path and then by a test that fails
+without its fix:
+
+1. **"Edit Theme Color…" on a space not shown closed at once.** Every space's chip has it in its menu, but the picker
+   draws only the shown space's background, so it closed on the next render. Now it switches to that space first (as
+   Arc does) and opens once it's shown (3 s at most); a switch that doesn't happen never opens it.
+2. **Escape and ⌘Z didn't put back the space's own colour.** A save carried the key colour only when there was a
+   background, and `renameSpace` keeps a colour not sent, so Escape to "none" left the last preset as the space's
+   colour. The space's colour is kept as the panel opens; a save with the background it had carries it.
+3. **Closing during a burst or a drag dropped the change.** The session's timer was cleared, never committed. Closing
+   now saves what's drawn and unsaved (`finish`), every way but Escape (which drops it first).
+4. **`-apple-visual-effect` in a `style` attribute.** The sanitizer let it through there for every theme, and an element
+   made while the picker holds the switch would keep it. Now refused in a `style` attribute (no theme used it there);
+   stylesheets keep it, read with the theme's own switch.
+5. **Margin's panel ignored the page's zoom** (the extension's in-page host): its point and the window are now turned
+   into Margin's pixels as the menu's and a theme's picker's are. Both now measure their box with its fractions
+   (`offsetWidth` rounded 461.5 down, half a pixel past the margin).
+6. **`picker.run` from a theme's button outside the picker** (keys moved there by a script, then Return) could run Use
+   for All Spaces, which no undo takes back. Only a button in the picker runs an item now.
+
+Not changed: the two small copies of the background's key (`library.ts bgOf`, `data-set.ts backgroundKey`) are each
+their module's own reading (the library and the data set's comparison), kept as they are.
+
+The full gate's run during the review failed once, in "space swipe: two fingers sideways…" (Liquid Glass, Chromium):
+a timing check that the old space is still drawn while the slide comes in, with the machine under the review's and a
+build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
+
+## M2.9 step 7a: pictures kept and served (`feat/space-backgrounds`, 2026-11-25)
+
+- **The store is the core's** (`data/backgrounds.rs`, margin-ffi's `margin_backgrounds_*`), beside Margin.app's library
+  (`data/app/backgrounds/`): a picture kept as `<sha256>.jpg|png`, content-addressed (the same picture twice is one
+  file, a file never written over), each written as the data sets' files are. What it's given is checked again by its
+  bytes, never a name: a JPEG or a PNG by its signature, at most 10 MB, its sides read from its own header (a PNG's
+  IHDR, a JPEG's first frame header) and at most 3840. No index: a picture's id is its name.
+- **Decoding is the platform's, not a crate's** (the plan left the choice to this step): on the Mac, ImageIO
+  (`BackgroundStore.swift prepare`), which reads HEIC (an iPhone's photos; Rust's `image` crate can't), is the
+  system's own hardened decoder, and leaves the core without an image dependency. What the person chose: one of JPEG,
+  PNG, HEIC, WebP, TIFF by ImageIO's own reading (a GIF, a PDF refused before decoding), at most 40 MB and 200
+  megapixels; made upright by its orientation, at most 3840 on its long side (never made larger), encoded again (JPEG
+  at 0.9; PNG when the file says it has transparency: a decoded HEIC always has an alpha channel, so the decoded image's
+  wasn't used), smaller sides or a lower quality until it's within 10 MB; none of its metadata copied (GPS, the camera,
+  notes: checked). Windows: WIC, with its library windows.
+- **Served by id alone**: `margin-app://app/background/<id>` (`OverlaySchemeHandler`), the id checked by the core and
+  the file looked up there, nothing made of the address (a `..` encoded, a query: not served), the page's policy on it,
+  `nosniff`, cached for good (the id is the bytes' hash). The page's policy already let images come from its own place;
+  nothing new is allowed to a theme (its CSS can name only its own files).
+- **Pruned as the library opens** (`Shell.openBackgrounds`): the pictures no space names removed, and anything a write
+  left there; never as a space changes, so ⌘Z and Escape can bring one back while Margin runs.
+- **What the page asks** (its `send`, through `MarginWindows.background` to `Shell.performBackground`):
+  `backgroundChoose` (the file picker, as a theme's import has it: on the active Space, Margin made active for it and
+  the keys given back after) and `backgroundAdd { bytes }` (a dropped picture, base64, capped before it's decoded),
+  answered `{ id }`, null (cancelled) or words for the page.
+- **The average colour** (the plan: computed at ingest, sent with the snapshot): the page works it out from the
+  picture as it draws it (step 7b), so nothing new goes through the library's snapshot, and it's right wherever the
+  picture can be drawn.
+- **Tests**: Rust (`data::backgrounds`: kinds and sides by the bytes, kept once, refused, found by id alone, pruned with
+  what a write left; the FFI through its calls); Swift (`background-store-tests.swift`: a photo with a place, a
+  camera and a note made a JPEG with none of them, a large one at 3840, a small one as it is, a sideways one upright,
+  transparency a PNG, HEIC read, a GIF and garbage refused, too large refused, kept and found by its hash, near ids
+  not found, pruned; served to a page as an image, a removed one, an encoded `..` and a query not).
+
+## M2.9 step 7b: a space's picture drawn (`feat/space-backgrounds`, 2026-11-25)
+
+- **Drawn by Margin's layer** (`ui/background.ts`), as the colours are: a part under them (underlay, picture, wash,
+  colours, texture), the page card cut out of it the same way. Its CSS is `background` at its fit (`cover`,
+  `contain` at the focus as `background-position` in percent; `tile` at its own size from the corner). The address is
+  the host's (`Host.pictureUrl`): Margin.app's `margin-app://app/background/<id>`; a browser's extension has none, and
+  draws the space's colours without it. An address that isn't one Margin makes is never written into CSS.
+- **Contrast against the picture as drawn**: the page reads a small copy of it (70 px wide, the window's shape, on the
+  underlay, as its fit and focus lay it out) into the 7 × 5 samples the look checks text against, each the average of
+  its 3 × 3 pixels. The copy is laid out against its own sides, not the window's scaled: its rounded height would
+  otherwise leave a sliver of underlay along an edge and the edge's samples lighter than what's drawn (WebKit showed
+  it). What Margin.app is told is on screen at a point (`groundAt`) is the samples between them, the wash over them.
+- **A wash, not a darker picture**: where the text doesn't read, a layer of the underlay rises over the picture (a
+  twentieth at a time, to 0.9), then the colours' opacity is lowered as before. The underlay keeps the space's light or
+  dark, and the picture stays recognisable under it. The colours are a tint over a picture (`0.6 × intensity`, none at
+  0), the whole ground without one.
+- **Until it's loaded** it's drawn as without (the colours, or the underlay alone), then again when it comes;
+  a picture that fails is never drawn (nothing thrown). Eight addresses kept loaded (the spaces switched between),
+  the one used longest ago dropped first; the samples read again only when the picture, its fit, its focus, the
+  window's size or the underlay change (a drag of a slider doesn't).
+- **Average colour**: `--m-bg` is the samples' average with the rest, so nothing went into the library's snapshot
+  (step 7a's note).
+- **Tests**: `tests/theme/background-picture.test.ts` in WebKit and Chromium (a half-black, half-white picture served
+  for every id: drawn as cover, washed until Arcadia's text reads 4.5:1 over both halves on screen, the colour told
+  within 6 of the screenshot's, both halves still showing; contain and tile written so; one that fails to load and a
+  host with no pictures drawn without it, no errors); `tests/ui-background.test.ts` (the samples' grid and wash in the
+  look). Mutation: the wash held at 0 fails the contrast checks in both engines.
+
+## M2.9 step 7c: a picture in Edit Theme Color (`feat/space-backgrounds`, 2026-11-25)
+
+- **Only where the host serves pictures** (`Host.pictureUrl`: Margin.app): there, the behaviour gives both pickers
+  `PictureRequests` (`ui/picker/picture.ts`); a browser's extension gets none, and neither picker shows a picture's
+  controls (a theme's `picker.picture` is null).
+- **Margin's panel**: a row under the presets: Add Picture…, or the picture's thumbnail (Change Picture…), Fill / Fit /
+  Tile, Remove Picture; a line under it for what went wrong. A file dropped anywhere on the panel (on its host: drag
+  events come out of its closed root) is taken: dashed while one is over it.
+- **A theme's picker**: the same as items (`picture:choose`, `picture:fit:<fit>`, `picture:remove`, the last two only
+  with a picture), `note`, `dropping`; a drop on `<m-picker>` taken the same way. Material, Neubrutalism and Pixel draw
+  a row of their own (an assist chip, a push button, a pixel button; the fit as their segmented button or strip).
+- **The edits are the model's** (`setPicture`: fitting as the last one did, at its centre; `setFit`; `removePicture`:
+  with no colours either, the background is none). Each is saved as any edit is (⌘Z takes it back, Escape puts back
+  what the space had).
+- **The requests are the behaviour's** (`background-picker.ts addPicture`): `backgroundChoose` (Margin.app's file
+  picker), or `backgroundAdd` with a dropped file's bytes (base64), checked first by its type, not empty, at most
+  margin-core's 40 MB (`droppedProblem`). One at a time. The answer: an id, saved on the open picker; null (cancelled),
+  nothing; a refusal, Margin.app's words (`takeFailure`), shown in the picker. An answer that comes after the picker
+  closed, or after it opened again, isn't saved (that turn is gone; the file it kept goes as Margin.app next opens).
+- **The keys after the file picker**: the shell gives them back to the shown app as for a theme's import
+  (`keysBackToShown`); the panel stays open and keeps them while it's open, as Margin's fields do (TESTING.md, a
+  manual check).
+- **Tests**: `tests/theme/picker-picture.test.ts` in WebKit and Chromium (none without pictures; Add Picture… → the
+  request, the id saved as Fill at its centre, its thumbnail from the host, drawn; the fit saved and ⌘Z; cancelled;
+  refused with Margin.app's words; a dropped PNG sent as its exact base64 and saved, a text file refused before it's
+  sent; an answer after the panel closed and opened again not saved; Remove Picture: none; each built-in theme's own
+  picker: choose, Tile, remove, a refusal's words, none without pictures); `tests/ui-picker.test.ts` (the edits, the
+  drop's checks); `tests/ui-picker-part.test.ts` (the items, each only when it makes sense); the app's e2e
+  (`e2e-glue.swift`: the page's `backgroundChoose` through the real shell with the store's stand-in picker, cancelled,
+  a drop's bytes, garbage refused, and the picture served, loaded and read by the page: its `--m-bg` the picture's).
+  Mutations: the late answer saved, any file sent, the theme's items left out of `picker.run`'s check, a cancel shown
+  as a refusal: each fails its test.
+
+## M2.9 step 6: Edit Theme Color's ticks, a haptic or a click (`feat/space-backgrounds`, 2026-11-25)
+
+- **The page decides** (`ui/picker/feedback.ts tickPlays`, pure): auto plays Margin.app's haptic where the gesture is
+  a trackpad's and a trackpad that plays haptics is there; anything else gets a click. Haptics plays a haptic where one
+  can play (the setting's point: auto took a trackpad for a mouse), never a click. Sound plays a click. Off plays
+  nothing. With the system's interface sounds off, no click either. A detent, a step and an appearance play the
+  `.alignment` haptic (`haptic.alignment`, the swipe's). A texture plays `.levelChange` (`haptic.level`: the core's
+  `Said::Haptic { level }`, the FFI's `flag`, `PageCore.Said.haptic(level:)`). At most one tick every 20 ms.
+- **The click** is WebAudio's, generated: a sine of about 30 ms dropping away (1.7 kHz, a texture's 1.1 kHz), quiet,
+  with no file. Its audio is started only by the person's gesture (WebKit's rule): as the picker opens (it opens from
+  a click) and at each press in it, and only where a click may play (a trackpad that plays haptics makes none).
+- **The device** (`PointerKind.swift`): a mouse unless proven a trackpad. The evidence is a press whose subtype is a
+  touch, a pressure event (only a Force Touch trackpad sends one), or a scroll with precise deltas and a phase. A
+  press that isn't a touch is a mouse's, and so is a wheel's notch. A precise scroll with no phase says nothing. Each
+  press tells the page (a push before its hello is lost), and so does each scroll's start; anything else tells only a
+  change. With it go whether a trackpad that plays haptics is connected (the IORegistry's multitouch devices with
+  `ActuationSupported`, read again at most every 10 s) and the system's "Play user interface sound effects"
+  (`com.apple.sound.uiaudio.enabled`, on when absent). A local monitor of Margin's windows reads these events and
+  never consumes them, as the wheel phases' does.
+- **Not settled by the spike**: the event log from Tirth's two trackpads (the plan's step 0: a click, tap-to-click, a
+  force click, the dial scrolled) wasn't there when this was built. All three kinds of evidence count, so whichever
+  one a trackpad gives is enough. If tap-to-click gives none, it gets a click, not a haptic. The setting covers that,
+  and the manual check (TESTING.md) asks. A Magic Mouse is unchecked: its precise scrolls with phases would count as
+  a trackpad's, and the haptic would then play to no effect (silence, not a wrong sound).
+- **The setting** `pickerFeedback` (`auto | haptics | sound | off`, default auto) is the profile's, as every setting
+  is (`extension/state/model.ts`, `types/margin.d.ts`). It's read where it's used (`feedbackSetting`: anything else
+  is auto), as `favoritesScope` is. The plan's "core's twin" doesn't exist: the core keeps no setting defaults. In
+  Settings › Appearance, "Haptics only" is offered only where Margin.app plays haptics (its own window on the Mac:
+  `features.haptics`). Elsewhere a click, or nothing.
+- **Elsewhere** (a browser's extension, Windows): the host knows no device and plays no haptics, so the ticks are
+  clicks (or off).
+- **Tests**: `tests/ui-picker-feedback.test.ts` (the table: setting × device × haptics × interface sounds, each tick
+  kind; the setting and the device read; 20 ms; the audio made only where a click plays and started at the gesture;
+  no WebAudio, nothing thrown); `tests/theme/picker-feedback.test.ts` in WebKit and Chromium (the panel's appearance,
+  dial and + through the runtime: the alignment and level haptics on a trackpad, clicks with a mouse or with no
+  haptics there, nothing when off, a click with sound on a trackpad; Material's own picker's buttons the same);
+  `tests/settings-form.test.ts` (the field, its options where haptics play and where they don't, saved); the core
+  (`haptic.level` read); Swift (`pointer-kind-tests.swift`: a mouse's press and wheel notch made as CGEvents and read as
+  a mouse's, a trackpad's scroll as a trackpad's, the classifier's sequence and what it tells, the IORegistry and the
+  interface sounds read, the message); the app's e2e (`haptic.level` reaches Margin.app; a touch's press, then a notch,
+  told to the page, which has the last).
+
+## M2.9: a space's background, where it stands (`feat/space-backgrounds`, 2026-11-25)
+
+Arc's Edit Theme Color in Margin (docs/SPACE-BACKGROUNDS.md, the study and the plan; each step's entry above).
+
+- **Built**:
+  - the value on a space (1);
+  - Margin's layer and palette under every theme (2);
+  - appearance per space on the Mac (3);
+  - the picker (4), on real glass (5), or drawn by a theme (5b: Material, Neubrutalism, Pixel);
+  - ticks, a haptic or a click (6);
+  - pictures: kept and served (7a), drawn (7b), chosen or dropped in every picker (7c).
+- **Left for later, by Tirth's choice**: the Arc import (step 8) comes with the onboarding screen.
+- **Not built on Windows yet**, with its library windows:
+  - appearance per space (`PreferredColorScheme`);
+  - pictures (WIC, `serve.rs`'s `/background/<id>`).
+
+  Until then, Windows draws a space's colours without its picture, and its ticks are clicks.
+- **Still to check by hand** (TESTING.md: "Edit Theme Color's glass", "A theme's own Edit Theme Color", "Edit Theme
+  Color's ticks", "A space's picture"):
+  - the glass and the themes' pickers on the real screen;
+  - the haptics on both trackpads (the spike's event log was never taken: tap-to-click's answer is the manual
+    check's);
+  - a real mouse;
+  - pictures from Photos and Finder.
+- **Merging**: `refactor/hosted-only` has moved on since `71e11707` (link resilience), and 13 files changed on both
+  sides (`MarginWindowController.swift`, `host-app.ts`, `runtime.ts`, `harness.ts`, `tests.swift`, `DECISIONS.md`
+  among them). The branch merges into it, its conflicts resolved, then `npm run gate` runs there before `main`.
+
+## M2.9 merged into `refactor/hosted-only`: the pictures' cleanup by the core's rule, decoding off the main thread (2026-11-25)
+
+- **The merge**: `feat/space-backgrounds` (72dc22f3) into `refactor/hosted-only` after link resilience and the
+  sidebar press. Seven files conflicted, each both sides adding beside each other (both kept): `DECISIONS.md`, the FFI
+  header's `Said` words (focus's `flag2` and haptic's level), `overlay.ts`'s runtime options (`openPalette` and
+  `onGround`, `onPanel`, `materials`), `runtime.ts` (the same options and their imports), the theme harness's runtime
+  (both its records), `ci-plan.test.ts` (both sides' looped theme tests) and `run.sh` (`app_page` and the link e2e
+  sources). Edit Theme Color takes the keys as Margin's menus do (`popupOpen`), so the sidebar press's `keys_stay`
+  turns off while it's open and its panel becomes key.
+- **Found in review, fixed**:
+  - **The cleanup at launch could remove every picture.** Swift built the list of pictures in use from the spaces it
+    read, and pruned the rest. A library the store leaves alone (a later format's data: an older Margin over a newer
+    one's) or whose spaces' file and backup are both unreadable shows no spaces of it, so the list was empty and every
+    picture went, for good. Now margin-core decides (`Library::prune_pictures`, library/object.rs): only when the
+    library's set loaded and its spaces were read, each picture read as the state reads its background
+    (`background_of`); otherwise nothing goes (`PicturesPruned::LeftAlone`, said in the log). The FFI's
+    `margin_backgrounds_prune_unused(store, library)` replaces the JSON `prune { keep }` call (no list made by a
+    caller any more), and Swift only calls it (`BackgroundStore.pruneUnused`). Tests: core (named one kept and the
+    other removed; a later format's set, no set, the spaces' file unreadable: every picture kept), the FFI (the old
+    call refused, no library, no data), Swift (through the library).
+  - **A picture decoded on the main thread.** A dropped or chosen picture is read, decoded and encoded again
+    (ImageIO) in a detached task (`BackgroundStore.kept`); only the core's keep (its hash and write) is on the main
+    thread. The tests' `keep` stays synchronous over the same code.
+- **Left as they are**: the cross-fade's old layer removed after the fade's own time (`background.ts`: cleanup only,
+  and `transitionend` doesn't come in a window that draws no frames); the picture id's check written in the UI twice
+  besides the core's (the transition's TypeScript twin); the light/dark rule's TypeScript copy for the extension.
+
+## Edit Theme Color's ticks: a click when macOS's haptic feedback is off (2026-11-25)
+
+- **What was wrong** (found explaining the ticks to Tirth): with System Settings › Trackpad › Point & Click › "Force
+  Click and haptic feedback" off, macOS plays no haptic an app asks for. Automatic chose a haptic for a finger on the
+  trackpad all the same, so a tick played nothing at all (the setting's "A click" was the only way out).
+- **Where the switch is** (read on this Mac with Tirth turning it off and on again, macOS 27): off, System Settings
+  wrote `com.apple.AppleMultitouchTrackpad` `ActuateDetents` 0 and `ForceSuppressed` 1 (the driver's own
+  `MultitouchPreferences` in the IORegistry the same) and the global `com.apple.trackpad.forceClick` 0, and moved Look
+  Up to a three-finger tap; on again, all back (1, 0, 1). `ActuateDetents` is the haptics one; reading it needs no
+  permission.
+- **The change** (OS mechanism, the Mac's: PointerKind.swift): the page's `haptics` is now `hapticsPlay`, a trackpad
+  that plays them connected and `ActuateDetents` not 0 (absent: on, macOS's default), read afresh
+  (`CFPreferencesAppSynchronize`) at most every 10 s as the devices are. The rule that picks a click without haptics is
+  unchanged and stays the page's (`ui/picker/feedback.ts` `tickPlays`). Windows has no haptics: unchanged.
+- **Tests**: the stored value read (0, false: off; 1, none, not a number: on), the switch read where System Settings
+  keeps it, haptics only with both. The real switch's effect on a tick: TESTING.md's manual check.
+
+## Link resilience and the sidebar press: the merge review's findings, fixed (2026-11-25)
+
+An independent review of both (after their merge into `refactor/hosted-only`) found no architecture breaks: each rule
+in margin-core once, Swift mechanism only, the double-click shared UI. It found these, fixed here, each test written
+failing first (the old code in a copy of the tree):
+
+- **A close at Margin's quit given up on "not acked yet".** `ask_held` took a request not acked by the quit as its copy
+  not reading (`unread_at_quit`), so a close sent a moment before the quit was cancelled though the copy read it the
+  next moment, and its window was left in the marker. Not acked isn't evidence. Now a close at the quit ends on the
+  link's evidence (its answer, the link down, lost: read past twice) or at the engine's own bound, `quitWait` after the
+  quit began (as the approved design had it). A stalled copy holds the quit up to `quitWait` (6 s), no longer. The
+  shell's `linkHeard` (each read of a copy's link told to the session while quitting) only served that judgement and
+  is gone. Tests: requests_tests.rs (a close not acked as the quit comes answered by its copy; a stalled copy's close
+  given up at `quitWait`, not before; one asked during the quit the same).
+- **"Safari is slow" outlived its ask.** The words a slow show put on its window's loader stayed when the show was
+  answered or overtaken, so a next item with the same name and app drew them until its own first look. Now they go
+  with the ask that said them (only the words: the loader's name and app may be a newer pick's by then).
+- **Nothing said while a show waited for its link to come back.** `relinked` waited with no feedback, so a copy that
+  never relinked gave an endless loader. Now, after `slowSay` of waiting, the loader says the copy is slow (feedback
+  only: nothing is decided by it), gone with the show.
+- **The start's deferred preparation ran after a show had made the window.** With an app shown first, the browser's
+  window was left to be made ready once nothing is shown (`later`); a web item of that profile shown meanwhile made the
+  window, and the deferred preparation then found it hosted and said the preparation over a second time. Now a show
+  making the profile's main window clears it (`window_made`, start.rs).
+- **The poll's retry of Safari windows whose close wasn't confirmed held the engine's queue.** It ran in `serial`, so
+  a copy not reading held every open and switch meanwhile (up to the link's 40 s). Now it runs outside the queue, one
+  try at a time; each entry stays in the marker until its copy says it's closed. Tested in host-tests.swift: an open
+  while a stalled copy is asked returns at once (on the old engine it waited past the test's 10 s).
+- **Cleanups:** a stale comment (`behaviors/empty.ts`: the press comes as an event made afresh, not the window
+  server's record) and the private record read for one log line (PaneClickTap's first panel press; PRIVATE-APIS row 41
+  no longer used for it).
+- **Not changed, and why:**
+  - The engine's own close of a hosted Safari window (`HostEngine.close`, a profile's window given back) still waits
+    for its copy in the engine's queue, bounded by the link (40 s of silence) or `quitWait` at the quit. Taking it out of
+    the queue needs the pattern app quits already have (`closeNow(exit: .watched)`: the queue released, the answer heard
+    in the background, the marker keeping it, an open of the same window waiting for it): its own change, designed
+    with Tirth first.
+  - The engine's `quitting` gates (`HostEngine.start`, SafariWaker) stay engine mechanism (the engine's own lifecycle,
+    as recorded with the link resilience): the core takes Margin's quit as an input.
+  - `pressSettle` (the fallback path with the press tap off) and Windows' `MA_NOACTIVATE` on hosting alone: as before,
+    noted in page/press.rs.
+
+## Margin's logo (2026-11-25)
+
+- **The pack** (Tirth's, `margin-logo`): kept in `brand/margin-logo/` as he gave it (its README says which file is for
+  what: printed at 64 px and up, flat below), but for `macos/Margin.icns` (2 MB; the build makes Margin.app's icon from
+  the icon set). Its SVGs checked first: no scripts, no outside references.
+- **Margin.app** (`scripts/make-xcode.sh`): the pack's `macos/AppIcon.appiconset` replaces the one the Safari converter
+  makes from the extension's largest icon, so Finder, the Dock, the set-up window and the quit prompt (both draw
+  `NSApp.applicationIconImage`) show it, flat at 32 px and below. `scripts/safari.sh` makes the Xcode project again
+  when the icon set changes (it's in the project's `.made-from` hash).
+- **The extension** (`extension/icons/icon-<size>.png`, both builds, Safari's and Chrome's extension lists, the
+  converter's `Icon.png`): from the pack's PNGs by `npm run icons` (scripts/make-icons.ts, now copying the logo instead
+  of drawing the old purple square): 16 and 32 flat, 48 the flat drawing scaled, 96 the printed 128 scaled, 128-512
+  printed.
+- **Not yet:** the Windows app has no icon resource (its `.exe` needs one compiled in; with the Windows app's packaging,
+  from `brand/margin-logo/web/favicon.ico` or the PNGs); the Chrome Web Store listing's images (uploaded by hand); the
+  Liquid Glass layers (`macos/icon-composer-layers/`, for Icon Composer, untested by the pack's own note).
+

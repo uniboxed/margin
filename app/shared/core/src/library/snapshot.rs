@@ -14,8 +14,8 @@ use std::fmt::Write as _;
 
 use super::js::{self, LocaleCompare};
 use super::state::{
-    ArchiveEntry, FORMAT, Favorite, Folder, Item, LibState, LibTarget, Pin, Rule, Space, Split, Values, is_imported,
-    state_of,
+    ArchiveEntry, Background, FORMAT, Favorite, Folder, Item, LibState, LibTarget, Pin, Rule, Space, Split, Values,
+    is_imported, state_of,
 };
 use crate::session::LiveRow;
 
@@ -280,17 +280,52 @@ impl<'a> Obj<'a> {
     }
 }
 
-/// LT:90: `{ id, name, emoji, color, browser, profile, theme? }`.
+/// LT:90: `{ id, name, emoji, color, browser, profile, theme?, background? }`.
 fn write_space(out: &mut String, s: &Space) {
-    Obj::new(out)
-        .str("id", &s.id)
+    let mut o = Obj::new(out);
+    o.str("id", &s.id)
         .str("name", &s.name)
         .str("emoji", &s.emoji)
         .str("color", &s.color)
         .str("browser", &s.browser)
         .str_or_null("profile", s.profile.as_deref())
-        .opt_str("theme", s.theme.as_deref())
-        .end();
+        .opt_str("theme", s.theme.as_deref());
+    if let Some(b) = &s.background {
+        write_background(o.key("background"), b);
+    }
+    o.end();
+}
+
+/// M `backgroundOf`'s object: `{ colors, wheel, intensity, texture, amount, appearance, image? }`, `image` `{ id, fit,
+/// focus: [x, y] }`.
+fn write_background(out: &mut String, b: &Background) {
+    let mut o = Obj::new(out);
+    let colors = o.key("colors");
+    colors.push('[');
+    for (i, c) in b.colors.iter().enumerate() {
+        if i > 0 {
+            colors.push(',');
+        }
+        write_str(colors, c);
+    }
+    colors.push(']');
+    o.str("wheel", b.wheel)
+        .num("intensity", b.intensity)
+        .str("texture", b.texture)
+        .num("amount", b.amount)
+        .str("appearance", b.appearance);
+    if let Some(img) = &b.image {
+        let mut io = Obj::new(o.key("image"));
+        io.str("id", &img.id).str("fit", img.fit);
+        let focus = io.key("focus");
+        focus.push('[');
+        write_num(focus, img.focus[0]);
+        focus.push(',');
+        write_num(focus, img.focus[1]);
+        focus.push(']');
+        io.end();
+    }
+    o.end();
 }
 
 /// LT:92: `{ id, spaceId, url, title, customTitle?, folderId?, pos, target }`.

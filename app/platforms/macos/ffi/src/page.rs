@@ -1667,7 +1667,7 @@ pub unsafe extern "C" fn margin_page_ground_holes(
 /// changed), 3 the card's rect (`has_rect`: `rect`, in the window), 4 hits (`flag`: all; the rects: `rects` of them,
 /// `margin_page_said_rects`), 5 chrome (`has_rect`: the controls' `rect`; the drag regions as the hits'), 6 focus
 /// (`flag`), 7 counts (`a` spaces, `b` items), 8 the pointer's wants (kept), 9 full screen, 10 resizing (`flag` on,
-/// `flag2` a divider), 11 the haptic tick, 12 a cut pane's slide (`a` the side: 0 left, 1 right, 2 up, 3 down; `text`
+/// `flag2` a divider), 11 the haptic tick (`flag`: a level's change, else the alignment), 12 a cut pane's slide (`a` the side: 0 left, 1 right, 2 up, 3 down; `text`
 /// its item), 13 a request of the source (`text`: `{ name, arg }`'s JSON), 14 a log line (`flag` a warning; `text`).
 /// `text` is allocated (free it with `margin_buffer_free`), null when there's none.
 #[repr(C)]
@@ -1775,7 +1775,10 @@ pub unsafe extern "C" fn margin_page_said(
             (out.flag, out.flag2) = (on, divider);
             10
         }
-        Said::Haptic => 11,
+        Said::Haptic { level } => {
+            out.flag = level;
+            11
+        }
         Said::Slide { item, side } => {
             out.a = i64::from(side);
             owned(item, out);

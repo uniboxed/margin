@@ -12,6 +12,8 @@
 //!   window, the copy's `hostShow`) or Margin's own page; the item shown before drawn in front again when it fails.
 
 use std::cell::Cell;
+use std::pin::Pin;
+use std::task::Poll;
 
 use serde_json::{Value, json};
 
@@ -595,10 +597,29 @@ impl Core {
     }
 
     /// The ask itself: until it's answered or the pick overtaken (cancelled: a late answer does nothing), the window's
-    /// loader `slow` while the copy's link says so. Its link down meanwhile while it's still the pick: asked again on
-    /// the profile's next link (only a show is: showing a tab that may be shown already is safe to repeat). None: not
-    /// shown, said.
+    /// loader `slow` while the copy's link says so, and no longer than its ask: the words go with it, whatever ends it
+    /// (a next item with the same name and app, whose loader is drawn the same, never finds them there). Its link down
+    /// meanwhile while it's still the pick: asked again on the profile's next link (only a show is: showing a tab that
+    /// may be shown already is safe to repeat). None: not shown, said.
     async fn ask_show_out(&self, w: i64, item: &str, p: &str, payload: Object, label: &str) -> Option<Object> {
+        let slowed = Cell::new(false);
+        let shown = self.ask_show_tries(w, item, p, payload, label, &slowed).await;
+        if slowed.get() {
+            // (Only the words: the loader's name and app are a newer pick's by now, if one overtook this.)
+            self.ports.set_copy_slow(w, false);
+        }
+        shown
+    }
+
+    async fn ask_show_tries(
+        &self,
+        w: i64,
+        item: &str,
+        p: &str,
+        payload: Object,
+        label: &str,
+        slowed: &Cell<bool>,
+    ) -> Option<Object> {
         let mut epoch = self.ports.link_epoch(p);
         loop {
             let asked = self
@@ -611,6 +632,7 @@ impl Core {
                         // (Slow: its loader at once, no grace, saying the copy is slow.)
                         self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), slow);
                         self.ports.set_copy_slow(w, slow);
+                        slowed.set(slow);
                     },
                     || None,
                 )
@@ -645,7 +667,7 @@ impl Core {
             self.note(format!(
                 "{item}: its copy's link went down while it was asked for its tab ({error}): asked again once its profile links again"
             ));
-            if !self.relinked(w, item, p, epoch.as_deref()).await {
+            if !self.relinked(w, item, p, epoch.as_deref(), label, slowed).await {
                 return None;
             }
             // (Asked again only on a new link: one said linked on the same one isn't evidence it came back.)
@@ -661,17 +683,39 @@ impl Core {
     /// A show's profile linked again after its link went down, while it's still the pick (false: not, said). Its
     /// window still there (Margin hosts it): its copy is only reconnecting, so its next link is waited for on the
     /// links' own events (`Linked`), Safari's menu never pressed for it. With no window left: the waker's (it opens
-    /// one through Safari's menu, by its own rules).
-    async fn relinked(&self, w: i64, item: &str, p: &str, was: Option<&str>) -> bool {
+    /// one through Safari's menu, by its own rules). The loader says the copy is slow once the wait has lasted
+    /// `slowSay` (feedback only, as a slow ask's: nothing is decided by it; `slowed` set, its show's words cleared at
+    /// its end).
+    async fn relinked(&self, w: i64, item: &str, p: &str, was: Option<&str>, label: &str, slowed: &Cell<bool>) -> bool {
         let window = HostTarget::Safari(p.to_string(), Role::Main).id();
         let has_window = || self.safari_window(p, Role::Main).is_some() && self.ports.is_hosted(&window);
         let back = || self.ports.link_epoch(p).is_some_and(|e| Some(e.as_str()) != was);
+        let say = self.options.borrow().slow_say;
+        let mut look = (say.is_finite() && say > 0.0 && !slowed.get()).then(|| self.sleep(say));
         while has_window() && !back() {
             if let Some(why) = self.show_overtaken(w, item) {
                 self.note(format!("{item}: overtaken while its copy's link was waited for ({why}): not asked again"));
                 return false;
             }
-            self.exec.changed().await;
+            let mut changed = self.exec.changed();
+            let looked = std::future::poll_fn(|cx| {
+                if Pin::new(&mut changed).poll(cx).is_ready() {
+                    return Poll::Ready(false);
+                }
+                if let Some(l) = look.as_mut()
+                    && Pin::new(l).poll(cx).is_ready()
+                {
+                    return Poll::Ready(true);
+                }
+                Poll::Pending
+            })
+            .await;
+            if looked {
+                look = None;
+                self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), true);
+                self.ports.set_copy_slow(w, true);
+                slowed.set(true);
+            }
         }
         if !back() {
             // (The waker's own wait: as long as a show waiting on the profile is wanted, `link_wanted`.)

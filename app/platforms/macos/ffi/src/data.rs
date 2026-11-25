@@ -508,6 +508,21 @@ pub unsafe extern "C" fn margin_library_space_theme(
     theme.len() as isize
 }
 
+/// The appearance of the space a Margin window shows (M2.9 step 3: `Library::space_appearance`, the space found as its
+/// theme is): 1 light, 2 dark, 0 none (the system's: no spaces, no background, or one that follows the system), or a
+/// null library.
+///
+/// # Safety
+/// `library` null or from [`margin_library_new`], not freed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_library_space_appearance(library: *const MarginLibrary, window: i64) -> i32 {
+    match self::library(library).and_then(|l| l.space_appearance(window)) {
+        Some("light") => 1,
+        Some("dark") => 2,
+        _ => 0,
+    }
+}
+
 /// A text answer's bytes (freed with `margin_buffer_free`).
 pub(crate) fn bytes(text: String, out_len: *mut usize) -> *mut u8 {
     if out_len.is_null() {

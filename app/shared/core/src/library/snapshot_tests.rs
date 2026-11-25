@@ -275,3 +275,22 @@ fn a_windows_state_on_generated_libraries_is_lives() {
         assert_eq!(serde_json::from_str::<Value>(&got).unwrap(), want, "case {case}: {got}");
     }
 }
+
+#[test]
+fn a_space_s_background_in_the_text_and_the_values() {
+    let id = "f".repeat(64);
+    let values = json!({ "spaces": { "a": { "name": "A", "emoji": "", "color": "#f7c7d3", "order": 0, "theme": "pixel",
+        "background": { "colors": ["#F7C7D3", "#cfe8f7"], "intensity": 0.555, "texture": "tweed", "amount": 1,
+                        "appearance": "light", "image": { "id": id, "focus": [0, 0.1] } } } } });
+    let text = snapshot(values.as_object().unwrap(), &CodePointOrder);
+    let want = format!(
+        r##"{{"id":"a","name":"A","emoji":"","color":"#f7c7d3","browser":"safari","profile":null,"theme":"pixel","background":{{"colors":["#f7c7d3","#cfe8f7"],"wheel":"analogous","intensity":0.56,"texture":"tweed","amount":1,"appearance":"light","image":{{"id":"{id}","fit":"cover","focus":[0,0.1]}}}}}}"##
+    );
+    assert!(text.contains(&want), "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("valid JSON");
+    let s = state_of(values.as_object().unwrap(), &CodePointOrder);
+    let stored = crate::library::values::values_of(&s, &serde_json::Map::new());
+    assert_eq!(stored["spaces"]["a"]["background"], parsed["spaces"][0]["background"], "stored as drawn");
+    let none = json!({ "spaces": { "a": { "name": "A", "order": 0, "background": { "colors": [] } } } });
+    assert!(!snapshot(none.as_object().unwrap(), &CodePointOrder).contains("background"), "none: no key");
+}

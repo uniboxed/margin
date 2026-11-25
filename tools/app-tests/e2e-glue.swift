@@ -25,6 +25,8 @@
 // false for the person's own; ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app
 // in front takes it down, ⌘Q again quits), and quitting gives it all back.
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 import WebKit
 
 // The window manager as the test kit measured it on the real Mac (2026-11-15, mc8/mc10), around Margin's real
@@ -393,6 +395,20 @@ func glueScenario() async {
   _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'haptic.alignment' }); return true")
   let ticked = await until(2) { c.haptics == hapticsBefore + 1 }
   check("a swipe's detent: the trackpad's alignment tick asked of Margin.app", ticked, "\(c.haptics - hapticsBefore)")
+  // Edit Theme Color's ticks (M2.9 step 6): a texture's is the level's change; the device each gesture comes from told
+  // to the page (PointerKind.swift: a touch's press a trackpad, a wheel's notch a mouse), the Mac's haptics with it.
+  let levelsBefore = c.hapticLevels
+  _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'haptic.level' }); return true")
+  let leveled = await until(2) { c.hapticLevels == levelsBefore + 1 && c.haptics == hapticsBefore + 2 }
+  check("edit theme color's texture: the trackpad's level change asked of Margin.app", leveled, "\(c.hapticLevels - levelsBefore)")
+  made.pointerSaw(PointerFacts(kind: .press, touch: true), in: c)
+  made.pointerSaw(PointerFacts(kind: .scroll), in: c)
+  let toldKinds = c.pointersSaid.suffix(2).compactMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject }
+  check("a gesture's device told to the page: a touch's press a trackpad, then a wheel's notch a mouse, the Mac's haptics with each",
+        toldKinds.map { $0["kind"] as? String ?? "" } == ["trackpad", "mouse"] && toldKinds.allSatisfy { $0["haptics"] is Bool && $0["uiSounds"] is Bool }, "\(c.pointersSaid.suffix(2))")
+  let pageHas = await waitJS(c.webView, "const d = marginApp.stats().device; return !!d && d.pointer === 'mouse' && typeof d.haptics === 'boolean'")
+  let pageDevice = await js(c.webView, "return JSON.stringify(marginApp.stats().device)") as? String ?? "?"
+  check("…the page has the last (its host's device: a mouse)", pageHas, pageDevice)
 
   // ---- its card (its item in another Margin window) and the item coming back (bug of 2026-11-20: the launcher was
   // drawn for the loader's grace between the card and the loader) ----
@@ -1749,5 +1765,129 @@ func glueResumeScenario() async {
     _ = library.perform("setSpaceTheme", ["spaceId": firstSpace, "theme": NSNull()])
     check("a theme per space: and back", await waitJS(c.webView, rootIs("arcadia")))
     _ = library.perform("deleteSpace", ["spaceId": pix])
+  }
+
+  // ---- a space's appearance (M2.9 step 3): Margin's window draws in the space's own light or dark ----
+  do {
+    let shown = ((library.snapshot()["openTabs"] as? JSONObject)?["activeSpaceByWindow"] as? JSONObject)?[String(c.id)] as? String ?? ""
+    let systemDark = c.window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    // (The other one: so each change is one the page can see, whatever this Mac's appearance.)
+    let other = systemDark ? "light" : "dark", otherName: NSAppearance.Name = systemDark ? .aqua : .darkAqua
+    let pageDark = { (dark: Bool) in "return matchMedia('(prefers-color-scheme: dark)').matches === \(dark)" }
+    let marked = { (look: String) in " && document.querySelector('[m-background]')?.getAttribute('m-appearance') === '\(look)'" }
+    let look = { (appearance: String) -> JSONObject in ["colors": ["#6c5ce7"], "appearance": appearance] }
+    let start = await waitJS(c.webView, pageDark(systemDark))
+    check("a space's appearance: none of its own: the window's, the system's", c.webView.appearance == nil && start)
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": look(other)])
+    let own = await until(3) { c.webView.appearance?.name == otherName }
+    check("a space's appearance: its own (\(other)): the window's web view in it", own, "\(String(describing: c.webView.appearance?.name))")
+    check("a space's appearance: the page in it (prefers-color-scheme), its background marked so", await waitJS(c.webView, pageDark(!systemDark) + marked(other)))
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": look("auto")])
+    let auto = await until(3) { c.webView.appearance == nil }
+    let autoPage = await waitJS(c.webView, pageDark(systemDark))
+    check("a space's appearance: automatic: the system's again", auto && autoPage)
+    let made = library.perform("createSpace", ["windowId": c.id, "name": "Night"])
+    let night = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
+    _ = library.perform("renameSpace", ["spaceId": night, "background": look(other)])
+    let switched = await until(3) { c.webView.appearance?.name == otherName }
+    let nightPage = await waitJS(c.webView, pageDark(!systemDark))
+    check("a space's appearance: another space with its own, shown: the window in it", !night.isEmpty && switched && nightPage)
+    _ = library.perform("setSpace", ["windowId": c.id, "spaceId": shown])
+    let back = await until(3) { c.webView.appearance == nil }
+    let backPage = await waitJS(c.webView, pageDark(systemDark))
+    check("a space's appearance: back to one that follows the system: the system's", back && backPage)
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": NSNull()])
+    _ = library.perform("deleteSpace", ["spaceId": night])
+    check("a space's appearance: no background, none of its own", await until(3) { c.webView.appearance == nil })
+  }
+
+  // ---- Edit Theme Color's glass (M2.9 step 5): the system's materials on while its panel is open ----
+  do {
+    let switched = { (c.webView.value(forKey: "_useSystemAppearance") as? Bool) == true }
+    // (Where the switch exists and isn't kept off: macOS 26 and later.)
+    let glass = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 && OverlaySystemAppearance.allowed
+    let panelUp = "return !!document.querySelector('margin-background-picker')"
+    let arcadia = await waitJS(c.webView, "return !!document.querySelector('.arcadia')")
+    check("edit theme color's glass: Arcadia drawn, the switch off", arcadia && !switched())
+    // Opened from the space's menu: the menu up (its `contextmenu` on the space's chip), its item really pressed (a
+    // theme's action runs for a person's press only, a trusted event: ui/render.ts), as the + menu's check presses.
+    let at = await js(c.webView, """
+      const chip = document.querySelector('.chip.active'); if (!chip) return null;
+      const r = chip.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      for (const type of ['mousedown', 'contextmenu']) chip.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 2, clientX: x, clientY: y }));
+      const item = [...document.querySelectorAll('.menu-item')].find((e) => e.textContent.includes('Edit Theme Color'));
+      if (!item) return null;
+      const b = item.getBoundingClientRect();
+      return [b.left + b.width / 2, b.top + b.height / 2];
+      """) as? [Double]
+    if let at, at.count == 2 {
+      let inWindow = c.webView.convert(NSPoint(x: at[0], y: at[1]), to: nil)
+      for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        if let e = NSEvent.mouseEvent(with: type, location: inWindow, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: c.webView.window?.windowNumber ?? 0,
+                                      context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+          if type == .leftMouseDown { c.webView.mouseDown(with: e) } else { c.webView.mouseUp(with: e) }
+        }
+      }
+    }
+    let up = await waitJS(c.webView, panelUp)
+    check("edit theme color's glass: opened from the space's menu (its item pressed)", at?.count == 2 && up, "item \(String(describing: at)) up \(up)")
+    check("edit theme color's glass: the system's materials on while it's open (\(glass ? "macOS 26+" : "off here"))", switched() == glass, "switched \(switched())")
+    let known = await js(c.webView, "return CSS.supports('-apple-visual-effect', '-apple-system-glass-material')") as? Bool == true
+    check("edit theme color's glass: the page knows the property (its panel read with it)", known == glass, "known \(known)")
+    // A press outside closes it: the materials given back.
+    _ = await js(c.webView, "document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9, isPrimary: true })); return true")
+    let gone = await waitJS(c.webView, "return !document.querySelector('margin-background-picker')")
+    let off = await until(3) { !switched() }
+    check("edit theme color's glass: closed, the switch off again (Arcadia as before)", gone && off, "gone \(gone) off \(off)")
+  }
+
+  // ---- a space's picture (M2.9 step 7): asked for by the page, kept by the store, served, drawn ----
+  // (The page's own requests, as Edit Theme Color sends them: its buttons are in a closed root, worked by
+  // tests/theme/picker-picture.test.ts. The file picker: the store's stand-in, `pick`.)
+  do {
+    let file = root.appendingPathComponent("chosen-photo.png")
+    let ctx = CGContext(data: nil, width: 64, height: 40, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    ctx.setFillColor(CGColor(red: 0.12, green: 0.25, blue: 0.38, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 40))
+    let png = NSMutableData()
+    let dest = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+    CGImageDestinationFinalize(dest)
+    try? (png as Data).write(to: file)
+    let send = { (type: String, payload: String) async -> JSONObject? in
+      let text = await js(c.webView, "return await window.webkit.messageHandlers.margin.postMessage({ op: 'send', type: '\(type)', payload: \(payload) })") as? String
+      return text.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? JSONObject }
+    }
+    let isId = { (v: Any?) in ((v as? JSONObject)?["id"] as? String).map { $0.count == 64 && $0.allSatisfy { $0.isHexDigit && !$0.isUppercase } } == true }
+    shell.backgrounds.pick = { file }
+    let chosen = await send("backgroundChoose", "{}")
+    let id = (chosen?["result"] as? JSONObject)?["id"] as? String ?? ""
+    check("a space's picture: chosen (the file picker's stand-in): kept, its id answered", chosen?["ok"] as? Bool == true && isId(chosen?["result"]) && shell.backgrounds.ids().contains(id), "\(String(describing: chosen))")
+    shell.backgrounds.pick = { nil }
+    let cancelled = await send("backgroundChoose", "{}")
+    check("a space's picture: the file picker cancelled: answered with nothing", cancelled?["ok"] as? Bool == true && cancelled?["result"] is NSNull, "\(String(describing: cancelled))")
+    shell.backgrounds.pick = nil
+    let dropped = await send("backgroundAdd", "{ bytes: '\((png as Data).base64EncodedString())' }")
+    check("a space's picture: dropped (its bytes): kept, its id answered", dropped?["ok"] as? Bool == true && isId(dropped?["result"]), "\(String(describing: dropped))")
+    let refused = await send("backgroundAdd", "{ bytes: 'aGVsbG8=' }")
+    check("a space's picture: what isn't one: refused with words for the page", refused?["ok"] as? Bool == false && (refused?["error"] as? String)?.isEmpty == false, "\(String(describing: refused))")
+    // Drawn: the shown space's background with it. Its ground (`--m-bg`, on the page's root) is the underlay's until
+    // the picture is served, loaded and read from (a canvas copy: a picture from Margin's own scheme isn't tainted).
+    let shown = ((library.snapshot()["openTabs"] as? JSONObject)?["activeSpaceByWindow"] as? JSONObject)?[String(c.id)] as? String ?? ""
+    let bg = { (image: String) -> JSONObject in
+      ["colors": [String](), "image": ["id": image, "fit": "cover", "focus": [0.5, 0.5]], "wheel": "analogous", "intensity": 0.5, "texture": "grain", "amount": 0, "appearance": "light"]
+    }
+    let ground = "return getComputedStyle(document.documentElement).getPropertyValue('--m-bg').trim()"
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": bg(String(repeating: "f", count: 64))])
+    var unserved = ""
+    for _ in 0..<40 { unserved = await js(c.webView, ground) as? String ?? ""; if !unserved.isEmpty { break }; try? await Task.sleep(nanoseconds: 50_000_000) }
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": bg(id)])
+    var drawn = ""
+    for _ in 0..<60 { drawn = await js(c.webView, ground) as? String ?? ""; if !drawn.isEmpty && drawn != unserved { break }; try? await Task.sleep(nanoseconds: 50_000_000) }
+    check("a space's picture: one not kept: drawn without it (the underlay)", !unserved.isEmpty, unserved)
+    check("a space's picture: served by Margin's scheme, loaded and read by the page: its ground the picture's", !drawn.isEmpty && drawn != unserved, "\(unserved) → \(drawn)")
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": NSNull()])
+    try? FileManager.default.removeItem(at: file)
   }
 }

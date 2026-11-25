@@ -319,6 +319,26 @@ test('spaces: a theme (2026-11-20): an id kept, null clears it, anything else ch
   assert.equal(M.updateSpace(s, 'work', { theme: 'pixel' }).spaces[0], s.spaces[0], 'the other space untouched');
 });
 
+test('spaces: a background (M2.9): read as backgroundOf reads it; an object sets it, null clears it, anything else keeps it', () => {
+  assert.deepEqual(
+    M.backgroundOf({ colors: ['#F7C7D3', 'nope', '#cfe8f7', '#111111', '#222222'], wheel: 'triadic', intensity: 0.373, texture: 'sand', amount: 0.47, appearance: 'dark', extra: 1 }),
+    { colors: ['#f7c7d3', '#cfe8f7', '#111111'], wheel: 'analogous', intensity: 0.37, texture: 'sand', amount: 0.45, appearance: 'dark' },
+    'colours lowercased, the first three #rrggbb; a value not its own: the default; numbers rounded; unknown keys dropped',
+  );
+  assert.equal(M.backgroundOf({ colors: [] }), null, 'no colour, no picture: none');
+  assert.equal(M.backgroundOf([{ colors: ['#111111'] }]), null, 'not an object');
+  assert.deepEqual(M.backgroundOf({ image: { id: 'a'.repeat(64), focus: [2, -0] } })?.image, { id: 'a'.repeat(64), fit: 'cover', focus: [1, 0] }, 'a picture alone; -0 reads as 0');
+  assert.equal(M.backgroundOf({ image: { id: 'A'.repeat(64) } }), null, 'a picture\'s id: lowercase SHA-256 only');
+  let s = twoSpaces();
+  s = M.updateSpace(s, 'work', { background: { colors: ['#ABCDEF'] } });
+  assert.deepEqual(s.spaces[1].background, { colors: ['#abcdef'], wheel: 'analogous', intensity: 0.5, texture: 'grain', amount: 0, appearance: 'auto' });
+  assert.equal(M.updateSpace(s, 'work', { name: 'Job' }).spaces[1].background, s.spaces[1].background, 'left out: kept');
+  assert.equal(M.updateSpace(s, 'work', { background: 'x' }).spaces[1].background, s.spaces[1].background, 'not an object: kept');
+  assert.equal('background' in M.updateSpace(s, 'work', { background: null }).spaces[1], false, 'null: none');
+  assert.equal('background' in M.updateSpace(s, 'work', { background: { colors: ['x'] } }).spaces[1], false, 'one that reads as none: none');
+  assert.equal('background' in M.createSpace(s, { id: 'x' }).spaces[2], false, 'a new space: none');
+});
+
 test('view.sidebar: shows the window\'s active space, pins separately, newest tabs first', () => {
   let s = twoSpaces();
   s = M.addPin(s, { id: 'p1', spaceId: 'personal', url: 'https://mail.com', title: 'Mail' });

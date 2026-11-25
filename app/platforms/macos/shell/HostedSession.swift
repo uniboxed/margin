@@ -1749,6 +1749,7 @@ final class LibraryWindowSource: MarginWindowSource {
 
     func stateText() -> String { session.stateText(tail: profileSource.drawnText()) }
     func spaceTheme(window: Int) -> String? { library.spaceTheme(window: window) }
+    func spaceAppearance(window: Int) -> SpaceAppearance? { library.spaceAppearance(window: window) }
 
     // A request the UI makes, routed by the core (core/session/ui.rs `ui_request`: an open item's row by the UI's number
     // mapped back to its item, the settings' own, the pasteboard's, the session's flows, `addFavorite`'s scope from the

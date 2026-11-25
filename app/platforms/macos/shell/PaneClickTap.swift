@@ -210,8 +210,6 @@ nonisolated protocol PaneFocusing: AnyObject, Sendable {
     // whose content is at `content` (top left), posted to that process (`PanelEvents`); never the window server's own
     // record of it. True: posted.
     func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool
-    // The window server's own record of an event, read (nil: unread): said once, for the first press on the panel.
-    func record(of event: CGEvent) -> [UInt8]?
 }
 
 extension PaneFocusing {
@@ -221,7 +219,6 @@ extension PaneFocusing {
     nonisolated func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool { false }
     nonisolated func windowOrigin(_ window: Int) -> CGPoint? { nil }
     nonisolated func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool { false }
-    nonisolated func record(of event: CGEvent) -> [UInt8]? { nil }
 }
 
 // A press on Margin's own panel, and its drags and release, as the press tap delivers them (docs/SIDEBAR-PRESS.md):
@@ -231,8 +228,8 @@ extension PaneFocusing {
 // and `postToPid`, the second), a cut pane's click right after two arrow presses never reached its app (the screen run
 // of 2026-11-25). Whether the panel then becomes key is AppKit's own question to the view the press hits
 // (OverlayWebView `needsPanelToBecomeKey`: its left-mouse-down handling of a non-activating panel,
-// `_NSShowNonActivatingKeyWindow`, keyed it on WebKit's yes whatever its `canBecomeKey`, the same run's DIAG lines). The
-// first press's record is said in the log (its bytes 0x38-0x3b), never posted. All public API.
+// `_NSShowNonActivatingKeyWindow`, keyed it on WebKit's yes whatever its `canBecomeKey`, the same run's DIAG lines). All
+// public API.
 nonisolated enum PanelEvents {
     // The event made for the panel `window` whose content is at `content` (top left); nil: not a mouse button's event.
     static func make(from e: CGEvent, window: Int, content: CGRect) -> CGEvent? {
@@ -387,10 +384,7 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
                 let n = panelPresses
                 lock.unlock()
                 if n == 1 || n % 500 == 0 {
-                    // (The first: what the window server's own record of it said, never posted: its bytes 0x38-0x3b, where
-                    // a click's make-key flag is, 0x3a.)
-                    let own = n == 1 ? focuser.record(of: e).map { r in " (the window server's own record of it, not posted: 0x38-0x3b " + r.dropFirst(0x38).prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ") + ")" } ?? "" : ""
-                    said?("sidebar presses: delivered to Margin's panel as events made afresh, the keyboard left with the app shown (\(n) so far)\(own)")
+                    said?("sidebar presses: delivered to Margin's panel as events made afresh, the keyboard left with the app shown (\(n) so far)")
                 }
                 return true
             }

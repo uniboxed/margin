@@ -11,7 +11,9 @@ use super::Arg;
 use super::order::{Entry, Kind, pin_order, write_order};
 use super::{has_space, settle_bindings};
 use crate::library::js;
-use crate::library::state::{ArchiveEntry, Folder, Item, LibState, Pin, Space, Split, Str, theme_id_ok};
+use crate::library::state::{
+    ArchiveEntry, Background, Folder, Item, LibState, Pin, Space, Split, Str, background_of, theme_id_ok,
+};
 
 /// What JavaScriptCore throws in `createSpace` for a `name` that's neither a string nor nullish (`name?.trim()`), the
 /// throw survey's one site (tests/fixtures/library/throws.json `createSpace: name?.trim is not a function`); library.ts's
@@ -68,6 +70,7 @@ pub fn create_space(
         browser: "safari".into(),
         profile: None,
         theme: theme.filter(|t| theme_id_ok(t)).map(Str::from),
+        background: None,
     };
     let mut next = s.clone();
     Rc::make_mut(&mut next.spaces).push(Rc::new(space));
@@ -93,8 +96,9 @@ pub fn order_spaces(s: &LibState, ids: &[&str]) -> LibState {
 }
 
 /// M:1135 `updateSpace(state, spaceId, patch)`: its name, emoji and colour each when given as a string that isn't
-/// blank (trimmed); its theme when given as a theme's id, none when given as null, else as it was. A new list of spaces
-/// always (M's `map`), the space itself made anew.
+/// blank (trimmed); its theme when given as a theme's id, none when given as null, else as it was; its background
+/// when given as an object (as [`background_of`] reads it: none when that's none), none when given as null, else as it
+/// was. A new list of spaces always (M's `map`), the space itself made anew.
 pub fn update_space(
     s: &LibState,
     space_id: &str,
@@ -102,6 +106,7 @@ pub fn update_space(
     emoji: Arg<'_>,
     color: Arg<'_>,
     theme: Arg<'_>,
+    background: Arg<'_>,
 ) -> LibState {
     let given = |v: Arg<'_>| v.as_str().map(js::trim).filter(|t| !t.is_empty()).map(Str::from);
     let (name, emoji, color) = (given(name), given(emoji), given(color));
@@ -109,6 +114,12 @@ pub fn update_space(
     let theme: Option<Option<Str>> = match theme.as_str() {
         Some(t) if theme_id_ok(t) => Some(Some(t.into())),
         _ if theme.is_null() => Some(None),
+        _ => None,
+    };
+    // `isObject(b) ? backgroundOf(b) : b === null ? null : undefined`, the same three.
+    let background: Option<Option<Rc<Background>>> = match background {
+        Arg::Value(v @ serde_json::Value::Object(_)) => Some(background_of(Some(v)).map(Rc::new)),
+        _ if background.is_null() => Some(None),
         _ => None,
     };
     let mut next = s.clone();
@@ -131,6 +142,9 @@ pub fn update_space(
                 }
                 if let Some(t) = &theme {
                     out.theme = t.clone();
+                }
+                if let Some(b) = &background {
+                    out.background = b.clone();
                 }
                 Rc::new(out)
             })

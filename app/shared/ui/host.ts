@@ -14,6 +14,7 @@
 // own `send` (deadlines, hints, retries) and `perform` (notices, prompts).
 // Margin's new-tab page uses the host's own reads.
 import type { State } from '../../../types/margin';
+import type { FeedbackDevice } from './picker/feedback.ts';
 import * as V from '../../../extension/shared/view.ts';
 import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../../../extension/shared/stored.ts';
 
@@ -76,6 +77,18 @@ export type Host = {
   readonly launcher?: boolean,
   /** Drawn in Margin.app's own window (ui/host-app.ts): Settings is a tab of its own there (margin://settings). */
   readonly appWindow?: boolean,
+  /**
+   * Where a space's picture is served, by its id (M2.9 step 7): Margin.app's `margin-app://app/background/<id>`; none
+   * in a browser's extension (the background drawn without it there).
+   */
+  pictureUrl?(id: string): string | null,
+  /**
+   * The device the person's gesture comes from, whether a trackpad that plays haptics is there, and whether the system
+   * plays its interface sounds (Margin.app on the Mac, M2.9 step 6: Edit Theme Color's ticks); none elsewhere.
+   */
+  readonly feedbackDevice?: FeedbackDevice | null,
+  /** Why the last request failed, if it did just now (taken once): Margin.app's (ui/host-app.ts). */
+  takeFailure?(): { type: string, error: string } | null,
   /**
    * Margin.app's own window (ui/host-app.ts): the page card's state, on the theme's root as `m-page-state`.
    * `shown`: a hosted window shows through the page's place; `loading`: an item is being opened there

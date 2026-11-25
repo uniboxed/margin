@@ -292,9 +292,14 @@ test('-apple-visual-effect: the system\'s materials by name, one keyword from th
   const kept = sanitizeCss(pattern);
   assert.deepEqual(kept.removed, []);
   assert.equal(kept.css, '.panel{background:rgba(255,255,255,.6);}@supports (-apple-visual-effect: -apple-system-glass-material){.panel{background:none;-apple-visual-effect:-apple-system-glass-material;}}');
-  // Any case, `!important`, and a style attribute: the same rule.
+  // Any case and `!important`: the same rule.
   assert.equal(sanitizeCss('.a{-Apple-Visual-Effect: -APPLE-SYSTEM-BLUR-MATERIAL-THICK !important}').removed.length, 0);
-  assert.equal(sanitizeDeclarations('-apple-visual-effect: -apple-system-vibrancy-fill; color: red').css, '-apple-visual-effect:-apple-system-vibrancy-fill;color:red;');
+  // Never in a `style` attribute (M2.9 step 5): an element made while Edit Theme Color's panel holds the switch on
+  // would keep it, in a theme that never asked for the materials. Only in a stylesheet, read with the theme's switch.
+  const inline = sanitizeDeclarations('-apple-visual-effect: -apple-system-vibrancy-fill; color: red');
+  assert.equal(inline.css, 'color:red;');
+  assert.deepEqual(inline.removed.map((x) => [x.name, x.reason]), [['-apple-visual-effect', 'only in the theme\'s stylesheet, inside @supports']]);
+  assert.equal(sanitizeDeclarations('-Apple-Visual-Effect: none').css, '', 'any case');
   // Refused: a material not on the list, a variable (it could hold one), two values, a wide keyword, a string, nothing,
   // a name split by a comment.
   for (const bad of ['-apple-system-glass-material-clear', '-apple-system-hosted-material', 'var(--material)', '-apple-system-glass-material -apple-system-blur-material',
@@ -369,7 +374,10 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const arcM27 = ['split.add', 'split.open', 'split.focus', 'split.breakOut', 'split.closePane', 'split.swap', 'split.toggleAxis',
     // (feat/split, docs/PEEK-SPLIT.md §4: split.add's README name, a pane out with the rest shown, a divider let go.)
     'split.addPane', 'split.remove', 'split.resize'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26, ...arcM27].sort());
+  // Track 2 M2.9 (Space backgrounds, docs/SPACE-BACKGROUNDS.md §4, §5b): Edit Theme Color opened, its value saved,
+  // a theme's own picker's items.
+  const arcM29 = ['space.editBackground', 'space.setBackground', 'picker.run'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26, ...arcM27, ...arcM29].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

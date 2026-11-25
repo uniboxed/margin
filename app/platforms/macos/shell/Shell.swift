@@ -71,10 +71,12 @@ final class Shell: ExtensionLinkDelegate {
     let data: DataSync
     // The app's own spaces, pins, folders and items (ShellLibrary.swift: margin-core's library object).
     let library: Library
+    // The pictures its spaces' backgrounds name (BackgroundStore.swift, M2.9 step 7), beside the library.
+    let backgrounds: BackgroundStore
     let apps: AppWatch
     let shortcuts: AppShortcuts
     private(set) var options: Options
-    lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot) // Margin's windows' page (ShellHosted.swift)
+    lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot, backgrounds: backgrounds) // Margin's windows' page (ShellHosted.swift)
     var marginWindows: MarginWindows? // made the first time one is opened
     var hostedSettings: DataSetWindowSource? // the settings Margin's windows draw and change (ShellHostedGlue makeHostedSource)
     // (A harness's: its page folder's, when it gives one (dist/app has every built-in's package); none otherwise.)
@@ -125,6 +127,7 @@ final class Shell: ExtensionLinkDelegate {
             ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataSync.appRoot)
         data = DataSync(root: dataRoot)
         library = Shell.openLibrary(dataRoot: dataRoot, data: data, harness: options.harness)
+        backgrounds = Shell.openBackgrounds(dataRoot: dataRoot, library: library)
         link.delegate = self
         if let system = options.hostSystem { host = HostEngine(system: system, marker: nil, options: options.hostOptions ?? HostEngine.Options()) }
         data.onChange = { [weak self] _, collections in
@@ -275,13 +278,6 @@ final class Shell: ExtensionLinkDelegate {
         default:
             break
         }
-    }
-
-    // While Margin quits: each read of a Safari copy's link (an ack, a tock) told to the session, which judges then
-    // whether a request it waits for there is unread (docs/LINK-RESILIENCE.md: evidence, never a timer).
-    func linkHeard(_ connection: LinkConnection) {
-        guard hostQuitting, connection.hello.browser == "safari", links[connection.key]?.connection === connection else { return }
-        hosted?.linkChanged(profile: connection.hello.profile)
     }
 
     func linkDown(_ connection: LinkConnection, _ why: String) {

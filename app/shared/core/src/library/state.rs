@@ -68,6 +68,126 @@ pub fn theme_id_ok(s: &str) -> bool {
         && b[1..].iter().all(|&c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
 }
 
+// ---- a space's background (M2.9, Edit Theme Color: docs/SPACE-BACKGROUNDS.md) ------------------------------------
+
+/// M `BG_WHEELS`: how a background's other colours follow its first.
+pub const BG_WHEELS: [&str; 2] = ["complementary", "analogous"];
+/// M `BG_TEXTURES`: the dial's textures.
+pub const BG_TEXTURES: [&str; 6] = ["grain", "sand", "denim", "tweed", "dots", "grid"];
+/// M `BG_APPEARANCES`.
+pub const BG_APPEARANCES: [&str; 3] = ["auto", "light", "dark"];
+/// M `BG_FITS`: how a background's picture fills the window.
+pub const BG_FITS: [&str; 3] = ["cover", "contain", "tile"];
+
+/// A space's background as M's `backgroundOf` reads it: every field one of its values, the numbers clamped and
+/// rounded. Written (stored and drawn) as `{ colors, wheel, intensity, texture, amount, appearance, image? }`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Background {
+    /// 0–3 lowercase `#rrggbb`, the first the key colour; none only with a picture.
+    pub colors: Vec<Str>,
+    pub wheel: &'static str,
+    /// 0–1, in hundredths.
+    pub intensity: f64,
+    pub texture: &'static str,
+    /// 0–1, in twentieths (0: no texture).
+    pub amount: f64,
+    pub appearance: &'static str,
+    pub image: Option<BackgroundImage>,
+}
+
+/// A background's picture: the stored file's SHA-256, how it fits, the point kept in view (each 0–1, in thousandths).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackgroundImage {
+    pub id: Str,
+    pub fit: &'static str,
+    pub focus: [f64; 2],
+}
+
+/// M `oneOf(list, v, or)`: the string when it's one of `list`, else `or`.
+fn one_of(v: Option<&Value>, list: &[&'static str], or: &'static str) -> &'static str {
+    v.and_then(Value::as_str).and_then(|s| list.iter().copied().find(|x| *x == s)).unwrap_or(or)
+}
+
+/// M `unit(v, or, steps)`: a finite number clamped to 0–1 (`v > 0 ? …`: -0 is 0) and rounded to `1/steps`, else `or`.
+fn unit(v: Option<&Value>, or: f64, steps: f64) -> f64 {
+    match js::finite(v) {
+        Some(n) => js::round((if n > 0.0 { if n > 1.0 { 1.0 } else { n } } else { 0.0 }) * steps) / steps,
+        None => or,
+    }
+}
+
+/// M `BG_HEX`: `/^#[0-9a-f]{6}$/i`.
+fn bg_hex(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 7 && b[0] == b'#' && b[1..].iter().all(u8::is_ascii_hexdigit)
+}
+
+/// M `BG_IMAGE_ID`: `/^[0-9a-f]{64}$/`, a SHA-256 in lowercase hex.
+pub fn bg_image_id_ok(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 64 && b.iter().all(|&c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+/// M `backgroundOf(v)`: a background from any value; `None` for what isn't an object, or has neither a colour nor a
+/// picture (the theme's own).
+pub fn background_of(v: Option<&Value>) -> Option<Background> {
+    let o = v?.as_object()?;
+    let colors: Vec<Str> = o
+        .get("colors")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_str)
+                .filter(|c| bg_hex(c))
+                .take(3)
+                .map(|c| c.to_ascii_lowercase().into())
+                .collect()
+        })
+        .unwrap_or_default();
+    let image = o.get("image").and_then(Value::as_object).and_then(|i| {
+        let id = i.get("id")?.as_str().filter(|id| bg_image_id_ok(id))?;
+        let focus = match i.get("focus").and_then(Value::as_array) {
+            Some(f) if f.len() == 2 => [unit(f.first(), 0.5, 1000.0), unit(f.get(1), 0.5, 1000.0)],
+            _ => [0.5, 0.5],
+        };
+        Some(BackgroundImage { id: id.into(), fit: one_of(i.get("fit"), &BG_FITS, "cover"), focus })
+    });
+    if colors.is_empty() && image.is_none() {
+        return None;
+    }
+    Some(Background {
+        colors,
+        wheel: one_of(o.get("wheel"), &BG_WHEELS, "analogous"),
+        intensity: unit(o.get("intensity"), 0.5, 100.0),
+        texture: one_of(o.get("texture"), &BG_TEXTURES, "grain"),
+        amount: unit(o.get("amount"), 0.0, 20.0),
+        appearance: one_of(o.get("appearance"), &BG_APPEARANCES, "auto"),
+        image,
+    })
+}
+
+impl Background {
+    /// The value M stores and draws (`backgroundOf`'s object, its keys in that order).
+    pub fn value(&self) -> Value {
+        let num = |n: f64| crate::protocol::number(n).unwrap_or(Value::Null);
+        let mut o = serde_json::Map::new();
+        o.insert("colors".into(), Value::Array(self.colors.iter().map(|c| Value::from(&**c)).collect()));
+        o.insert("wheel".into(), self.wheel.into());
+        o.insert("intensity".into(), num(self.intensity));
+        o.insert("texture".into(), self.texture.into());
+        o.insert("amount".into(), num(self.amount));
+        o.insert("appearance".into(), self.appearance.into());
+        if let Some(i) = &self.image {
+            let mut io = serde_json::Map::new();
+            io.insert("id".into(), Value::from(&*i.id));
+            io.insert("fit".into(), i.fit.into());
+            io.insert("focus".into(), Value::Array(vec![num(i.focus[0]), num(i.focus[1])]));
+            o.insert("image".into(), Value::Object(io));
+        }
+        Value::Object(o)
+    }
+}
+
 /// M:165 `isTabId`: `/^t-[A-Za-z0-9]{1,30}$/`, a Margin tab's (an item's) id.
 pub fn is_tab_id(s: &str) -> bool {
     let b = s.as_bytes();
@@ -262,6 +382,8 @@ pub struct Space {
     pub profile: Option<Str>,
     /// A theme id ([`theme_id_ok`]); `None`: the profile's.
     pub theme: Option<Str>,
+    /// Its background ([`background_of`]); `None`: the theme's own.
+    pub background: Option<Rc<Background>>,
 }
 
 /// A pin (M's `Pin`, with its target).
@@ -636,6 +758,7 @@ pub fn state_of<V: Values + ?Sized>(values: &V, compare: &dyn LocaleCompare) -> 
                 browser: shared(browser, &safari),
                 profile: some_str(s.get("profile")).map(Str::from),
                 theme: s.get("theme").and_then(Value::as_str).filter(|t| theme_id_ok(t)).map(Str::from),
+                background: background_of(s.get("background")).map(Rc::new),
             })
         })
         .collect();

@@ -76,6 +76,12 @@ cp app/platforms/macos/startup/AppDelegate.swift "$APP_DIR/Margin/AppDelegate.sw
 cp app/platforms/macos/startup/ViewController.swift "$APP_DIR/Margin/ViewController.swift"
 cp app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
 perl -pi -e 's/(MACOSX_DEPLOYMENT_TARGET"?(?: = |: "))(?:1[0-3]|[0-9])(?:\.\d+)?\b/${1}14.0/' "$PROJECT"
+# Margin's icon (brand/margin-logo/macos/AppIcon.appiconset: every size Finder and the Dock ask for, the flat drawing at
+# 32 px and below) over the one the converter makes from the extension's largest icon.
+ICONSET="$APP_DIR/Margin/Assets.xcassets/AppIcon.appiconset"
+[ -d "$ICONSET" ] || { echo "make-xcode.sh: the converter made no AppIcon.appiconset (has its project changed?)" >&2; exit 1; }
+rm -rf "$ICONSET"
+cp -R brand/margin-logo/macos/AppIcon.appiconset "$ICONSET"
 python3 scripts/xcode-add-sources.py "$PROJECT" .
 
 # The container app looks up the extension by ID (e.g. ViewController.swift),

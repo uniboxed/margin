@@ -16,6 +16,7 @@
 // Everything removed is reported. No DOM here: it runs in Node (the unit
 // tests) as well as in pages. theme.json is checked by ui/theme-schema.ts,
 // and the whole package (all three, with its files) by ui/theme-loader.ts.
+import { PICKER_ATTRS, PICKER_DIAL, PICKER_FIELD, PICKER_PART, PICKER_SLIDER, PICKER_SLOT } from './picker/elements.ts';
 import { isAction } from './actions.ts';
 
 export const LIMITS = Object.freeze({
@@ -60,7 +61,8 @@ type Ctx = {
   previewPages?: { n: number }, // the <m-preview-page>s of the `preview` part so far (one: where the card's window goes)
 };
 // The files a style sheet may point to, and how their addresses are written.
-type CssOptions = { files?: string[], assetUrl?: (path: string) => string };
+// (`inline`: a `style` attribute's declarations, not a stylesheet's.)
+type CssOptions = { files?: string[], assetUrl?: (path: string) => string, inline?: boolean };
 
 const report = (list: Removed[], kind: string, name: string, reason: string, at?: number) => { list.push(at == null ? { kind, name, reason } : { kind, name, reason, at }); };
 
@@ -318,6 +320,8 @@ const HTML_ELEMENTS = new Set([
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
   'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview', 'm-preview-page',
+  // Edit Theme Color in a theme's own picker (M2.9 step 5b): its slot, and Margin's controls Margin fills and works.
+  PICKER_SLOT, PICKER_FIELD, PICKER_SLIDER, PICKER_DIAL,
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -398,8 +402,9 @@ const INPUT_ELEMENT = (value: string) => (value === 'setting-list' ? 'textarea' 
 // in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
 // in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
 // `prompt` in <m-prompt>, `settings` in <m-settings>, `page-loader` in
-// <m-page-loader> (the page card while an item opens: Margin.app's window).
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings', 'page-loader', 'toast', 'preview']);
+// <m-page-loader> (the page card while an item opens: Margin.app's window), `background-picker` in <m-picker>
+// (Edit Theme Color: ui/picker/part.ts).
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings', 'page-loader', 'toast', 'preview', PICKER_PART]);
 
 // Margin's own words (PLAN.md §4: "a theme can still draw misleading text"):
 // the parts that show Margin's menus, notices, prompts and confirmations
@@ -409,10 +414,10 @@ const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 
 // the theme wrote there is removed and reported, and so is a static value of
 // an attribute that shows or speaks text. Icons (svg shapes), images and
 // decoration stay. ui/render.ts applies the same rule again as it compiles.
-export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'page-loader', 'toast', 'preview']);
+export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'page-loader', 'toast', 'preview', PICKER_PART]);
 // The elements a part is put in.
-const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview']);
-export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview']);
+const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview', PICKER_SLOT]);
+export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview', PICKER_SLOT]);
 // Attributes whose value is shown (a tooltip, a placeholder, an image's
 // stand-in) or spoken (a screen reader's label).
 export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',
@@ -716,6 +721,13 @@ function marginAttr(element: string, ns: string, name: string, value: string, ct
     case 'm-part':
       if (element !== 'template' || !PARTS.has(value)) { drop(name, 'unknown part'); return null; }
       return [name, value];
+    // Edit Theme Color's controls (M2.9 step 5b): the field's variant, a slider's value and variant, each one of its
+    // list (ui/picker/elements.ts PICKER_ATTRS); dropped otherwise, and Margin draws the default.
+    case 'm-variant': case 'm-value': {
+      const values = PICKER_ATTRS[element]?.[name];
+      if (!values) { drop(name, `not on <${element}>`); return null; }
+      return values.includes(value) ? [name, value] : (drop(name, `unknown ${name} value`), null);
+    }
     default:
       if (Object.hasOwn(BEHAVIORS, name)) {
         if (name === 'm-input' && element !== INPUT_ELEMENT(value)) { drop(name, `only on <${INPUT_ELEMENT(value)}>`); return null; }
@@ -1051,6 +1063,7 @@ class CssBuilder {
   declare src: string;
   declare files: string[];
   declare assetUrl: (path: string) => string;
+  declare inline: boolean;
   declare removed: Removed[];
   declare errors: string[];
   declare rules: number;
@@ -1059,6 +1072,7 @@ class CssBuilder {
     this.src = source;
     this.files = options.files ?? [];
     this.assetUrl = options.assetUrl ?? ((p) => p);
+    this.inline = options.inline === true;
     this.removed = [];
     this.errors = [];
     this.rules = 0;
@@ -1183,6 +1197,9 @@ class CssBuilder {
     if (!isTok(items[b], ':')) { this.drop('css-declaration', name.v, 'no colon', name); return ''; }
     const prop = name.v.startsWith('--') ? name.v : name.v.toLowerCase();
     if (BLOCKED_PROPERTIES.has(prop)) { this.drop('css-declaration', prop, 'not allowed', name); return ''; }
+    // The system's materials only in a stylesheet (read once, with the switch as the theme's theme.json asks), never in
+    // a `style` attribute: an element made while Edit Theme Color's panel holds the switch on would keep it (M2.9 step 5).
+    if (prop === '-apple-visual-effect' && this.inline) { this.drop('css-declaration', prop, 'only in the theme\'s stylesheet, inside @supports', name); return ''; }
     const value = items.slice(b + 1);
     const reason = this.value(value) ?? (TEXT_PROPERTIES.has(prop) ? writesText(prop, value) : prop === '-apple-visual-effect' ? visualEffect(value) : null);
     if (reason) { this.drop('css-declaration', `${prop}: ${this.text(value).trim().slice(0, 80)}`, reason, name); return ''; }
@@ -1289,7 +1306,7 @@ export function sanitizeCss(css: string, options: { files?: string[], assetUrl?:
 export function sanitizeDeclarations(text: unknown, options: CssOptions = {}): { css: string, removed: Removed[] } {
   const source = String(text).replace(/\r\n?|\f/g, '\n');
   if (source.length > LIMITS.attrValue || source.includes('\u0000')) return { css: '', removed: [{ kind: 'css-declaration', name: 'style', reason: 'too long or NUL' }] };
-  const b = new CssBuilder(source, options);
+  const b = new CssBuilder(source, { ...options, inline: true });
   const out = b.block(components(tokenizeCss(source)), 0, 'declarations');
   return { css: b.errors.length ? '' : out, removed: b.removed };
 }

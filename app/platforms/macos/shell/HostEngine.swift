@@ -531,6 +531,7 @@ final class HostEngine {
     private var tail: Task<Void, Never>?
     private var jumps = 0
     private var leftTried = -Double.infinity // the last try at closing leftSafariWindows
+    private(set) var leftTrying = false // the poll's try at them under way (outside the queue)
 
     // The hosting core's observed model (HostObserver.swift, docs/HOSTING-CORE.md stage 2): fed at each poll and at the
     // end of each operation, logged; nothing here reads it to decide anything. `observation`: Accessibility's
@@ -1255,10 +1256,16 @@ final class HostEngine {
         if !leftSpaces.isEmpty, marginSpace > 0, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace {
             Task { await serial { await self.destroyLeftSpaces() } }
         }
-        // Safari windows asked for whose close wasn't confirmed: tried again every 2 s (their copy may link later).
-        if !leftSafariWindows.isEmpty, closeSafariWindow != nil, sys.now() - leftTried >= 2 {
+        // Safari windows asked for whose close wasn't confirmed: tried again every 2 s (their copy may link later), one
+        // try at a time and outside the engine's queue: each only asks its copy and keeps its entry until the copy says
+        // it's closed, so a copy that isn't reading holds no open or switch up (the merge review, 2026-11-25).
+        if !leftSafariWindows.isEmpty, closeSafariWindow != nil, !leftTrying, sys.now() - leftTried >= 2 {
             leftTried = sys.now()
-            Task { await serial { await self.closeLeftSafariWindows() } }
+            leftTrying = true
+            Task {
+                await self.closeLeftSafariWindows()
+                self.leftTrying = false
+            }
         }
         observe()
         traceToolbars()

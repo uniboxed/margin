@@ -337,6 +337,9 @@ impl Core {
         };
         self.edit(Field::SafariWindows, |s| s.safari_windows.insert((p.to_string(), role), m.window_id));
         self.edit(Field::Made, |s| s.made.insert(m.window_id));
+        if role == Role::Main {
+            self.window_made(p);
+        }
         let its = if role == Role::Main { String::new() } else { format!(" (its {})", role_name(role)) };
         self.note(format!("Safari window {} made for hosting{its}", m.window_id));
         // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the

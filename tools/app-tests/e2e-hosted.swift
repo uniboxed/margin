@@ -29,6 +29,7 @@ final class FakeWindowSource: MarginWindowSource {
   init(_ state: JSONObject) { self.state = state }
   func stateText() -> String { jsonString(state) ?? "null" }
   func spaceTheme(window: Int) -> String? { nil }
+  func spaceAppearance(window: Int) -> SpaceAppearance? { nil }
   @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
     asked.append((type, payload))
     if type == "updateSettings", let patch = payload["patch"] as? JSONObject {

@@ -530,11 +530,14 @@ impl Engine for Entry<'_> {
 /// The steps every engine of the core answers otherwise, for a reason decided: a `cut` step the typed diff answers
 /// without library.ts's no-op rewrite (a favorite renamed through an emoji to the name it has, the half dropped: the
 /// stored value; favorites.rs `rename_favorite`, DECISIONS.md 2026-11-23 piece 2).
-pub const KNOWN: [&str; 1] =
-    ["generated-11.json › case 24 (sequence 299 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
+/// A hand-written edge since 2026-11-24 (edges.ts), where no re-recording moves it: it was a generated step
+/// (generated-11.json, sequence 299) until the backgrounds' re-recording drew other sequences.
+pub const KNOWN: [&str; 1] = [
+    "edges.json › case 16 (edges: cuts: a favorite renamed through an emoji to the name it has (library.ts rewrites it, the half dropped; the core sees no change)) › step 0 (perform): $.changes: 0 items where 1",
+];
 
 /// Every vector of every kind through library.js's entry with `compare`: all answered as JSC answered them but the
-/// known step and the gap (19 steps). The steps checked by kind, and the gap's.
+/// known step and the gap (14 steps since the backgrounds' re-recording, 2026-11-24; 19 before). The steps checked by kind, and the gap's.
 pub fn run_entry(compare: &dyn crate::library::js::LocaleCompare) -> (BTreeMap<&'static str, usize>, usize) {
     let mut engine = Entry { compare, gap: 0 };
     let mut report = run(&mut engine);
@@ -543,7 +546,7 @@ pub fn run_entry(compare: &dyn crate::library::js::LocaleCompare) -> (BTreeMap<&
     report.failures = rest;
     report.assert_ok();
     assert_eq!(expected.len(), KNOWN.len(), "the known step: {expected:?}");
-    assert_eq!(engine.gap, 19, "the createSpace steps of the known gap");
+    assert_eq!(engine.gap, 14, "the createSpace steps of the known gap");
     for (kind, at_least) in [("perform", 8700), ("snapshot", 290), ("import", 2), ("normal", 1), ("target", 1)] {
         assert!(report.checked.get(kind).copied().unwrap_or(0) >= at_least, "{kind}: {:?}", report.checked);
     }

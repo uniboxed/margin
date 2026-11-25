@@ -19,7 +19,8 @@
 //!   tests).
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashSet, VecDeque};
+use std::io;
 use std::rc::{Rc, Weak};
 
 use serde_json::{Map, Value};
@@ -31,7 +32,17 @@ use super::snapshot::{self, Parts};
 use super::state::{self, LibState};
 use super::values::Change;
 use crate::data::Note;
+use crate::data::backgrounds::BackgroundStore;
 use crate::data::library::{Applied, LibraryStore, key};
+
+/// What the cleanup of spaces' pictures did ([`Library::prune_pictures`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum PicturesPruned {
+    /// The files no space names removed (how many).
+    Removed(usize),
+    /// Nothing removed: the library can't say which pictures its spaces name (why, for the log).
+    LeftAlone(&'static str),
+}
 
 /// The requests kept (L:93 `requestsKept`).
 pub const REQUESTS_KEPT: usize = 100;
@@ -174,6 +185,47 @@ impl Library {
             let space = s.spaces.iter().find(|sp| Some(&sp.id) == id).or_else(|| s.spaces.first())?;
             space.theme.clone()
         })
+    }
+
+    /// The appearance of the space a Margin window shows (M2.9 step 3: its web view's, MarginWindowController), the
+    /// space as [`Self::space_theme`] finds it: its background's when that's `light` or `dark`; None (the system's): no
+    /// spaces, no background, or one that follows the system (`auto`).
+    pub fn space_appearance(&self, window: i64) -> Option<&'static str> {
+        self.cached(|c| {
+            let s = &c.state;
+            let id = s.windows.get(&window.to_string());
+            let space = s.spaces.iter().find(|sp| Some(&sp.id) == id).or_else(|| s.spaces.first())?;
+            space.background.as_ref().map(|b| b.appearance).filter(|a| *a == "light" || *a == "dark")
+        })
+    }
+
+    /// The cleanup of spaces' pictures as Margin opens (M2.9 step 7, docs/SPACE-BACKGROUNDS.md §7: not as a space
+    /// changes, so Edit Theme Color's ⌘Z and Escape can bring one back while Margin runs): each file in `pictures` no
+    /// space names removed, a space's picture read as the state reads its background (`background_of`: an id that
+    /// isn't one names nothing). Only when the library can say which they are: its set loaded (not a later format's,
+    /// left alone; not none yet) and its spaces read (their file and its backup not both unreadable). Otherwise
+    /// nothing goes: a picture kept for nothing costs a file, one removed while a space still names it is lost.
+    pub fn prune_pictures(&self, pictures: &BackgroundStore) -> io::Result<PicturesPruned> {
+        let read = {
+            let mut store = self.store.borrow_mut();
+            match store.store_mut().load(&key()) {
+                None => Err("the library's data isn't read (none yet, or a later format's)"),
+                Some(stored) if !stored.set.collections().iter().any(|c| c == "spaces") => {
+                    Err("the library's spaces aren't read")
+                }
+                Some(_) => Ok(()),
+            }
+        };
+        if let Err(why) = read {
+            return Ok(PicturesPruned::LeftAlone(why));
+        }
+        let named: HashSet<String> = self
+            .state()
+            .spaces
+            .iter()
+            .filter_map(|s| s.background.as_ref()?.image.as_ref().map(|i| i.id.to_string()))
+            .collect();
+        pictures.prune(&named).map(PicturesPruned::Removed)
     }
 
     /// The import ran (L:126 `isImported`: `imports.done` is there).

@@ -1051,7 +1051,7 @@ impl Core {
             }
             Input::Linked { profile: _ } => self.exec.notify(),
             Input::Quitting => {
-                // (Every wait judged again at once: `ask_held`'s. And at each link event after it: `Linked`.)
+                // (Every wait's bound read again at once: `ask_held`'s `quitWait` from now.)
                 if self.quit_at.get().is_none() {
                     self.quit_at.set(Some(self.ports.now()));
                 }
@@ -1248,9 +1248,11 @@ impl Core {
     }
 
     /// A copy's request an engine operation waits for (a window made, put in full screen, brought in front, closed):
-    /// given up (cancelled, a `given up` error) once it's no longer `wanted`, or once Margin quits with its copy not
-    /// reading (`unread_at_quit`). Judged when what the flows read changes: a pick, Margin's quit, each of the link's
-    /// events (`Linked`: an ack, a tock, the link down); never on a timer (the feedback's pace only paces words).
+    /// given up (cancelled, a `given up` error) once it's no longer `wanted`, judged when what the flows read changes (a
+    /// pick, Margin's quit, the link down); never on a timer (the feedback's pace only paces words). Otherwise it ends on
+    /// the link's evidence (its reply, the link down, lost: read past twice), and at Margin's quit no later than
+    /// `quitWait` after the quit began, the engine's own bound. A request not acked yet as Margin quits isn't given up
+    /// for that alone: one sent a moment before may be read the next (the merge review, 2026-11-25).
     pub(crate) async fn ask_held(
         &self,
         profile: &str,
@@ -1258,15 +1260,12 @@ impl Core {
         payload: Object,
         wanted: impl Fn() -> bool,
     ) -> Asked {
-        let gone = || !wanted() || self.unread_at_quit(profile);
+        let gone = || !wanted();
         // (At Margin's quit, as the engine's own quit decides: no longer than `quitWait` after it began.)
         let limit = || Some(self.quit_at.get()? + self.options.borrow().quit_wait?);
         match self.ask_until(profile, kind, payload, gone, |_| {}, limit).await {
             Until::Answered(a) => a,
-            Until::Overtaken { .. } => {
-                let why = if wanted() { "not read by its copy as Margin quits" } else { "no longer wanted" };
-                Asked { result: None, error: Some(format!("given up ({why})")) }
-            }
+            Until::Overtaken { .. } => Asked { result: None, error: Some("given up (no longer wanted)".into()) },
             Until::Limit => {
                 let wait = self.options.borrow().quit_wait.unwrap_or(0.0);
                 let left = if kind == "closeWindow" { "left in the marker" } else { "given up" };
@@ -1288,15 +1287,6 @@ impl Core {
     pub(crate) async fn engine(&self, op: &str, args: Value) -> Value {
         let command = Command::Engine { op: op.to_string(), args: object(args) };
         self.exec.command(command).await
-    }
-
-    /// Margin quits and the profile's copy hasn't read what it was sent before the quit (the link's `slow`: its oldest
-    /// request not acked, sent no later than the quit): evidence it isn't reading. A request sent since, not acked yet,
-    /// isn't that alone (its copy may be reading it now).
-    fn unread_at_quit(&self, profile: &str) -> bool {
-        let Some(at) = self.quit_at.get() else { return false };
-        let since = self.ports.now() - at;
-        self.ports.link_slow(profile).is_some_and(|age| age >= since)
     }
 
     /// The Safari waker's operation handed out now and waited for by nothing (`closeWoken`: its own closes end on their

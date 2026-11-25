@@ -4,8 +4,8 @@
 // drag region, menu or bar under them, nothing the theme marked `m-empty="never"`), with the main button and no
 // modifier, and nothing of Margin's open or under way at its first press (the palette, a menu, the space editor, a
 // name being edited, a prompt, the preview card; a drag, a resize, a swipe). Every theme, every host: a theme has
-// nothing to opt into. In Margin.app the press comes through the press tap as the window server's own record, so this
-// is the page's own dblclick (app/platforms/macos/shell/PaneClickTap.swift).
+// nothing to opt into. In Margin.app the press comes through the press tap as an event made afresh in AppKit's own
+// queue (PanelEvents), with its click count, so this is the page's own dblclick (app/platforms/macos/shell/PaneClickTap.swift).
 import type { Rt } from '../runtime.ts';
 import { isEmpty } from '../empty.ts';
 
