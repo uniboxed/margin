@@ -14,6 +14,8 @@
 //   (or opened again) isn't saved (the file it kept goes as Margin.app next opens).
 // While it's open the runtime says so (`onPanel`): Margin.app gives the page the keys and is told the panel takes the
 // pointer (app/shared/host/overlay.ts), as for Margin's menus.
+// Its ticks (M2.9 step 6, ui/picker/feedback.ts): each detent its controls reach played as a haptic or a click
+// (`feedback`), its audio made ready as it opens (it opens from a click) and at each press in it.
 // Its glass (M2.9 step 5, DECISIONS.md "M2.9 step 5 spike"): with a host that has the system's materials (`materials`:
 // Margin.app on macOS 26 and later, through WebKit's system appearance), they're asked for as it opens and the panel
 // is made once the answer is back (its sheet keeps `-apple-visual-effect` only if read with them on), and given back
@@ -30,7 +32,8 @@ import { droppedProblem, readBase64 } from '../picker/picture.ts';
 import type { PictureRequests } from '../picker/picture.ts';
 import { WORDS } from '../picker/words.ts';
 import { createPickerPanel } from '../picker/panel.ts';
-import type { PanelEvents, TickKind } from '../picker/panel.ts';
+import type { PanelEvents } from '../picker/panel.ts';
+import type { TickFeedback } from '../picker/feedback.ts';
 import { createPickerPart, themeHasPicker } from '../picker/part.ts';
 import type { PickerState } from '../picker/model.ts';
 
@@ -43,8 +46,9 @@ type Picker = {
 
 const same = (a: SpaceBackground | null, b: SpaceBackground | null) => JSON.stringify(a) === JSON.stringify(b);
 
-export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
-  onTick?: (kind: TickKind) => void,
+export function installBackgroundPicker(rt: Rt, { feedback, materials }: {
+  /** Its ticks: a haptic or a click at each detent (ui/picker/feedback.ts). */
+  feedback?: Pick<TickFeedback, 'tick' | 'prime'>,
   /** The system's materials asked for (true) or given back (false); resolves once the page has the answer. */
   materials?: (on: boolean) => Promise<unknown>,
 } = {}) {
@@ -121,6 +125,8 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
       rt.dispatch('space.switch', spaceId, 'behavior');
       return true;
     }
+    // (Opened by the person's click: the ticks' audio made ready while that gesture counts.)
+    feedback?.prime();
     // (Asked from a menu: where it was; from a theme's button: beside it; else near the window's top left.)
     const box = info?.element?.getBoundingClientRect?.();
     const point = info?.point ?? (box ? { x: box.right + 8, y: box.top } : { x: 24, y: 56 });
@@ -216,7 +222,7 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
         if (!same(bg, open.saved)) { open.undo.push(open.saved); open.saved = bg; }
         for (const sp of rt.state?.spaces ?? []) save(sp.id, bg, sp.id === spaceId ? colorWith(bg) : bg?.colors[0] ?? null, { ahead: sp.id === spaceId });
       },
-      tick: (kind) => onTick?.(kind),
+      tick: (kind) => { feedback?.tick(kind); },
     };
     const pictures = picturesFor(spaceId);
     const panel: Picker = themed
@@ -230,7 +236,10 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
   // A press anywhere but the panel closes it (as Margin's menus: ui/behaviors/menus.ts; from the container, the panel is
   // its host; from the document, a press in a shadow root container is its host). A press while an open still waits
   // for the materials ends that open.
-  rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => { if (open ? !open.panel.owns(e.target) : waitingFor) close(); }, true);
+  rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
+    if (open && open.panel.owns(e.target)) { feedback?.prime(); return; }
+    if (open || waitingFor) close();
+  }, true);
   rt.listen(rt.doc, 'pointerdown', (e: PointerEvent) => {
     if (!open) { if (waitingFor) close(); return; }
     const inside = rt.container.nodeType === 9 ? open.panel.owns(e.target) : e.target === (rt.container as ShadowRoot).host;

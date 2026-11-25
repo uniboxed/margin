@@ -1675,19 +1675,32 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if phase.contains(.cancelled) { return "cancelled" }
         return nil
     }
+    // The device a gesture over this window's UI comes from (PointerKind.swift), told to its page as each starts, with
+    // whether a trackpad that plays haptics is there and whether the system plays its interface sounds: Edit Theme
+    // Color's ticks (M2.9 step 6, ui/picker/feedback.ts). The tests read what was told (the last 20).
+    private(set) var pointersSaid: [String] = []
+    func tellPointer(_ kind: PointerKind, haptics: Bool, uiSounds: Bool) {
+        let message = PointerClassifier.message(kind, haptics: haptics, uiSounds: uiSounds)
+        pointersSaid.append(message)
+        if pointersSaid.count > 20 { pointersSaid.removeFirst(pointersSaid.count - 20) }
+        push(message)
+    }
     private(set) var wheelPhasesSaid: [String] = [] // (the tests read them; the last 20)
     func wheelPhase(_ name: String) {
         wheelPhasesSaid.append(name)
         if wheelPhasesSaid.count > 20 { wheelPhasesSaid.removeFirst(wheelPhasesSaid.count - 20) }
         push(#"{"type":"wheelPhase","phase":"\#(name)"}"#)
     }
-    // A space swipe's detent (ui/behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, at once, as Arc does it
-    // (NSHapticFeedbackManager, .alignment, .now). Only a Force Touch trackpad plays it.
+    // The trackpad's tick, at once (NSHapticFeedbackManager, .now): its alignment for a space swipe's detent
+    // (ui/behaviors/swipe.ts, Arc's feel, as Arc does it), a split's snap and Edit Theme Color's detents; a level's
+    // change for its texture (M2.9 step 6, ui/picker/feedback.ts). Only a Force Touch trackpad being touched plays it.
     private(set) var haptics = 0
-    private func alignmentTick() {
+    private(set) var hapticLevels = 0 // (of `haptics`, the level's changes: the tests read them)
+    private func hapticTick(level: Bool) {
         haptics += 1
+        if level { hapticLevels += 1 }
         guard !options.harness else { return }
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        NSHapticFeedbackManager.defaultPerformer.perform(level ? .levelChange : .alignment, performanceTime: .now)
     }
 
     // What the page said (`op`): its body's JSON as the page sent it (`json`: Margin.app's window's page, its hello's
@@ -1759,8 +1772,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts), or a split's divider
             // (ui/behaviors/split.ts): the session's (it holds the hosted window's placing, or every pane's follows).
             sidebarResizing(on, divider: divider)
-        case .haptic:
-            alignmentTick()
+        case .haptic(let level):
+            hapticTick(level: level)
         case .slide(let item, let side):
             // (A cut pane's arrow (ui/behaviors/split.ts): the session's, docs/PEEK-SPLIT.md §4b.)
             owner?.onPaneSlide?(self, item, side.rawValue)
@@ -1856,7 +1869,7 @@ final class MarginWindows {
         menuTarget.handle = { [weak self] action in self?.perform(action) }
         menuTarget.enabled = { [weak self] action in action == .newWindow || self?.front != nil }
         pointer.onMove = { [weak self] at in for c in self?.controllers ?? [] { c.pointerMoved(at) } }
-        if !options.harness { startKeyRelay(); startWheelPhases() }
+        if !options.harness { startKeyRelay(); startWheelPhases(); startPointers() }
         pointer.onPress = { [weak self] at, number in for c in self?.controllers ?? [] { c.pressed(at, number: number) } }
         // Margin activated (its Dock icon, ⌘-Tab): each window in front of what it hosts (the `order` mechanism orders
         // it there again), and one still not in full screen, its toggle ignored while Margin wasn't active, asked again.
@@ -1893,6 +1906,7 @@ final class MarginWindows {
         for o in menuObservers { NotificationCenter.default.removeObserver(o) }
         if let keyRelay { NSEvent.removeMonitor(keyRelay) }
         if let wheelPhases { NSEvent.removeMonitor(wheelPhases) }
+        if let pointers { NSEvent.removeMonitor(pointers) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
         if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
         paneTap?.stop()
@@ -1926,6 +1940,26 @@ final class MarginWindows {
             c.wheelPhase(name)
             return event
         }
+    }
+    // The device each gesture over a window's UI comes from (PointerKind.swift), told to its page (`tellPointer`). Never
+    // consumed: the event goes on as is.
+    private var pointers: Any?
+    let gestureDevice = PointerClassifier()
+    private func startPointers() {
+        guard pointers == nil else { return }
+        pointers = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .pressure, .scrollWheel]) { [weak self] event in
+            guard let self, let c = self.controllers.first(where: { $0.panel === event.window }) else { return event }
+            self.pointerSaw(event: event, in: c)
+            return event
+        }
+    }
+    /// An event's facts over a window's UI: what's new told to its page.
+    func pointerSaw(_ facts: PointerFacts, in c: MarginWindowController) {
+        guard let kind = gestureDevice.see(facts) else { return }
+        c.tellPointer(kind, haptics: PointerClassifier.hapticTrackpad(), uiSounds: PointerClassifier.interfaceSounds())
+    }
+    private func pointerSaw(event: NSEvent, in c: MarginWindowController) {
+        if let facts = PointerFacts(event) { pointerSaw(facts, in: c) }
     }
     private(set) var keysRelayed = 0
     private func startKeyRelay() {

@@ -2323,6 +2323,26 @@ On the real screen, with the kit's TestPane (a full-screen member), Calculator (
 8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
 9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
 
+## Edit Theme Color's ticks (M2.9 step 6, 2026-11-25)
+
+Margin.app, Arcadia's panel, then Material's picker; the built-in trackpad, then the Magic Trackpad; a mouse when one
+is at hand. The logic was tested off screen; nothing here was felt or heard. Note each step's answer, as these settle
+the spike's open question (which evidence tap-to-click gives).
+
+1. **A physical click.** Settings › Appearance › Edit Theme Color's ticks: Automatic. Open the panel and press each
+   appearance button with a real click: a haptic tick each time, no sound.
+2. **Tap-to-click.** The same with a tap (System Settings › Trackpad › Tap to click on): a haptic, or a click sound?
+   (Either is acceptable; note which.)
+3. **Dragging.** Drag the slider across its tenths, and the dial's ring round its steps: a tick at each, never a
+   buzz-pile, nothing doubled. A fast drag: fewer ticks, not late ones.
+4. **The dial's texture.** Click the dial: a different, firmer haptic (the level's change). Scroll on the dial with two
+   fingers: ticks as its amount steps.
+5. **A mouse** (when one is at hand), or the Magic Mouse: the same gestures give a soft click (or, on a Magic Mouse,
+   possibly silence: note it). Haptics only: nothing heard with the mouse.
+6. **Settings.** Sound: clicks on the trackpad too. Off: nothing. With System Settings › Sound › "Play user interface
+   sound effects" off: no clicks in Automatic or Sound, the haptics still in Automatic.
+7. **Material.** Its segmented buttons, chips and sliders tick the same.
+
 ## A space's picture (M2.9 step 7, 2026-11-25)
 
 Margin.app, Arcadia first, then Material, Neubrutalism and Pixel (their own pickers); a hosted app shown, and the

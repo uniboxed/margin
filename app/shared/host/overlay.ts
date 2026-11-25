@@ -1009,6 +1009,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
       if (phase) document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
       return;
     }
+    // The device a gesture over Margin's UI comes from (MarginWindowController.tellPointer): Edit Theme Color's ticks
+    // (ui/picker/feedback.ts). The host's alone: nothing drawn for it.
+    if (msg?.type === 'pointerKind') { host.receive(msg); return; }
     if (msg?.type === 'pointer') stats.pointers++;
     const cause = () => (msg?.type === 'changes' ? `changes to ${Object.keys(msg.changes ?? {}).join(', ') || 'site icons'}` : msg?.type === 'push' ? `the copy's ${msg.msg?.type}` : String(msg?.type));
     timed('taking the app\'s word', cause, () => {
@@ -1031,7 +1034,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     stats.receivedMaxMs = Math.max(stats.receivedMaxMs, ms);
   },
   // The counts above (the app's tests read them).
-  stats: () => JSON.parse(JSON.stringify(stats)),
+  // (With the device the last gesture came from, as the app told it: Edit Theme Color's ticks.)
+  stats: () => ({ ...JSON.parse(JSON.stringify(stats)), device: host?.feedbackDevice ?? null }),
   // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
   // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
   devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK

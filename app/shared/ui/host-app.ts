@@ -66,6 +66,8 @@ import { fromStorage } from '../../../extension/shared/stored.ts';
 import { isLauncherPage } from '../../../extension/shared/view.ts';
 import { appsOf, isBundleId } from '../../../extension/shared/apps.ts';
 import { capabilities } from '../../../extension/shared/capabilities.ts';
+import { deviceOf } from './picker/feedback.ts';
+import type { FeedbackDevice } from './picker/feedback.ts';
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it
@@ -326,7 +328,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   warn?: (...args: any[]) => void,
   /** A line for Margin.app's log (a decision worth reading back from the real screen, never per frame). */
   note?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly paneCuts: Record<string, PaneCut>, readonly paneHover: number | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly paneCuts: Record<string, PaneCut>, readonly paneHover: number | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], readonly feedbackDevice: FeedbackDevice | null, takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -426,9 +428,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // A theme per space (2026-11-20): Margin.app's own window draws each space's (its app picks the package by the space
   // the window shows); a browser's overlay draws its profile's, so it doesn't offer them (ui/space-theme.ts).
   (platform.features as any).spaceThemes = appWindow;
+  // Haptics (Edit Theme Color's ticks, M2.9 step 6): Margin.app's own window on the Mac plays them (`haptic.*`).
+  (platform.features as any).haptics = appWindow && platform.os === 'mac';
   // The window's tabs loading, as the copy last said (`push` `loading`).
   let loading: Set<number> = new Set();
   let failure: { type: string, error: string, at: number } | null = null;
+  // The device the person's gestures come from, as Margin.app says it (`pointerKind`, M2.9 step 6): Edit Theme
+  // Color's ticks (ui/picker/feedback.ts). None until it's said.
+  let device: FeedbackDevice | null = null;
 
   const rebuild = () => {
     const next = raw ? fromStorage(raw) : null;
@@ -535,6 +542,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     },
     get loading() { return [...loading]; },
     // Why the last request failed, if it failed in the last 2 s (taken once).
+    get feedbackDevice() { return device; },
     takeFailure() {
       const f = failure;
       failure = null;
@@ -640,8 +648,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!appWindow || typeof arg?.item !== 'string' || !PANE_SIDES.includes(arg?.side) || paneCuts[arg.item]?.[arg.side as PaneSide] !== 'slide') return false;
           void post('perform', { name, arg: { item: arg.item, side: arg.side } }).catch(() => {});
           return true;
-        // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it.
+        // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it; Edit
+        // Theme Color's detents too, and its texture a level's change (ui/picker/feedback.ts).
         case 'haptic.alignment':
+        case 'haptic.level':
           if (!appWindow) return false;
           void post('perform', { name }).catch(() => {});
           return true;
@@ -659,6 +669,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     receive(msg: any) {
       if (destroyed || !msg || typeof msg !== 'object') return;
       switch (msg.type) {
+        case 'pointerKind':
+          device = deviceOf(msg);
+          return;
         case 'state':
           raw = msg.state && typeof msg.state === 'object' ? msg.state : null;
           if (Array.isArray(msg.windows)) windows = msg.windows;

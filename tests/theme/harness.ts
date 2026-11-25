@@ -394,6 +394,8 @@ const withRuntime = Object.assign(T, {
     // (Margin.app's log lines from the page, `note`: as said, in order.)
     rt.notes = [];
     Object.assign(host, { note: (text: string) => { rt.notes.push(text); } });
+    // (The device Margin.app says the gestures come from, M2.9 step 6: the page's `__feedbackDevice`, none unless set.)
+    Object.defineProperty(host, 'feedbackDevice', { get: () => (window as unknown as { __feedbackDevice?: unknown }).__feedbackDevice ?? null, configurable: true });
     if (pictures) {
       const w = window as unknown as { __testPicture?: string, __pictureReply?: unknown, __pictureFailure?: { type: string, error: string } | null };
       const send = host.send;
@@ -517,6 +519,7 @@ const withRuntime = Object.assign(T, {
   rtBackgroundAt(x: number, y: number) { return rt.runtime!.backgroundAt(x, y); },
   // Edit Theme Color (M2.9 step 4): its parts (boxes and states: its content is closed), whether it's open and where.
   rtPicker() { return rt.runtime!.pickerParts(); },
+  rtPickerTicks() { return rt.runtime!.pickerTicks(); }, // (how many of its ticks played a haptic or a click)
   // … and what it asked of a host with the system's materials (mountRuntime's `materials`): true on, false off, in order.
   rtMaterials() { return [...rt.materials]; },
   rtPanel() { return { open: rt.runtime!.panelOpen, rect: rt.runtime!.panelRect() }; },

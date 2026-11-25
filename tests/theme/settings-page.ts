@@ -31,7 +31,7 @@ export async function settingsPageChecks(page: Page) {
   assert.equal(await count('.settings-category .category-icon svg'), 4, 'each with its icon');
   assert.deepEqual(await text('.settings-category.selected .category-label'), ['Appearance'], 'the first chosen');
   assert.deepEqual(await text('.pane-title'), ['Appearance']);
-  assert.equal(await count('.settings-form select'), 1, 'the theme choice');
+  assert.equal(await count('.settings-form select'), 2, 'the theme choice, and Edit Theme Color\'s ticks');
   assert.equal(await count('.settings-form input.shortcut'), 0);
 
   // A category clicked: its own fields.

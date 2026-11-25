@@ -174,6 +174,8 @@ export interface Settings {
   favoritesScope?: 'global' | 'profile';
   /** Auto-open external-domain links from Pinned tabs and Favorites in Peek (default true) */
   autoPeekPins?: boolean;
+  /** Edit Theme Color's ticks (M2.9 step 6): haptics on a trackpad (Margin.app), a click, or nothing. */
+  pickerFeedback?: 'auto' | 'haptics' | 'sound' | 'off';
   theme: string; // app/shared/ui/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }

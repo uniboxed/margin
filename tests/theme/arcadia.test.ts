@@ -357,6 +357,8 @@ for (const [name, engine] of ENGINES) {
         const f = await form();
         assert.deepEqual(f.select, [
           ['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']],
+          // (Edit Theme Color's ticks: a browser's page plays no haptics, so no Haptics only.)
+          ['auto', ['Automatic: a click', 'A click', 'Off']],
           ['global', ['Global across Spaces', 'Per browser profile']],
         ]);
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');

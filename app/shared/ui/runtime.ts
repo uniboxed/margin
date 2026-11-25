@@ -42,6 +42,7 @@ import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
 import { installBackgroundPicker } from './behaviors/background-picker.ts';
+import { createTickFeedback, feedbackSetting } from './picker/feedback.ts';
 import { pickerItemIds } from './picker/view.ts';
 import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
@@ -978,6 +979,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     return width && root.offsetWidth ? root.offsetWidth / width : 1;
   };
 
+  // Edit Theme Color's ticks (M2.9 step 6, ui/picker/feedback.ts): a haptic or a click, as the setting and the device
+  // the host says the gesture comes from (Margin.app's, on the Mac) have it.
+  const feedback = createTickFeedback({
+    win,
+    setting: () => feedbackSetting((host.getState()?.settings as { pickerFeedback?: unknown } | undefined)?.pickerFeedback),
+    device: () => host.feedbackDevice ?? null,
+    haptic: (pattern) => host.perform?.(pattern === 'level' ? 'haptic.level' : 'haptic.alignment'),
+  });
+
   // (`behaviors`: set just below, before the behaviors are installed.)
   const rt = {
     host, theme, themeInfo, view, doc, win, container, scale,
@@ -1048,7 +1058,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
     settings: installSettings(rt),
-    backgroundPicker: installBackgroundPicker(rt, { materials }),
+    backgroundPicker: installBackgroundPicker(rt, { materials, feedback }),
   });
   const list = Object.values(behaviors);
 
@@ -1137,6 +1147,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     panelRect: (): number[] | null => behaviors.backgroundPicker?.rect() ?? null,
     /** The picker's parts, for the tests (its content is closed to them). */
     pickerParts: () => behaviors.backgroundPicker?.parts() ?? null,
+    /** How many of the picker's ticks played a haptic or a click (for the tests). */
+    pickerTicks: () => feedback.played,
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
@@ -1164,6 +1176,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       for (const fn of offs.splice(0)) fn();
       view.destroy();
       background.destroy();
+      feedback.destroy();
     },
   };
 }

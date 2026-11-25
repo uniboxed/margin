@@ -393,6 +393,20 @@ func glueScenario() async {
   _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'haptic.alignment' }); return true")
   let ticked = await until(2) { c.haptics == hapticsBefore + 1 }
   check("a swipe's detent: the trackpad's alignment tick asked of Margin.app", ticked, "\(c.haptics - hapticsBefore)")
+  // Edit Theme Color's ticks (M2.9 step 6): a texture's is the level's change; the device each gesture comes from told
+  // to the page (PointerKind.swift: a touch's press a trackpad, a wheel's notch a mouse), the Mac's haptics with it.
+  let levelsBefore = c.hapticLevels
+  _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'haptic.level' }); return true")
+  let leveled = await until(2) { c.hapticLevels == levelsBefore + 1 && c.haptics == hapticsBefore + 2 }
+  check("edit theme color's texture: the trackpad's level change asked of Margin.app", leveled, "\(c.hapticLevels - levelsBefore)")
+  made.pointerSaw(PointerFacts(kind: .press, touch: true), in: c)
+  made.pointerSaw(PointerFacts(kind: .scroll), in: c)
+  let toldKinds = c.pointersSaid.suffix(2).compactMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject }
+  check("a gesture's device told to the page: a touch's press a trackpad, then a wheel's notch a mouse, the Mac's haptics with each",
+        toldKinds.map { $0["kind"] as? String ?? "" } == ["trackpad", "mouse"] && toldKinds.allSatisfy { $0["haptics"] is Bool && $0["uiSounds"] is Bool }, "\(c.pointersSaid.suffix(2))")
+  let pageHas = await waitJS(c.webView, "const d = marginApp.stats().device; return !!d && d.pointer === 'mouse' && typeof d.haptics === 'boolean'")
+  let pageDevice = await js(c.webView, "return JSON.stringify(marginApp.stats().device)") as? String ?? "?"
+  check("…the page has the last (its host's device: a mouse)", pageHas, pageDevice)
 
   // ---- its card (its item in another Margin window) and the item coming back (bug of 2026-11-20: the launcher was
   // drawn for the loader's grace between the card and the loader) ----

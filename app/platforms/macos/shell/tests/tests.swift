@@ -58,6 +58,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     systemAppearance()
     spaceAppearanceTests() // space-appearance-tests.swift: a space's light or dark, its web view's appearance
     backgroundStoreTests() // background-store-tests.swift: spaces' pictures made, kept, found, pruned and served
+    pointerKindTests() // pointer-kind-tests.swift: which device a gesture comes from (Edit Theme Color's ticks)
     passThrough()
     shortcuts()
     geometry()

@@ -725,7 +725,7 @@ ptrdiff_t margin_page_text(const MarginPage *page, uint8_t which, uint8_t *buf, 
 // What the page said (core/page/said.rs): an op and its body's JSON (a layout's: its report) → its route (`kind`: 0
 // nothing, 1 ready, 2 layout (flag taken, flag2 panes changed), 3 the card's rect (has_rect, rect), 4 hits (flag all;
 // `rects` of them), 5 chrome (has_rect: controls; drags as rects), 6 focus (flag), 7 counts (a, b), 8 the pointer's
-// wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic, 12 slide (a side; text item), 13 ask (text
+// wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic (flag: a level's change), 12 slide (a side; text item), 13 ask (text
 // `{ name, arg }`), 14 log (flag warn; text)); `text` freed with margin_buffer_free. `said_rects`: the rects it read.
 // The hello: its JSON text (freed with margin_buffer_free).
 typedef struct MarginSaid { uint8_t kind; bool flag; bool flag2; bool has_rect; int64_t a; int64_t b; MarginRect rect; size_t rects; uint8_t *text; size_t text_len; } MarginSaid;

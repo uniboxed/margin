@@ -62,6 +62,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   favoritesScope: 'global' as 'global' | 'profile',
   // Auto-open external-domain links from Pinned tabs and Favorites in Peek (OAuth/SSO excluded).
   autoPeekPins: true,
+  // Edit Theme Color's ticks (M2.9 step 6, app/shared/ui/picker/feedback.ts): 'auto' (haptics on a trackpad that
+  // plays them in Margin.app, else a click), 'haptics', 'sound' or 'off'. Read where it's used (anything else: auto).
+  pickerFeedback: 'auto' as 'auto' | 'haptics' | 'sound' | 'off',
   // What Margin looks like (themes/index.ts), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,

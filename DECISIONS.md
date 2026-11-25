@@ -9947,3 +9947,45 @@ build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
   a drop's bytes, garbage refused, and the picture served, loaded and read by the page: its `--m-bg` the picture's).
   Mutations: the late answer saved, any file sent, the theme's items left out of `picker.run`'s check, a cancel shown
   as a refusal: each fails its test.
+
+## M2.9 step 6: Edit Theme Color's ticks, a haptic or a click (`feat/space-backgrounds`, 2026-11-25)
+
+- **The page decides** (`ui/picker/feedback.ts tickPlays`, pure): auto plays Margin.app's haptic where the gesture is
+  a trackpad's and a trackpad that plays haptics is there; anything else gets a click. Haptics plays a haptic where one
+  can play (the setting's point: auto took a trackpad for a mouse), never a click. Sound plays a click. Off plays
+  nothing. With the system's interface sounds off, no click either. A detent, a step and an appearance play the
+  `.alignment` haptic (`haptic.alignment`, the swipe's). A texture plays `.levelChange` (`haptic.level`: the core's
+  `Said::Haptic { level }`, the FFI's `flag`, `PageCore.Said.haptic(level:)`). At most one tick every 20 ms.
+- **The click** is WebAudio's, generated: a sine of about 30 ms dropping away (1.7 kHz, a texture's 1.1 kHz), quiet,
+  with no file. Its audio is started only by the person's gesture (WebKit's rule): as the picker opens (it opens from
+  a click) and at each press in it, and only where a click may play (a trackpad that plays haptics makes none).
+- **The device** (`PointerKind.swift`): a mouse unless proven a trackpad. The evidence is a press whose subtype is a
+  touch, a pressure event (only a Force Touch trackpad sends one), or a scroll with precise deltas and a phase. A
+  press that isn't a touch is a mouse's, and so is a wheel's notch. A precise scroll with no phase says nothing. Each
+  press tells the page (a push before its hello is lost), and so does each scroll's start; anything else tells only a
+  change. With it go whether a trackpad that plays haptics is connected (the IORegistry's multitouch devices with
+  `ActuationSupported`, read again at most every 10 s) and the system's "Play user interface sound effects"
+  (`com.apple.sound.uiaudio.enabled`, on when absent). A local monitor of Margin's windows reads these events and
+  never consumes them, as the wheel phases' does.
+- **Not settled by the spike**: the event log from Tirth's two trackpads (the plan's step 0: a click, tap-to-click, a
+  force click, the dial scrolled) wasn't there when this was built. All three kinds of evidence count, so whichever
+  one a trackpad gives is enough. If tap-to-click gives none, it gets a click, not a haptic. The setting covers that,
+  and the manual check (TESTING.md) asks. A Magic Mouse is unchecked: its precise scrolls with phases would count as
+  a trackpad's, and the haptic would then play to no effect (silence, not a wrong sound).
+- **The setting** `pickerFeedback` (`auto | haptics | sound | off`, default auto) is the profile's, as every setting
+  is (`extension/state/model.ts`, `types/margin.d.ts`). It's read where it's used (`feedbackSetting`: anything else
+  is auto), as `favoritesScope` is. The plan's "core's twin" doesn't exist: the core keeps no setting defaults. In
+  Settings › Appearance, "Haptics only" is offered only where Margin.app plays haptics (its own window on the Mac:
+  `features.haptics`). Elsewhere a click, or nothing.
+- **Elsewhere** (a browser's extension, Windows): the host knows no device and plays no haptics, so the ticks are
+  clicks (or off).
+- **Tests**: `tests/ui-picker-feedback.test.ts` (the table: setting × device × haptics × interface sounds, each tick
+  kind; the setting and the device read; 20 ms; the audio made only where a click plays and started at the gesture;
+  no WebAudio, nothing thrown); `tests/theme/picker-feedback.test.ts` in WebKit and Chromium (the panel's appearance,
+  dial and + through the runtime: the alignment and level haptics on a trackpad, clicks with a mouse or with no
+  haptics there, nothing when off, a click with sound on a trackpad; Material's own picker's buttons the same);
+  `tests/settings-form.test.ts` (the field, its options where haptics play and where they don't, saved); the core
+  (`haptic.level` read); Swift (`pointer-kind-tests.swift`: a mouse's press and wheel notch made as CGEvents and read as
+  a mouse's, a trackpad's scroll as a trackpad's, the classifier's sequence and what it tells, the IORegistry and the
+  interface sounds read, the message); the app's e2e (`haptic.level` reaches Margin.app; a touch's press, then a notch,
+  told to the page, which has the last).

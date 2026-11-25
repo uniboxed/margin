@@ -297,7 +297,10 @@ The spike's measurements, which decide between them:
 
 **Built (step 5):** the switch's coordination is `app/shared/host/materials.ts` (on while the theme or the open panel wants it; a theme's sheet never read with it on for the panel; an ask waits for one on its way). The runtime's `materials` option carries it to the picker's behaviour, which asks before it makes the panel and gives it back as it closes, asks nothing while Settings is shown or with more contrast, and closes if Settings comes while it holds it. The panel's CSS: `@supports (-apple-visual-effect: …) { @media not (prefers-contrast: more) { .panel { background: none; box-shadow: none; overflow: hidden; -apple-visual-effect: -apple-system-glass-material } } }`. No Swift change but words: the `appearance` message was already the switch. DECISIONS.md "M2.9 step 5".
 
-### 6. Feedback: haptics or sound
+### 6. Feedback: haptics or sound (built: step 6)
+
+Built as below, with two differences (DECISIONS.md "M2.9 step 6"). The spike's event log wasn't there, so every kind
+of evidence counts. The setting is read where it's used, since the core has no settings twin.
 
 - **The page decides, natively informed.** The Mac side tells the picker which device the current gesture comes from (`pointerKind: "trackpad" | "mouse"`). The picker then either:
   - sends `perform('haptic.alignment')` (the existing path; detents use `.alignment`, a texture change `.levelChange` through a new `haptic.level`, the `Said` enum, FFI code and `said()` case); or
