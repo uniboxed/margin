@@ -1111,7 +1111,30 @@ final class HostEngine {
         parkWoken()
         return woken[bundleId]?.seen ?? 0
     }
-    func appRuns(bundleId: String) -> Bool? { !sys.running(bundleId: bundleId).isEmpty }
+    // Whether an app of this bundle runs. LaunchServices' list can leave out an app that runs on (2026-11-25 12:49:44: the
+    // Safari Margin had started 5 s before missing from it at one look while its process ran on for 39 s; the session took
+    // it for quit and gave up its preparation, so the next pick of a Safari tab waited 14 s for a link and Safari was
+    // started over): an app Margin started counts while its process is there (`processRuns`, the second read `appQuit`
+    // makes before it takes an app for quit).
+    func appRuns(bundleId: String) -> Bool? {
+        if !sys.running(bundleId: bundleId).isEmpty { return true }
+        return launchedPid(bundleId: bundleId).map { sys.processRuns(pid: $0) } ?? false
+    }
+    // The full-screen Spaces a running app of this bundle owns, by the window server's list: Margin's own left out, and any
+    // with a window Margin hosts in it (one being made ready, in a Space of its own for a moment).
+    func ownFullScreenSpaces(bundleId: String) -> Set<UInt64>? {
+        guard let owners = sys.fullScreenSpaceOwners() else { return nil }
+        var pids = Set(sys.running(bundleId: bundleId).map(\.pid))
+        if let pid = launchedPid(bundleId: bundleId) { pids.insert(pid) }
+        let hostedIn = Set(hosts.values.flatMap { sys.spaces(window: $0.window) ?? [] })
+        return Set(owners.filter { pids.contains($0.value) && $0.key != marginSpace && !hostedIn.contains($0.key) }.keys)
+    }
+    // Which of these Spaces the window server still lists (an emptied one stays listed, owned by none, until macOS is done
+    // taking it down).
+    func fullScreenSpacesListed(_ spaces: Set<UInt64>) -> Set<UInt64>? {
+        guard let listed = sys.listedFullScreenSpaces() else { return nil }
+        return spaces.intersection(listed)
+    }
     private func parkWoken() {
         guard !woken.isEmpty, !quitting else { return }
         for bundle in woken.keys.sorted() {

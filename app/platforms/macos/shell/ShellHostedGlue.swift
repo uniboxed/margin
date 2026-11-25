@@ -327,7 +327,7 @@ extension Shell {
         if appKeys != shortcuts.guardsAppKeys { Diagnostics.note("a hosted app's ⌘W, ⌘M, ⌘H, ⌃⌘F \(appKeys ? "are Margin's while it's in front" : "let go")") }
         shortcuts.setAppKeyGuard(active: appKeys)
         // (Its prompt up and neither Margin nor an app it hosts in front any more: never left up.)
-        if !active, quitPrompt != nil { quitPrompt?.choose(.cancel) }
+        if !active, quitPrompt != nil { quitPrompt?.choose(.left) }
     }
 
     // A key of Margin's while hosting: to the Margin window hosting (else the front one), whose page does it as its own

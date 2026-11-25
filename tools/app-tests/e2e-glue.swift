@@ -1495,12 +1495,14 @@ func glueScenario() async {
         && said == "Margin will close 2 open tabs and quit 2 apps it opened. Your tabs stay in their spaces, but unsaved work may be lost." && !said.contains("example") && !said.contains("TextEdit") && !said.contains("Calculator"), said)
   if let escape = QuitPrompt.choice(keyCode: 53, command: false) { shell.quitPrompt?.choose(escape) }
   shell.track()
-  check("quit: Cancel (Escape): the prompt gone, everything as it was, ⌘Q still Margin's first", shell.quitPrompt == nil && untouched() && shell.shortcuts.guardsQuit && quit.asks)
+  check("quit: Cancel (Escape): the prompt gone, everything as it was, ⌘Q still Margin's first; a cancel that gives the keys back",
+        shell.quitPrompt == nil && untouched() && shell.shortcuts.guardsQuit && quit.asks && shell.quitChoices.last == .cancel, "\(shell.quitChoices)")
   keys.press("Alt+Meta+KeyQ")
   check("quit: ⌥⌘Q the same: the prompt", shell.quitPrompt?.isUp == true && untouched())
   apps.bringToFront(1) // (an app Margin doesn't host)
   shell.track()
-  check("quit: the prompt up and another app comes to the front: taken down (never left up), nothing quit", shell.quitPrompt == nil && untouched())
+  check("quit: the prompt up and another app comes to the front: taken down (never left up), nothing quit, nothing given back (the hosted app activated would bring Margin's Space back over the one the person went to)",
+        shell.quitPrompt == nil && untouched() && shell.quitChoices.last == .left, "\(shell.quitChoices)")
   keys.press("Meta+KeyQ")
   check("quit: an app Margin doesn't host in front: ⌘Q isn't Margin's (not held, no prompt)", !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && shell.quitPrompt == nil && untouched())
   apps.bringToFront(hostedPid)

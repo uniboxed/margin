@@ -93,6 +93,10 @@ protocol HostedEngine: AnyObject {
     // Those windows parked out of sight and still open (their private Space is kept until there are none).
     func wokenParked(bundleId: String) -> [Int]
     func appRuns(bundleId: String) -> Bool?
+    // The full-screen Spaces a running app of this bundle owns (not Margin's), and which of some Spaces the window server
+    // still lists (HostEngine): a profile's restored windows' Spaces waited for as they're closed (SafariWaker). Nil: unread.
+    func ownFullScreenSpaces(bundleId: String) -> Set<UInt64>?
+    func fullScreenSpacesListed(_ spaces: Set<UInt64>) -> Set<UInt64>?
     // Margin quits (HostEngine `quitAll`): nothing is woken, started or pressed any more.
     var quitting: Bool { get }
     // A drag of the sidebar's edge began (true) or is over (false): true back, the one shown follows it live (HostEngine
@@ -219,6 +223,8 @@ extension HostedEngine {
     func wokenWindows(bundleId: String) -> Int { 0 }
     func wokenParked(bundleId: String) -> [Int] { [] }
     func appRuns(bundleId: String) -> Bool? { nil }
+    func ownFullScreenSpaces(bundleId: String) -> Set<UInt64>? { nil }
+    func fullScreenSpacesListed(_ spaces: Set<UInt64>) -> Set<UInt64>? { nil }
     var quitting: Bool { false }
     func dragging(_ on: Bool) -> Bool { false }
     func follow(_ placement: HostPlacement) {}
@@ -419,6 +425,7 @@ final class HostedSession {
         var pictureWait = 0.4 // a web item's picture for its card in the other window, asked before its window leaves: no longer
         var wokenLate = 3.0 // closed this soon after the link, the profile's windows that came since are the press's too
         var wokenGrace = 5.0 // a window opened to wake a profile, still open this long after its copy linked with no request under way: closed
+        var restoredWait = 3.0 // a Safari Margin started: its restored windows of a profile just linked, closed and waited for (with their full-screen Spaces) at most this long
         var cycleWindow = 1.0 // (Tirth, 2026-11-20) a pick this soon after the next/previous-tab key in its window: a cycle's
         var cycleHold = 0.35 // ...an app not running yet held this long before it's started: one only passed over is never started
         var paneIdle = 900.0 // (docs/PEEK-SPLIT.md §4) a split's pane window of a profile unused this long: closed

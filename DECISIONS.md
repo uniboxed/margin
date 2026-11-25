@@ -10636,3 +10636,50 @@ failing first (the old code in a copy of the tree):
   besides Xcode's own build folders as before. The copies stay on disk; opening one makes it known again.
 - Done by hand that day: the four builds unregistered and deleted, and 16 other scratch Margin.app records
   unregistered; `pluginkit` lists one copy.
+
+## The quit prompt and a Safari start that went wrong (2026-11-25)
+
+What Tirth saw (a screen recording, and Margin's log):
+- **The quit prompt pulled him back.** He pressed ⌘Q, then swiped to another full-screen Space with the prompt up. A
+  second later he was back in Margin.
+- **Mail stayed on screen.** After reopening Margin, he moved from Mail to a Safari tab. Mail stayed for the next
+  presses, another Safari window was made, and after a while it fixed itself.
+
+### Causes
+
+- **The quit prompt.** Margin's keys were let go as another app came to the front, and that took the prompt down as a
+  Cancel. A Cancel gives the keys back to the hosted app (`keysBackToShown`). That activated the hosted app, and macOS
+  brought Margin's Space back over the one he had swiped to.
+- **Safari's start, a chain of three failures.**
+  1. The two Safari links had gone down at 12:35, when Safari unloaded Margin's extension as its other registered
+     copies were removed (see "One copy of Margin's extension known to the system"). So his ⌘Q at 12:44 couldn't
+     have the copies close Margin's two Safari windows, which were left in full screen.
+  2. At the next launch (12:49:39), Safari restored them into a full-screen Space of their own. 3.8 s into waiting
+     for the profile's link, the waker took Safari for quit (`appRuns`: LaunchServices' list missed it at one look,
+     while its process ran on for 39 s) and gave up preparing it.
+  3. The pick of a Safari tab from Mail then waited 14 s for a link, while Mail stayed on screen. Once the profile
+     linked, the poll's sweep closed the restored windows at the same moment Margin asked for its own. Safari opened
+     Margin's window in the restored windows' full-screen Space, which was still there, and it never got a
+     full-screen Space of its own within 6 s. The open failed, and Safari was quit and started again.
+
+### The rules (the Mac's mechanism, in app/platforms/macos/shell; the keys gate stays margin-core's)
+
+- **QuitPrompt** has a fourth choice, `left`: cancelled because something else took the keys or the front. That means
+  a press in another app's window, Margin's keys let go because another app is in front, or the prompt's key taken.
+  Nothing is given back then. A Cancel from the prompt itself gives the keys back as before: its button, Escape, or a
+  press in one of Margin's windows.
+- **HostEngine `appRuns`.** An app Margin started counts as running while its process is there (`processRuns`), even
+  if LaunchServices' list leaves it out. This is the same second read `appQuit` makes before it takes an app for quit.
+- **SafariWaker `linked`.** In a Safari Margin started, when Safari owns a full-screen Space of its own at a profile's
+  link (one with no window Margin hosts), that profile's restored windows are closed before it's said linked. Margin
+  waits until they're gone from its copy's windows and their Space is gone from the window server's list
+  (`restoredWait`, 3 s at most). Only then is Margin's own window asked for. With no such Space, nothing changes: the
+  poll's sweep closes them as before.
+
+### Tests, each failing with the old behaviour put back
+
+- tests.swift: the prompt's key taken gives `left`.
+- host-tests.swift: a Safari missing from LaunchServices' list while its process runs still runs.
+- hosted-tests.swift: restored windows and their full-screen Space are closed and gone before linked; with no such
+  Space, the sweep closes them as before.
+- e2e-glue.swift: another app in front gives `left`; Escape gives a `cancel`.

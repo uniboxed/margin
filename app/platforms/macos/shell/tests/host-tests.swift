@@ -4640,6 +4640,23 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         hostRun { await e.quitAll() }
     }
     do {
+        // A Safari Margin started, left out of LaunchServices' list at one look while its process runs on (2026-11-25
+        // 12:49:44): it still runs (the session's wait for its profile's link mustn't take it for quit); once its process
+        // is gone, it doesn't.
+        let (w, e, _) = world()
+        let started = hostRun { await e.start(bundleId: "com.apple.Safari") }
+        let pid = started??.pid ?? 0
+        w.lsGone.insert(pid)
+        let listed = w.running(bundleId: "com.apple.Safari").isEmpty
+        let runs = e.appRuns(bundleId: "com.apple.Safari")
+        w.apps[pid] = nil
+        let gone = e.appRuns(bundleId: "com.apple.Safari")
+        check("a Safari Margin started, missing from LaunchServices' list while its process runs: it runs; its process gone: it doesn't",
+              pid != 0 && listed && runs == true && gone == false, "pid \(pid) listed-empty \(listed) runs \(String(describing: runs)) gone \(String(describing: gone))")
+        w.lsGone.remove(pid)
+        hostRun { await e.quitAll() }
+    }
+    do {
         // Looked for by the session while it waits for the profile's link (an open under way holds the poll off: the woken
         // window sat in Margin's Space over the page area for the 15 s the link took, 2026-11-17 20:47): parked at that
         // look, and counted (the press's evidence that it took). Nothing counted before the window is there.

@@ -16,7 +16,11 @@
 
 import AppKit
 
-enum QuitChoice: Equatable { case quit, always, cancel }
+// Quit, Always quit, Cancel (its own key or button, or a press in one of Margin's windows: the keys go back where they
+// were), or `left`: cancelled because something else took the keys or the front (a press in another app's window, another
+// app in front, the prompt's key taken). Nothing is given back then: whatever took the keys has them, and giving them to
+// the hosted app activated it, which brought Margin's Space back over the Space the person had swiped to (2026-11-25).
+enum QuitChoice: Equatable { case quit, always, cancel, left }
 
 // The prompt's colours, each for light and dark, resolved by the appearance it's drawn in.
 enum QuitPromptStyle {
@@ -120,7 +124,7 @@ final class QuitPrompt: NSPanel {
     private var monitors: [Any] = []
     private func watchPresses() {
         let presses: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: presses, handler: { [weak self] _ in MainActor.assumeIsolated { self?.choose(.cancel) } }) {
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: presses, handler: { [weak self] _ in MainActor.assumeIsolated { self?.choose(.left) } }) {
             monitors.append(global)
         }
         if let local = NSEvent.addLocalMonitorForEvents(matching: presses, handler: { [weak self] event in
@@ -142,10 +146,10 @@ final class QuitPrompt: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { choose(.cancel) }
 
-    // Clicked away (the hosted app's window, Margin's own, another app): cancelled, never left up.
+    // Its keys taken (another app's window, or Margin's own, a press there already chose): cancelled, never left up.
     override func resignKey() {
         super.resignKey()
-        if !chosen { choose(.cancel) }
+        if !chosen { choose(.left) }
     }
 }
 

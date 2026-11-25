@@ -236,6 +236,16 @@ final class StubLaunchEngine: HostedEngine {
         return presses * windowsPerPress
     }
     func appRuns(bundleId: String) -> Bool? { runs }
+    // (Safari's own full-screen Spaces, and how many more looks one stays listed once it's emptied: macOS taking it down.)
+    var fullScreen: Set<UInt64>?
+    var listedLooks = 0
+    private(set) var listedReads = 0
+    func ownFullScreenSpaces(bundleId: String) -> Set<UInt64>? { fullScreen }
+    func fullScreenSpacesListed(_ spaces: Set<UInt64>) -> Set<UInt64>? {
+        listedReads += 1
+        if listedLooks > 0 { listedLooks -= 1; return spaces }
+        return []
+    }
     func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult { .failed(.margin, "stub") }
     func show(_ id: HostID) async -> HostResult { .failed(.margin, "stub") }
     func close(_ id: HostID) async {}
@@ -287,6 +297,55 @@ func restoredSweepTests(_ library: Library) {
     s.sweepRestoredSafariWindows()
     hostRun { for _ in 0..<5 { await Task.yield() } }
     check("hosted sweep: off: nothing closed", closes().isEmpty)
+
+    // A Safari Margin started with a full-screen Space of its own as a profile links (its windows restored in full screen,
+    // left so by a quit with the link down): the profile's restored windows closed, gone from its copy's windows and that
+    // Space gone from the window server's list, before it's said linked, so Margin's own window is asked only then. Left to
+    // the poll's sweep, Safari opened Margin's window in that Space, still there, and it never got one of its own
+    // (2026-11-25 12:50:14-22).
+    do {
+        let stub = StubLaunchEngine()
+        stub.safariPid = 4242
+        stub.fullScreen = [3327]
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"]
+        links.restored = ["s-default": [96]]
+        links.windowsOf = ["s-default": [96]]
+        var order: [String] = []
+        links.onCloseWindow = { id in
+            order.append("close \(id)")
+            links.windowsOf["s-default"]?.removeAll { $0 == id }
+            stub.listedLooks = 3 // (listed a while longer as macOS takes it down)
+        }
+        let s = HostedSession(library: library, engine: stub, links: links)
+        s.sleep = { _ in await Task.yield() }
+        let linked = hostRun { await s.safariLinked("s-default") }
+        order.append("linked")
+        check("hosted restored: a full-screen Space of Safari's at the link: its restored windows closed and gone, the Space gone, then linked",
+              linked == true && order == ["close 96", "linked"] && stub.listedReads >= 4 && stub.listedLooks == 0, "\(order) reads \(stub.listedReads)")
+        links.asked = []
+        s.sweepRestoredSafariWindows()
+        hostRun { for _ in 0..<5 { await Task.yield() } }
+        check("hosted restored: the poll's sweep after it closes nothing again (once per link)", !links.asked.contains { $0.type == "closeWindow" })
+    }
+    do {
+        // None such (the usual case): nothing closed or waited for before it's said linked; the poll's sweep closes them.
+        let stub = StubLaunchEngine()
+        stub.safariPid = 4242
+        stub.fullScreen = []
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"]
+        links.restored = ["s-default": [96]]
+        links.windowsOf = ["s-default": [96]]
+        let s = HostedSession(library: library, engine: stub, links: links)
+        s.sleep = { _ in await Task.yield() }
+        let linked = hostRun { await s.safariLinked("s-default") }
+        let before = links.asked.filter { $0.type == "closeWindow" }.count
+        s.sweepRestoredSafariWindows()
+        hostRun { for _ in 0..<5 { await Task.yield() } }
+        check("hosted restored: no full-screen Space of Safari's: said linked with nothing closed; the poll's sweep closes its restored windows as before",
+              linked == true && before == 0 && links.asked.filter { $0.type == "closeWindow" }.map { int($0.payload["windowId"]) } == [96], "\(links.asked.map(\.type))")
+    }
 }
 
 // The default browser made ready out of sight at Margin's launch (HostedSession.prepareBrowser, Tirth 2026-11-16): the
