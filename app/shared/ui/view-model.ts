@@ -148,6 +148,8 @@ export type SpaceChip = {
   id: string, name: string, emoji: string, color: string, abbr: string,
   index: number, number: number, active: boolean, tabCount: number,
   label: string,
+  /** No icon (its emoji removed, M2.10): Arc draws such a space as a dot. */
+  iconless: boolean,
 };
 export type SpaceView = SpaceChip & {
   pinned: (FolderRow | PinRow)[], pinnedFlat: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
@@ -430,7 +432,7 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', iconless: true, pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
@@ -566,6 +568,7 @@ function fresh(input: ViewModelInput): ViewModel {
     active: s.id === view.spaceId,
     tabCount: counts.get(s.id) ?? 0,
     label: s.name ?? '',
+    iconless: !(s.emoji ?? '').trim(),
   }));
   const chip = spaces.find((s) => s.active) ?? spaces[0];
   const space: SpaceView = {

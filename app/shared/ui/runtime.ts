@@ -817,7 +817,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (typeof arg.color === 'string') pending.spaces.set(arg.space, { patch: { color: arg.color }, until: Date.now() + PENDING_MS });
         break;
       case 'space.setName': case 'space.update': {
-        const patch = name === 'space.setName' ? { name: arg.name } : Object.fromEntries(Object.entries({ name: arg.name, emoji: arg.emoji, color: arg.color }).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v.trim()]));
+        const patch: Record<string, string> = name === 'space.setName' ? { name: arg.name } : Object.fromEntries(Object.entries({ name: arg.name, emoji: arg.emoji, color: arg.color }).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v.trim()]));
+        // (Its icon removed, `emoji: null`: shown at once as none.)
+        if (name === 'space.update' && arg.emoji === null) patch.emoji = '';
         if (Object.keys(patch).length) pending.spaces.set(arg.space, { patch, until: Date.now() + PENDING_MS });
         break;
       }

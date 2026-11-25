@@ -10643,3 +10643,24 @@ Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the runnin
   between 300 and 310 as Arc's; side-by-side screenshots of both modes and their hovers. tests/theme/arcadia.test.ts
   "the space switcher" (fails with `m-fit` taken off: checked), tests/ui-behaviors.test.ts (`overflows`).
 - **Not yet**: a space with no icon as a dot (step 5), the tooltip (step 6).
+
+## M2.10 step 5: a space without an icon, a dot (`feat/arc-sidebar`, 2026-11-25)
+
+- **Tirth's ask**: Arc lets a space's icon be removed, and such a space shows as a dot in the switcher.
+- **The rule** (both copies, the same commit, the vectors re-recorded: tests/fixtures/library/README.md): a space's
+  update with `emoji: null` removes its icon, stored as `''`; a blank, missing or non-string emoji leaves it as it was
+  (as before: the editor and every caller that sends one unchanged keep their meaning). extension/state/model.ts
+  `updateSpace` (the reference, through library.ts `renameSpace`) and margin-core `library/model/spaces.rs`
+  `update_space`; tests/library.test.ts's new case recorded into `recorded-library.json`, and one generated sequence
+  (`generated-08.json`) that happened to send `emoji: null` now removes it. margin-core answers every vector
+  (`actions_tests.rs`, and the Swift suite through the FFI). A new space still gets ✨.
+- **The UI**: `space.update` takes `emoji: null` (`emoji?`); the space editor sends null when its icon field is left
+  empty; the space's menu has "Remove Icon" while it has one (its name, colour and theme sent as they are: the action
+  takes them all; its theme as the editor keeps it); shown at once, as a rename is. The view model's chips and space
+  have `iconless` (the README).
+- **Arcadia**: an iconless space's chip is a dot, roomy or crowded, and stays one under the pointer (nothing else to
+  show); the title row shows a dot in the icon's place (Arc's title row for such a space wasn't measured: to check in the
+  second session).
+- **Tests**: tests/library.test.ts (removed, kept by a blank one, given back), tests/ui-view-model.test.ts
+  (`iconless`), tests/ui-behaviors.test.ts (the menu's item and its action passing the checks),
+  tests/theme/arcadia.test.ts (the dot with the icons roomy; "Remove Icon" sends `renameSpace` with `emoji: null`).

@@ -614,6 +614,28 @@ for (const [engineName, engine] of ENGINES) {
         await at(260);
       });
 
+      await t.test('a space with its icon removed: a dot in the switcher even when the icons fit; "Remove Icon" in its menu', async () => {
+        await ev(() => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, spaces: rt.mock.state.spaces.map((sp: any, i: number) => (i === 1 ? { ...sp, emoji: '' } : sp)), settings: { ...rt.mock.state.settings, themes: { arcadia: { sidebarWidth: 500 } } } }; rt.host.setState(rt.mock.state); });
+        await page.waitForTimeout(80);
+        await away();
+        const chip = await ev(() => { const c = document.querySelectorAll('.spaces .chip')[1]; return { iconless: c.classList.contains('iconless'), dot: getComputedStyle(c, '::after').opacity, icon: getComputedStyle(c.querySelector('.chip-icon')!).display, crowded: c.parentElement!.hasAttribute('m-crowded') }; });
+        assert.deepEqual(chip, { iconless: true, dot: '1', icon: 'none', crowded: false }, 'a dot, the others\' icons');
+        // Its menu's "Remove Icon": the space's emoji sent as null (the model stores none).
+        const front = (await ev(() => T.rtVmFull())).space;
+        const title = (await rect('.space-title'))!;
+        await page.mouse.move(title.x, title.y);
+        const more = (await rect('.title-more'))!;
+        await page.mouse.click(more.x, more.y);
+        await page.waitForTimeout(40);
+        const item = await ev(() => T.rtBoxText('.menu-item', 'Remove Icon'));
+        assert.ok(item, 'offered while it has one');
+        await page.mouse.click(item!.x, item!.y);
+        await page.waitForTimeout(40);
+        const sent = (await ev(() => T.rtSent())).filter(([k]) => k === 'renameSpace').at(-1);
+        assert.deepEqual([sent?.[1].spaceId, sent?.[1].emoji], [front, null]);
+        await ev(() => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, settings: { ...rt.mock.state.settings, themes: { arcadia: { sidebarWidth: 260 } } } }; rt.host.setState(rt.mock.state); });
+      });
+
       await t.test('the inert controls do nothing; the space\'s ••• opens its menu under it', async () => {
         const before = [await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)];
         const title = (await rect('.space-title'))!;

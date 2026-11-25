@@ -68,7 +68,9 @@ export function installEditor(rt: Rt) {
       const wanted = e.theme ?? spaceOf(e.spaceId!)?.theme ?? null;
       const theme = wanted && themeChoices((rt.host.platform as any)?.features).some((c) => c.id === wanted) ? wanted : null;
       close();
-      return rt.dispatch('space.update', { space: e.spaceId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null, theme }, 'behavior');
+      // (Its icon cleared: removed, Arc's space with none, a dot in the switcher; M2.10.)
+      const icon = [...String(emoji).trim()].slice(0, 8).join('');
+      return rt.dispatch('space.update', { space: e.spaceId, name: String(name).slice(0, 40), emoji: icon || null, color: HEX.test(e.color) ? e.color : null, theme }, 'behavior');
     },
     cancel: () => close(),
     remove() {

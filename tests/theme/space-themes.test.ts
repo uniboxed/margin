@@ -51,9 +51,10 @@ for (const [engineName, engine] of [['webkit', webkit], ['chromium', chromium]] 
         await page.evaluate(() => T.rtSetUi({ menu: { kind: 'space', id: 'work', x: 40, y: 80 } } as any));
         const labels = (await page.evaluate(() => T.rtVmFull().menu)) ?? [];
         assert.deepEqual(labels.filter((l: string) => l.startsWith('Theme:')), ['Theme: Arcadia ✓', 'Theme: Neubrutalism', 'Theme: Pixel', 'Theme: Liquid Glass', 'Theme: Material'], JSON.stringify(labels));
-        // (Its items: Edit Space… i0, Rename Space i1, Edit Theme Color… i2, then the themes from i3: Pixel is i5.)
-        assert.equal(labels[6], 'Theme: Pixel');
-        await page.evaluate(() => T.rtDispatch('menu.run', 'i5'));
+        // (Its items: Edit Space… i0, Rename Space i1, Remove Icon i2, Edit Theme Color… i3, then the themes from i4:
+        // Pixel is i6.)
+        assert.equal(labels[7], 'Theme: Pixel');
+        await page.evaluate(() => T.rtDispatch('menu.run', 'i6'));
         assert.deepEqual(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpaceTheme').at(-1)), ['setSpaceTheme', { spaceId: 'work', theme: 'pixel' }]);
         assert.deepEqual(await page.evaluate(() => T.rtRefused()), []);
         // Where each space's theme isn't drawn (a browser's overlay): no theme row, the editor as before.

@@ -155,6 +155,13 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       if (!sp) return [];
       item('Edit Space…', 'space.edit', sp.id);
       item('Rename Space', 'space.rename', sp.id);
+      // (Its icon removed: Arc's space with none, a dot in the switcher; M2.10. Edit Space… gives one back.)
+      // (Its name, colour and theme as they are: `space.update` takes them all; its theme kept as the editor keeps it,
+      // none when the one it had isn't there any more.)
+      if (sp.emoji) {
+        const own = sp.theme && themeChoices(features).some((c) => c.id === sp.theme) ? sp.theme : null;
+        item('Remove Icon', 'space.update', { space: sp.id, name: sp.name || 'Space', emoji: null, color: /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(sp.color ?? '') ? sp.color : null, theme: own });
+      }
       // Its background (M2.9: ui/behaviors/background-picker.ts), as Arc names it.
       item('Edit Theme Color…', 'space.editBackground', sp.id);
       // Its theme (ui/space-theme.ts), the one it's drawn with checked: where each space's is drawn.

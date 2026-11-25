@@ -382,7 +382,7 @@ host. Immutable: rows that didn't change are the same objects.
 
 - `window`: `id`, `mode`, `focused`, `sidebar` (`open`, `hidden`, `peek`),
   `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`.
-- `space`: `id`, `name`, `emoji`, `color`, `abbr`, `index` (from 0),
+- `space`: `id`, `name`, `emoji` (`''` with its icon removed: `iconless`), `color`, `abbr`, `index` (from 0),
   `number` (its place counted from 1: Pixel's "WORLD 2-1"), `tabCount`,
   `pinned` (top-level folders and loose pins in order; `isFolder` tells them apart),
   `pinnedFlat` (pre-order flattened list of all visible folders up to depth 4 and pins, each with `depth`),
@@ -422,7 +422,7 @@ host. Immutable: rows that didn't change are the same objects.
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
 - `space.tabCount` counts the space's tabs open in this window and its tabs
   that aren't open.
-- `spaces[]` (chips: `active` and `number` too; `label`, the name).
+- `spaces[]` (chips: `active` and `number` too; `label`, the name; `iconless`, its icon removed: Arc draws it as a dot).
 - `tab` (the one in front), `archive[]`
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `spaceColor` (the badge's space's color, `''` for Archived,

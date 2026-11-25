@@ -379,3 +379,12 @@ test('the page card\'s loader: the opening item\'s icon (the app\'s, Safari\'s f
     'its item in another Margin window: its card\'s words, the app\'s icon');
   assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, { ...state, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'data:text/html;base64,PHA+' }] })?.icon, null, 'never anything but a data: image');
 });
+
+// A space with its icon removed (M2.10: `emoji` ''; Arc draws it as a dot): `iconless`, on its chip and as the space.
+test('view model: a space without an icon is iconless', () => {
+  const s = smallState();
+  const bare = { ...s, spaces: s.spaces.map((sp, i) => (i === 1 ? { ...sp, emoji: '' } : i === 2 ? { ...sp, emoji: '  ' } : sp)) };
+  const model = buildViewModel({ state: bare, ui: { windowId: W } });
+  assert.deepEqual(model.spaces.map((c) => c.iconless), model.spaces.map((_, i) => i === 1 || i === 2));
+  assert.equal(model.space.iconless, model.spaces.find((c) => c.active)!.iconless);
+});

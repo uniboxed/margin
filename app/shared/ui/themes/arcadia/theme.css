@@ -696,6 +696,13 @@
 .margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active .chip-icon { opacity: 0; transform: scale(0.3); }
 .margin-sidebar .spaces[m-crowded] .chip:not(.active):not(:hover)::after,
 .margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active::after { opacity: 1; transform: none; }
+/* A space with no icon (its emoji removed: the view model's iconless): a dot, roomy or crowded; under the pointer too
+   (it has nothing else to show). In the title row, a dot in the icon's place. */
+.margin-sidebar .chip.iconless .chip-icon { display: none; }
+.margin-sidebar .chip.iconless::after { opacity: 1; transform: none; }
+.margin-sidebar .space-title.iconless .emoji { display: grid; place-items: center; }
+.margin-sidebar .space-title.iconless .emoji::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--fg) 30%, transparent); }
+.margin-sidebar .space-title.iconless:hover .emoji { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .margin-sidebar .chip-icon, .margin-sidebar .chip::after { transition: none; }
 }

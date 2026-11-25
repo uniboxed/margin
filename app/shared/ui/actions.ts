@@ -75,7 +75,8 @@ export const ACTIONS = Object.freeze({
   'space.edit': 'space',
   'space.rename': 'space',
   'space.setName': Object.freeze({ space: 'space', name: 'name' }),
-  'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji', color: 'hex?', theme: 'theme?' }),
+  // (`emoji: null` removes the space's icon: Arc's space with none, a dot in the switcher; M2.10.)
+  'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji?', color: 'hex?', theme: 'theme?' }),
   // A space's theme (ui/space-theme.ts; null: none, the profile's): its menu's Theme items, Settings' Theme.
   'space.setTheme': Object.freeze({ space: 'space', theme: 'theme?' }),
   // A space's background (M2.9: Edit Theme Color, ui/behaviors/background-picker.ts): the picker opened for it, and

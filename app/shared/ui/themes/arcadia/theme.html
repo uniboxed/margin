@@ -82,7 +82,7 @@
     <div class="space-pane">
       <!-- The space's name. Under the pointer (Arc's): a pill, a chevron in the icon's place (collapsing the pinned
            tabs: not in Margin yet, inert) and the space's menu at the right. -->
-      <div class="space-title">
+      <div class="space-title" m-class:iconless="{{space.iconless}}">
         <span class="emoji" aria-hidden="true">{{space.emoji}}</span>
         <button class="title-chevron inert" title="Collapse pinned tabs (coming soon)" aria-label="Collapse pinned tabs (coming soon)" aria-disabled="true">
           <svg class="line-icon" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.25 7 8.75l3.5-3.5"></path></svg>
@@ -239,7 +239,7 @@
            m-crowded) the space in front's icon and the others as dots; a dot under the pointer shows its icon. -->
       <nav class="spaces" aria-label="Spaces" m-fit="items">
         <m-for each="spaces" as="s">
-          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></button>
+          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:iconless="{{s.iconless}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></button>
         </m-for>
       </nav>
       <button class="bar-button add" title="New folder or space" aria-label="New folder or space" m-action="menu.open" m-arg="add">
