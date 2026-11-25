@@ -249,6 +249,23 @@ impl PassThrough {
     }
 }
 
+/// Whether the pointer at `at` goes through a Margin window whose content is at `content` (to what it hosts: the slot's
+/// answer), with these edge rules. Windowed, the window's own buttons are the base window's, under the panel where the
+/// theme draws its window controls (`controls`, in the content): through there too. The pointer's way on each move
+/// ([`PagePointer::passes`]) and a press's (page/press.rs `press_way`, the Mac's press tap reading a copy of the slot).
+pub fn passes<E: Edges>(
+    at: Point,
+    content: Rect,
+    slot: Option<SlotRef<'_>>,
+    controls: Option<Rect>,
+    full_screen: bool,
+) -> bool {
+    let c = E::standard(&content);
+    let local = Point::new(at.x - c.min_x(), at.y - c.min_y());
+    let over_buttons = !full_screen && controls.is_some_and(|b| E::contains(&b, local));
+    over_buttons || PassThrough::gets::<E>(at, slot)
+}
+
 /// Where the pointer goes through to what one of the Mac's Margin windows hosts (MarginWindowController's
 /// `placeHole` and `updateHoles`): one host's hole, or several visible hosts' holes (a split's panes, a card).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -762,10 +779,12 @@ impl PagePointer {
     /// Whether the pointer at `at` goes through Margin's panel (to what it hosts). Windowed, the window's buttons are
     /// the base's, under the panel where the theme draws its window controls.
     pub fn passes(&self, at: Point, content: Rect) -> bool {
-        let c = Cg::standard(&content);
-        let local = Point::new(at.x - c.min_x(), at.y - c.min_y());
-        let over_buttons = !self.full_screen && self.controls.is_some_and(|b| Cg::contains(&b, local));
-        over_buttons || self.gets(at)
+        passes::<Cg>(at, content, self.slot.view(), self.controls, self.full_screen)
+    }
+
+    /// The theme's window controls (in the content; None: none) and whether the window is in full screen, as set.
+    pub fn buttons(&self) -> (Option<Rect>, bool) {
+        (self.controls, self.full_screen)
     }
 
     /// The slot changed under a still pointer at `at` with no button held: its way decided again (true: through).

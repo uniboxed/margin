@@ -79,7 +79,7 @@ final class PageCore {
         case peekRect(CGRect?)
         case hits([CGRect], all: Bool)
         case chrome(controls: CGRect?, drags: [CGRect])
-        case focus(Bool)
+        case focus(Bool, was: Bool) // a field of Margin's wants the keys (kept by the core), and whether one did before
         case counts(spaces: Int, items: Int)
         case resizing(on: Bool, divider: Bool)
         case slide(item: String, side: PaneSide)
@@ -111,7 +111,7 @@ final class PageCore {
         case 3: return .peekRect(rect)
         case 4: return .hits(listed(), all: out.flag)
         case 5: return .chrome(controls: rect, drags: listed())
-        case 6: return .focus(out.flag)
+        case 6: return .focus(out.flag, was: out.flag2)
         case 7: return .counts(spaces: Int(out.a), items: Int(out.b))
         case 8: return .want
         case 9: return .fullScreen
@@ -229,6 +229,10 @@ final class PageCore {
     func setStuck(_ why: String?) -> Bool { withText(why) { margin_page_set_stuck(page, $0, $1, $2) } }
     func setCopySlow(_ on: Bool) -> Bool { margin_page_set_copy_slow(page, on) }
     var copySlow: Bool { margin_page_copy_slow(page) }
+    // A field of Margin's wants the keys (its page's `focus`, kept as it's read), and whether a press on Margin's UI
+    // leaves the keyboard where it is now (an app shown, no field of Margin's: core/page/press.rs).
+    var fieldKeys: Bool { margin_page_field_keys(page) }
+    var keysStay: Bool { margin_page_keys_stay(page) }
     enum HostedSaid { case same, moved, changed }
     func setHosted(_ number: Int?) -> HostedSaid {
         switch margin_page_set_hosted(page, number != nil, Int64(number ?? 0)) {

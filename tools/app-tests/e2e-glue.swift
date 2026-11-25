@@ -757,11 +757,59 @@ func glueScenario() async {
     let takes = !c.panel.ignoresMouseEvents
     press(c.panel, at: spot)
     let back = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == calcBefore + 1 }
-    check("a press on an empty spot of the sidebar with Calculator shown: Margin's panel took it (a non-activating panel), Margin not made active, the panel not asked to be key, the keys back to Calculator once it's over",
+    check("no press tap (the window server routes the press): a press on an empty spot of the sidebar with Calculator shown: Margin's panel took it (a non-activating panel), Margin not made active, the panel not asked to be key, the keys back to Calculator once it's over",
           takes && c.panel.presses == pressesBefore + 1 && c.panel.styleMask.contains(.nonactivatingPanel) && c.activations.count == marginBefore && c.keyAsks == asksBefore && !c.panel.canBecomeKey
             && back && c.keysGivenBack == backBefore + 1 && !c.pageWantsKeyboard && !c.panel.allowKey && !c.hasKeys
             && c.handBacks.count == handsBefore + 1 && c.handBacks.last == shownCalcPid,
           "hand-backs \(c.handBacks.suffix(2)) (Calculator \(shownCalcPid)) allow \(c.panel.allowKey) takes \(takes) presses \(c.panel.presses - pressesBefore) Margin active \(c.activations.suffix(2)) key asks \(c.keyAsks - asksBefore) can be key \(c.panel.canBecomeKey) back \(back) \(world.calls.suffix(2))")
+    // ---- the press tap (docs/SIDEBAR-PRESS.md): a press on Margin's panel delivered to it, the keyboard never moved ----
+    // (A stand-in tap: the real one never runs in a test. The records the real one delivers with: the stand-in's word.)
+    var taps: [FakePaneTap] = []
+    made.makePaneTap = { _, _ in let t = FakePaneTap(); taps.append(t); return t }
+    made.paneTapTrusted = { true }
+    made.paneTapGrace = 0
+    made.sidebarTap = { true }
+    made.paneSceneChanged()
+    let told = taps.last?.scenes.last ?? nil
+    let panelTold = told?.panels.first
+    check("the press tap: made with Calculator shown alone (no split), started, told this window's panel: its number, Margin's pid, its content, its slot, the keys staying with Calculator",
+          taps.count == 1 && taps.last?.started == 1 && told?.panes.isEmpty == true && told?.panels.count == 1 && panelTold?.window == c.panel.windowNumber
+            && panelTold?.pid == ProcessInfo.processInfo.processIdentifier && panelTold?.content == MarginWindowGeometry.content(of: c.panel.frame) && panelTold?.slot == c.slot
+            && panelTold?.keysStay == true && panelTold?.fullScreen == c.isFullScreen,
+          "\(taps.count) \(String(describing: told))")
+    check("the press tap: the core's way over what it was told: the empty spot Margin's UI with the keys staying, the page area Calculator's",
+          panelTold.map { PanelPress.way(CGPoint(x: display.minX + spot.x, y: display.minY + spot.y), $0) } == .ui
+            && panelTold.map { p in c.hole.map { PanelPress.way(CGPoint(x: $0.midX, y: $0.midY), p) } } == .some(.through))
+    do {
+      taps.last?.panelClaims = [7001]
+      let backs = c.keysGivenBack, hands = c.handBacks.count, delivered = c.deliveredPresses, presses = c.panel.presses, asks = c.keyAsks, active = c.activations.count
+      let calc = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
+      press(c.panel, at: spot, number: 7001)
+      try? await Task.sleep(nanoseconds: 300_000_000)
+      check("the press tap: a press it delivered to the panel (its number): the panel got it, nothing handed back (the keyboard never moved), nothing waited for, Margin never made active, the panel not asked to be key",
+            c.panel.presses == presses + 1 && c.deliveredPresses == delivered + 1 && c.keysGivenBack == backs && c.handBacks.count == hands && c.keyAsks == asks
+              && c.activations.count == active && world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == calc && taps.last?.panelClaims.isEmpty == true,
+            "delivered \(c.deliveredPresses - delivered) keys back \(c.keysGivenBack - backs) hand-backs \(c.handBacks.count - hands) \(world.calls.suffix(2))")
+      // One it didn't deliver (another window covered the panel there, the window server routed it): handed back as before.
+      press(c.panel, at: spot, number: 7002)
+      let routedBack = await until(3) { c.keysGivenBack == backs + 1 }
+      check("the press tap: a press it didn't deliver (routed): the keys back to Calculator as before", routedBack && c.deliveredPresses == delivered + 1 && c.handBacks.last == shownCalcPid,
+            "\(c.keysGivenBack - backs) \(c.handBacks.suffix(2))")
+    }
+    // A field of Margin's takes the keys (the palette, as ⌘T opens it): the panel told the keys don't stay; let go: they do.
+    c.run(.newTab)
+    let fieldTold = await until(5) { c.pageWantsKeyboard && (taps.last?.scenes.last ?? nil)?.panels.first?.keysStay == false }
+    c.push(#"{"type":"pressOutside"}"#)
+    let fieldGone = await until(5) { !c.pageWantsKeyboard && (taps.last?.scenes.last ?? nil)?.panels.first?.keysStay == true }
+    check("the press tap: a field of Margin's with the keys told as the keys not staying (its presses routed, as before), and as staying once it lets go", fieldTold && fieldGone,
+          "\(fieldTold) \(fieldGone) \(String(describing: (taps.last?.scenes.last ?? nil)?.panels))")
+    // The part off (`MarginSidebarTap` NO, or no records): no panel told, the tap gone with no split.
+    made.sidebarTap = { false }
+    made.paneSceneChanged()
+    check("the press tap: the part off (no records, or MarginSidebarTap NO): no panel, and with no split the tap ended", taps.last?.stopped == 1 && (taps.last?.scenes.last ?? nil) == nil && made.paneTap == nil,
+          "\(String(describing: taps.last?.scenes.last)) \(taps.last?.stopped ?? -1)")
+    made.makePaneTap = { _, _ in nil }
+    made.sidebarTap = { false }
   } else { check("an empty spot of the sidebar", false) }
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)

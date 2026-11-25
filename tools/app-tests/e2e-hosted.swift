@@ -42,11 +42,13 @@ final class FakeWindowSource: MarginWindowSource {
 }
 
 // A real press (an NSEvent to the window, which is never key) at a point of its content (from the top left).
-func press(_ window: NSWindow, at p: CGPoint) {
+// (`number`: the press's event number, its release's too, as the window server's; `clicks`: its click count, 2 for a
+// double-click's second press.)
+func press(_ window: NSWindow, at p: CGPoint, number: Int = 0, clicks: Int = 1) {
   let at = NSPoint(x: p.x, y: window.frame.height - p.y)
   for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
     if let e = NSEvent.mouseEvent(with: type, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                                  context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+                                  context: nil, eventNumber: number, clickCount: clicks, pressure: type == .leftMouseDown ? 1 : 0) {
       window.sendEvent(e)
     }
   }

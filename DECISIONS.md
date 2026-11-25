@@ -9765,3 +9765,39 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   pages see, which the link resilience design doesn't ask for.
 - `npm run test:webkit` (41 scenarios), `npm test` (1112), `tools/app-tests/run.sh all` (2156 unit, 339 e2e) and
   `scripts/rust-test.sh` green.
+
+## A press on Margin's sidebar never takes the keyboard from the hosted app (GitHub #29, 2026-11-24)
+
+- **Why**: the window server moved the keyboard to Margin at every press in its panel, a non-activating panel that
+  refuses to be key included, so the hosted app's window resigned key and drew its unfocused look until Margin handed
+  the keys back (`pressSettle`, 80 ms after the release: 185-193 ms in all on the real screen). Tirth accepts that a
+  page's field loses its focus to a sidebar press, as in Arc; not the app's unfocused look for any time. This is the
+  event tap the 2026-11-22 entry ("A sidebar click hands the keys back") left as not done. Design: docs/SIDEBAR-PRESS.md.
+- **The core decides** (core/page/press.rs): `keys_stay` (hosting, a hosted window shown, no field of Margin's wanting
+  the keys: the rule Windows' `MA_NOACTIVATE` is too, which it can read once its window has a core page) and
+  `press_way` (outside, through to what's hosted or the window's own buttons, Margin's UI with the keys staying,
+  Margin's UI as before), over `passthrough::passes`, now a free function `PagePointer::passes` calls. The page keeps
+  the field's word as it reads the `focus` op (`Page::set_field_keys`; `Said::Focus { on, was }`); the Swift's
+  `pageWantsKeyboard` reads it (no second copy).
+- **The Mac's mechanism** is the pane click tap, not a second tap (a second would be a second round trip per press):
+  its scene carries every hosting Margin window's panel (`PaneClickScene.panels`); a press of any button the core's
+  way says is Margin's UI with the keys staying, with no other button held and no other window over the panel there
+  (the window server's list read for that press only), is taken and delivered to the panel as the window server's own
+  record (`PaneFronting.deliver`, as a cut pane's press, proven on the real screen 2026-11-22), at the panel's own
+  point; its drags and release follow it there, and another button's press until the last is up. A press under way
+  whose release the tap never heard (macOS turned it off a moment) is dropped at the next press. The tap now lives
+  while a Margin window on the current Space hosts (it lived only while a split was shown).
+- **`pressSettle`**: a press the tap delivered is known at its release by its event number (`claimedPanel`) and skips
+  `afterPress` at once: no hand-back, nothing waited for. `pressSettle` is left only for a press the window server
+  still routed (no tap: Accessibility not granted, the records' layout refused at launch, `MarginSidebarTap` off;
+  covered there by another window) and for `menuItemRan`, unchanged.
+- **Off**: `defaults write com.unibox.margin MarginSidebarTap -bool NO` (today's hand-back). The dev hook's `say: front`
+  says `delivered N`, the presses delivered without the keyboard moving.
+- **Cost**: nothing at rest (a mach port on the tap's own thread, no timer, no poll; moves, scrolls and keys never
+  reach it). Per press: one round trip to the tap's thread, the core's way (11.1 ns, ffi tests/press_cost.rs in
+  release), and for a press on Margin's UI the window server's list of the windows above the panel. Per drag of a
+  press it took: a round trip and a record posted.
+- **Tests, each failing first**: core page/press.rs (the rule's cases, the field's word kept by `said`), said.rs, the
+  FFI's no-allocation run of `margin_press_way`; panel-press-tests.swift (12 of its checks failed with the panel branch
+  off); e2e-glue.swift's press tap block (a delivered press: no hand-back; a routed one: as before; a field's keys told;
+  the part off; 2 failed with the claim off). The screen suite's k1 is tightened back (see the screen-suite entry).

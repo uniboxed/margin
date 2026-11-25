@@ -287,6 +287,13 @@ bool margin_page_pointer_again(MarginPage *page, MarginPoint at, MarginRect cont
 bool margin_page_gets(const MarginPage *page, MarginPoint at);
 bool margin_page_ignoring(const MarginPage *page);
 bool margin_pass_page_gets(MarginPoint at, const MarginSlotView *slot); // slot NULL: none
+// A press on Margin's UI and the keyboard (core/page/press.rs, docs/SIDEBAR-PRESS.md): a field of Margin's wants the
+// keys (the page's `focus`, kept as read); a press on Margin's UI leaves the keyboard where it is (an app shown, no field);
+// a press's way: 0 outside the content, 1 through to what it hosts (or the window's buttons, windowed), 2 Margin's UI
+// with the keyboard staying, 3 Margin's UI as before. controls NULL: none.
+bool margin_page_field_keys(const MarginPage *page);
+bool margin_page_keys_stay(const MarginPage *page);
+uint8_t margin_press_way(MarginPoint at, MarginRect content, const MarginSlotView *slot, const MarginRect *controls, bool full_screen, bool keys_stay);
 bool margin_pass_decide(MarginPoint at, const MarginSlotView *slot, bool buttons_down, bool ignoring);
 MarginRect margin_pass_slot(MarginRect frame, MarginInsets layout, const MarginRect *hits, size_t hits_len, MarginRect *hits_out);
 void margin_pass_catch(MarginRect frame, const MarginSlotView *slot, MarginRect *hits_out, MarginRect *holes_out, MarginCatchView *out); // room for the slot's counts
@@ -712,7 +719,7 @@ void margin_page_read(const MarginPage *page, MarginPageRead *out);
 ptrdiff_t margin_page_text(const MarginPage *page, uint8_t which, uint8_t *buf, size_t cap); // 0 loader, 1 loader's app, 2 slow step, 3 show, 4 stuck; -1: none
 // What the page said (core/page/said.rs): an op and its body's JSON (a layout's: its report) → its route (`kind`: 0
 // nothing, 1 ready, 2 layout (flag taken, flag2 panes changed), 3 the card's rect (has_rect, rect), 4 hits (flag all;
-// `rects` of them), 5 chrome (has_rect: controls; drags as rects), 6 focus (flag), 7 counts (a, b), 8 the pointer's
+// `rects` of them), 5 chrome (has_rect: controls; drags as rects), 6 focus (flag; flag2: one wanted the keys before), 7 counts (a, b), 8 the pointer's
 // wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic, 12 slide (a side; text item), 13 ask (text
 // `{ name, arg }`), 14 log (flag warn; text)); `text` freed with margin_buffer_free. `said_rects`: the rects it read.
 // The hello: its JSON text (freed with margin_buffer_free).

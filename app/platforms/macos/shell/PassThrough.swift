@@ -73,6 +73,19 @@ enum PassThrough {
         return slot.withView { margin_pass_decide(point.margin, $0, buttonsDown, ignoring) }
     }
 
+    // The way of a press at `point` on a Margin window whose content is at `content` (core/page/press.rs `press_way`):
+    // outside it, through to what it hosts (or the window's own buttons under `controls` while windowed), Margin's UI
+    // with the keyboard staying (`keysStay`: an app shown, no field of Margin's), or Margin's UI as before. The press
+    // tap's, on its own thread (PaneClickTap.swift `PanelPress`).
+    nonisolated static func pressWay(_ point: CGPoint, content: CGRect, slot: Slot?, controls: CGRect?, fullScreen: Bool, keysStay: Bool) -> PanelPress.Way {
+        let code: UInt8 = withUnsafePointer(to: controls?.raw ?? MarginRect()) { c in
+            let cp = controls == nil ? nil : c
+            guard let slot else { return margin_press_way(point.margin, content.raw, nil, cp, fullScreen, keysStay) }
+            return slot.withView { margin_press_way(point.margin, content.raw, $0, cp, fullScreen, keysStay) }
+        }
+        return PanelPress.Way(rawValue: code) ?? .routed
+    }
+
     // The slot from the page's layout report: the overlay's frame (top left) with the insets.
     static func slot(in frame: CGRect, layout: PageLayout, hits: [CGRect] = [], captureAll: Bool = false) -> Slot {
         var out = [CGRect](repeating: .zero, count: hits.count)

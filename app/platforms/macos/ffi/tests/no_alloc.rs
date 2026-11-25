@@ -597,6 +597,7 @@ fn the_pointer_allocates_nothing() {
     let mut view = MarginSlotView::default();
     let mut region = MarginCatchView::default();
     let mut through = 0;
+    let mut ways = [0usize; 4];
     let n = allocations(|| {
         // SAFETY: a live page, valid buffers; the views read before the next placing.
         unsafe {
@@ -613,11 +614,15 @@ fn the_pointer_allocates_nothing() {
                     std::hint::black_box(place_world(page, &w, i % 100 == 0, f64::from(i % 3)));
                     std::hint::black_box(margin_page_set_cuts(page, true, w.cuts.as_ptr(), 3));
                 }
-                // (The tap's: the same rules over a slot it holds, here the page's own.)
+                // (The tap's: the same rules over a slot it holds, here the page's own; a press's way too.)
                 if margin_page_slot(page, &mut view) {
                     std::hint::black_box(margin_pass_page_gets(at, &view));
                     std::hint::black_box(margin_pass_decide(at, &view, false, true));
+                    let controls = MarginRect { x: 10.0, y: 10.0, width: 60.0, height: 16.0 };
+                    let keys = margin_page_keys_stay(page);
+                    ways[usize::from(margin_press_way(at, w.content, &view, &controls, i % 2 == 0, keys) & 3)] += 1;
                 }
+                std::hint::black_box(margin_page_field_keys(page));
                 margin_page_catch(page, &mut region);
                 let local = MarginPoint { x: at.x - w.content.x, y: at.y - w.content.y };
                 std::hint::black_box(margin_pass_catch_contains(&region, local, w.content.width, w.content.height));
@@ -627,6 +632,12 @@ fn the_pointer_allocates_nothing() {
     });
     assert_eq!(n, 0, "the pointer's calls allocated {n} times");
     assert!(through > 50 && through < 350, "the pointer through the holes only: {through} of 400");
+    // (A press's way over the same slot: some outside, some through the holes, the rest Margin's UI with the keys
+    // staying: an app shown, no field. None routed as before.)
+    assert!(
+        ways[0] > 0 && ways[1] > 50 && ways[2] > 50 && ways[3] == 0,
+        "a press's ways (outside, through, Margin's UI, as before): {ways:?}"
+    );
     // SAFETY: the live page, freed once.
     unsafe { margin_page_free(page) };
 }

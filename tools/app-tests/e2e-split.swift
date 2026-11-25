@@ -309,4 +309,7 @@ nonisolated final class FakePaneTap: PaneClickTapping, @unchecked Sendable {
   func stop() { stopped += 1 }
   func update(_ scene: PaneClickScene?) { scenes.append(scene) }
   func claimed(number: Int, at point: CGPoint) -> Bool { claims.remove(number) != nil }
+  // (A press it delivered to a Margin window's panel: docs/SIDEBAR-PRESS.md.)
+  var panelClaims: Set<Int> = []
+  func claimedPanel(number: Int) -> Bool { panelClaims.remove(number) != nil }
 }

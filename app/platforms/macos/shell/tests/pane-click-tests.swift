@@ -82,6 +82,7 @@ nonisolated final class PaneBox<T>: @unchecked Sendable {
 
 func paneClickTests() {
     paneClickTuckTests()
+    panelPressTests() // panel-press-tests.swift: a press on Margin's own panel never takes the keyboard (docs/SIDEBAR-PRESS.md)
     paneClickDecisionTests()
     paneClickHoldTests()
     paneClickKeptTests()
