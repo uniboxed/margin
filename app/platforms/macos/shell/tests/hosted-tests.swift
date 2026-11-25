@@ -53,7 +53,8 @@ final class FakeHostedWindow: HostedWindow {
     func setStartupStuck(_ why: String?) { stuck = why; stucks.append(why) }
     var copySlows: [Bool] = [] // each setCopySlow, in order
     func setCopySlow(_ on: Bool) { copySlows.append(on) }
-    func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
+    var paces: [ShowPace] = [] // each item's pace as it's said (setShowing with a name)
+    func setShowing(_ label: String?, app: String?, pace: ShowPace) { if label != nil { paces.append(pace) }; guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if pace == .slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
     var followingPage = false // followsPage: the hosted window follows a drag live

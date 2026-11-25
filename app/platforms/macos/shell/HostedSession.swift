@@ -282,9 +282,10 @@ protocol HostedWindow: AnyObject {
     // An app opening or placed again in the page area (its name), nil: none: the page card `loading` at once. `app`:
     // the bundle id whose icon the loader shows (the app's; the browser's for a web item), the page's to look up.
     func setLoading(_ label: String?, app: String?)
-    // An item being shown and not ready yet (its name), nil: it is: `loading` only if that takes longer than a grace;
-    // `slow`: known to take a while (the last item, at launch): `loading` at once. `app` as setLoading's.
-    func setShowing(_ label: String?, app: String?, slow: Bool)
+    // An item being shown and not ready yet (its name), nil: it is: `loading` only if that takes longer than a grace
+    // (`pace`, the core's: a quick switch's grace is longer); slow: known to take a while (the last item, at launch):
+    // `loading` at once. `app` as setLoading's.
+    func setShowing(_ label: String?, app: String?, pace: ShowPace)
     // The items loading, by the UI's numbers for them: the theme's loading bar on the page card's edge for the one in
     // front, and each one's row (host-app.ts `loading`, as a browser copy's `loading` push draws it over a browser).
     func setLoadingTabs(_ numbers: [Int])
@@ -335,9 +336,10 @@ protocol HostedWindow: AnyObject {
 
 extension HostedWindow {
     var pageFrame: (page: OpaquePointer?, content: CGRect, display: CGRect?)? { nil }
-    func setShowing(_ label: String?) { setShowing(label, app: nil, slow: false) }
-    func setShowing(_ label: String?, slow: Bool) { setShowing(label, app: nil, slow: slow) }
-    func setShowing(_ label: String?, app: String?) { setShowing(label, app: app, slow: false) }
+    func setShowing(_ label: String?) { setShowing(label, app: nil, pace: .usual) }
+    func setShowing(_ label: String?, slow: Bool) { setShowing(label, app: nil, pace: slow ? .slow : .usual) }
+    func setShowing(_ label: String?, app: String?) { setShowing(label, app: app, pace: .usual) }
+    func setShowing(_ label: String?, app: String?, slow: Bool) { setShowing(label, app: app, pace: slow ? .slow : .usual) }
     func setLoading(_ label: String?) { setLoading(label, app: nil) }
     func followsPage(_ on: Bool) {}
     func setPageMinimum(_ width: CGFloat?) {}
@@ -860,7 +862,7 @@ final class HostedSession {
         case .showsAlone?: return engine.showsAlone(HostID(raw: text() ?? "")) ? 1 : 0
         case .stopHidingWoken?: engine.stopHidingWoken(bundleId: text() ?? safariIdentifier)
         case .windowIdsOf?: for id in links.windowIds(of: text() ?? "") { SessionCore.give(id, out) }
-        case .setShowing?: held(w)?.setShowing(text(), app: SessionCore.text(a.b), slow: a.flag)
+        case .setShowing?: held(w)?.setShowing(text(), app: SessionCore.text(a.b), pace: a.flag ? .slow : SessionCore.text(a.c) == "quick" ? .quick : .usual)
         case .setMarginPage?: held(w)?.setMarginPage(text())
         case .push?: if let json = text() { held(w)?.push(json) }
         case .changed?: onChange?()

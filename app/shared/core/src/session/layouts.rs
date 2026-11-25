@@ -31,6 +31,7 @@ use crate::hosted_browser::Role;
 use crate::json;
 
 use super::layout::{NO_ROOM_REASON, PANE_LEAST, PaneRoom, is_no_room, no_room};
+use crate::page::Pace;
 
 /// The addresses and items the panes being laid out open at (HostedSession `paneAddress`, `paneItem` by item, kept
 /// for `showSplit`'s layout; `paneAddressFor`, `paneItemFor` by profile and role, for `requestSafariWindow`).
@@ -744,7 +745,7 @@ impl Core {
             self.edit(Field::Shown, |s| s.shown.remove(&other));
             self.set_hosting(None);
             self.ports.set_hosted(was, None);
-            self.ports.set_showing(was, None, None, false);
+            self.ports.set_showing(was, None, None, Pace::Usual);
             self.ports.window_set_hosting(was, false);
             if let Some(item) = item {
                 self.show_elsewhere(&item, was, picture.as_deref());

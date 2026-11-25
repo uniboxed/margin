@@ -40,7 +40,7 @@ fn the_pages_calls_cost() {
     let mut settled = MarginSettled::default();
     // SAFETY: a live page, valid buffers.
     unsafe {
-        margin_page_configure(page, 0.12, label.as_ptr(), label.len(), false, 1, 0);
+        margin_page_configure(page, 0.12, 0.4, label.as_ptr(), label.len(), false, 1, 0);
         margin_page_set_full_screen(page, true);
         margin_page_set_layout(page, layout.as_ptr(), layout.len());
         margin_page_set_hits(page, hits.as_ptr(), 3, false);
@@ -54,12 +54,12 @@ fn the_pages_calls_cost() {
         let l = if i % 2 == 0 { notes } else { mail };
         // SAFETY: as above.
         std::hint::black_box(unsafe {
-            margin_page_set_showing(page, l.as_ptr(), l.len(), true, std::ptr::null(), 0, false, false)
+            margin_page_set_showing(page, l.as_ptr(), l.len(), true, std::ptr::null(), 0, false, 0)
         });
     });
     // SAFETY: as above.
     unsafe {
-        margin_page_set_showing(page, std::ptr::null(), 0, false, std::ptr::null(), 0, false, false);
+        margin_page_set_showing(page, std::ptr::null(), 0, false, std::ptr::null(), 0, false, 0);
         margin_page_settle(page, 0.0, &mut settled);
     }
     let (mut placed, mut rect, mut radius, mut placement) =

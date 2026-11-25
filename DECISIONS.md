@@ -10516,3 +10516,30 @@ failing first (the old code in a copy of the tree):
   from `brand/margin-logo/web/favicon.ico` or the PNGs); the Chrome Web Store listing's images (uploaded by hand); the
   Liquid Glass layers (`macos/icon-composer-layers/`, for Icon Composer, untested by the pack's own note).
 
+## A switch keeps the page drawn longer: no loader flash between open items (2026-11-25)
+
+- **What Tirth saw** (his real use, read in Margin's log of 04:51-04:56): a switch from Safari to Mail "blinks" most
+  times, and between Safari tabs the loader shows for a split second now and then. The blink is the page card's loader:
+  it comes when a show takes longer than the loader's grace, 0.12 s, then is gone 20-60 ms later. Switches to an app
+  whose window is open took 30-190 ms, most of it macOS making that app active (the engine makes it active before its
+  window is revealed, ec13b210, so it's never seen drawn inactive): Notes 30-38 ms, Maps 125-143, Mail 15-142. A tab
+  shown by Safari's copy took 33-60 ms with Safari in front, 150-310 ms (once 1.2 s) with Safari in the background.
+- **The rule** (margin-core, page/mod.rs and the session): a show has a pace, `Pace::Quick` (a switch to an item whose
+  host is open already: an app hosted, parked or shown; a web item whose profile's Safari window is there; a tab
+  switch in the window shown), `Usual` (a first open: its loader soon is the feedback it needs) or `Slow` (no grace, as
+  before). A quick show keeps what's drawn for the switch grace, `SWITCH_GRACE` 0.4 s, before the loader; the others
+  as before (`LOADER_GRACE` 0.12 s). Past the switch grace the loader comes as for any show. The session says the pace
+  (requests.rs `show_app`, `show_web`, the copy's slow words back to the show's own pace); the page decides the grace.
+- **Where it is:** the constants and the rule in margin-core once (page/mod.rs); the session's port `set_showing`
+  carries the pace (typed port: `flag` slow, `c` "quick"); Swift carries it to the page (`ShowPace`, never decided
+  there); `margin_page_configure` takes both graces, negative the core's own (Swift's options `loaderGrace` and
+  `switchGrace` are nil unless a test sets them).
+- **The sidebar's highlight** moves at the press already: the session's live rows mark the requested item active
+  before its show is done (ui.rs `live_plan`, routing_tests.rs), and the press tells the window at once (`changed`).
+- **Tests**, failing when broken on purpose: page/tests.rs (a quick switch's grace the switch grace, shown within it no
+  loader drawn, past it the loader, a first open the loader's grace, slow at once, configured and negative graces);
+  requests_tests.rs (an open app quick, an app not open usual, a web item with its window there quick, without usual).
+- **Still to do** (Tirth asked to consider): a press from an app to a Safari tab that seems not to work: the copy's
+  answer while Safari is in the background (150-310 ms, once 1.2 s) is the wait; the next press overtakes it. Being
+  measured (why the copy is slower with Safari in the background) before its fix.
+

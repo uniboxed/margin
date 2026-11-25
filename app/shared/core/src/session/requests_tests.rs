@@ -158,7 +158,7 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     // the hosting settled after the request: the core's now, nothing to settle, nothing hosting.)
     assert_eq!(
         named(&a, "setShowing"),
-        [json!(["setShowing", 1, "Notes", "com.apple.Notes", false]), json!(["setShowing", 1, null, null, false])]
+        [json!(["setShowing", 1, "Notes", "com.apple.Notes", "usual"]), json!(["setShowing", 1, null, null, "usual"])]
     );
     let order: Vec<String> = a.iter().map(|v| v[1].as_str().or(v[0].as_str()).unwrap_or("").to_string()).collect();
     let at = |n: &str| order.iter().position(|o| o == n).unwrap_or(usize::MAX);
@@ -228,7 +228,7 @@ fn a_web_item_its_profiles_window_made_then_its_tab_shown() {
     let a = acts(&world);
     assert_eq!(
         named(&a, "setShowing")[0],
-        json!(["setShowing", 1, "Safari", "com.apple.Safari", false]),
+        json!(["setShowing", 1, "Safari", "com.apple.Safari", "usual"]),
         "no title: Safari's name"
     );
 }
@@ -728,6 +728,41 @@ fn pick(s: &Session, item: &str, window: i64) -> Out {
 }
 
 #[test]
+fn a_switch_to_an_item_whose_host_is_open_is_said_quick_a_first_open_as_usual() {
+    // (Tirth, 2026-11-25: a switch to Mail "blinks", the loader's 120 ms flash. The page gives a quick switch the
+    // switch grace, page/mod.rs SWITCH_GRACE; the session says which a show is.)
+    // An app whose host is open (parked) while Safari is shown: quick.
+    let (s, world, _) = tab_switch_world();
+    world.hosted.borrow_mut().push("app:com.a".into());
+    acts(&world);
+    pump(&s, &world, pick(&s, "a1", 1), &mut usual);
+    assert_eq!(named(&acts(&world), "setShowing")[0], json!(["setShowing", 1, "A", "com.a", "quick"]));
+    // An app not open yet: as usual (the loader's grace: a first open's loader comes soon).
+    let (s, world, _) = tab_switch_world();
+    acts(&world);
+    pump(&s, &world, pick(&s, "a1", 1), &mut usual);
+    assert_eq!(named(&acts(&world), "setShowing")[0], json!(["setShowing", 1, "A", "com.a", "usual"]));
+    // A web item while an app is shown, its profile's Safari window there (parked): quick, the window's switch and its
+    // tab's ask under the one grace.
+    let (s, world, _) = tab_switch_world();
+    *world.shown.borrow_mut() = Some("app:com.a".into());
+    world.hosted.borrow_mut().push("app:com.a".into());
+    acts(&world);
+    pump(&s, &world, pick(&s, "w1", 1), &mut usual);
+    let showing = named(&acts(&world), "setShowing");
+    assert_eq!(showing[0], json!(["setShowing", 1, "A page", SAFARI_BUNDLE, "quick"]), "{showing:?}");
+    // Its profile's window not made yet: as usual.
+    let (s, world, _) = tab_switch_world();
+    *world.shown.borrow_mut() = Some("app:com.a".into());
+    world.hosted.borrow_mut().retain(|h| h != "safari:s-default");
+    s.core().edit(Field::SafariWindows, |st| st.safari_windows.clear());
+    acts(&world);
+    pump(&s, &world, pick(&s, "w1", 1), &mut usual);
+    let showing = named(&acts(&world), "setShowing");
+    assert_eq!(showing[0], json!(["setShowing", 1, "A page", SAFARI_BUNDLE, "usual"]), "{showing:?}");
+}
+
+#[test]
 fn a_host_show_never_answered_holds_no_pick_up_overtaken_it_is_cancelled_and_its_late_answer_does_nothing() {
     let (s, world, _) = tab_switch_world();
     let (seen, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
@@ -785,7 +820,7 @@ fn its_loader_while_the_copy_is_asked_slow_once_its_link_says_so_for_slow_say() 
     acts(&world);
     let (_, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
     // (At once, not slow: the page's grace keeps a quick switch unseen.)
-    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, false])]);
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, "quick"])]);
     // Its link looked at `slowSay` (3 s) after the ask: not slow, nothing said; looked at again 3 s on.
     assert_eq!(s.tick(0.0).deadline, Some(3.0));
     world.now.set(3.0);
@@ -800,19 +835,19 @@ fn its_loader_while_the_copy_is_asked_slow_once_its_link_says_so_for_slow_say() 
     world.now.set(7.0);
     s.tick(7.0);
     let a = acts(&world);
-    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, true])]);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, "slow"])]);
     assert_eq!(named(&a, "setCopySlow"), [json!(["setCopySlow", 1, true])], "its loader says the copy is slow");
     // Reading again (its link no longer slow): said too.
     world.slow.borrow_mut().clear();
     world.now.set(10.0);
     s.tick(10.0);
     let a = acts(&world);
-    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, false])]);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, "quick"])]);
     assert_eq!(named(&a, "setCopySlow"), [json!(["setCopySlow", 1, false])]);
     // Its answer: shown, the loader gone, its look dropped (no deadline left).
     let out = s.answer(held[0].0, json!({ "result": { "tabId": 501, "created": false } }));
     assert_eq!(out.deadline, None);
-    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, null, null, false])]);
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, null, null, "usual"])]);
     assert_eq!(s.done().last().map(String::as_str), Some("w1: shown in Safari window 90"));
 }
 
@@ -868,7 +903,7 @@ fn a_show_waiting_for_its_copys_link_to_come_back_says_the_copy_is_slow_after_sl
     world.now.set(3.0);
     s.tick(3.0);
     let a = acts(&world);
-    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, true])]);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, "slow"])]);
     assert_eq!(named(&a, "setCopySlow"), [json!(["setCopySlow", 1, true])]);
     // Back on a new link: asked again and shown; the words gone with the show.
     world.epochs.borrow_mut().insert("s-default".into(), "e2".into());

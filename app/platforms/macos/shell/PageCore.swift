@@ -38,6 +38,10 @@ extension NSColor {
     convenience init(_ c: MarginRgba) { self.init(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: CGFloat(c.a)) }
 }
 
+// How long a show is expected to take, as the core's session says it (core/page/mod.rs `Pace`: the page's grace follows):
+// carried through to the page, never decided here.
+enum ShowPace: UInt8 { case usual = 0, quick = 1, slow = 2 }
+
 final class PageCore {
     private let page: OpaquePointer?
 
@@ -51,9 +55,10 @@ final class PageCore {
     // The page object, for the session's typed read of a drag's frame (`margin_session_page_rect`).
     var pointer: OpaquePointer? { page }
 
-    // The loader's grace, the start's loader label, how it's kept in front (the mechanism asked for, the window levels).
-    func configure(grace: TimeInterval, startupLabel: String, order: Bool, raised: Int, normal: Int) {
-        withText(startupLabel) { t, n, _ in margin_page_configure(page, grace, t, n, order, Int64(raised), Int64(normal)) }
+    // The loader's grace and a quick switch's (nil: the core's own, page/mod.rs LOADER_GRACE and SWITCH_GRACE), the start's
+    // loader label, how it's kept in front (the mechanism asked for, the window levels).
+    func configure(grace: TimeInterval?, switchGrace: TimeInterval?, startupLabel: String, order: Bool, raised: Int, normal: Int) {
+        withText(startupLabel) { t, n, _ in margin_page_configure(page, grace ?? -1, switchGrace ?? -1, t, n, order, Int64(raised), Int64(normal)) }
     }
 
     // ---- its page's layout ----
@@ -221,8 +226,8 @@ final class PageCore {
     func setLoading(_ label: String?, app: String?) -> Bool {
         withText(label) { l, ln, lh in withText(app) { a, an, ah in margin_page_set_loading(page, l, ln, lh, a, an, ah) } }
     }
-    func setShowing(_ label: String?, app: String?, slow: Bool) -> Bool {
-        withText(label) { l, ln, lh in withText(app) { a, an, ah in margin_page_set_showing(page, l, ln, lh, a, an, ah, slow) } }
+    func setShowing(_ label: String?, app: String?, pace: ShowPace) -> Bool {
+        withText(label) { l, ln, lh in withText(app) { a, an, ah in margin_page_set_showing(page, l, ln, lh, a, an, ah, pace.rawValue) } }
     }
     func setElsewhere(_ label: String?, app: String?) -> Bool {
         withText(label) { l, ln, lh in withText(app) { a, an, ah in margin_page_set_elsewhere(page, l, ln, lh, a, an, ah) } }

@@ -311,9 +311,14 @@ impl Ports for Reentrant {
         self.reenter("wall");
         1_800_000_000.0
     }
-    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
+    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, pace: Pace) {
         self.reenter("setShowing");
-        self.0.act(json!(["setShowing", window, label, app, slow]));
+        let pace = match pace {
+            Pace::Quick => "quick",
+            Pace::Usual => "usual",
+            Pace::Slow => "slow",
+        };
+        self.0.act(json!(["setShowing", window, label, app, pace]));
     }
     fn set_copy_slow(&self, window: i64, on: bool) {
         self.reenter("setCopySlow");

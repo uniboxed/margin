@@ -333,7 +333,7 @@ fn the_last_item_behind_the_loader_then_shown_once_the_window_is_up() {
     );
     let a = acts(&world);
     assert_eq!(named(&a, "setHosting"), [json!(["setHosting", 1, true])]);
-    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "Notes", "com.apple.Notes", true])]);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "Notes", "com.apple.Notes", "slow"])]);
     assert_eq!(
         s.done(),
         ["Margin's window 1: the item it showed last (n) shown again, behind the loader from its first frame"]
@@ -392,7 +392,7 @@ fn start_screen(wait: f64) -> (Session, Rc<World>, Out) {
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
     assert!(s.start_screen());
     let a = acts(&world);
-    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, STARTUP_LABEL, SAFARI_BUNDLE, true])]);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, STARTUP_LABEL, SAFARI_BUNDLE, "slow"])]);
     assert_eq!(
         s.done(),
         [
@@ -438,7 +438,7 @@ fn the_start_screen_held_up_past_its_limit_retried_and_skipped() {
     );
     let a = acts(&world);
     assert_eq!(named(&a, "setStartupStuck"), [json!(["setStartupStuck", 1, null])]);
-    assert_eq!(named(&a, "setShowing")[0], json!(["setShowing", 1, "Docs", SAFARI_BUNDLE, true]));
+    assert_eq!(named(&a, "setShowing")[0], json!(["setShowing", 1, "Docs", SAFARI_BUNDLE, "slow"]));
     // Gone: its choices do nothing.
     input(&s, json!({ "type": "startupRetry" }));
     input(&s, json!({ "type": "startupSkip" }));
@@ -463,7 +463,7 @@ fn the_start_screen_lifts_by_itself_once_the_browser_is_ready() {
     set(&s, json!({ "requested": { "put": [[1, "other"]] } }));
     let seen = pump(&s, &world, s.tick(0.0), 3, &mut usual);
     assert!(seen.is_empty() && !s.start_screen() && s.core().resuming().is_none());
-    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, null, null, false])]);
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, null, null, "usual"])]);
 }
 
 fn prepare(s: &Session, setting: Value) -> Out {
@@ -713,7 +713,7 @@ fn an_app_shown_last_is_shown_at_once_with_no_start_screen() {
     selected(&lib, "n", notes(), "");
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
     assert!(!s.start_screen(), "nothing it shows needs the browser: no start screen");
-    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, "Notes", "com.apple.Notes", true])]);
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, "Notes", "com.apple.Notes", "slow"])]);
     assert_eq!(
         s.done(),
         ["Margin's window 1: the item it showed last (n) shown again, behind the loader from its first frame"]

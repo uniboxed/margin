@@ -22,6 +22,7 @@ use super::target::Target;
 use super::{Core, Field, OpenItem, SAFARI_BUNDLE, Until, object, swift_int};
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
+use crate::page::Pace;
 
 /// The requests whose item is drawn in front at once (HostedSession `showRequests`).
 pub const SHOW_REQUESTS: &[&str] =
@@ -443,7 +444,7 @@ impl Core {
                 // asked for meanwhile, whose show may be under way while this one waited outside the queue: its loader
                 // and its host's marker are that show's, left as they are.)
                 if !self.superseded(w, item) {
-                    self.ports.set_showing(w, None, None, false);
+                    self.ports.set_showing(w, None, None, Pace::Usual);
                 }
                 if self.read(|s| s.showing.get(&id).map(String::as_str) == Some(item)) {
                     self.set_showing_item(&id, None);
@@ -482,15 +483,17 @@ impl Core {
         self.card_returning(w, item);
     }
 
-    /// An app item's show, between its loader's words and their clearing.
+    /// An app item's show, between its loader's words and their clearing: a switch to an app hosted already (parked)
+    /// quick (the page's switch grace), a first open as usual.
     async fn show_app(&self, w: i64, item: &str, bundle: &str, id: &str) -> Go {
         if self.ports.engine_shown().as_deref() != Some(id) || self.hosting() != Some(w) {
-            self.ports.set_showing(w, self.label(id).as_deref(), Some(bundle), false);
+            let pace = if self.ports.is_hosted(id) { Pace::Quick } else { Pace::Usual };
+            self.ports.set_showing(w, self.label(id).as_deref(), Some(bundle), pace);
         }
         let go = self.show_app_in(w, item, bundle, id).await;
         // (Another item asked for meanwhile: the loader stays for it, never a frame without it in between.)
         if !self.superseded(w, item) {
-            self.ports.set_showing(w, None, None, false);
+            self.ports.set_showing(w, None, None, Pace::Usual);
         }
         go
     }
@@ -526,8 +529,10 @@ impl Core {
         let there = self.safari_window(p, Role::Main).is_some() && self.ports.is_hosted(id);
         let target = HostTarget::Safari(p.to_string(), Role::Main);
         let label = self.title_of(item).unwrap_or_else(|| "Safari".into());
+        // (Its window there already: a switch, quick (the page's switch grace); made first: as usual.)
+        let pace = if !comes || there { Pace::Quick } else { Pace::Usual };
         if comes {
-            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), false);
+            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), pace);
             if !there && !self.host(&target, w, item).await {
                 return Go::Stop;
             }
@@ -539,11 +544,11 @@ impl Core {
         let url = if address.is_empty() { "about:blank" } else { address };
         let pinned = self.pinned_or_favorite(item);
         let payload = object(json!({ "windowId": window_id, "itemId": item, "url": url, "pinned": pinned }));
-        // (A tab switch alone: its loader from the ask too, the page's grace keeping a quick one unseen.)
+        // (A tab switch alone: its loader from the ask too, the page's switch grace keeping a quick one unseen.)
         if !comes {
-            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), false);
+            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), pace);
         }
-        let result = match self.ask_show(w, item, p, payload, &label).await {
+        let result = match self.ask_show(w, item, p, payload, &label, pace).await {
             Asked::Tab(result) => result,
             Asked::Not => return Go::Stop,
             Asked::Moved(result) => {
@@ -578,10 +583,10 @@ impl Core {
     /// and nothing after the answer runs until it's back in turn); a pick in its own window cancels it first (its
     /// `cancel` goes before the newer `hostShow` on the same socket); and a show of another window that took the engine
     /// meanwhile, a later pick, keeps it (`Moved`).
-    async fn ask_show(&self, w: i64, item: &str, p: &str, payload: Object, label: &str) -> Asked {
+    async fn ask_show(&self, w: i64, item: &str, p: &str, payload: Object, label: &str, pace: Pace) -> Asked {
         let hosts = self.hosts_asked.get();
         let left = self.exec.leave_turn();
-        let shown = self.ask_show_out(w, item, p, payload, label).await;
+        let shown = self.ask_show_out(w, item, p, payload, label, pace).await;
         if left {
             self.exec.rejoin().await;
         }
@@ -601,9 +606,17 @@ impl Core {
     /// (a next item with the same name and app, whose loader is drawn the same, never finds them there). Its link down
     /// meanwhile while it's still the pick: asked again on the profile's next link (only a show is: showing a tab that
     /// may be shown already is safe to repeat). None: not shown, said.
-    async fn ask_show_out(&self, w: i64, item: &str, p: &str, payload: Object, label: &str) -> Option<Object> {
+    async fn ask_show_out(
+        &self,
+        w: i64,
+        item: &str,
+        p: &str,
+        payload: Object,
+        label: &str,
+        pace: Pace,
+    ) -> Option<Object> {
         let slowed = Cell::new(false);
-        let shown = self.ask_show_tries(w, item, p, payload, label, &slowed).await;
+        let shown = self.ask_show_tries(w, item, p, payload, label, pace, &slowed).await;
         if slowed.get() {
             // (Only the words: the loader's name and app are a newer pick's by now, if one overtook this.)
             self.ports.set_copy_slow(w, false);
@@ -611,6 +624,7 @@ impl Core {
         shown
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn ask_show_tries(
         &self,
         w: i64,
@@ -618,6 +632,7 @@ impl Core {
         p: &str,
         payload: Object,
         label: &str,
+        pace: Pace,
         slowed: &Cell<bool>,
     ) -> Option<Object> {
         let mut epoch = self.ports.link_epoch(p);
@@ -629,8 +644,13 @@ impl Core {
                     payload.clone(),
                     || self.show_overtaken(w, item).is_some(),
                     |slow| {
-                        // (Slow: its loader at once, no grace, saying the copy is slow.)
-                        self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), slow);
+                        // (Slow: its loader at once, no grace, saying the copy is slow; no longer: its own pace.)
+                        self.ports.set_showing(
+                            w,
+                            Some(label),
+                            Some(SAFARI_BUNDLE),
+                            if slow { Pace::Slow } else { pace },
+                        );
                         self.ports.set_copy_slow(w, slow);
                         slowed.set(slow);
                     },
@@ -712,7 +732,7 @@ impl Core {
             .await;
             if looked {
                 look = None;
-                self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), true);
+                self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), Pace::Slow);
                 self.ports.set_copy_slow(w, true);
                 slowed.set(true);
             }

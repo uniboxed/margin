@@ -39,6 +39,25 @@ use fill::Rgba;
 use front::{Front, FrontOps, KeepFront, Mechanism};
 use holes::Piece;
 
+/// The loader's grace for a show (seconds): what's drawn stays this long before the loader comes, so a quick show is
+/// never seen as a loader's flash.
+pub const LOADER_GRACE: f64 = 0.12;
+/// The grace for a switch to an item whose host is open already (an app parked, its Safari window there, a tab in the
+/// window shown): measured on the real Mac, 2026-11-25, 30-190 ms for an app (the next one made active first), 33-310
+/// ms for a tab (Safari's copy asked, slower while Safari is in the background). Past it the loader says it's under
+/// way; under it, a switch shows the next page straight over the last one, no loader's flash between.
+pub const SWITCH_GRACE: f64 = 0.4;
+
+/// How long a show is expected to take (the session knows; the page's grace follows): `Quick`, a switch to an item
+/// whose host is open already (the switch grace); `Usual`, a first open (the loader's grace); `Slow`, known to take a
+/// while (no grace: the loader at once).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pace {
+    Quick,
+    Usual,
+    Slow,
+}
+
 /// The page card's state as its page is told (`m-page-state` on the theme's root).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PageState {
@@ -157,6 +176,7 @@ pub struct Page {
     pub pointer: PagePointer,
     pub front: Front,
     grace: f64,
+    switch_grace: f64,
     startup_label: String,
     layout: Option<PageLayout>,
     // (The next report's buffers: the layout before this one.)
@@ -174,7 +194,7 @@ pub struct Page {
     loading_app: Option<String>,
     showing: Option<String>,
     showing_app: Option<String>,
-    showing_slow: bool,
+    showing_pace: Pace,
     /// The browser's copy asked to show it is slow (the session's `set_copy_slow`): its loader says so.
     copy_slow: bool,
     elsewhere: Option<String>,
@@ -207,17 +227,19 @@ pub struct Page {
 
 impl Default for Page {
     fn default() -> Self {
-        Page::new(0.12, "")
+        Page::new(LOADER_GRACE, "")
     }
 }
 
 impl Page {
-    /// A page with the loader's grace (seconds; 0: none) and the start's loader label (its `starting` look).
+    /// A page with the loader's grace (seconds; 0: none; a quick switch's is [`SWITCH_GRACE`]) and the start's loader
+    /// label (its `starting` look).
     pub fn new(grace: f64, startup_label: &str) -> Page {
         Page {
             pointer: PagePointer::default(),
             front: Front::default(),
             grace,
+            switch_grace: SWITCH_GRACE,
             startup_label: startup_label.to_owned(),
             layout: None,
             spare: PageLayout::default(),
@@ -233,7 +255,7 @@ impl Page {
             loading_app: None,
             showing: None,
             showing_app: None,
-            showing_slow: false,
+            showing_pace: Pace::Usual,
             copy_slow: false,
             elsewhere: None,
             elsewhere_app: None,
@@ -262,10 +284,20 @@ impl Page {
         }
     }
 
-    /// The loader's grace and the start's label, and how it's kept in front (the mechanism asked for, the OS's raised
-    /// and normal levels).
-    pub fn configure(&mut self, grace: f64, startup_label: &str, asked: Mechanism, raised: i64, normal: i64) {
-        self.grace = grace;
+    /// The loader's grace and a quick switch's (each seconds, 0: none; negative: the core's own, [`LOADER_GRACE`] and
+    /// [`SWITCH_GRACE`]), the start's label, and how it's kept in front (the mechanism asked for, the OS's raised and
+    /// normal levels).
+    pub fn configure(
+        &mut self,
+        grace: f64,
+        switch_grace: f64,
+        startup_label: &str,
+        asked: Mechanism,
+        raised: i64,
+        normal: i64,
+    ) {
+        self.grace = if grace >= 0.0 { grace } else { LOADER_GRACE };
+        self.switch_grace = if switch_grace >= 0.0 { switch_grace } else { SWITCH_GRACE };
         startup_label.clone_into(&mut self.startup_label);
         self.front = Front::new(asked, raised, normal);
     }
@@ -458,7 +490,7 @@ impl Page {
             self.showing = None;
             self.loading_app = None;
             self.showing_app = None;
-            self.showing_slow = false;
+            self.showing_pace = Pace::Usual;
             self.copy_slow = false;
         }
         Some(had)
@@ -475,21 +507,22 @@ impl Page {
         true
     }
 
-    /// `setShowing`: an item being shown and not ready yet (`slow`: known to take a while: no grace). False: nothing
-    /// new. The same item said slow now (or no longer) is new: its grace, if it's running, is over at the next
-    /// settle. Another item, or none: the copy's slowness said for the one before goes.
-    pub fn set_showing(&mut self, label: Option<&str>, app: Option<&str>, slow: bool) -> bool {
-        let slow = label.is_some() && slow;
+    /// `setShowing`: an item being shown and not ready yet, and how long it's expected to take (`pace`: a quick switch
+    /// has the switch grace, a slow one none). False: nothing new. The same item at another pace is new: its grace, if
+    /// it's running, is over at the next settle. Another item, or none: the copy's slowness said for the one before
+    /// goes.
+    pub fn set_showing(&mut self, label: Option<&str>, app: Option<&str>, pace: Pace) -> bool {
+        let pace = if label.is_some() { pace } else { Pace::Usual };
         if label == self.showing.as_deref() && (label.is_none() || app == self.showing_app.as_deref()) {
-            if slow == self.showing_slow {
+            if pace == self.showing_pace {
                 return false;
             }
-            self.showing_slow = slow;
+            self.showing_pace = pace;
             return true;
         }
         self.showing = label.map(str::to_owned);
         self.showing_app = label.and(app).map(str::to_owned);
-        self.showing_slow = slow;
+        self.showing_pace = pace;
         self.copy_slow = false;
         true
     }
@@ -585,19 +618,20 @@ impl Page {
 
     /// `settlePage`: the grace's deadline dropped, then the state the page card should be in: into `loading` from
     /// neither `loading` nor `elsewhere`, for a show not known to be slow (and no slow step of the engine's), the grace
-    /// begun (`now` + the grace); else applied.
+    /// begun (`now` + the grace: a quick switch's, else the loader's); else applied.
     pub fn settle(&mut self, now: f64) -> Settled {
         self.grace_until = None;
         let target = self.target();
+        let grace = if self.showing_pace == Pace::Quick { self.switch_grace } else { self.grace };
         if target == PageState::Loading
             && self.state != PageState::Loading
             && self.state != PageState::Elsewhere
             && self.loading.is_none()
-            && !self.showing_slow
+            && self.showing_pace != Pace::Slow
             && !self.copy_slow
-            && self.grace > 0.0
+            && grace > 0.0
         {
-            self.grace_until = Some(now + self.grace);
+            self.grace_until = Some(now + grace);
             return Settled::Grace { hole_again: self.state == PageState::Shown };
         }
         Settled::Applied(self.apply(target))
