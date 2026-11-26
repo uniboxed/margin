@@ -24,6 +24,7 @@ mod panes;
 mod profiles;
 mod session;
 mod session_rules;
+mod theme_store;
 mod themes;
 mod visible;
 mod watch;

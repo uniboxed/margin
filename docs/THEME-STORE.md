@@ -31,7 +31,7 @@ still run no JS and load nothing from outside their package.
 
 ```text
 Margin.app ──────────────► themes server (Cloudflare Worker)
-  Themes page (Margin's own part)        /v1/themes …    D1: users, themes, versions, reports, ledger
+  Settings › Themes (Margin's own)       /v1/themes …    D1: users, themes, versions, reports, ledger
   Share, Generate, Load unpacked         /v1/generate ─► Claude API (key in a Worker secret)
   install: verify signature,             R2: packages, screenshots
     the same import check + preview      Browser Rendering: the screenshots, rendered from the package
@@ -59,7 +59,7 @@ Margin.app ──────────────► themes server (Cloudfla
 | The store's rules: the index read and its signature checked, versions compared, an update offered, an installed theme's source (`store`, `generated`, `linked`, `file`), a linked folder's reload rule | margin-core (`data::themes` and a new `themes::store`), one copy for the Mac and Windows |
 | HTTP, the Keychain (the install's key), the proof of work's hashing, App Attest if it's used, watching a linked folder (FSEvents; Windows: ReadDirectoryChangesW) | each platform: mechanism only |
 | The checks (`checkImport`, `sanitizeTheme`) | `app/shared/ui` as today, also run by the server |
-| The Themes page, Generate, Share, the quota shown | Margin's own UI parts (HTML/CSS, guarded like Settings: only Margin's words), drawn in every theme |
+| Settings' Themes, Generate, Share, the quota shown | Margin's own UI parts (HTML/CSS, guarded like Settings: only Margin's words), drawn in every theme |
 | Generation, uploads, moderation, limits | the server |
 
 ## 1. Load unpacked (first: everything else uses it)
@@ -77,12 +77,15 @@ Margin.app ──────────────► themes server (Cloudfla
 Nobody signs up (Tirth, 2026-11-25). The server still has to tell installs apart, for the daily limits and for who may
 update a theme, so each install has a key of its own:
 
-- **The key**: an Ed25519 key pair Margin makes the first time it's needed. The private key stays in the Keychain,
-  synced by iCloud Keychain, so it's the same on the person's Macs; it never leaves their devices. The server knows
-  only the public key, and its id (the first 16 bytes of the public key's SHA-256, in hex).
+- **The key**: an Ed25519 key pair Margin makes the first time it's needed. Its private half is a file in Margin's own
+  data folder (`theme-store/key`, readable by the person only), never sent anywhere. (Not the Keychain, decided
+  2026-11-25 while building it: a login-keychain item asks the person again whenever Margin is signed differently, as
+  development and release builds are, and iCloud Keychain needs a provisioned keychain group a Developer ID app doesn't
+  have. A file never asks, and is backed up with Margin's data. So the key is per Mac for now.) The server knows only
+  the public key, and its id (the first 16 bytes of the public key's SHA-256, in hex).
 - **Registering it costs a proof of work**: the server hands out a challenge (random, signed by the server, valid 10
   minutes), and the app finds a nonce whose SHA-256 with the challenge and the public key starts with enough zero bits
-  (about 2 seconds on a Mac, once per install). This is invisible to people, and it makes minting thousands of keys
+  (28 zero bits: about 1.6 seconds on an M-series Mac's cores, measured in margin-core, once per install). This is invisible to people, and it makes minting thousands of keys
   slow and costly for a script.
 - **Every request after that is signed** with the key: the method, the path, the time and the body's SHA-256. The server
   refuses a time more than 5 minutes away and a signature that doesn't verify.
@@ -115,18 +118,27 @@ update a theme, so each install has a key of its own:
   removed), shown with the key's short id so two authors can't pass as each other.
 - Names: unique slugs; names that impersonate Margin, Apple or another author are refused in review.
 
-## 4. The Themes page (find and install)
+## 4. Themes in Settings (find and install)
 
-- `margin://themes`: Margin's own page (like Settings), sections for Featured, New and Popular, plus search and tags.
-  Each card has the screenshots, name, author and installs.
+- **Settings › Themes** (Tirth, 2026-11-25: a category of Settings, not a page of its own, so every theme draws it with
+  the rows it already draws, people's imported themes too): each store theme's name, version, author with its key's
+  short id, description, and what it is here (to install, installed, an update, or "you have a theme of your own with
+  this id", never replaced from the store), with **Try** (or **Update to x**) and **Report…**; Refresh, and the store's
+  state (loading, not open yet, why not). Search, tags and sections (Featured, New, Popular) when there are enough
+  themes to need them.
+- **No screenshots for now** (Tirth, 2026-11-25): Try draws the theme live in the person's own window, under the
+  preview bar Import uses; Use Theme installs it. Server-rendered screenshots can come later.
 - **Install** downloads the package and checks its sha256 against the index. The index entries are signed by the
   server (Ed25519; the public key is in Margin, the private key in a Worker secret), so a cache or network in between
   can't swap a theme. Then the usual import check, the preview bar, and storage with source `store`.
-- **Updates**: a newer version in the index is offered in Settings (never applied silently).
+- **Updates**: a newer version in the index is offered in Settings (never applied silently): its row says "Update to
+  x", and the theme's line in Appearance says the new version is in Themes.
+- **Share…** (Appearance, on a theme of the person's own: a copy or linked, never one from the store) asks first, then
+  uploads the theme as it's stored, its author from its theme.json. Its line says whether it waits for review.
 
 ## 5. Generate a theme from a prompt
 
-- **Generate Theme…** on the Themes page: a prompt, and a choice:
+- **Generate Theme…** in Settings' Themes: a prompt, and a choice:
   - **Remix**: keep the layout of a built-in theme or an installed one, and Claude writes a new look over it: colours,
     type, shapes, motion, settings. This is the default: about a fifth of the tokens, and far more reliable.
   - **New layout**: Claude writes the whole package.
@@ -193,9 +205,8 @@ Opus for new layouts.
 1. Load unpacked, and `theme:check`.
 2. The skill.
 3. The server's skeleton: keys and the proof of work, signed requests, the limits, uploads with their cheap checks,
-   reports, the review page, the signed index. Screenshots follow with step 4 (they need Margin's renderer in the
-   browser).
-4. Margin's Themes page: install, update, share.
+   reports, the review page, the signed index.
+4. Settings' Themes: try, install, update, report, share (no screenshots yet: Try draws the theme live).
 5. Generation: remix first, then new layout. Eval the model before launch.
 6. The MCP server.
 

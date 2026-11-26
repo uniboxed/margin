@@ -23,13 +23,13 @@ import type { Env } from './types.ts';
 
 export const CHALLENGE_LIFE = 10 * 60_000;
 export const CLOCK_SKEW = 5 * 60_000;
-export const DEFAULT_POW_BITS = 24;
+export const DEFAULT_POW_BITS = 28;
 const MAX_POW_BITS = 32;
 
 /** A registered key, as D1 keeps it. */
 export type KeyRow = { id: string, public_key: string, created_at: number, approved: number, blocked: number };
 
-/** The proof of work's zero bits: wrangler.toml's POW_BITS, within 8–32. */
+/** The proof of work's zero bits: wrangler.toml's POW_BITS, within 8–32 (Margin does at most 30). */
 export function powBits(env: Env): number {
   const n = Number(env.POW_BITS ?? DEFAULT_POW_BITS);
   return Number.isInteger(n) && n >= 8 && n <= MAX_POW_BITS ? n : DEFAULT_POW_BITS;

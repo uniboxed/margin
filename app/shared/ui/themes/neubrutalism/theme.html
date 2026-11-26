@@ -435,6 +435,7 @@
                 <button class="settings-category" m-class:selected="{{c.selected}}" m-attr:aria-current="{{c.selected}}" m-attr:data-category="{{c.id}}" m-action="settings.category" m-arg="{{c.id}}">
                   <span class="category-icon" aria-hidden="true">
                     <m-if test="c.isAppearance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"></circle><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"></path></svg></m-if>
+                    <m-if test="c.isThemes"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg></m-if>
                     <m-if test="c.isTabs"><svg viewBox="0 0 24 24"><rect x="4" y="8.5" width="12" height="11" rx="2"></rect><path d="M8 5h9a3 3 0 0 1 3 3v8"></path></svg></m-if>
                     <m-if test="c.isBrowsing"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"></circle><path d="M4.5 12h15M12 4.5c2.1 2.1 3.2 4.6 3.2 7.5s-1.1 5.4-3.2 7.5c-2.1-2.1-3.2-4.6-3.2-7.5s1.1-5.4 3.2-7.5z"></path></svg></m-if>
                     <m-if test="c.isKeyboard"><svg viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"></rect><path d="M7 10.5h.01M10.3 10.5h.01M13.7 10.5h.01M17 10.5h.01M8 14h8"></path></svg></m-if>

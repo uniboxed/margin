@@ -37,6 +37,8 @@
     "theme:check": "node scripts/check-theme.ts",
     "skill:build": "node scripts/build-skill.ts",
     "themes:keys": "node cloud/themes/scripts/make-keys.ts",
+    "themes:vectors": "node cloud/themes/scripts/make-vectors.ts",
+    "themes:dev": "node cloud/themes/scripts/dev.ts",
     "typecheck": "tsc -p . && tsc -p tsconfig.tests.json",
     "test:webkit": "node scripts/build.ts && tools/webkit-host/run.sh all",
     "test:screen": "tools/screen-tests/run.sh",

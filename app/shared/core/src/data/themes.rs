@@ -7,6 +7,8 @@
 //!              version, savedAt, manifest, html, css, files as base64)
 //! index.json   the short list: [{ id, name, version, author, bytes, savedAt }]
 //! links.json   the themes linked to a folder (Load Unpacked, docs/THEME-STORE.md §1): { "<id>": { path, linkedAt } }
+//! sources.json the themes installed from the theme store (docs/THEME-STORE.md §4): { "<id>": { version, sha256,
+//!              installedAt } }; a theme stored any other way (imported, linked, stored again) is the person's copy
 //! ```
 //!
 //! A linked theme is stored as any other (its last good package: what's drawn); its folder, followed by the app as it's
@@ -109,6 +111,10 @@ impl ThemeStore {
         self.root.join("links.json")
     }
 
+    fn sources_path(&self) -> PathBuf {
+        self.root.join("sources.json")
+    }
+
     /// Only for an id `id_ok` allows (so never a path).
     fn file_path(&self, id: &str) -> PathBuf {
         self.root.join(format!("{id}.json"))
@@ -135,19 +141,57 @@ impl ThemeStore {
         self.list().iter().any(|e| json::string(e.get("id")) == Some(id))
     }
 
-    /// The index as Settings and the copies get it: each entry with `linked: true` when its theme is linked to a folder
-    /// (never written into `index.json`).
+    /// The index as Settings and the copies get it: each entry with `linked: true` when its theme is linked to a folder,
+    /// and `store: { version, sha256 }` when it was installed from the theme store (neither written into `index.json`).
     pub fn shown(&self) -> Vec<Object> {
         let linked: std::collections::HashSet<String> = self.read_links().into_keys().collect();
+        let sources = self.read_sources();
         self.list()
             .into_iter()
             .map(|mut e| {
-                if json::string(e.get("id")).is_some_and(|id| linked.contains(id)) {
+                let id = json::string(e.get("id")).unwrap_or("").to_string();
+                if linked.contains(&id) {
                     e.insert("linked".into(), Value::Bool(true));
+                }
+                if let Some(src) = sources.get(&id) {
+                    let store = json!({ "version": src.get("version"), "sha256": src.get("sha256") });
+                    e.insert("store".into(), store);
                 }
                 e
             })
             .collect()
+    }
+
+    /// The store's record (`sources.json`): entries whose id the rule allows, with a version and a SHA-256 of the
+    /// right shape.
+    fn read_sources(&self) -> BTreeMap<String, Object> {
+        let Some(Value::Object(m)) = read_json(&self.sources_path()) else { return BTreeMap::new() };
+        let sha_ok = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        m.into_iter()
+            .filter_map(|(id, v)| {
+                let o = v.as_object()?;
+                let ok = id_ok(&id)
+                    && !BUILTINS.contains(&id.as_str())
+                    && json::string(o.get("version")).is_some_and(|v| super::theme_store::version_parts(v).is_some())
+                    && json::string(o.get("sha256")).is_some_and(sha_ok);
+                ok.then(|| (id, o.clone()))
+            })
+            .collect()
+    }
+
+    /// The store's record of `id`: set (installed from the store, that version and package) or gone (`None`: the
+    /// person's own copy now). Written only when it changes.
+    fn set_source(&self, id: &str, source: Option<Object>) -> Result<(), ThemeError> {
+        let mut sources = self.read_sources();
+        let changed = match source {
+            Some(o) => sources.insert(id.to_string(), o.clone()).as_ref() != Some(&o),
+            None => sources.remove(id).is_some(),
+        };
+        if !changed {
+            return Ok(());
+        }
+        let map: Object = sources.into_iter().map(|(k, v)| (k, Value::Object(v))).collect();
+        Ok(write_atomically(&sorted_json(&Value::Object(map)), &self.sources_path())?)
     }
 
     /// The links in `links.json` whose id the rule allows and whose path is a full one (not the listed check: see
@@ -209,9 +253,45 @@ impl ThemeStore {
         Ok(write_atomically(&sorted_json(&Value::Object(map)), &self.links_path())?)
     }
 
-    /// A value from the overlay (`theme.save`), checked for shape, id and size, then stored and listed. Its entry.
-    /// `now`: milliseconds since 1970.
+    /// A value from the overlay (`theme.save`), checked for shape, id and size, then stored and listed: the person's
+    /// own copy from now on (no longer the store's, if it was). Its entry. `now`: milliseconds since 1970.
     pub fn save(&mut self, value: &Object, now: f64) -> Result<Object, ThemeError> {
+        let entry = self.store_value(value, now)?;
+        self.set_source(json::string(entry.get("id")).unwrap_or(""), None)?;
+        Ok(entry)
+    }
+
+    /// A theme installed from the theme store (docs/THEME-STORE.md §4): stored as [`save`](Self::save) stores one, and
+    /// recorded as the store's `version` (which its theme.json must say) and package (`sha256`, the index's, which the
+    /// shell checked the download against), so an update can be offered. Its entry.
+    pub fn save_from_store(
+        &mut self,
+        value: &Object,
+        now: f64,
+        version: &str,
+        sha256: &str,
+    ) -> Result<Object, ThemeError> {
+        let said = json::string(value.get("manifest"))
+            .and_then(|m| serde_json::from_str::<Value>(m).ok())
+            .and_then(|m| json::string(m.get("version")).map(str::to_string));
+        if said.as_deref() != Some(version) || super::theme_store::version_parts(version).is_none() {
+            return Err(refused("its theme.json says another version than the store's"));
+        }
+        if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+            return Err(refused("not the store's package"));
+        }
+        // Never over the person's own theme of that id (a copy, or linked): only a store theme is replaced from the store.
+        let id = json::string(value.get("id")).unwrap_or("").to_string();
+        if self.has(&id) && !self.read_sources().contains_key(&id) {
+            return Err(refused("you have a theme of your own with this id: remove it first to install the store's"));
+        }
+        let entry = self.store_value(value, now)?;
+        let source = json!({ "version": version, "sha256": sha256, "installedAt": number(now) });
+        self.set_source(&id, source.as_object().cloned())?;
+        Ok(entry)
+    }
+
+    fn store_value(&mut self, value: &Object, now: f64) -> Result<Object, ThemeError> {
         if json::int(value.get("format")) != Some(FORMAT) {
             return Err(refused(format!("not a stored theme of format {FORMAT}")));
         }
@@ -296,6 +376,7 @@ impl ThemeStore {
         let kept: Vec<Object> = index.into_iter().filter(|e| json::string(e.get("id")) != Some(id)).collect();
         self.write_index(&kept)?;
         self.unlink(id)?; // (a removed theme's folder is followed no more)
+        self.set_source(id, None)?;
         let file = self.file_path(id);
         let _ = fs::remove_file(&file);
         let _ = fs::remove_file(bak_of(&file));
@@ -551,6 +632,49 @@ mod tests {
 
     fn error(f: &ThemeFile) -> String {
         f.message.get("error").and_then(Value::as_str).unwrap_or("").to_string()
+    }
+
+    #[test]
+    fn from_the_store() {
+        let tmp = temp();
+        let root = tmp.path().join("themes");
+        let mut store = ThemeStore::new(&root);
+        let sha = "a".repeat(64);
+        let source = |store: &ThemeStore, id: &str| {
+            store
+                .shown()
+                .into_iter()
+                .find(|e| json::string(e.get("id")) == Some(id))
+                .and_then(|e| e.get("store").cloned())
+        };
+        // Installed from the store: shown with the store's version and package.
+        store.save_from_store(&value("dusk", "Dusk", "1.2.0", None), 5.0, "1.2.0", &sha).expect("installed");
+        assert_eq!(source(&store, "dusk"), Some(json!({ "version": "1.2.0", "sha256": sha })));
+        assert!(store.message("dusk").is_some());
+        // Its theme.json must say the store's version; the package must be a SHA-256.
+        let wrong = store.save_from_store(&value("dusk", "Dusk", "1.3.0", None), 6.0, "1.4.0", &sha).unwrap_err();
+        assert!(wrong.to_string().contains("another version"));
+        assert!(store.save_from_store(&value("dusk", "Dusk", "1.3.0", None), 6.0, "1.3.0", "nope").is_err());
+        // An update from the store: the record follows.
+        store.save_from_store(&value("dusk", "Dusk", "1.3.0", None), 7.0, "1.3.0", &"b".repeat(64)).expect("updated");
+        assert_eq!(source(&store, "dusk").unwrap()["version"], "1.3.0");
+        // Stored any other way (imported again, edited): the person's copy, no longer the store's.
+        store.save(&value("dusk", "Dusk", "1.3.1", None), 8.0).expect("stored");
+        assert_eq!(source(&store, "dusk"), None);
+        // …and the store never replaces the person's own theme of that id.
+        let own = store.save_from_store(&value("dusk", "Dusk", "2.0.0", None), 9.0, "2.0.0", &sha).unwrap_err();
+        assert!(own.to_string().contains("of your own"), "{own}");
+        assert_eq!(
+            store.list().iter().find(|e| json::string(e.get("id")) == Some("dusk")).unwrap()["version"],
+            "1.3.1"
+        );
+        // Removed: its record too.
+        store.save_from_store(&value("paper", "Paper", "1.0.0", None), 10.0, "1.0.0", &sha).expect("installed");
+        assert!(store.remove("paper").unwrap());
+        assert!(!fs::read_to_string(root.join("sources.json")).unwrap().contains("paper"));
+        // A record for a theme of a bad shape is never shown.
+        fs::write(root.join("sources.json"), r#"{"dusk":{"version":"1.3.1","sha256":"short"}}"#).unwrap();
+        assert_eq!(source(&store, "dusk"), None);
     }
 
     #[test]

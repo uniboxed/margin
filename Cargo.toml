@@ -18,6 +18,9 @@ serde_json = { version = "1.0", features = ["preserve_order", "float_roundtrip"]
 sha2 = "0.11"
 base64 = "0.23"
 getrandom = "0.4"
+# The theme store (app/shared/core/src/data/theme_store.rs): the install's key signs its requests, and the store's
+# index is checked against the store's public key (Ed25519, as the server's Web Crypto).
+ed25519-dalek = "3"
 hex = "0.4"
 tempfile = "3"
 libc = "0.2"

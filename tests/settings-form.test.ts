@@ -135,7 +135,7 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
 
 test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Browsing, Keyboard; every field in one, in the form\'s order', () => {
   assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.id), [...SETTINGS_CATEGORY_IDS], 'the action\'s ids (ui/actions.ts) are the categories\'');
-  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Tabs', 'Browsing', 'Keyboard']);
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Themes', 'Tabs', 'Browsing', 'Keyboard'], 'Themes (the theme store) only where Margin.app offers it: the view model leaves it out elsewhere');
   const theme = { id: 'arcadia', name: 'Arcadia', settings: { sidebarWidth: { type: 'number', label: 'Sidebar width', default: 260, min: 160, max: 500 } } };
   const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
   const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);

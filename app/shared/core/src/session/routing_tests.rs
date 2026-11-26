@@ -210,7 +210,17 @@ fn the_uis_requests_routed() {
     );
     assert_eq!(ui(&s, "updateSettings", json!({ "x": 1 }))["route"], json!("settings"));
     // A theme imported or linked: the shell's, for the window that asked (docs/THEME-STORE.md §1), never the library's.
-    for name in ["theme.import", "theme.link", "theme.save", "theme.remove", "theme.unlink"] {
+    for name in [
+        "theme.import",
+        "theme.link",
+        "theme.save",
+        "theme.remove",
+        "theme.unlink",
+        "theme.store.open",
+        "theme.store.try",
+        "theme.store.report",
+        "theme.share",
+    ] {
         assert_eq!(
             ui(&s, name, json!({ "windowId": 3, "id": "mine" })),
             json!({ "route": "theme", "name": name, "payload": { "windowId": 3, "id": "mine" }, "window": 3 }),

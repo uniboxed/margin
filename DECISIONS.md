@@ -11126,7 +11126,7 @@ Margin; its text is also what the generator will use.
 Step 3 of the theme store plan: `cloud/themes/`, a Cloudflare Worker for the free plan, local with tests, not deployed
 (it needs Tirth's Cloudflare login, the D1 id and the secrets; cloud/themes/README.md says how).
 - **No accounts** (§2): an Ed25519 key per install, registered once with a proof of work (a challenge HMAC-signed by
-  the server, 10 minutes, `POW_BITS` 24), every request after that signed (method, path, time within 5 minutes, the
+  the server, 10 minutes, `POW_BITS` 28: raised from 24 once margin-core's search was measured, see the client's entry), every request after that signed (method, path, time within 5 minutes, the
   body's SHA-256, the `X-Margin-Meta` header). No query strings: a proxy may respell one, so an upload's author and
   tags travel in that signed header. Registering must be signed by the key registered, under its own id.
 - **The cheap check, one copy of the rules**: `ui/theme-import.ts`'s zip reader split into `zipEntries` (the shape,
@@ -11165,3 +11165,47 @@ theme draws (a button's status is replaced by what happened, so it can't hold th
 copy … later changes to the original don't reach the copy: import it again to update it"; Load Unpacked is "for making
 or editing a theme: links its folder instead of copying it … Unlink stops following the folder". Each added theme says
 "· a copy" or "· linked to its folder", and the macOS pickers say the same.
+
+## The theme store in Margin (`feat/theme-store-client`, 2026-11-26; docs/THEME-STORE.md §2–§4)
+
+Step 4 of the theme store plan, with Tirth's two choices (2026-11-25): the store is a category of Settings, **Themes**,
+drawn with the rows every theme already draws (so people's imported themes show it too), and **no screenshots yet**:
+Try draws a theme live under Import's preview bar.
+- **The rules in margin-core, one copy for the Mac and Windows** (`data::theme_store`): where the store is (`STORE`,
+  `None` until it's deployed: Settings says "not open yet"; a test's or a developer's local server from the process's
+  environment only, `http` only to 127.0.0.1); the install's key (Ed25519, `ed25519-dalek` 3); what a request signs; the
+  proof of work (on every core, the hash state after the fixed prefix kept, each try hashing only the nonce); the index
+  read only when its signature verifies (`verify_strict`, over the context line and its text), each entry checked and
+  the bad ones left out; what each store theme is here (`install`, `installed`, `update`, `yours`: a copy or a linked
+  theme of that id, never replaced from the store); a download held to the index's size and SHA-256; a shared theme as a
+  stored `.margintheme` (sorted, dated, the same bytes every time); what an answer means, the server's words cleaned.
+  `data::themes` keeps `sources.json` (version, SHA-256 of each theme installed from the store); storing a theme any
+  other way makes it the person's copy again; the store never replaces the person's own theme of that id.
+- **The formats held to the server's own code**: cloud/themes/vectors.json is made by the server's code
+  (`npm run themes:vectors`, checked by tests/cloud-themes-vectors.test.ts) and margin-core's tests must produce the same
+  bytes from it (the key's id, a signature, the smallest nonce, the index, the shared zip: two zip writers agree, and the
+  app's reader and the server's cheap check take it).
+- **The proof of work is cheaper than planned**: margin-core finds 24 bits in about 0.1 s on an M-series Mac's 8 cores
+  (the plan said about 2 s). The server's default is 28 bits now (about 1.6 s here, a few seconds on an older Mac,
+  once per install), and Margin refuses to do more than 30 whatever a server asks.
+- **The key is a file, not the Keychain** (`theme-store/key` in Margin's data folder, 0600): a login-keychain item asks
+  the person again whenever Margin is signed differently (development and release builds are), and iCloud Keychain
+  needs a provisioned keychain group a Developer ID app doesn't have. So the key is per Mac for now. Made only for the
+  first signed request; a key file that isn't a key is never replaced (that would lose the themes it shared).
+- **The shell does the sending only** (ShellThemeStore.swift: URLSession, ephemeral, no cookies): what it sends the core
+  made, what it got the core reads. A signed request the server answers "unknown key" is sent again once the key is
+  registered, once. The proof of work runs off the main thread, a call with no object (the client object stays on the
+  main thread). A page names a theme by id only: its package's address and SHA-256 are the last checked index's.
+  Install is `theme.save` with `store`, taken only for the theme downloaded for that page's Try in the last 10 minutes.
+- **Settings**: Themes (Margin.app's window only) asks for the list the first time it's drawn; each row with Try or
+  Update and Report (its reasons as prompt buttons); Share on the person's own themes in Appearance asks first and
+  takes the author from the theme's theme.json (nothing typed). Each answer on its own line. A store theme's line in
+  Appearance says it's from the store, and when an update is in Themes. The five built-ins got an icon for the category.
+- **Tests**: margin-core (the vectors; the index refused for another key or one letter changed; states; the key file;
+  sources), margin-ffi (closed store makes no key; never more work than 30 bits), UI units (tests/theme-store-ui.test.ts:
+  rows, states, words, prompts, the category only where offered, only an id sent), Swift units (store-client-tests.swift:
+  closed, a tampered package, a list another key signed, no network), and end to end (tools/app-tests/e2e-store.swift,
+  17 checks: the real shell and page against the server's own code over HTTP, `npm run themes:dev`: Share with the key
+  registered, review approving through its page, the signed list, Try, Install, Update, and three refusals).
+- **Not yet**: search, tags and sections (when there are enough themes), screenshots, the store's address (after the
+  deploy), the Windows shell's side (its rules are in margin-core already).

@@ -75,6 +75,15 @@ final class ThemeStore {
         throw Refused(description: answer["refused"] as? String ?? answer["error"] as? String ?? "not stored")
     }
 
+    // A theme installed from the theme store: stored as `save` stores one, and recorded as that version and package
+    // (its theme.json must say the version), so updates can be offered. Its entry back.
+    @discardableResult func saveFromStore(_ value: JSONObject, version: String, sha256: String, now: Double = Date().timeIntervalSince1970 * 1000) throws -> JSONObject {
+        guard JSONSerialization.isValidJSONObject(value) else { throw Refused(description: "not JSON") }
+        let answer = call(["type": "saveFromStore", "value": value, "now": now, "version": version, "sha256": sha256])
+        if let entry = answer["entry"] as? JSONObject { return entry }
+        throw Refused(description: answer["refused"] as? String ?? answer["error"] as? String ?? "not stored")
+    }
+
     // The theme message the overlay draws ({ id, manifest, html, css, files }), or nil:
     // not listed, missing, of a later format, or naming another id.
     func message(_ id: String) -> String? {

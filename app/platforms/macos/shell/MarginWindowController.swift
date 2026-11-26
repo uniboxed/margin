@@ -1967,6 +1967,8 @@ final class MarginWindows {
         let list = themes()
         for c in controllers where c.isReady { c.push(#"{"type":"themes","list":"# + list + "}") }
     }
+    /// A message for every ready window's page (the theme store's rows).
+    func tell(_ json: String) { for c in controllers where c.isReady { c.push(json) } }
     /// A stored theme changed under the same id: each window drawing it draws it again.
     func themeStored() { for c in controllers { c.themeStored() } }
     private(set) var controllers: [MarginWindowController] = []

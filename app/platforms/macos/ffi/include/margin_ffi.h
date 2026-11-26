@@ -488,6 +488,17 @@ void margin_builtin_themes_free(MarginBuiltinThemes *builtins);
 uint8_t *margin_builtin_themes_message(MarginBuiltinThemes *builtins, const uint8_t *chosen, size_t len, size_t *out_len);
 uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_len);
 
+// The theme store's client (data/theme_store.rs, ffi theme_store.rs): one object for the run (where the store is, the
+// install's key under `root`, the last index that checked out), one JSON call making the requests the shell sends and
+// reading their answers; the proof of work with no object (off the main thread). `over`: NULL, or `{ base, key }` (a
+// test's local store). Freed with margin_buffer_free.
+typedef struct MarginThemeStore MarginThemeStore;
+
+MarginThemeStore *margin_theme_store_new(const uint8_t *root, size_t root_len, const uint8_t *over, size_t over_len);
+void margin_theme_store_free(MarginThemeStore *client);
+uint8_t *margin_theme_store_call(MarginThemeStore *client, const uint8_t *request, size_t len, size_t *out_len);
+uint8_t *margin_theme_store_solve(const uint8_t *request, size_t len, size_t *out_len);
+
 // The session (session/, ffi session.rs: HostedSession's flows as async steps): one object per app over the library
 // object (the library's requests' sink from `new` on, or from `take_requests`, of several over one library: they reach
 // it inside a perform; a perform Swift makes itself is followed by the `edited` input, which answers what they left),

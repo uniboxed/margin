@@ -131,7 +131,8 @@ if (changed.some((f) => /^(extension|app\/shared\/(host|ui))\/|^scripts\/build\.
 // (The app's Swift: app/platforms/macos/, each engine's app side (app/engines/), the connector, and the Swift tests.)
 const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|app\/shared\/connector|tools\/app-tests|tools\/screen-tests\/apps)\//.test(f));
 // (The Rust workspace: any crate's source or the workspace's own files.)
-const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
+// (And the theme store's vectors, which margin-core's tests read: cloud/themes/vectors.json.)
+const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^cloud\/themes\/vectors\.json$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
 const notRun: string[] = [];
 if (changed.some((f) => /^(extension|app\/shared\/(host|ui)|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');

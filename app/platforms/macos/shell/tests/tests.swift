@@ -79,6 +79,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     sessionRulesTests() // session-rules-tests.swift: the session's rules step 3 moves into the core, pinned against the Swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift
+    storeClientTests() // store-client-tests.swift: the theme store's client, a stand-in transport
     appsTests() // apps-tests.swift: installed apps for the palette, fake bundles in a temporary folder
     relayTests() // relay-tests.swift: Chrome's and Edge's relay, the real helper
     behaviourWorldTests() // behaviour-world.swift: Chameleon's switches and their stand-ins (tools/screen-tests)

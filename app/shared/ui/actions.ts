@@ -173,7 +173,7 @@ export const BEHAVIOR_ONLY = Object.freeze(new Set([
 // menu (the one its name's right-click opens: Arc's `•••` beside the space's name).
 export const MENUS = Object.freeze(['add', 'space']);
 // The Settings page's categories (`settings.category`), as ui/settings-form.ts SETTINGS_CATEGORIES lists them.
-export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'tabs', 'browsing', 'keyboard']);
+export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'themes', 'tabs', 'browsing', 'keyboard']);
 
 // An id as the state holds it: a tab id is a safe integer (the browser's),
 // other ids are short strings of letters, digits, '-', '_' and ':'.

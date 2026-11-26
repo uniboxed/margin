@@ -27,5 +27,6 @@ tag = "v1"
 new_sqlite_classes = ["Limiter"]
 
 [vars]
-# The proof of work's zero bits: 24 is about 2 s on a Mac, once per install.
-POW_BITS = "24"
+# The proof of work's zero bits: 28 is about 1.6 s on an M-series Mac's cores (margin-core, measured 2026-11-25), a
+# few seconds on an older one, once per install.
+POW_BITS = "28"

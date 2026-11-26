@@ -334,8 +334,9 @@ theme's settings.
 row in the sidebar), drawn in your `launcher` part with `settingsTab` set;
 the new-tab page's `#settings` is the same page. Draw it as macOS's System
 Settings: `settingsTab.title`, its `categories[]` in a sidebar (`id`,
-`label`, `help`, `selected`, and `isAppearance`, `isTabs`, `isBrowsing`,
-`isKeyboard` for an icon of your own), each a button with
+`label`, `help`, `selected`, and `isAppearance`, `isThemes`, `isTabs`,
+`isBrowsing`, `isKeyboard` for an icon of your own; Themes, the theme store,
+only in Margin.app), each a button with
 `m-action="settings.category"` and `m-arg="{{c.id}}"`, and beside them
 `settingsTab.current` (`label`, `help`) over your `<m-settings>`. A theme
 that reads `settingsTab` gets only the chosen category's fields in

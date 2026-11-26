@@ -2,7 +2,8 @@
 //! the Mac app's Swift (docs/CORE-REFACTOR.md step 1.6):
 //!
 //! - the store (`margin_themes_*`): one object over its folder, one JSON call for the index and its changes
-//!   (`list`: each entry with `linked` when it's linked to a folder; `has`, `save`, `remove`; the links: `link`,
+//!   (`list`: each entry with `linked` when it's linked to a folder and `store` when it came from the theme store;
+//!   `has`, `save`, `saveFromStore`, `remove`; the links: `link`,
 //!   `unlink`, `links`), and a typed call for the package a window draws (`margin_themes_message`: its
 //!   JSON's bytes as they are, never wrapped in another JSON string: a package is up to 4.5 MB);
 //! - the built-ins' packages (`margin_builtin_themes_*`): one object over the app's folder, the package's bytes typed;
@@ -51,6 +52,19 @@ impl MarginThemes {
                 };
                 let now = json::num(o.get("now")).unwrap_or(0.0);
                 match self.store.save(value, now) {
+                    Ok(entry) => json!({ "entry": entry }),
+                    Err(e) => error_text(&e),
+                }
+            }
+            // A theme installed from the theme store (data::theme_store): its version and package recorded.
+            "saveFromStore" => {
+                let Some(value) = json::object(o.get("value")) else {
+                    return json!({ "refused": "not a theme package" });
+                };
+                let now = json::num(o.get("now")).unwrap_or(0.0);
+                let version = json::string(o.get("version")).unwrap_or("");
+                let sha256 = json::string(o.get("sha256")).unwrap_or("");
+                match self.store.save_from_store(value, now, version, sha256) {
                     Ok(entry) => json!({ "entry": entry }),
                     Err(e) => error_text(&e),
                 }

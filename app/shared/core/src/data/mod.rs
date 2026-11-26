@@ -12,6 +12,7 @@ pub mod profiles;
 pub mod set;
 pub mod store;
 pub mod sync;
+pub mod theme_store;
 pub mod themes;
 
 use serde_json::Value;

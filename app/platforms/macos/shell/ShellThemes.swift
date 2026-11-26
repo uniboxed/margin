@@ -13,7 +13,14 @@
 //     { linked: true }      …the folder just picked (`pendingLink`) linked to it and followed from now on.
 //     { link: id }          …a linked folder's theme read again and checked (`linkedFolderChanged`): stored
 //                           again (only for the theme linked under that id), drawn again, nothing chosen.
+//     { store: true }       …a theme from the theme store (`theme.store.try` just downloaded it): stored with the
+//                           store's version and package (ShellThemeStore.swift), so an update can be offered.
 //   theme.unlink { id }     its folder followed no more; the theme stays as it was last stored.
+//   theme.store.open        Settings' Themes: the store's list, checked (`themeStore` { state, rows | message }).
+//   theme.store.try { id }  a store theme downloaded and checked against the list, then to the page as an import's
+//                           file is (`themeFile` with `store`): previewed, and Use Theme installs it.
+//   theme.store.report { id, reason }, theme.share { id }: a report; one of the person's own themes uploaded. Each
+//                           answer to its Settings line (`themeStoreResult` { key, ok, message?, data? }).
 //   theme.remove { id }     gone from the store (and its link); Margin's settings and every linked copy
 //                           whose theme it was set back to Arcadia.
 //
@@ -36,9 +43,25 @@ final class UserThemes {
     static let pendingLinkFor: TimeInterval = 600
     // The linked folders followed, by theme id.
     var watches: [String: FolderWatch] = [:]
+    // The theme store's client (ShellThemeStore.swift), and what its Settings were last told.
+    let storeClient: ThemeStoreClient
+    var storeShown: JSONObject?
+    // A store theme downloaded for its preview, until the page's Use Theme installs it (or another download); for a
+    // while only. Its version and package are the store's list's, never the page's.
+    var pendingInstall: (id: String, version: String, sha256: String, at: Date)?
 
-    init(harness: Bool) {
-        store = ThemeStore(root: harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-themes-\(UUID().uuidString)", isDirectory: true) : ThemeStore.appRoot)
+    init(harness: Bool, themeStore: (base: String, key: String)? = ThemeStoreClient.environmentStore, storeSend: ((StoreRequest) async -> StoreResponse)? = nil) {
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("margin-themes-\(UUID().uuidString)", isDirectory: true)
+        store = ThemeStore(root: harness ? scratch : ThemeStore.appRoot)
+        storeClient = ThemeStoreClient(root: harness ? scratch.appendingPathComponent("theme-store", isDirectory: true) : ThemeStoreClient.appRoot,
+                                       over: themeStore, send: storeSend)
+    }
+
+    // The store theme downloaded for `id`'s preview, if it's still waiting for the page's Use Theme; taken once.
+    func takePendingInstall(_ id: String, now: Date = Date()) -> (version: String, sha256: String)? {
+        defer { pendingInstall = nil }
+        guard let p = pendingInstall, p.id == id, now.timeIntervalSince(p.at) <= Self.pendingLinkFor else { return nil }
+        return (p.version, p.sha256)
     }
 
     // `folder`: Load Unpacked's picker (folders only); else Import's (a folder or a .margintheme file).
@@ -155,16 +178,66 @@ extension Shell {
                 Diagnostics.note("themes: a \(read.kind) read (\(read.bytes) bytes)\(linking ? " to load unpacked" : "")")
                 reply(said(message))
             }
+        case "theme.store.open":
+            // Settings' Themes: the store's list, checked, each theme with what it is to this install.
+            Task { [weak self] in
+                guard let self else { return }
+                let shown = await userThemes.storeClient.catalog(installed: userThemes.store.list())
+                userThemes.storeShown = shown
+                reply(jsonString(shown.merging(["type": "themeStore"]) { $1 }) ?? "{}")
+            }
+        case "theme.store.try":
+            // A store theme downloaded, checked against the list, and handed to the page as an import's file is: it's
+            // previewed, and Use Theme installs it (`theme.save` with `store`).
+            guard let id = arg["id"] as? String, ThemeStore.idOK(id) else { return }
+            Task { [weak self] in
+                guard let self else { return }
+                guard let got = await userThemes.storeClient.download(id) else {
+                    return reply(storeResult("storeTry:\(id)", ["ok": false, "message": userThemes.storeClient.lastError ?? ""]))
+                }
+                userThemes.pendingInstall = (id, got.version, got.sha256, Date())
+                let message: JSONObject = ["type": "themeFile", "kind": "zip", "zip": got.zip.base64EncodedString(), "store": ["id": id, "version": got.version]]
+                reply(jsonString(message) ?? "{}")
+            }
+        case "theme.store.report":
+            guard let id = arg["id"] as? String, ThemeStore.idOK(id), let reason = arg["reason"] as? String else { return }
+            Task { [weak self] in
+                guard let self else { return }
+                reply(storeResult("storeReport:\(id)", await userThemes.storeClient.report(id, reason: reason)))
+            }
+        case "theme.share":
+            // One of the person's themes (a copy or linked, never one from the store) uploaded as it's stored.
+            guard let id = arg["id"] as? String, ThemeStore.idOK(id) else { return }
+            let key = "themeShare:\(id)"
+            guard let entry = userThemes.store.list().first(where: { $0["id"] as? String == id }), entry["store"] == nil,
+                  let message = userThemes.store.message(id) else {
+                return reply(storeResult(key, ["ok": false, "message": "Only a theme of your own can be shared."]))
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                reply(storeResult(key, await userThemes.storeClient.share(message: message)))
+            }
         case "theme.save":
             guard let value = arg["value"] as? JSONObject else { return }
             let reload = arg["link"] as? String // a linked folder's theme read again
             let linking = arg["linked"] as? Bool == true && reload == nil
+            let fromStore = arg["store"] as? Bool == true && reload == nil && !linking
             // (A linked folder's theme stored again only under the id it's linked as: never another theme's.)
             if let reload, value["id"] as? String != reload || !userThemes.store.links().contains(where: { $0.id == reload }) {
                 return Diagnostics.warn("themes: a linked folder's theme refused for storing: not the theme linked there")
             }
             do {
-                let entry = try userThemes.store.save(value)
+                let entry: JSONObject
+                if fromStore {
+                    // Installed from the store: only the theme downloaded here for its preview, as the list said it.
+                    guard let id = value["id"] as? String, let p = userThemes.takePendingInstall(id) else {
+                        throw ThemeStore.Refused(description: "the theme to install wasn’t downloaded here, or it was over \(Int(UserThemes.pendingLinkFor / 60)) minutes ago")
+                    }
+                    entry = try userThemes.store.saveFromStore(value, version: p.version, sha256: p.sha256)
+                    Diagnostics.note("themes: one installed from the theme store (\(entry["bytes"] ?? 0) bytes)")
+                } else {
+                    entry = try userThemes.store.save(value)
+                }
                 let id = entry["id"] as? String ?? ""
                 if linking {
                     guard let url = userThemes.takePendingLink() else {
@@ -173,7 +246,7 @@ extension Shell {
                     try userThemes.store.link(id, path: url.path)
                     followLinkedFolder(id, path: url.path)
                     Diagnostics.note("themes: one loaded unpacked (\(entry["bytes"] ?? 0) bytes), its folder followed")
-                } else {
+                } else if !fromStore {
                     Diagnostics.note("themes: one stored\(reload == nil ? "" : " again from its linked folder") (\(entry["bytes"] ?? 0) bytes)")
                 }
                 themesListChanged()
@@ -241,10 +314,25 @@ extension Shell {
     // The index as Margin's windows and the copies get it.
     var themesListJSON: String { jsonString(userThemes.store.list()) ?? "[]" }
 
-    // The index changed: every Margin window and every linked copy told.
+    // The index changed: every Margin window and every linked copy told; and Settings' Themes, if it was shown, what each
+    // store theme is now (installed, an update, yours).
     func themesListChanged() {
         marginWindows?.tellThemes()
         for entry in links.values { themesTellCopy(entry) }
+        if userThemes.storeShown?["state"] as? String == "ready" {
+            let shown: JSONObject = ["state": "ready", "rows": userThemes.storeClient.rows(installed: userThemes.store.list())]
+            userThemes.storeShown = shown
+            marginWindows?.tell(jsonString(shown.merging(["type": "themeStore"]) { $1 }) ?? "{}")
+        }
+    }
+
+    // What a store request came to, for the Settings line `key` (a field's id): `{ type: "themeStoreResult", key, ok,
+    // message?, data? }` (the page words what was done).
+    func storeResult(_ key: String, _ result: JSONObject) -> String {
+        var m: JSONObject = ["type": "themeStoreResult", "key": key, "ok": result["ok"] as? Bool == true]
+        if let message = result["message"] as? String, !message.isEmpty { m["message"] = message }
+        if let data = result["data"] as? JSONObject { m["data"] = data }
+        return jsonString(m) ?? "{}"
     }
 
     // A copy linked (its first snapshot): the index, so its updateSettings takes an imported theme's id.
