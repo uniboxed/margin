@@ -1486,7 +1486,9 @@
 }
 .arcadia:not(.library-open):not([m-library-swipe]) .library { visibility: hidden; }
 .arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) .library { display: none; }
-.arcadia[m-background] .library { background: transparent; --fg: var(--m-fg); --muted: var(--m-fg-2); --hover: var(--m-hover); --active: var(--m-selected); --lib-icon: var(--m-fg-2); }
+.arcadia[m-background] .library { background: transparent; --fg: var(--m-fg); --muted: var(--m-fg-2); --hover: var(--m-hover); --active: var(--m-selected); }
+/* (Its icons in the space's colour on a background too, as Arc's: darkened, lightened on a dark one.) */
+.arcadia[m-background][m-appearance="dark"] .library { --lib-icon: color-mix(in srgb, var(--space-shown) 55%, #fff); --lib-icon-on: color-mix(in srgb, var(--space-shown) 40%, #fff); }
 .arcadia[m-background]:not([m-appearance="dark"]) .library { --hover: rgba(0, 0, 0, 0.05); }
 .arcadia[m-background][m-appearance="dark"] .library { --hover: rgba(255, 255, 255, 0.1); }
 @media (prefers-color-scheme: dark) { .library { --lib-icon: color-mix(in srgb, var(--space-shown) 55%, #fff); --lib-icon-on: color-mix(in srgb, var(--space-shown) 40%, #fff); --lib-pill: rgba(255, 255, 255, 0.1); --li-s: transparent; --lib-label: rgba(255, 255, 255, 0.55); --lib-label-on: #fff; } .lib-section.active { --li-s: rgba(255, 255, 255, 0.9); } }
@@ -1647,6 +1649,8 @@
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { --library-panel: calc(100% - 56px); }
 /* (Over the page card's edge and shadow too: the page under it, a sliver of it showing at the right, as Arc's.) */
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { z-index: 2; box-shadow: 1px 0 7px rgba(0, 0, 0, 0.18); }
+/* (On a space's background, Margin's layer is cut out of the page's place: over it, the background's one colour.) */
+.arcadia[m-background].library-wide:not([m-sidebar-fixed]) .library { background: var(--m-bg); }
 .lib-spaces { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 48px 24px; overflow-x: auto; overscroll-behavior: contain; }
 .lib-card {
   position: relative; flex: none; width: 240px; height: 100%; display: flex; flex-direction: column; overflow: hidden;
