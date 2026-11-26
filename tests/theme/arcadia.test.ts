@@ -1250,8 +1250,20 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(await ev(() => document.querySelector('.arcadia')!.hasAttribute('m-library-wide-slide')), false);
         await ev(() => T.rtDispatch('library.section', 'archive'));
         await page.emulateMedia({ reducedMotion: 'no-preference' });
-        await ev(() => T.rtDispatch('library.close'));
-        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        // Two slides at once (a trackpad swipe back out of the Library begun as the slide out of Spaces starts): the host
+        // told once that the page moves, and once that it's over, as the last of them ends (each told its own before:
+        // the first over turned the live follow off while the other still moved the page).
+        await ev(() => T.rtDispatch('library.section', 'spaces'));
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return r.classList.contains('library-wide') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 2000 });
+        await ev(() => { (window as any).__told = T.rtResizing().length; T.rtDispatch('library.section', 'archive'); });
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.library .lib-main', Array(24).fill(20)));
+        const overlapped = await ev(() => document.querySelector('.arcadia')!.hasAttribute('m-library-swipe'));
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return !(window as any).__rt.runtime.vm.library.open && !r.hasAttribute('m-library-swipe') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 3000 });
+        assert.equal(overlapped, true, 'the swipe under way');
+        const both = await ev(() => T.rtResizing().slice((window as any).__told).map(([on]) => on));
+        assert.deepEqual(both, [true, false], `two slides at once: told once, over once as the last ends (${both.join(' ')})`);
         await ev(() => T.rtChange('setBackground', 'personal', null));
         await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
       });

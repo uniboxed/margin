@@ -78,6 +78,15 @@ export function installSwipe(rt: Rt) {
   // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
   // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
   const phases = { known: false, fingers: false, momentum: false, touched: false };
+  // The page moved by a slide of ours (the Library's, into Spaces or out), told to the host once for all of them:
+  // `sidebar.resizing` on as the first starts moving it, off as the last is over. Each slide said its own before, and
+  // the host keeps one: two at once (a trackpad swipe begun during Spaces' slide), the first over turned the live follow
+  // off while the other still moved the page, and the hosted window was placed partway instead of following it.
+  let moving = 0;
+  function pageMoving(on: boolean) {
+    if (on) { if (moving++ === 0) rt.host.perform?.('sidebar.resizing', { on: true }); }
+    else if (moving > 0 && --moving === 0) rt.host.perform?.('sidebar.resizing', { on: false });
+  }
 
   // The neighbouring spaces drawn beside the one shown, as Arc does (requested 2026-11-07): the theme's own sidebar
   // rendered off screen with that space shown (rt.spaceView), its moving part (`data-swipe-pane`, else
@@ -192,7 +201,7 @@ export function installSwipe(rt: Rt) {
       // resized at the start of a swipe back, 2026-11-26.)
       if (now && (now[0] !== s.libBase[0] || now[1] !== s.libBase[1])) {
         s.resizing = true;
-        rt.host.perform?.('sidebar.resizing', { on: true });
+        pageMoving(true);
       }
     }
     // (The page's place measured and reported now, in this frame, before it's painted: the slide moves the card without
@@ -332,7 +341,7 @@ export function installSwipe(rt: Rt) {
     for (const list of Object.values(s.ghosts)) for (const g of list ?? []) g.remove();
     // (The Library's move of the page over: told after the page's place at its end is measured and reported, now, so
     // what the host does then is done once, for that place: behaviors/resize.ts's order.)
-    if (s.resizing) { view.flushLayout?.(); rt.host.perform?.('sidebar.resizing', { on: false }); }
+    if (s.resizing) { view.flushLayout?.(); pageMoving(false); }
   }
   // `time`: when it was let go (a lift's, from the trackpad's phases or by its momentum's first event: `lifted`), for
   // Arc's speed; `overrun`: the offset momentum added before it was told apart (Arc's feel takes it back out);
@@ -709,7 +718,7 @@ export function installSwipe(rt: Rt) {
     root.style.setProperty('--m-library-wide-progress', String(Math.round(Math.max(0, Math.min(1, q)) * 1000) / 1000));
     if (!w.resizing && w.base) {
       const now = placeNow();
-      if (now && (now[0] !== w.base[0] || now[1] !== w.base[1])) { w.resizing = true; rt.host.perform?.('sidebar.resizing', { on: true }); }
+      if (now && (now[0] !== w.base[0] || now[1] !== w.base[1])) { w.resizing = true; pageMoving(true); }
     }
     view.flushLayout();
   }
@@ -722,7 +731,7 @@ export function installSwipe(rt: Rt) {
     root?.removeAttribute('m-library-wide-slide');
     root?.style.removeProperty('--m-library-wide-progress');
     view.flushLayout();
-    if (w.resizing) rt.host.perform?.('sidebar.resizing', { on: false });
+    if (w.resizing) pageMoving(false);
   }
   function slideWide(to: boolean) {
     const root = view.rootElement() as HTMLElement | null;

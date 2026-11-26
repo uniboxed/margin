@@ -11595,3 +11595,15 @@ themes can't draw the grain, a texture tile Margin makes).
   measured on Arc's (7% darker by the edge, 4% 5 pt out, 2.5% at 9, gone by 20): `0 0.5px 16px rgba(0,0,0,.155)`.
 - **Test** (arcadia.test.ts, both engines): a dark space's card drawn dark with Margin's layer and its own light text
   (`lookOf`'s `--m-fg`), a space with none the theme's colour, the shadow, let go when its background goes.
+
+## Two slides at once: the page's move told once (`fix/spaces-slide-start`, 2026-11-26)
+
+Spotted by the other session, checked: Spaces' slide (`slideWide`) and the Library's swipe (`setLibrary`/`finish`)
+each told the host `sidebar.resizing` on and off; Margin's window keeps one (MarginWindowController
+`sidebarResizing`: a second on ignored, the first off taken). A trackpad swipe back out of the Library begun during
+Spaces' ~300 ms slide: the first over turned the live follow off while the other still moved the page, its remaining
+frames placed the hosted window (at most one at a time, a tile's few ms) rather than followed; nothing stuck.
+- **swipe.ts `pageMoving`**: one count for every slide of ours: on as the first starts moving the page, off as the
+  last is over; each slide still says its own once each way (its `resizing`).
+- **Test** (arcadia.test.ts, both engines): a swipe out of the Library begun as the slide out of Spaces starts: told
+  `[on, off]` (was `on on off off`).
