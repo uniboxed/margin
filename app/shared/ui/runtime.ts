@@ -22,7 +22,7 @@ import type { SpaceBackground, State } from '../../../types/margin';
 import { View } from './render.ts';
 import { createBackground } from './background.ts';
 import { checkCssValue, checkIconUrl } from './sanitize.ts';
-import { buildViewModel, paletteItems } from './view-model.ts';
+import { buildViewModel, paletteItems, LIBRARY_SECTIONS } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
 import { resolveSettings } from './theme-loader.ts';
 import { menuItems } from './behaviors/menu-items.ts';
@@ -1035,7 +1035,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       // (Slid in or out as a swipe's would be, where the theme has Arc's ends; else at once.)
       case 'library.open': return behaviors.swipe?.slideLibrary?.(true) || behaviors.ends.openLibrary();
       case 'library.close': return behaviors.swipe?.slideLibrary?.(false) || behaviors.ends.closeLibrary();
-      case 'library.section': return behaviors.ends.section(arg);
+      case 'library.section': {
+        // (Into Spaces or out of it with the Library open: the panel and the page slide there, from where they're drawn,
+        // started before the section changes: behaviors/swipe.ts slideWide.)
+        const lib = rt.ui.library;
+        if (lib?.open && (LIBRARY_SECTIONS as readonly unknown[]).includes(arg) && (arg === 'spaces') !== (lib.section === 'spaces')) behaviors.swipe?.slideWide?.(arg === 'spaces');
+        return behaviors.ends.section(arg);
+      }
       case 'newSpace.open': return behaviors.ends.openNewSpace();
       case 'newSpace.cancel': return behaviors.ends.cancelNewSpace();
       case 'newSpace.create': return behaviors.ends.createNewSpace();

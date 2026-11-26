@@ -1470,6 +1470,12 @@
    a gap at the window's edge, or be resized at every frame; the Library as wide as the sidebar then, the page where it
    is, nothing moved. Tirth, 2026-11-26.) */
 .arcadia { --library-width: max(417px, var(--width)); --lib-p: 0; }
+/* (How far the Library is Spaces, Arc's space manager across the window: 0 a section beside the page, 1 Spaces; while
+   a change between them slides (behaviors/swipe.ts slideWide, on Arc's switch curve) the slide's progress, so the panel
+   and the page move together frame by frame, never jumping.) */
+.arcadia { --lib-wide: 0; }
+.arcadia.library-wide { --lib-wide: 1; }
+.arcadia[m-library-wide-slide] { --lib-wide: var(--m-library-wide-progress, 0); }
 .arcadia[m-sidebar-fixed] { --library-width: var(--width); }
 .arcadia[m-page-slides]:not([m-sidebar-fixed]) :is(.page, .card-edge, .launcher-slot, .page-loader) { right: calc(var(--card-inset) - var(--card-shift)); }
 .arcadia.library-open { --lib-p: 1; }
@@ -1681,10 +1687,10 @@
    today's tabs as its sidebar has them, Arc's move handle and ••• at its foot. */
 /* (At once: Arcadia animates no layout, tests/theme-motion.test.ts.) */
 .library { width: var(--library-panel, var(--library-width)); }
-.arcadia.library-wide:not([m-sidebar-fixed]) .library { --library-panel: calc(100% - 56px); }
+.arcadia:not([m-sidebar-fixed]) .library { --library-panel: calc(var(--library-width) + (100% - 56px - var(--library-width)) * var(--lib-wide)); }
 /* (In Margin's own window the page slides with it, as for the Library (Tirth, 2026-11-26: "shift the tab content
    similarly"): its left at the panel's edge, its first 56 pt showing, the rest past the window's edge.) */
-.arcadia[m-page-slides].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) { --card-shift: round(calc((100vw - 56px - var(--width)) * var(--lib-p)), 1px); }
+.arcadia[m-page-slides]:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) { --card-shift: round(calc((var(--library-width) - var(--width) + (100vw - 56px - var(--library-width)) * var(--lib-wide)) * var(--lib-p)), 1px); }
 /* (Over the page card's edge and shadow too: the page under it, a sliver of it showing at the right, as Arc's.) */
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { z-index: 2; box-shadow: 1px 0 7px rgba(0, 0, 0, 0.18); }
 /* (In Margin's own window the page slides out beside the panel (fix/library-follow): no shadow between them, the

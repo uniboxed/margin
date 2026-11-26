@@ -11549,3 +11549,19 @@ below tiles) it can't, and the card would have slid away from it. Tirth asked fo
   tiles on, none with them off, the session passes it to the window: each failed when flipped), ui-host-app (hello,
   message, never over a browser), Arcadia in both engines (with `m-page-slides` it slides; without, room made and the
   panel's colour over the page: failed with the old `m-page-state` rules).
+
+## Into Spaces and out of it, slid as Arc's (`feat/page-slides`, 2026-11-26)
+
+Tirth: from Spaces to another Library section the page appeared at its place at once; Arc slides it. A change of the
+Library's section into Spaces or out of it, with the Library open, now slides the panel and the page together on Arc's
+switch curve (`switchEasing`, as the box button's slide):
+- **Behaviour** (behaviors/swipe.ts `slideWide`, started by the runtime's `library.section` before the section changes,
+  from where they're drawn): the root's `m-library-wide-slide` and `--m-library-wide-progress` frame by frame; each
+  frame the host told once that the page moves and the page's place reported in it (as `setLibrary`: Safari's tile
+  moved live, the background's cut and the card's layers with it); over, both taken off. At once with less motion,
+  while a swipe is under way, or with the Library shut; a change during one goes on from where it is.
+- **Theme** (Arcadia): `--lib-wide` (0 a section, 1 Spaces, the slide's progress meanwhile) blends the panel's width
+  and, with `m-page-slides`, the page's shift between their two places (each end as before).
+- **Test** (arcadia.test.ts, both engines): into Spaces and back, frames between the ends, one way, the panel's edge at
+  the page's every frame, the background cut at the card, the width kept, the host told on then off; less motion at
+  once (failed before: 1224 from the first frame).
