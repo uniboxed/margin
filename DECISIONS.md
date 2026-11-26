@@ -11273,6 +11273,21 @@ Try draws a theme live under Import's preview bar.
 - **Not yet**: search, tags and sections (when there are enough themes), screenshots, the store's address (after the
   deploy), the Windows shell's side (its rules are in margin-core already).
 
+## The Library never moves a hosted page (`fix/library-hosted`, 2026-11-26)
+
+Tirth: "smth went wrong". Margin.app's log: a swipe toward the Library with Safari hosted in the page area moved the
+page area a few points each frame (310 → 313 → … → 381), and each change placed Safari again: out of full screen, the
+loading card, back in, about a second ("the page area moved … placed again", "no hosted window under it"). The Library
+was fitted to the sidebar only while Margin's window was a tile beside the app (`m-sidebar-fixed`); with an app's window
+in Margin's own page area (`m-page-state` shown or loading) it still widened the page area to 417 pt, so the page had
+to follow (it was checked on screen with Notes, in window mode, which follows cheaply; Safari, full screen, doesn't).
+- **Fix**: Arcadia's Library rules key on all three (`m-sidebar-fixed`, `m-page-state="shown"`, `"loading"`): the
+  sidebar's width, the rail's icons only, the page where it is, the space under it not drifting over the page's edge.
+  Margin's own pages (the launcher, Settings) and the browsers' overlay keep Arc's 417 pt with the page beside it.
+- **Test** (tests/theme/arcadia.test.ts, both engines): with `m-page-state="shown"`, a swipe toward the Library leaves the
+  page card where it was at every step and reports no other page area; it fails with the old rule (the card walked
+  284 → 405).
+
 ## Margin's quit, bounded (`fix/quit-bound`, 2026-11-26)
 
 Tirth: after opening and closing the Library over a Safari page, Margin's ⌘Q (Quit in its prompt) never finished;

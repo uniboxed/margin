@@ -186,8 +186,10 @@ second frame, done in ≈ 200 ms):
   a whole-window manager (a card per space).
 - **In Margin** (Tirth's choices, 2026-11-25): Archived Tabs is Margin's archive; Media, Downloads, Easels, Spaces and
   Boosts are drawn with words saying they aren't in Margin yet; the box button opens it as Arc's does. 417 pt where
-  the page can make room; while an app is hosted (the sidebar's width fixed: each width would place the app again)
-  it's the sidebar's width, the rail's icons only, the page where it is (and the space doesn't drift over it).
+  the page can make room; while an app is hosted (Margin's window a tile beside it, or an app's window in its page
+  area: Margin.app's `m-page-state` shown or loading; each width of the page area would place the app again, Safari
+  out of full screen and back, about a second each) it's the sidebar's width, the rail's icons only, the page where it
+  is (and the space doesn't drift over it).
 
 **Past the last space, the pull and Create a Space**:
 - **The pull**: the rubber band as before (the space up to ≈ 40 pt past its end). A light along the sidebar's right
