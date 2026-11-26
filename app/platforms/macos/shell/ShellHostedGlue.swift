@@ -160,6 +160,7 @@ extension Shell {
         host.safariFocus = { [weak session] profile, id in await session?.safariFocus(profile, id) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
+        host.hostedTile = { [weak session] on in session?.hostedTile(on) }
         host.hostedWindow = { [weak session] number in session?.hosted(number) }
         host.onMinimum = { [weak session] width in session?.minimum(width) }
         host.onAppMinimums = { [weak session] in session?.appMinimumsChanged() }

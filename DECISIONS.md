@@ -11529,3 +11529,39 @@ darker fading out by about 38 pt; the rail and the section the same ground, the 
   gap at the window's edge (or it would have to be resized at every frame). `--library-width: max(417px, var(--width))`:
   the Library as wide as such a sidebar, the page never moved, nothing to follow. Test: arcadia.test.ts at 500 (failed
   before: the card 500 → 417, its right 1272 → 1189).
+
+## Whether the page may pass the window's edge: the app's word, not the theme's guess (`feat/page-slides`, 2026-11-26)
+
+Arcadia slid the page past the window's edge wherever `m-page-state` was set (Margin.app's own window): a guess at a
+capability only the app knows. A hosted window can follow the page there only from a tile of Margin's Space (macOS
+keeps a tile past the display's edge); placed by its own Space's reservation (the tiles off for the run, a host held
+below tiles) it can't, and the card would have slid away from it. Tirth asked for it done properly.
+- **Rule** (margin-core page/mod.rs `page_slides`): Margin's own page (nothing hosted, or nothing shown yet), or the
+  hosted window in a tile; `slides_change` says a change once (the hello says it first: `pageSlides`).
+- **Mechanism** (Swift): HostEngine's `hostedTile` (the one shown's `shownFillsPage`, before each `hostedWindow` and
+  when its tile goes, `tileLeft`) → HostedSession → MarginWindowController `setHostedTile` → the core; the window
+  pushes `{ type: 'pageSlides', on }` when the core says it changed (after hosting, the hosted window, the tile).
+- **Page** (ui/host-app.ts `pageSlides`, overlay.ts): the theme's root `m-page-slides` (ui/render.ts's list; the
+  themes README "Moving the page past the window's edge"). Never over a browser's page.
+- **Theme**: Arcadia's slide (the card's right edge, Spaces' shift, the panel see-through, no shadow between) keyed
+  on `m-page-slides`; without it the Library makes room as it does in the browsers' overlay.
+- **Tests**: Rust (the rule, said once, the hello), the FFI through the Swift suites (the engine says a tile with the
+  tiles on, none with them off, the session passes it to the window: each failed when flipped), ui-host-app (hello,
+  message, never over a browser), Arcadia in both engines (with `m-page-slides` it slides; without, room made and the
+  panel's colour over the page: failed with the old `m-page-state` rules).
+
+## Into Spaces and out of it, slid as Arc's (`feat/page-slides`, 2026-11-26)
+
+Tirth: from Spaces to another Library section the page appeared at its place at once; Arc slides it. A change of the
+Library's section into Spaces or out of it, with the Library open, now slides the panel and the page together on Arc's
+switch curve (`switchEasing`, as the box button's slide):
+- **Behaviour** (behaviors/swipe.ts `slideWide`, started by the runtime's `library.section` before the section changes,
+  from where they're drawn): the root's `m-library-wide-slide` and `--m-library-wide-progress` frame by frame; each
+  frame the host told once that the page moves and the page's place reported in it (as `setLibrary`: Safari's tile
+  moved live, the background's cut and the card's layers with it); over, both taken off. At once with less motion,
+  while a swipe is under way, or with the Library shut; a change during one goes on from where it is.
+- **Theme** (Arcadia): `--lib-wide` (0 a section, 1 Spaces, the slide's progress meanwhile) blends the panel's width
+  and, with `m-page-slides`, the page's shift between their two places (each end as before).
+- **Test** (arcadia.test.ts, both engines): into Spaces and back, frames between the ends, one way, the panel's edge at
+  the page's every frame, the background cut at the card, the width kept, the host told on then off; less motion at
+  once (failed before: 1224 from the first frame).

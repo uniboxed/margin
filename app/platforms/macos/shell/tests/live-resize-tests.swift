@@ -46,9 +46,13 @@ func liveResizeTests() {
     // ---- the first open: its tile into Margin's Space, sized to the page area, under the freeze; its own Space destroyed ----
     do {
         let (w, e, marker) = world()
+        var tiled: [Bool] = []
+        e.hostedTile = { tiled.append($0) }
         let r = open(e, textEdit)
         let edit = window(w, "com.apple.TextEdit")
         let tile = w.tileOf(edit)
+        check("live resize: Margin's window told the one shown lies in a tile (its page area may pass the window's edge: page_slides)",
+              tiled.last == true, "\(tiled)")
         check("live resize: a first open with the tiles on: shown, its window's own tile in Margin's Space (after Margin's own), at the page area, still full screen",
               r == .shown(textEdit.id, placed: true) && tile != nil && w.tiles[FakeHostWorld.marginSpace] == [FakeHostWorld.marginTile, tile ?? 0]
               && w.bounds(window: edit) == page(276) && w.tileRects[tile ?? 0] == tileFor(276) && w.wins[edit]?.fullScreen == true && w.wins[edit]?.tiled == true

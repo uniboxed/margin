@@ -35,6 +35,8 @@ final class FakeHostedWindow: HostedWindow {
     var hosted: Int?
     var hosteds: [Int?] = [] // each setHosted, in order
     func setHosted(_ number: Int?) { guard number != hosted else { return }; hosted = number; hosteds.append(number) }
+    var tiles: [Bool] = [] // what the engine said of the hosted window's tile, in order
+    func setHostedTile(_ on: Bool) { tiles.append(on) }
     var showing: String?
     var showings: [String?] = [] // each setShowing, in order
     var slowShowings: [String] = [] // those said to take a while (the last item at launch: the loader at once)
@@ -903,6 +905,7 @@ func hostedTests() {
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
+    engine.hostedTile = { session.hostedTile($0) }
     var changes = 0
     session.onChange = { changes += 1 }
     // A Safari Margin starts links its copy (the default profile's), and the copy's newWindow makes a window, on the
@@ -942,6 +945,8 @@ func hostedTests() {
     check("hosted: the loading animation named the app while it opened, then went", window.loadings == ["TextEdit", nil], "\(window.loadings)")
     check("hosted: … with the app's bundle id for its icon (the page looks it up)", window.loadingApps == ["com.apple.TextEdit", nil], "\(window.loadingApps)")
     check("hosted: Margin's window told the app's window (it's in front of it)", window.hosted == editWindow, "\(window.hosteds)")
+    check("hosted: …and that it isn't in a tile (the tiles off here: its page area can't pass the window's edge, page_slides)",
+          window.tiles.last == false, "\(window.tiles)")
     check("hosted: it's the window's item shown, open", session.shown[1] == editItem && session.open[editItem]?.host == HostTarget.app("com.apple.TextEdit").id && changes > 0)
     let editNumber = session.number(ofItem: editItem)
     check("hosted: the theme's loading bar for the app's item while it opened (the page's `loading`), none once it's shown", window.loadingTabsSaid == [[editNumber], []], "\(window.loadingTabsSaid)")

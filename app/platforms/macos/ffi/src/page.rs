@@ -1062,6 +1062,32 @@ pub unsafe extern "C" fn margin_page_set_hosting(page: *mut MarginPage, on: bool
     }
 }
 
+/// Whether the hosted window lies in a tile of Margin's Space (the engine's word, with each window it says).
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_hosted_tile(page: *mut MarginPage, on: bool) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    p.page.set_hosted_tile(on);
+}
+
+/// Whether the page area may pass the window's edge, when it differs from what the page was last told (`pageSlides`):
+/// 0 no change, 1 now no, 2 now yes.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_slides_change(page: *mut MarginPage) -> u8 {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }) else { return 0 };
+    match p.page.slides_change() {
+        None => 0,
+        Some(on) => 1 + u8::from(on),
+    }
+}
+
 /// The engine's slow step (its app's name; `has_label` false: over) and the app whose icon its loader shows. False:
 /// nothing new.
 ///

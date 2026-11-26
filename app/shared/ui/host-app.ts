@@ -330,7 +330,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   warn?: (...args: any[]) => void,
   /** A line for Margin.app's log (a decision worth reading back from the real screen, never per frame). */
   note?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly paneCuts: Record<string, PaneCut>, readonly paneHover: number | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], readonly feedbackDevice: FeedbackDevice | null, takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly pageSlides: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly paneCuts: Record<string, PaneCut>, readonly paneHover: number | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], readonly feedbackDevice: FeedbackDevice | null, takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -342,6 +342,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOutside = appWindow && hello?.pageOutside === true;
   // A hosted app's window in the page area: no launcher there.
   let pageHosted = appWindow && hello?.pageHosted === true;
+  // Whether the page area may pass the window's edge (the app's `pageSlides`, margin-core's `page_slides`): Margin's own
+  // page, or a hosted window in a tile of Margin's Space; not one its own Space places. A theme's Library slides the
+  // page past the edge then, its width kept, or makes room (the root's `m-page-slides`, overlay.ts). Never over a
+  // browser's page.
+  let pageSlides = appWindow && hello?.pageSlides !== false;
   // The app reads each layout report as the JSON it is (its hello's `layoutText`: Margin.app's window, whose core parses
   // the report as it comes, every frame of a drag, with no object made of it first): sent as its text then.
   const layoutText = appWindow && hello?.layoutText === true;
@@ -505,6 +510,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOutside() { return pageOutside; },
     /** The page area is a hosted app's window, under Margin's: no launcher there. */
     get pageHosted() { return pageHosted; },
+    get pageSlides() { return pageSlides; },
     /** Margin's own page in the page area (Settings), null: the launcher. Hosting covers it, as it covers the launcher. */
     get marginPage() { return marginPage; },
     /** The hosted window's own minimum width (0: none): the page area is never dragged narrower (behaviors/resize.ts). */
@@ -741,6 +747,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = appWindow && msg.on === true;
           if (next === pageHosted) return;
           pageHosted = next;
+          return emit();
+        }
+        case 'pageSlides': {
+          const next = appWindow && msg.on === true;
+          if (next === pageSlides) return;
+          pageSlides = next;
           return emit();
         }
         case 'marginPage': {

@@ -312,3 +312,26 @@ fn kept_in_front_by_its_page() {
     let ops = p.front_read(9, 0, true, 0, &mut || 20.0);
     assert_eq!(ops.len, 0);
 }
+
+// Whether the page area may pass the window's edge (`page_slides`, the theme's `m-page-slides`): Margin's own page, or
+// a hosted window in a tile of Margin's Space; a window its own Space places can't, so the theme makes room instead.
+#[test]
+fn the_page_slides_past_the_windows_edge_only_where_its_window_can() {
+    let mut p = Page::new(0.12, "Getting you started");
+    assert!(p.page_slides(), "Margin's own page");
+    assert_eq!(p.slides_change(), None, "as the page was told at first");
+    assert_eq!(p.set_hosting(true), Some(false));
+    assert!(p.page_slides(), "hosting, nothing shown yet: Margin's loader");
+    p.set_hosted_tile(false);
+    let _ = p.set_hosted(Some(7));
+    assert!(!p.page_slides(), "a window its own Space places (the tiles off): made room for");
+    assert_eq!(p.slides_change(), Some(false));
+    assert_eq!(p.slides_change(), None, "said once");
+    p.set_hosted_tile(true);
+    assert_eq!(p.slides_change(), Some(true), "in a tile of Margin's Space: past the display's edge");
+    p.set_hosted_tile(false);
+    assert_eq!(p.slides_change(), Some(false));
+    assert_eq!(p.set_hosting(false), Some(false));
+    assert_eq!(p.slides_change(), Some(true), "hosting nothing: Margin's own page again");
+    assert!(!p.hosted_tile, "the tile's word forgotten with the hosting");
+}

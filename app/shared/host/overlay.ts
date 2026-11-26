@@ -424,7 +424,11 @@ addEventListener('resize', () => { measureNow(); hitsSoon(); });
 // area (pageHosted) it's dragged as anywhere: the app places the hosted window once, when the drag is over.
 function followOutside() {
   const root = runtime?.view.rootElement();
-  if (root) root.toggleAttribute('m-sidebar-fixed', sidebarFixed(host));
+  if (!root) return;
+  root.toggleAttribute('m-sidebar-fixed', sidebarFixed(host));
+  // (The page area may pass the window's edge: a theme's Library slides the page past it, its width kept, rather than
+  // making room. host-app.ts `pageSlides`; never over a browser's page.)
+  root.toggleAttribute('m-page-slides', !!host?.pageSlides);
 }
 
 // ---- the theme --------------------------------------------------------------------------
@@ -1100,7 +1104,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
       // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
       // whose drawing doesn't change with it changes nothing the watcher sees, and the app waits for that layout).
-      if (msg?.type === 'windows' || msg?.type === 'pageOutside' || msg?.type === 'pageHosted' || msg?.type === 'pageState') { followOutside(); queueMicrotask(measureNow); }
+      if (msg?.type === 'windows' || msg?.type === 'pageOutside' || msg?.type === 'pageHosted' || msg?.type === 'pageSlides' || msg?.type === 'pageState') { followOutside(); queueMicrotask(measureNow); }
       // The app asks for a measure now: the window took a size its page hasn't drawn yet (no frame since, so no resize
       // event; seen 2026-11-15 after a hosted tile left: 4.8 s), and the web view's size is what a measure reads.
       if (msg?.type === 'measure') measureNow();

@@ -276,6 +276,30 @@ the same card is drawn without words by the slot's own `::before` and
 `::after`, and the sidebar draws a few placeholder rows on what's already
 there (backgrounds and pseudo-elements, one soft `opacity` pulse).
 
+### Moving the page past the window's edge (`m-page-slides`, Margin.app)
+
+Margin sets `m-page-slides` on your root while the page area may be placed
+past the window's edge: Margin's own page (nothing hosted), or a hosted
+window Margin can place there (a tile of its full-screen Space, which macOS
+keeps past the display's edge). It's off for a hosted window placed another
+way, and never there over a browser's own page.
+
+When something of yours pushes the page aside (Arcadia's Library, Arc's
+way), key how it moves on this:
+
+- With `m-page-slides`: slide the page, its width kept (move its right edge
+  with its left), the rest past the window's edge. A hosted window then only
+  moves with it, which is cheap: it's never laid out again.
+- Without it: make room (the page narrower), or keep the page where it is.
+  A window that can't pass the edge would stay put while your card moved.
+
+Move it in whole points (`round(…, 1px)`), so its width never changes by a
+rounding point: a point narrower is a real resize of the hosted app. When
+Margin's own slide moves the page (the Library's swipe and the box button:
+`m-swipe`), it reports the page's place at each frame, so the hosted
+window, a space's background cut out of the page's place and your card's
+layers all move together.
+
 ### Split View's panes (Margin.app)
 
 While the item in front is a pane of a split and a window is hosted in the page

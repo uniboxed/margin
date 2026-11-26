@@ -497,6 +497,10 @@ final class HostEngine {
     // Told the window of the host now shown in Margin's Space (nil: none is): Margin's window is in front of it, its
     // page area a hole over it (MarginWindowController `setHosted`).
     var hostedWindow: ((Int?) -> Void)?
+    // Whether the window shown lies in a tile of Margin's Space (`shownFillsPage`: it can be placed past the display's
+    // edge), said before each window `hostedWindow` says and when its tile goes: Margin's window decides with it whether
+    // its page area may pass the window's edge (the core's `page_slides`).
+    var hostedTile: ((Bool) -> Void)?
     // Told when a slow step starts for a host (its first open, its placing again: Margin's page area shows a loading
     // animation for it) and when it's over (nil).
     var loading: ((HostID?) -> Void)?
@@ -2345,6 +2349,7 @@ final class HostEngine {
 
     private func announceHosted() {
         sayMinimum()
+        hostedTile?(shownFillsPage)
         sayHostedWindows()
         let now = shownWindow
         guard now != hostedSaid else { return }
@@ -4997,6 +5002,8 @@ final class HostEngine {
     private func tileLeft(_ host: Host) async {
         guard let tile = host.tile else { return }
         host.tile = nil
+        // (The one shown out of its tile: its page area can't pass the window's edge any more, Margin's window told.)
+        if host.id == shown { hostedTile?(false) }
         tilesSettled = false
         // (Still in Margin's Space with no window of the host's: a tile its window left; gone with the next look.)
         if sys.tiles(of: marginSpace)?.contains(tile) == true { goneTiles.insert(tile) }

@@ -686,9 +686,71 @@ export function installSwipe(rt: Rt) {
     return true;
   }
 
+  // Spaces (Arc's space manager across the window, the view model's `library.wide`) opened or left while the Library is
+  // open: the panel and the page beside it slide to their new place on Arc's switch curve (Tirth, 2026-11-26: "Arc does
+  // that"), not at once. Started before the section changes (the runtime's `library.section`), from where it is drawn,
+  // so nothing jumps: the root's `m-library-wide-slide` and `--m-library-wide-progress` (0 a section beside the page,
+  // 1 Spaces) frame by frame, read by the theme for both; each frame the page's place reported in it and the host told
+  // once that it moves, as the Library's own slide (`setLibrary`), so a hosted window follows it live; over, both taken
+  // off (the theme's `library-wide` says where it rests). At once with less motion, or while a swipe is under way.
+  let wide: { from: number, to: number, at: number, curve: { duration: number, points: number[] }, frame: number, base: [number, number] | null, resizing: boolean } | null = null;
+  const placeNow = () => { const g = view.measure(); return g ? [g.insets.left, g.insets.right] as [number, number] : null; };
+  function wideAt(w: NonNullable<typeof wide>) {
+    const t = (performance.now() - w.at) / Math.max(1, w.curve.duration);
+    return t >= 1 ? w.to : w.from + (w.to - w.from) * easeAt(w.curve.points, t);
+  }
+  function drawWide(w: NonNullable<typeof wide>, q: number) {
+    const root = view.rootElement() as HTMLElement | null;
+    if (!root) return;
+    root.style.setProperty('--m-library-wide-progress', String(Math.round(Math.max(0, Math.min(1, q)) * 1000) / 1000));
+    if (!w.resizing && w.base) {
+      const now = placeNow();
+      if (now && (now[0] !== w.base[0] || now[1] !== w.base[1])) { w.resizing = true; rt.host.perform?.('sidebar.resizing', { on: true }); }
+    }
+    view.flushLayout();
+  }
+  function endWide() {
+    const w = wide;
+    if (!w) return;
+    wide = null;
+    cancelAnimationFrame(w.frame);
+    const root = view.rootElement() as HTMLElement | null;
+    root?.removeAttribute('m-library-wide-slide');
+    root?.style.removeProperty('--m-library-wide-progress');
+    view.flushLayout();
+    if (w.resizing) rt.host.perform?.('sidebar.resizing', { on: false });
+  }
+  function slideWide(to: boolean) {
+    const root = view.rootElement() as HTMLElement | null;
+    const target = to ? 1 : 0;
+    const from = wide ? wideAt(wide) : 1 - target;
+    const keep = wide ? { base: wide.base, resizing: wide.resizing } : null;
+    if (wide) { cancelAnimationFrame(wide.frame); wide = null; }
+    const reduced = !!doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!root || swiping || reduced || !rt.ui.library?.open) {
+      if (keep) { wide = { from, to: target, at: 0, curve: { duration: 0, points: [] }, frame: 0, ...keep }; endWide(); }
+      return false;
+    }
+    const w = { from, to: target, at: performance.now(), curve: switchEasing(), frame: 0, base: keep ? keep.base : placeNow(), resizing: keep?.resizing ?? false };
+    wide = w;
+    root.setAttribute('m-library-wide-slide', '');
+    drawWide(w, from);
+    const step = () => {
+      if (wide !== w) return;
+      if (!rt.ui.library?.open) return endWide();
+      const q = wideAt(w);
+      drawWide(w, q);
+      if (q === w.to) return endWide();
+      w.frame = requestAnimationFrame(step);
+    };
+    w.frame = requestAnimationFrame(step);
+    return true;
+  }
+
   const api = {
     slideTo,
     slideLibrary,
+    slideWide,
     /** The request its own switch (`switchOwn`) to `spaceId` is: the one its settle already sent (that space asked of
      *  the copy as it slid in, Margin.app showing its item), which the switch takes rather than asking again (each ask
      *  shows the item again: a second Safari show of the same tab a slide later). Null for any other switch. */
@@ -708,7 +770,7 @@ export function installSwipe(rt: Rt) {
     busy: () => swiping != null && !swiping.settling,
     /** Moving or settling (or just switched space by a swipe). */
     active: () => swiping != null || Date.now() < holdUntil,
-    destroy() { clearTimeout(endTimer); finish(); },
+    destroy() { clearTimeout(endTimer); finish(); endWide(); },
     /** The space switched to after a settle is drawn: the copy beside it goes, the offset with it. */
     afterRender(vm: ViewModel) { if (swiping?.dispatched && vm?.space?.id === swiping.target) finish(); },
   };

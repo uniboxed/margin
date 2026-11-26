@@ -564,6 +564,18 @@ test("the app host in Margin's own window: said by the hello's host, its mode th
   host.receive({ type: 'pageHosted', on: true });
   assert.equal(host.pageHosted, true);
   assert.equal(host.launcher, false, 'a hosted app\'s window above the page area (window mode): no launcher (its field would take the keys)');
+  // Whether the page area may pass the window's edge (margin-core's page_slides, the root's m-page-slides): Margin's
+  // own page by default; the app's word after; never over a browser's page.
+  assert.equal(host.pageSlides, true, 'Margin\'s own page: it may pass the window\'s edge');
+  const slid: boolean[] = [];
+  const off = host.onState(() => slid.push(host.pageSlides));
+  host.receive({ type: 'pageSlides', on: false });
+  host.receive({ type: 'pageSlides', on: false });
+  host.receive({ type: 'pageSlides', on: true });
+  off();
+  assert.deepEqual(slid, [false, true], 'each change drawn once');
+  assert.equal(over.pageSlides, false, 'over a browser\'s page: never');
+  assert.equal(createAppHost({ hello: hello({ host: 'app-window', pageHosted: true, pageSlides: false }), post: bridge().post }).pageSlides, false, 'the hello\'s word');
   assert.equal(host.pageOutside, false, 'window mode: laid out with a page area of its own');
   assert.equal(host.sidebarDocked, false, 'an app\'s window in the page area: the sidebar as the person keeps it (Margin\'s window is in front of that window)');
   // The view model: Keep open off, hidden; out over the app's window from the edge (Tirth, 2026-11-20; docked whatever

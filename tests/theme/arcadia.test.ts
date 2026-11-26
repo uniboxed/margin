@@ -1104,7 +1104,7 @@ for (const [engineName, engine] of ENGINES) {
         // place until the slide's end, and the background stayed cut out at the old place: a band of background over
         // the page, its border missing, the page "stuck" until the jump.)
         await fresh();
-        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.setAttribute('m-page-state', 'shown'); r.setAttribute('m-page-slides', ''); });
         await ev((b) => T.rtChange('setBackground', 'personal', b), { colors: ['#f7c7d3', '#cfe8f7'], intensity: 0.6, texture: 'grain', amount: 0, appearance: 'light' });
         await page.waitForTimeout(450);
         const slide = (action: string) => ev((a) => new Promise<number[][]>((done) => {
@@ -1134,7 +1134,7 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtDispatch('library.open'));
         await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
         await page.locator('.lib-section[data-icon="spaces"]').first().click();
-        await page.waitForFunction(() => document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return r.classList.contains('library-wide') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 2000 });
         await page.waitForTimeout(100);
         assert.equal(await panel(), 'rgba(0, 0, 0, 0)', 'Spaces see-through in Margin\'s window');
         // (No shadow where the panel meets the page slid out beside it: the panel's none, the card's faded out.)
@@ -1143,16 +1143,22 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(panelShadow, 'none', 'the panel casts none on the page');
         assert.match(cardShadow, /^rgba\(0, 0, 0, 0\) /, `the card's shadow gone (${cardShadow})`);
         assert.equal(await cutAt(), 1280 - 56 + 6, 'the background cut out only where the page\'s sliver is');
-        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
         await page.waitForTimeout(50);
         assert.notEqual(await panel(), 'rgba(0, 0, 0, 0)', 'the overlay: the background\'s one colour over the page');
         assert.notEqual((await shadows())[0], 'none', 'the overlay: the panel over the page casts its shadow');
+        // (A hosted window that can't pass the edge (m-page-state without m-page-slides): the panel over the page, as the
+        // overlay's.)
         await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        await page.waitForTimeout(50);
+        assert.notEqual(await panel(), 'rgba(0, 0, 0, 0)', 'a window that can\'t pass the edge: the one colour over the page');
+        assert.equal(Math.round((await rect('.card-edge'))!.left), 260 + Math.round((417 - 260)), 'its page beside the Library, not slid past the edge');
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.setAttribute('m-page-state', 'shown'); r.setAttribute('m-page-slides', ''); });
         await page.locator('.lib-section[data-icon="archive"]').first().click();
         await ev(() => T.rtDispatch('library.close'));
         await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
         await ev(() => T.rtChange('setBackground', 'personal', null));
-        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
       });
 
       await t.test('the Library\'s rail and section apart as Arc\'s: a hairline and a shadow into the section from 112 pt, the rail lighter by the edge (measured on Arc)', async () => {
@@ -1185,9 +1191,73 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtDispatch('library.close'));
       });
 
+      await t.test('into Spaces and out, the Library open: the panel and the page slide there together on Arc\'s switch curve (the background cut where the card is, the host told), never at once', async () => {
+        await fresh();
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.setAttribute('m-page-state', 'shown'); r.setAttribute('m-page-slides', ''); });
+        await ev((b) => T.rtChange('setBackground', 'personal', b), { colors: ['#f7c7d3', '#cfe8f7'], intensity: 0.6, texture: 'grain', amount: 0, appearance: 'light' });
+        await page.waitForTimeout(450);
+        const vw = await ev(() => innerWidth);
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open && !document.querySelector('.arcadia')!.hasAttribute('m-library-swipe'), null, { timeout: 3000 });
+        await page.waitForTimeout(100);
+        const slide = (section: string) => ev((sec) => new Promise<number[][]>((done) => {
+          const out: number[][] = [];
+          const cut = () => { const m = /Z\s*M\s*([\d.]+)/.exec(T.rtBackground().clip as string); return m ? Number(m[1]) : -1; };
+          const tick = () => {
+            const card = document.querySelector('.card-edge')!.getBoundingClientRect(), panel = document.querySelector('.library')!.getBoundingClientRect();
+            out.push([Math.round(card.left), Math.round(panel.right), Math.round(cut()), Math.round(card.width)]);
+            if (out.length < 50) requestAnimationFrame(tick); else done(out);
+          };
+          (window as any).__told = T.rtResizing().length;
+          T.rtDispatch('library.section', sec);
+          requestAnimationFrame(tick);
+        }), section);
+        for (const [section, from, to] of [['spaces', 417, vw - 56], ['archive', vw - 56, 417]] as const) {
+          const frames = await slide(section);
+          const lefts = frames.map(([l]) => l);
+          assert.ok(lefts.some((l) => l > Math.min(from, to) + 5 && l < Math.max(from, to) - 5), `${section}: slid through the frames between (${lefts.join(' ')})`);
+          assert.ok(lefts.every((l, i) => i === 0 || (to > from ? l >= lefts[i - 1] - 1 : l <= lefts[i - 1] + 1)), `${section}: one way (${lefts.join(' ')})`);
+          assert.equal(lefts.at(-1), to, `${section}: lands at ${to}`);
+          assert.deepEqual(frames.filter(([l, p]) => Math.abs(l - p) > 1), [], `${section}: the panel's edge where the page's is, every frame`);
+          assert.deepEqual(frames.filter(([l, , c]) => Math.abs(c - (l + 6)) > 1), [], `${section}: the background cut where the card is, every frame`);
+          assert.ok(frames.every(([, , , w]) => w === frames[0][3]), `${section}: the page's width kept`);
+          const told = await ev(() => T.rtResizing().slice((window as any).__told).map(([on]) => on));
+          assert.deepEqual(told, [true, false], `${section}: the host told it moves, then that it's over`);
+          assert.equal(await ev(() => document.querySelector('.arcadia')!.hasAttribute('m-library-wide-slide')), false, `${section}: the slide's mark gone`);
+        }
+        // With less motion: at once, nothing told.
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await ev(() => { (window as any).__told = T.rtResizing().length; T.rtDispatch('library.section', 'spaces'); });
+        assert.equal(Math.round((await rect('.card-edge'))!.left), vw - 56, 'less motion: there at once');
+        assert.equal(await ev(() => document.querySelector('.arcadia')!.hasAttribute('m-library-wide-slide')), false);
+        await ev(() => T.rtDispatch('library.section', 'archive'));
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await ev(() => T.rtDispatch('library.close'));
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await ev(() => T.rtChange('setBackground', 'personal', null));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
+      });
+
+      await t.test('a hosted window that can\'t pass the window\'s edge (no m-page-slides): the Library makes room, the page\'s right edge where it was', async () => {
+        await fresh();
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        const card0 = (await rect('.card-edge'))!;
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await page.waitForTimeout(50);
+        const open = (await rect('.card-edge'))!;
+        assert.deepEqual([Math.round(open.left), Math.round(open.right)], [417, Math.round(card0.right)], 'beside the Library, its right edge in the window: room made');
+        assert.ok((await ev(() => T.rtPlaces())).every(([, r]: number[]) => r >= 0), 'never past the window\'s edge');
+        await ev(() => T.rtDispatch('library.close'));
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+      });
+
       await t.test('a sidebar wider than the Library (500 pt): the Library as wide as it, the page never moved (no gap at the window\'s edge, nothing resized)', async () => {
         await fresh({ settings: { themes: { arcadia: { sidebarWidth: 500 } } } });
-        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.setAttribute('m-page-state', 'shown'); r.setAttribute('m-page-slides', ''); });
         const card0 = (await rect('.card-edge'))!;
         assert.equal(Math.round(card0.left), 500, 'the sidebar 500 wide');
         await ev(() => { (window as any).__told = T.rtResizing().length; });
@@ -1207,7 +1277,7 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__told)), [], 'the host never told: nothing to follow');
         await ev(() => T.rtDispatch('library.close'));
         await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
-        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
       });
 
       await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
@@ -1242,7 +1312,7 @@ for (const [engineName, engine] of ENGINES) {
         // (the host told once, before the first moved place); never resized at every frame (each width placed Safari
         // again, out of full screen and back: 2026-11-26). The Library Arc's 417 pt, its labels shown.
         await page.emulateMedia({ reducedMotion: 'no-preference' });
-        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.setAttribute('m-page-state', 'shown'); r.setAttribute('m-page-slides', ''); });
         const card0 = (await rect('.card-edge'))!;
         const vw = await ev(() => innerWidth);
         await ev(() => T.rtSentClear());
@@ -1274,14 +1344,14 @@ for (const [engineName, engine] of ENGINES) {
         assert.ok(places.length > 1 && places.every(([l, r]: number[]) => l + r === places[0][0] + places[0][1] && Number.isInteger(l) && Number.isInteger(r)), `each place as wide, at whole points (${JSON.stringify(places)})`);
         assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__resized0)), [[true, null], [false, 417]], 'over once open, after its last place (417) was reported');
         // The Library's Spaces (Arc's whole-window manager): the page slides on to the panel's edge, its first 56 pt showing,
-        // its width kept (at once: Arcadia animates no layout).
+        // its width kept (slid there on Arc's switch curve: the next test).
         await page.locator('.lib-section[data-icon="spaces"]').first().click();
-        await page.waitForFunction(() => document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return r.classList.contains('library-wide') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 2000 });
         await page.waitForTimeout(50);
         const wide = (await rect('.card-edge'))!;
         assert.deepEqual([Math.round(wide.left), Math.round(wide.width)], [vw - 56, Math.round(card0.width)], 'Spaces: the page past the panel, 56 pt of it showing, as wide');
         await page.locator('.lib-section[data-icon="archive"]').first().click();
-        await page.waitForFunction(() => !document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return !r.classList.contains('library-wide') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 2000 });
         await page.waitForTimeout(50);
         assert.equal(Math.round((await rect('.card-edge'))!.left), 417, 'back beside the Library');
         // Back out (the box's back arrow slides it): the host told before the page's first move away from 417, over at
@@ -1304,7 +1374,7 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__resized1)), [], 'not told');
         if ((await ends()).library) await page.locator('.lib-back').first().click();
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-sidebar-fixed'));
-        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+        await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
       });
 
       await t.test('the Library\'s rail, as Arc\'s: Archived Tabs Margin\'s archive by day (searched, a row restores it); the sections Margin hasn\'t got say so', async () => {

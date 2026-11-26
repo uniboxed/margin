@@ -1492,11 +1492,12 @@ func hostTests() {
     func window(_ w: FakeHostWorld, _ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
     func pid(_ w: FakeHostWorld, _ bundle: String) -> pid_t { w.running(bundleId: bundle).first?.pid ?? 0 }
     func at(_ w: FakeHostWorld, _ call: String) -> Int { w.calls.firstIndex(of: call) ?? -1 }
-    final class Said { var loading: [HostID?] = []; var above: [Int?] = [] }
+    final class Said { var loading: [HostID?] = []; var above: [Int?] = []; var tiled: [Bool] = [] }
     func watch(_ e: HostEngine) -> Said {
         let s = Said()
         e.loading = { s.loading.append($0) }
         e.hostedWindow = { s.above.append($0) }
+        e.hostedTile = { s.tiled.append($0) }
         return s
     }
 
@@ -1523,6 +1524,8 @@ func hostTests() {
         check("host: macOS's jump to its new Space undone, then reserved, then the move, then the destroy (Margin's Space current)",
               jump >= 0 && jump < at(w, "reserve \(edges.text)") && at(w, "reserve \(edges.text)") < member && member < destroy && w.current == FakeHostWorld.marginSpace, "\(w.calls)")
         check("host: its app in front after it's shown, Margin's window kept below its window", w.calls.last == "activate \(p) \(n)" && said.above == [n] && e.shownWindow == n, "\(w.calls.suffix(3)) \(said.above)")
+        check("host: the tiles off, a member placed by its own Space's reservation: Margin's window told it isn't in a tile (its page area can't pass the window's edge)",
+              said.tiled.last == false, "\(said.tiled)")
         check("host: one freeze, only around the full-screen entry (revealed before the reservation)", w.freezes == 1 && w.reveals == 1, "\(w.freezes)")
         check("host: the loading animation for it from the start, done at the end", said.loading == [textEdit.id, nil], "\(said.loading)")
         check("host: Mission Control listed its own Space only during the open, a moment (on the stand-in's clock)", w.episodes.count == 1 && (w.episodes.first ?? 9) < 2, "\(w.episodes)")

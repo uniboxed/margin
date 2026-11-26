@@ -187,6 +187,10 @@ pub struct Page {
     full_screen: bool,
     hosting: bool,
     hosted: Option<i64>,
+    /// The hosted window lies in a tile of Margin's Space (the engine's word): it can be placed past the window's edge.
+    hosted_tile: bool,
+    /// What the page was last told of `page_slides` (the hello's, then each `pageSlides`): a change said once.
+    slides_said: std::cell::Cell<bool>,
     /// A field of Margin's wants the keys (the page's `focus`: press.rs).
     field_keys: bool,
     hosted_frame: Option<Rect>,
@@ -249,6 +253,8 @@ impl Page {
             full_screen: false,
             hosting: false,
             hosted: None,
+            hosted_tile: false,
+            slides_said: std::cell::Cell::new(true),
             field_keys: false,
             hosted_frame: None,
             loading: None,
@@ -480,6 +486,7 @@ impl Page {
         let mut had = false;
         if !on {
             self.hosted = None;
+            self.hosted_tile = false;
             self.hosted_frame = None;
             had = !self.visible.is_empty();
             if had {
@@ -570,6 +577,28 @@ impl Page {
         }
         self.hosted = number;
         HostedSaid::Changed
+    }
+
+    /// Whether the hosted window lies in a tile of Margin's Space (the engine's word, with each window it says).
+    pub fn set_hosted_tile(&mut self, on: bool) {
+        self.hosted_tile = on;
+    }
+
+    /// Whether the page area may be placed past the window's edge (a theme's Library slides the page then, its width
+    /// kept, rather than making room: `m-page-slides`): Margin's own page (nothing hosted, or nothing shown yet), or a
+    /// hosted window in a tile of Margin's Space, which macOS keeps past the display's edge. Not a window placed by
+    /// its own Space's reservation (the tiles off), which can't pass it: made room for instead.
+    pub fn page_slides(&self) -> bool {
+        !self.hosting || self.hosted.is_none() || self.hosted_tile
+    }
+
+    /// `page_slides` when it differs from what the page was last told (then told: said once). None: no change.
+    pub fn slides_change(&self) -> Option<bool> {
+        let now = self.page_slides();
+        (now != self.slides_said.get()).then(|| {
+            self.slides_said.set(now);
+            now
+        })
     }
 
     /// The hosted window's bounds as the window server read them (None: unread, or nothing hosted).

@@ -147,7 +147,7 @@ template{display:none!important}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
 `;
 
-// `m-passthrough`, `m-away`, `m-sidebar-fixed`, `m-page-state`, `m-starting` and `m-startup` are the host's and the
+// `m-passthrough`, `m-away`, `m-sidebar-fixed`, `m-page-slides`, `m-page-state`, `m-starting` and `m-startup` are the host's and the
 // runtime's, on the theme's root (a theme can't write m- attributes of its own; its CSS can select
 // them). `m-page-state` (Margin.app's own window: ui/runtime.ts followPage): `shown`, a hosted window
 // shows through the page's place, which draws nothing; `loading`, an item is being opened: the page
@@ -155,6 +155,9 @@ template{display:none!important}
 // (`m-page-loader[m-default]`, above: a quiet spinner and Margin's words, laid over the page's place by
 // the runtime; it fades out over the hosted window as `shown` comes); `empty`, nothing to show: the
 // launcher. `m-starting`: from the first frame until the state's data is drawn (a theme's skeleton).
+// `m-page-slides` (Margin.app's own window, ui/host-app.ts pageSlides): the page area may be placed past
+// the window's edge (Margin's own page, or a hosted window in a tile of Margin's Space): a theme's Library
+// slides the page past it, its width kept, rather than making room (a window placed otherwise can't follow).
 // `m-startup` (Margin.app's own window, its default browser getting ready): the start screen, Margin's
 // `<m-startup>` over the whole window, the theme's loader marks in it (`> m-startup::before`, `::after`).
 // The others: the pointer over the page's slot
