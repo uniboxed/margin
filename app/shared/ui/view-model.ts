@@ -196,8 +196,22 @@ export type LibraryView = {
   filter: boolean,
   /** Archived Tabs: the rows found, by day as Arc heads them ("Today", "Yesterday", "3 days ago"…). */
   archive: boolean, groups: { label: string, rows: LibraryRow[] }[], hasGroups: boolean,
-  /** Nothing to list: the section's words (one not in Margin yet, or no archived tab found). */
-  empty: { title: string, text: string } | null,
+  /**
+   * Nothing to list: the section's words, Arc's own (its title, if it has one, and its line; `x`: Arc's archive button
+   * drawn between `text` and `after`, as its "press the ✕ to archive it").
+   * */
+  empty: { title: string, text: string, x: boolean, after: string } | null,
+  /** Spaces: Arc's space manager across the window (`wide`), a card per space (`spaces`) as its sidebar shows it. */
+  wide: boolean,
+  spaces: LibrarySpaceCard[],
+};
+/** A space as the Library's Spaces cards draw it: its name, icon, colour, profile, and its sidebar's rows. */
+export type LibrarySpaceCard = {
+  id: string, name: string, emoji: string, iconless: boolean, color: string, active: boolean,
+  profile: string, hasProfile: boolean,
+  /** Its ground: a gradient of its background's colours (a space with one), else none (the theme's of its colour). */
+  ground: string,
+  pinned: (FolderRow | PinRow)[], today: TabRow[], hasPinned: boolean, hasToday: boolean,
 };
 /** Arc's Create a Space while it's open (NewSpaceView). */
 export type NewSpaceView = {
@@ -949,7 +963,7 @@ function fresh(input: ViewModelInput): ViewModel {
     settingsTab,
     settings,
     platform,
-    library: libraryView(ui.library, archive, now),
+    library: libraryView(ui.library, archive, now, ui.library?.section === 'spaces' && (ui.library?.open || ui.library?.peek) ? libraryCards(state, windowId, currentTabId, spaces) : []),
     newSpace,
   };
 }
@@ -982,16 +996,17 @@ const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 // placeholder (as Arc's), and the words of a section Margin has nothing for yet (Arc's Easels heading kept).
 const LIBRARY_LABELS: Record<string, string> = { media: 'Media', downloads: 'Downloads', easels: 'Easels', spaces: 'Spaces', boosts: 'Boosts', archive: 'Archived Tabs' };
 const LIBRARY_SEARCH: Record<string, string> = { media: 'Search Media…', downloads: 'Search Downloads…', easels: 'Search Easels…', boosts: 'Search Boosts…', archive: 'Search Archive…' };
-const LIBRARY_EMPTY: Record<string, { title: string, text: string }> = {
-  media: { title: 'No media yet', text: 'Margin doesn\'t keep the images and videos you see yet.' },
-  downloads: { title: 'No downloads yet', text: 'Margin doesn\'t list your downloads yet.' },
-  easels: { title: 'Out of ideas!', text: 'Easels aren\'t in Margin yet.' },
-  spaces: { title: 'Your spaces', text: 'They\'re in the sidebar. Margin\'s space manager isn\'t here yet.' },
-  boosts: { title: 'No Boosts yet', text: 'Boosts aren\'t in Margin yet.' },
+// (Arc's own words, read from its app: docs/ARC-SIDEBAR.md "The Library's sections". Media's names no app.)
+const LIBRARY_EMPTY: Record<string, { title: string, text: string, x?: boolean, after?: string }> = {
+  media: { title: '', text: 'Save media to your Documents, Desktop, and Download Folders to see them here, alongside your Captures.' },
+  downloads: { title: 'Nothing here yet!', text: 'Come back after you\u2019ve found some cool stuff to save.' },
+  easels: { title: 'Out of ideas!', text: 'Click the + sign in the Sidebar to create a new Easel.' },
+  boosts: { title: 'Nothing Boosted Yet!', text: 'Type \u201cNew Boost\u201d in URL bar to make your own, or grab one from the Boost Gallery.' },
+  archive: { title: 'Nothing here yet!', text: 'Hover your mouse over a tab and press the ', x: true, after: ' to archive it.' },
 };
 
 /** The Library as the theme draws it (LibraryView): its rail, the section shown, its archived tabs by day. */
-export function libraryView(ui: UiState['library'], archive: ArchiveRow[], now: number): LibraryView {
+export function libraryView(ui: UiState['library'], archive: ArchiveRow[], now: number, cards: LibrarySpaceCard[] = []): LibraryView {
   const section = typeof ui?.section === 'string' && (LIBRARY_SECTIONS as readonly string[]).includes(ui.section) ? ui.section : 'archive';
   const query = typeof ui?.query === 'string' ? ui.query.slice(0, 200) : '';
   const isArchive = section === 'archive';
@@ -1007,9 +1022,11 @@ export function libraryView(ui: UiState['library'], archive: ArchiveRow[], now: 
       else groups.push({ label, rows: [row] });
     }
   }
-  const empty = isArchive
-    ? (groups.length ? null : query.trim() ? { title: 'Nothing found', text: `No archived tab matches “${query.trim().slice(0, 60)}”.` } : { title: 'Nothing archived yet', text: 'Tabs you close show up here.' })
-    : LIBRARY_EMPTY[section];
+  const words = (w: { title: string, text: string, x?: boolean, after?: string }) => ({ title: w.title, text: w.text, x: !!w.x, after: w.after ?? '' });
+  const empty = section === 'spaces' ? null
+    : isArchive && groups.length ? null
+    : isArchive && query.trim() ? words({ title: '', text: `No results found for \u201c${query.trim().slice(0, 60)}\u201d` })
+    : words(LIBRARY_EMPTY[section]);
   return {
     open: !!ui?.open,
     shown: !!ui?.open || !!ui?.peek,
@@ -1019,7 +1036,35 @@ export function libraryView(ui: UiState['library'], archive: ArchiveRow[], now: 
     filter: section === 'downloads' || isArchive,
     archive: isArchive, groups, hasGroups: groups.length > 0,
     empty,
+    wide: section === 'spaces',
+    spaces: cards,
   };
+}
+
+// The Library's Spaces cards (Arc's space manager): each space's sidebar as it'd show in this window (its folders and
+// pins, its today's tabs), from the sidebar's own rules (shared/view.ts sidebar), only while the section is shown.
+function libraryCards(state: State, windowId: number | null, tabId: number | null, chips: { id: string, name: string, emoji: string, iconless: boolean, color: string, active: boolean, profile: string, hasProfile: boolean }[]): LibrarySpaceCard[] {
+  return chips.map((chip) => {
+    const shown = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId as number]: chip.id } } as State;
+    const v = V.sidebar(shown, windowId, tabId, {});
+    const pinned: (FolderRow | PinRow)[] = [];
+    const walk = (item: any, depth: number) => {
+      if (item.kind !== 'folder') { pinned.push(pinRow(state, item, depth > 0, depth)); return; }
+      const inside = (item.pins ?? []).map((p: any) => pinRow(state, p, true, depth + 1));
+      pinned.push({ kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, parentFolderId: item.parentFolderId ?? null, depth, count: inside.length, pins: inside, shown: [], shownFlat: [], hasShown: false });
+      if (item.open) for (const p of inside) pinned.push(p);
+    };
+    for (const item of v.pinned ?? []) walk(item, 0);
+    const today = (v.tabs ?? []).map((t: any) => tabRow(state, t));
+    const bg = state.spaces.find((s) => s.id === chip.id)?.background as { colors?: unknown } | null | undefined;
+    const colors = Array.isArray(bg?.colors) ? (bg!.colors as unknown[]).filter((c): c is string => typeof c === 'string' && HEX_COLOR.test(c)).slice(0, 4) : [];
+    return {
+      id: chip.id, name: chip.name, emoji: chip.emoji, iconless: chip.iconless, color: HEX_COLOR.test(chip.color) ? chip.color : '#888888', active: chip.active,
+      profile: chip.profile, hasProfile: chip.hasProfile,
+      ground: colors.length > 1 ? `linear-gradient(180deg, ${colors.join(', ')})` : colors.length ? colors[0] : '',
+      pinned, today, hasPinned: pinned.length > 0, hasToday: today.length > 0,
+    };
+  });
 }
 
 // An address as Arc's Library writes it: no http(s):// and no www. (other schemes, file: and the like, kept).

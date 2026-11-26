@@ -451,7 +451,11 @@ host. Immutable: rows that didn't change are the same objects.
   `searchLabel` (its placeholder, "Search Archive…") and `query`, `filter` (Arc's Filter beside it: Downloads and
   Archived Tabs; not in Margin yet), `archive` (Archived Tabs shown) with `groups[]` (`label`: "Today", "Yesterday",
   "3 days ago"…, Arc's headings; `rows[]`: an archived tab's face, `id`, `address`: its URL as Arc writes it) and
-  `hasGroups`, and `empty` (`title`, `text`: a section Margin hasn't got yet, or nothing found), else null.
+  `hasGroups`, `empty` (Arc's own words for a section with nothing to list: `title` ('' for none), `text`, and `x` with
+  `after`: Arc's archive button drawn between them, "press the ✕ to archive it"), else null, and `wide` with `spaces[]`
+  (Spaces: Arc's space manager across the window, a card per space: `id`, `name`, `emoji`, `iconless`, `color`,
+  `active`, `profile`, `hasProfile`, `ground` (a gradient of its background's colours, or ''), `pinned` (its folders
+  and pins as its sidebar shows them, folders' pins after them), `today`, `hasPinned`, `hasToday`; only while shown).
 - `newSpace` (Arc's Create a Space while it's open, else null): `name`, `emoji`, `color` (the colour the space will
   get; `space.color` is it meanwhile, so the sidebar is drawn in it), `hasProfiles`, `profile` (its name) and
   `profileId` (Margin.app's profiles of the space's browser, for its Profile menu) and `profileLabel` ("Profile: Work"), `canCreate` (a name typed) and

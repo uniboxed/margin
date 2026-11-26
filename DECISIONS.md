@@ -11109,3 +11109,24 @@ Margin's rubber band. Measured from them and Arc's tree (docs/ARC-SIDEBAR.md "Th
   frame's colour showing between them meanwhile: the host's placing, as any width change). "+" New Space opens Create a
   Space (its name focused, the profile Margin.app's "Default"), Cancel makes nothing. A trackpad swipe can't be played
   here (synthetic scrolls don't reach a swipe), so the swipes are the harness's (both engines).
+
+## The Library's sections as Arc's: its icons, words and space manager (`feat/arc-library-ui`, 2026-11-25)
+
+Tirth: "the same icons and spaces and ui everything as the arc uses … even if the feature is not built". What Arc's app
+has (docs/ARC-SIDEBAR.md "The Library's sections, as Arc draws them"):
+- **Icons drawn anew, not copied**: Arc's are animations in its app's bundle; rendered only to look at, Margin's two-colour
+  SVGs follow their shapes (Arcadia's `.li`: `.s` the inside, `.ps` the outline, `.pf` the filled parts), so Margin ships
+  none of Arc's artwork. The rail's colours as Arc's (the space's colour darkened; the one shown darker, its inside
+  white, on a darker pill). Found: Arcadia's button reset (`color: inherit`) outranked the rail's colour, so every
+  unselected icon was the text's black; the rule is the Library's now.
+- **Words read from Arc's app** for each section with nothing to list (the view model's `empty`: a title, a line, and
+  Arc's archive button drawn in the archive's "press the ✕ to archive it"); where Arc's text names Arc ("…Captures in
+  Arc"), Margin's leaves the name out. Arc's restore and delete on an archived row under the pointer (delete drawn: no
+  such request).
+- **Spaces, Arc's space manager** from Margin's own spaces: the view model's `library.spaces` (each space's sidebar from
+  shared/view.ts `sidebar`, only while the section is shown), a card each across the window; the panel over the page
+  (z-index above the card's edge), the page left 417 pt in under it rather than pushed to Arc's sliver (a hosted app
+  would be placed again at 48 pt). Its pencil is Edit Space; its rows open what they are; Arc's move handle and •••
+  drawn.
+- **Tests** (tests/theme/arcadia.test.ts, both engines): Arc's words per section, the shown icon filled white, the
+  space manager's cards (every space in order, 240 pt, their rows), its width, the page under it, a card's pencil.

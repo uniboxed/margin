@@ -207,6 +207,29 @@ second frame, done in ≈ 200 ms):
   Margin.app's core takes the profile); Choose a Theme makes it and opens Edit Theme Color for it (that picker needs a
   space); Cancel and Escape make nothing. Arcadia's "+" New Space opens it too, as Arc's.
 
+## The Library's sections, as Arc draws them (2026-11-25, `feat/arc-library-ui`)
+
+Tirth: the same icons, spaces and UI as Arc's, even where the feature isn't built.
+- **Its icons**: Arc's are two-colour (a primary, the space's colour darkened, for the outline; a secondary for the
+  inside), drawn as animations in its app (ARC_HomeButton.bundle's `screenshots`, `downloads`, `easels`, `spaces`,
+  `boosts`, `archive`), rendered here only to look at. Margin's are drawn anew to their shapes (two photos with a sun and
+  a hill, a circled arrow, a card with a filled bar and a squiggle, two cards, a tilted card with a brush and sparkles, a
+  lidded box), not taken from Arc's files: unselected the outline alone, the one shown darker with its inside white, on
+  a darker pill (black at about 7%), its label black (the others' grey, 11 pt bold).
+- **Their words** (read from Arc's app): Archived Tabs "Nothing here yet!" / "Hover your mouse over a tab and press the
+  ✕ to archive it." (its search: "No results found for “…”"); Downloads "Come back after you've found some cool stuff
+  to save." (its heading not in Arc's binary as text: "Nothing here yet!", Arc's other one); Media "Save media to your
+  Documents, Desktop, and Download Folders to see them here, alongside your Captures" (Arc's ends "in Arc"); Easels
+  "Out of ideas!" / "Click the + sign in the Sidebar to create a new Easel."; Boosts "Nothing Boosted Yet!" / "Type
+  “New Boost” in URL bar to make your own, or grab one from the Boost Gallery." (its first words not in the binary as
+  text: Arc's own Boost prompt). Archived rows: Arc's restore and delete under the pointer (delete: no such request in
+  Margin yet, drawn).
+- **Spaces, Arc's space manager**: the panel across the window but its last 56 pt, over the page (Arc pushes its page
+  to that sliver; Margin's page stays 417 pt in, under it, so a hosted app isn't placed again), a row of 240 pt cards
+  24 pt apart, 48 pt from the top and bottom, each in its space's colour (its background's colours as a gradient where
+  it has one): its icon, name, profile chip and pencil (Edit Space), its folders and pins and today's tabs as its
+  sidebar has them (a row opens it), Arc's move handle and ••• at its foot (drawn).
+
 ## The space's colour in a switch (measured 2026-11-25, `feat/space-color-blend`)
 
 Read from the first session's two recordings of a dock click (Work → Personal and back, 60 fps, lossless; the mean

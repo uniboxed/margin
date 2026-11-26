@@ -1143,6 +1143,7 @@ for (const [engineName, engine] of ENGINES) {
           rows: [...document.querySelectorAll('.lib-row')].map((r) => [r.querySelector('.lib-title')!.textContent!.trim(), r.querySelector('.lib-sub')!.textContent!.trim()]),
           placeholder: (document.querySelector('.lib-search input') as HTMLInputElement | null)?.placeholder ?? null,
           filter: !!document.querySelector('.lib-filter'), empty: document.querySelector('.lib-empty-title')?.textContent?.trim() ?? null,
+          line: document.querySelector('.lib-empty-text')?.textContent?.trim() ?? null,
         }));
         const a = await read();
         assert.deepEqual(a.sections.map(([l]) => l), ['Media', 'Downloads', 'Easels', 'Spaces', 'Boosts', 'Archived Tabs'], 'Arc\'s rail, in its order');
@@ -1154,7 +1155,7 @@ for (const [engineName, engine] of ENGINES) {
         await page.fill('.lib-search input', 'older');
         assert.deepEqual((await read()).rows.map(([t]) => t), ['An older page'], 'searched');
         await page.fill('.lib-search input', 'nothing like it');
-        assert.equal((await read()).empty, 'Nothing found');
+        assert.deepEqual([(await read()).empty, (await read()).line], [null, 'No results found for \u201cnothing like it\u201d'], 'Arc\'s words');
         await page.keyboard.press('Escape');
         assert.equal((await read()).rows.length, 2, 'Escape clears the search first');
         // A row restores its tab.
@@ -1163,9 +1164,27 @@ for (const [engineName, engine] of ENGINES) {
         // A section Margin hasn't got: chosen, its words.
         await page.locator('.lib-section').nth(2).click();
         const e = await read();
-        assert.deepEqual([e.empty, e.placeholder, e.filter, e.rows.length], ['Out of ideas!', 'Search Easels…', false, 0]);
+        assert.deepEqual([e.empty, e.line, e.placeholder, e.filter, e.rows.length], ['Out of ideas!', 'Click the + sign in the Sidebar to create a new Easel.', 'Search Easels…', false, 0], 'Arc\'s words');
+        // Arc's words for each (read from its app), its icons: the one shown filled white, darker.
+        await page.locator('.lib-section').nth(1).click();
+        assert.deepEqual([(await read()).empty, (await read()).line], ['Nothing here yet!', 'Come back after you\u2019ve found some cool stuff to save.']);
+        await page.locator('.lib-section').nth(4).click();
+        assert.equal((await read()).empty, 'Nothing Boosted Yet!');
+        const fills = await ev(() => [...document.querySelectorAll('.lib-section')].map((b) => getComputedStyle(b.querySelector('.li:not([style*="none"]) .s, .li .s')!).fill));
+        assert.ok(fills[4] !== fills[0] && /255, 255, 255|#fff/.test(fills[4]), `the one shown filled white (${fills.join(' / ')})`);
+        // Spaces: Arc's space manager across the window, a card per space as its sidebar has it.
         await page.locator('.lib-section').nth(3).click();
         assert.equal((await read()).placeholder, null, 'Spaces: no search, as Arc\'s');
+        await page.waitForTimeout(300);
+        const cards = await ev(() => [...document.querySelectorAll('.lib-card')].map((c) => ({ name: c.querySelector('.lc-name')!.textContent!.trim(), rows: c.querySelectorAll('.lc-row').length, width: c.getBoundingClientRect().width })));
+        const names = await ev(() => (window as any).__rt.runtime.vm.spaces.map((s: any) => s.name));
+        assert.deepEqual(cards.map((c) => c.name), names, 'every space, in order');
+        assert.ok(cards.every((c) => c.width === 240 && c.rows > 0), `240 pt cards with their rows (${JSON.stringify(cards)})`);
+        assert.equal((await rect('.library'))!.width, 1280 - 56, 'across the window but its last 56 pt');
+        assert.equal(Math.round((await rect('.card-edge'))!.left), 417, 'the page where it was, under it');
+        await page.locator('.lib-card').nth(1).locator('.lc-edit').click();
+        assert.equal((await ev(() => T.rtVmFull())).editor?.name, names[1], 'its pencil edits that space');
+        await page.keyboard.press('Escape');
         await ev(() => T.rtDispatch('library.close'));
       });
 

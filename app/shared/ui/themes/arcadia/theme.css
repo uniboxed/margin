@@ -1479,6 +1479,7 @@
   color: var(--fg);
   --m-swipe-feel: dia;
   --lib-icon: color-mix(in srgb, var(--space-shown) 62%, #000);
+  --lib-icon-on: color-mix(in srgb, var(--space-shown) 45%, #000);
   transform: translateX(calc((var(--lib-p) - 1) * 100%));
   -webkit-font-smoothing: antialiased;
   font-size: 13.5px;
@@ -1488,18 +1489,28 @@
 .arcadia[m-background] .library { background: transparent; --fg: var(--m-fg); --muted: var(--m-fg-2); --hover: var(--m-hover); --active: var(--m-selected); --lib-icon: var(--m-fg-2); }
 .arcadia[m-background]:not([m-appearance="dark"]) .library { --hover: rgba(0, 0, 0, 0.05); }
 .arcadia[m-background][m-appearance="dark"] .library { --hover: rgba(255, 255, 255, 0.1); }
-@media (prefers-color-scheme: dark) { .library { --lib-icon: color-mix(in srgb, var(--space-shown) 55%, #fff); } }
+@media (prefers-color-scheme: dark) { .library { --lib-icon: color-mix(in srgb, var(--space-shown) 55%, #fff); --lib-icon-on: color-mix(in srgb, var(--space-shown) 40%, #fff); --lib-pill: rgba(255, 255, 255, 0.1); --li-s: transparent; --lib-label: rgba(255, 255, 255, 0.55); --lib-label-on: #fff; } .lib-section.active { --li-s: rgba(255, 255, 255, 0.9); } }
 
 /* Its rail (Arc's: six 97 × 80 pt buttons 100 pt apart at 8 pt from the left, centred down the window; the icon's middle
    31 pt into it, the label's 56, 11 pt semibold; the one shown on a lighter pill). */
 .lib-rail { position: absolute; left: 8px; top: calc(50% - 295px); width: 97px; display: flex; flex-direction: column; gap: 20px; }
-.lib-section { width: 97px; height: 80px; padding: 20px 0 0; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--lib-icon); }
+.lib-section { width: 97px; height: 80px; padding: 19px 0 0; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--lib-icon); }
+/* (Arc's: the one shown on a darker pill, not a lighter one; its icon in the space's colour, darker, its inside white;
+   the others' outline only; the labels 11 pt bold, grey, the shown one's black.) */
 .lib-section:hover { background: var(--hover); }
-.lib-section.active { background: var(--active); box-shadow: var(--active-shadow); }
-.lib-section .li { flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.lib-section.active .li { stroke-width: 1.9; }
-.lib-label { font-size: 11px; line-height: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-.lib-section.active .lib-label { color: var(--fg); }
+.lib-section.active { background: var(--lib-pill); }
+.library { --lib-pill: rgba(0, 0, 0, 0.07); --li-s: transparent; --lib-label: rgba(0, 0, 0, 0.55); --lib-label-on: rgba(0, 0, 0, 0.88); }
+/* (Above Arcadia's button reset, color: inherit, which would make them the text's colour.) */
+.library .lib-section { color: var(--lib-icon); }
+.library .lib-section.active { --li-s: #fff; color: var(--lib-icon-on); }
+.li { flex: none; width: 24px; height: 24px; overflow: visible; fill: none; stroke: none; }
+.li .s { fill: var(--li-s); }
+.li .ps { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.li .ps.thin { stroke-width: 1.3; }
+.li .pf { fill: currentColor; }
+.lib-label { font-size: 11px; line-height: 13px; font-weight: 700; color: var(--lib-label); white-space: nowrap; }
+.lib-section.active .lib-label { color: var(--lib-label-on); }
+.lib-section .li-note, .lib-empty[data-icon="easels"] .li-easels, .lib-empty:not([data-icon="easels"]) .li-note { display: none; }
 :is(.lib-section, .lib-empty):not([data-icon="media"]) .li-media,
 :is(.lib-section, .lib-empty):not([data-icon="downloads"]) .li-downloads,
 :is(.lib-section, .lib-empty):not([data-icon="easels"]) .li-easels,
@@ -1529,14 +1540,22 @@
 .lib-row { height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 14px; border-radius: 10px; }
 .lib-row:hover { background: var(--hover); }
 .lib-row .fav, .lib-row .avatar { flex: none; width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+/* Arc's buttons on a row under the pointer: restore (the row's own click) and delete (not in Margin: drawn). */
+.lib-tools { display: none; flex: none; gap: 2px; }
+.lib-row:hover .lib-tools { display: flex; }
+.lib-tool { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
+.lib-tool:hover { background: var(--hover); color: var(--fg); }
+.lib-tool svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .lib-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lib-title, .lib-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lib-title { font-size: 14px; line-height: 17px; color: var(--fg); }
 .lib-sub { font-size: 12px; line-height: 15px; color: var(--muted); }
 /* A section with nothing to list (Arc's Easels' look: its icon, a heading, a line, in the middle of the list's place). */
 .lib-empty { margin: auto; padding: 0 20px 56px; display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--muted); }
-.lib-empty .li { width: 52px; height: 52px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
-.lib-empty-title { margin-top: 12px; font-size: 17px; line-height: 20px; font-weight: 700; color: var(--fg); }
+.lib-empty .li { width: 52px; height: 52px; opacity: 0.55; }
+.lib-empty .li .ps { stroke-width: 1.1; }
+.lib-empty .lib-x { display: inline-block; width: 12px; height: 12px; margin: 0 2px; vertical-align: -1px; padding: 1px; border-radius: 3px; background: var(--hover); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.lib-empty-title { margin-top: 12px; margin-bottom: -4px; font-size: 17px; line-height: 20px; font-weight: 700; color: var(--fg); }
 .lib-empty-text { margin: 8px 0 0; max-width: 270px; font-size: 13px; line-height: 17px; }
 /* While an app is hosted (the sidebar's own width): the rail's icons only, the section beside them, no Filter. */
 .arcadia[m-sidebar-fixed] .lib-rail { width: 44px; top: calc(50% - 159px); gap: 10px; }
@@ -1618,3 +1637,44 @@
 .margin-sidebar .ns-cancel:hover { color: var(--fg); }
 /* The space being made, in front in the switcher (a dot, as Arc's dock draws it). */
 .margin-sidebar .spaces .chip.making { pointer-events: none; }
+
+/* The Library's Spaces: Arc's space manager across the window (its panel all but 56 pt of the window wide, over the
+   page, which stays where it was: 417 pt in), a row of 240 pt cards 24 pt apart, 48 pt down and up, each in its space's
+   colour (its background's colours where it has one): its name, icon and profile, its pencil, its folders, pins and
+   today's tabs as its sidebar has them, Arc's move handle and ••• at its foot. */
+.library { width: var(--library-panel, var(--library-width)); transition: width 250ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.arcadia.library-wide:not([m-sidebar-fixed]) .library { --library-panel: calc(100% - 56px); }
+/* (Over the page card's edge and shadow too: the page under it, a sliver of it showing at the right, as Arc's.) */
+.arcadia.library-wide:not([m-sidebar-fixed]) .library { z-index: 2; box-shadow: 1px 0 7px rgba(0, 0, 0, 0.18); }
+.arcadia[m-library-swipe] .library { transition: none; }
+.lib-spaces { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 48px 24px; overflow-x: auto; overscroll-behavior: contain; }
+.lib-card {
+  position: relative; flex: none; width: 240px; height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 10px; background: var(--card-ground, color-mix(in srgb, var(--card-color) 30%, #f1f0f3));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); color: var(--fg); font-size: 13px;
+}
+@media (prefers-color-scheme: dark) { .lib-card { background: var(--card-ground, color-mix(in srgb, var(--card-color) 30%, #1c1c20)); } }
+.lc-head { flex: none; height: 46px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 13px; }
+.lc-emoji { flex: none; width: 20px; font-size: 16px; text-align: center; }
+.lib-card.iconless .lc-emoji { display: none; }
+.lc-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; color: var(--muted); }
+.lc-profile { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 6px; border-radius: 10px; background: rgba(0, 0, 0, 0.06); font-size: 10.5px; font-weight: 600; color: var(--muted); }
+.lc-profile-icon { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.lc-edit { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.lc-edit:hover { background: var(--hover); color: var(--fg); }
+.lc-edit svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.lc-list { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 8px; display: flex; flex-direction: column; gap: 5px; }
+.lc-row { flex: none; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 calc(10px + var(--depth, 0) * 16px); border-radius: 10px; }
+a.lc-row:hover { background: var(--hover); }
+.lc-row .fav, .lc-row .avatar { flex: none; width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+.lc-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lc-folder { font-weight: 600; }
+.lc-folder-icon { flex: none; width: 20px; height: 15px; overflow: visible; stroke: color-mix(in srgb, var(--card-color) 50%, #000); stroke-width: 1.3; stroke-linejoin: round; }
+.lc-folder-icon .folder-back { fill: var(--card-color); }
+.lc-folder-icon .folder-front { fill: color-mix(in srgb, var(--card-color) 6%, #fbf8ee); }
+.lc-split { flex: none; position: relative; display: flex; align-items: center; height: 30px; padding: 0 10px; }
+.lc-rule { flex: 1; height: 0.5px; background: var(--rule); }
+.lc-clear { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.lc-foot { flex: none; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 13px; color: var(--muted); }
+.lc-foot svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
+.lc-more svg circle { fill: currentColor; stroke: none; }
