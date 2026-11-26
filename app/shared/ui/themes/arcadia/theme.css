@@ -1683,6 +1683,11 @@
 .arcadia[m-page-state].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) { --card-shift: round(calc((100vw - 56px - var(--width)) * var(--lib-p)), 1px); }
 /* (Over the page card's edge and shadow too: the page under it, a sliver of it showing at the right, as Arc's.) */
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { z-index: 2; box-shadow: 1px 0 7px rgba(0, 0, 0, 0.18); }
+/* (In Margin's own window the page slides out beside the panel (fix/library-follow): no shadow between them, the
+   panel's nor the card's, which would show through the see-through panel; the card's fades with the slide, so it's
+   back by the time the page is beside the sidebar again (Tirth, 2026-11-26).) */
+.arcadia[m-page-state].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .library { box-shadow: none; }
+.arcadia[m-page-state].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .card-edge { box-shadow: 0 1px 7px rgba(0, 0, 0, calc(0.25 * (1 - var(--lib-p)))); }
 /* (On a space's background, Margin's layer is cut out of the page's place: where the panel lies over the page (the
    browsers' overlay, a real page under it; the sidebar hidden or out, the page not slid), the background's one colour
    there. In Margin's own window with the sidebar docked the page slides out from under it, so the panel is over the

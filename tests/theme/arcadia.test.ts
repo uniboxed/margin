@@ -1137,10 +1137,16 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForFunction(() => document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
         await page.waitForTimeout(100);
         assert.equal(await panel(), 'rgba(0, 0, 0, 0)', 'Spaces see-through in Margin\'s window');
+        // (No shadow where the panel meets the page slid out beside it: the panel's none, the card's faded out.)
+        const shadows = () => ev(() => [getComputedStyle(document.querySelector('.library')!).boxShadow, getComputedStyle(document.querySelector('.card-edge')!).boxShadow]);
+        const [panelShadow, cardShadow] = await shadows();
+        assert.equal(panelShadow, 'none', 'the panel casts none on the page');
+        assert.match(cardShadow, /^rgba\(0, 0, 0, 0\) /, `the card's shadow gone (${cardShadow})`);
         assert.equal(await cutAt(), 1280 - 56 + 6, 'the background cut out only where the page\'s sliver is');
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
         await page.waitForTimeout(50);
         assert.notEqual(await panel(), 'rgba(0, 0, 0, 0)', 'the overlay: the background\'s one colour over the page');
+        assert.notEqual((await shadows())[0], 'none', 'the overlay: the panel over the page casts its shadow');
         await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
         await page.locator('.lib-section[data-icon="archive"]').first().click();
         await ev(() => T.rtDispatch('library.close'));
