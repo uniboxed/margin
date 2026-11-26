@@ -11023,3 +11023,13 @@ together, reviewed:
   already costs, and both together the same as either (one style pass a frame): a finger swipe costs nothing more; a
   click's or key's slide (until now no work of the page's per frame) takes it for its 251 ms.
 - **Run**: `npm run test:quick` (unit, theme, Swift) and the app's end-to-end run (375), all passed.
+
+## Arcadia's page card at Arc's corner, 6 pt (`fix/arc-card-radius`, 2026-11-25)
+
+Tirth: keep the radius the same as Arc's. Arc's page card corner measured 6 pt (docs/ARC-SIDEBAR.md: its corner's
+half-coverage contour fits a 12 px circle within 0.2 px), so `--frame-radius` is 6 px where it was 10 px. It's the one
+corner for the page card and the sidebar out over the page (Tirth's earlier ask that the two match stays: the panel's
+corner is 6 pt too, not Arc's 12 pt panel), and Margin.app draws the corners over a hosted window from the layout's
+radius, so they follow. The inset stays 8 pt (not Arc's 10). tests/manifest.test.ts and tests/theme/arcadia.test.ts
+read 6 px; the app's end-to-end corner checks already read the radius from the layout (their corner points made for a
+6 pt corner in M2.10).

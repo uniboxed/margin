@@ -522,7 +522,7 @@ func glueScenario() async {
         && fromPick.filter { $0.contains(#""type":"pageState""#) && !$0.contains(#""state":"loading""#) }.allSatisfy { !$0.contains("bundleId") }, "\(c.pushed.filter { $0.contains("pageState") })")
   let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && !l.hasAttribute('m-default') && document.querySelectorAll('m-page-loader').length === 1 && l.textContent.trim() === '' && getComputedStyle(l).pointerEvents === 'none'")
   check("the theme's root says shown; the theme's own loader (Arcadia's slot, no default of Margin's beside it) has its part taken out and lets go as it's shown", rootShown)
-  // (The page card's rounded corners: Arcadia's 10 pt radius, its frame around them, which is the space's colour mixed
+  // (The page card's rounded corners: Arcadia's 6 pt radius (Arc's), its frame around them, which is the space's colour mixed
   // into a near-white: read from the page, as it computes it. The theme draws them itself, over the app.)
   let frameCSS = (await js(c.webView, "return getComputedStyle(document.querySelector('m-page')).boxShadow.split(') ')[0] + ')'") as? String) ?? ""
   let radius = CGFloat(c.layout?.radii.first ?? 0)

@@ -61,11 +61,13 @@
   --danger: #d70015;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   /* Where the page card is: inside the frame (8 px), right of the sidebar when
-     it's docked; its corner 10 px. The sidebar out over the page sits in the
-     same frame with the same corner (Tirth's, 2026-11-25: the panel and the
-     page card the same height and the same corners), so both read these. */
+     it's docked; its corner Arc's, 6 px (measured: docs/ARC-SIDEBAR.md "The
+     window and the page card"; Tirth's, 2026-11-25). The sidebar out over the
+     page sits in the same frame with the same corner (Tirth's, 2026-11-25: the
+     panel and the page card the same height and the same corners), so both
+     read these. */
   --frame-inset: 8px;
-  --frame-radius: 10px;
+  --frame-radius: 6px;
   --card-left: var(--width);
   --card-inset: var(--frame-inset);
   --card-radius: var(--frame-radius);
