@@ -11063,3 +11063,7 @@ screen-size change; switched back after each run):
   re-layout's answer: Margin's own tile at the new size, not put back; the same display or another window's: nothing;
   back to the smaller display with the tile's rect right and the window wide: sent again), failing first where the
   code was there to fail. Swift 2271, the app's end-to-end run 375.
+- **Reviewed** before the merge: Margin's window acts on a display change once per display (its frame compared with the
+  last it acted on: macOS says it five times for one change here, the first still naming the old display, and for
+  changes that leave the display as it was; another display of the same size counts, the backdrop goes there), and the
+  backdrop is set by that, not at every resize of the window (a full-screen entry resizes it too).

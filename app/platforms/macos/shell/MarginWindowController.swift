@@ -1582,11 +1582,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // if its rect reads the same, so the one shown is placed again for the new display: the placement carries the
     // display, and the engine lays Margin's own tile out for it (HostEngine `followDisplay`). Before (Tirth, 2026-11-25):
     // on a bigger monitor Margin's window stayed at the laptop's size, the rest of the display blank.
+    // Only when its display's frame changed since it last looked (macOS says it several times for one change, the first
+    // still with the old display, and for changes that leave its display as it was); another display of the same size
+    // counts (the backdrop goes where it is).
+    private var displaySeen: CGRect?
     func displayChanged(_ why: String) {
-        guard !isClosed else { return }
-        Diagnostics.note("Margin's window \(id): \(why) (its display \(displayFrame.map { "\(Int($0.width))×\(Int($0.height))" } ?? "none"))")
+        guard !isClosed, let d = displayFrame, d != displaySeen else { return }
+        displaySeen = d // (its first look acted on too: the engine takes a display it has already as nothing)
+        Diagnostics.note("Margin's window \(id): \(why) (its display \(Int(d.width))×\(Int(d.height)))")
         syncBackdrop(why)
-        if let d = displayFrame { owner?.onDisplay?(self, d) } // (the engine first: Margin's own tile for the new display)
+        owner?.onDisplay?(self, d) // (the engine first: Margin's own tile for the new display)
         updatePage()
         if hosting { owner?.onPageRect?(self, window.pageRect) }
     }
@@ -1594,7 +1599,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     func windowDidResize(_ notification: Notification) {
         if panel.frame != window.frame { panel.setFrame(window.frame, display: true) }
-        syncBackdrop("its window resized")
         updatePage()
         placeButtons()
         // (Laid out as a split's half by a tile change in its Space that Margin didn't make: an app quit or crashed, its
