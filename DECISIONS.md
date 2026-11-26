@@ -11316,3 +11316,41 @@ so a hosted window would follow the page area live) met `fix/library-hosted` on 
 never moving the page area while an app is hosted. With both, the bracket had nothing to follow: over a hosted page
 it only started a live resize and placed the app again once at its end (session/page_area.rs `sidebar_resizing`:
 off queues `place_again`), and with no hosted page the session ignores it. Reverted; `fix/library-hosted` is the fix.
+
+## Restarting a Safari the person opened, asked first (`feat/safari-restart-ask`, 2026-11-26): plan, open questions
+
+Tirth (2026-11-26): Safari's own menu bar and full-screen toolbar slid out on a top-edge hover in Margin's Space; Margin's
+log: the pointer at y=0, "its full-screen toolbar 26086: OUT over its window by 52 pt". That Safari was opened by him
+at 07:42 (margin-helper then started Margin), so it had none of Margin's hosting arguments (HostEngine.Options
+`safariArguments`: `-NSMenuEnableMenuBarAgent NO` keeps it from macOS's menu bar agent, so its bar and toolbar never
+reveal). An app already running is hosted as it is (HostEngine.swift's header, docs/MARGIN-APP.md), and those arguments
+can only be given at launch. His choice: **ask, then restart** ("Restart Safari so Margin's menu bar shows? Your windows
+and tabs reopen", unsaved page text and downloads may be lost).
+
+**Plan (the parts that are clear):**
+- **Rule, margin-core** (session: one copy, Rust tests): before the first Safari show or the launch's preparation in a
+  Safari run that lacks the hosting arguments, ask once; the answer kept for that Safari process only (a new Safari run
+  asks again: per run, never written to disk). "Not now", or the notice's time running out, = hosted as it is today.
+  Never asked for Chrome or Edge (not hosted this way). The open waits behind the page card's loader while it's asked.
+- **Prompt:** a Margin notice in the theme's guarded `notice` part (extension/shared/notices.ts, a `local` kind
+  `safari-restart`, raised by the core's `hostNote` push, as `safari-profile` is), buttons Restart Safari / Not now; the
+  button goes back as `host.send('safariRestart', { action })` (MarginWindowController.pageSend → the session). All
+  visible UI themed; Margin's native quit panel isn't reused (it's AppKit, not the theme's).
+- **Mechanism, Swift only:** whether the running Safari has the arguments (its process's argv, KERN_PROCARGS2, or the
+  engine's `launched`); a polite quit (`terminate`; Safari asking about unsaved work and the person cancelling = hosted
+  as it is, said); its exit on the app-quit event; started again with the arguments; its copies' links waited for on
+  evidence (`safariLinked`); then the open goes on. No fixed waits.
+
+**Open (each changes what the person sees; not built until Tirth decides):**
+1. **Whose Safari is it after the restart?** Margin's launch path makes it a Safari *Margin started*, which today means:
+   no Dock icon (`launchDockless`), the windows it restores from its last session **closed** (SafariWaker.sweep, decided
+   2026-11-15), and **quit when Margin quits** (`askQuit`). So the promised "your windows and tabs reopen" would not
+   hold, and his own Safari would disappear from the Dock and close with Margin. The other way: started with the
+   arguments but with its Dock icon (an ordinary launch), counted as still his (its restored windows kept, left running
+   at Margin's quit). Untested: a Dock-icon Safari with `-NSMenuEnableMenuBarAgent NO`.
+2. **Safari's menus outside Margin:** the argument is the whole process's. While that Safari runs, its own menu bar
+   is gone on the Desktop too, not only in Margin's Space (the kit: with the agent link off an app has no titles of
+   its own in the bar).
+3. **What reopens:** Safari restores its windows only by its own setting (Safari › Settings › General, "Safari opens
+   with") or macOS's "Close windows when quitting an application" (HostSystem `keepsWindowsAtQuit`). The prompt's
+   words would have to say which, read before asking.
