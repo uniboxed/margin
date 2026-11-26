@@ -535,7 +535,8 @@ else is ignored and logged.
   ids: the space's theme, saved with the rest; a space's menu offers the
   themes too, so a theme without this row still lets a space have its own).
 - Notices and prompts: `notice.run`, `prompt.run` (one of their buttons),
-  `notice.close`, `prompt.close`.
+  `notice.close`, `prompt.close` (a notice that asks something, such as Margin's
+  Restart Safari, closed this way is answered "Not now").
 - Arc's Library: `library.open` (slid in where your swipe has Arc's ends, else at once), `library.close`,
   `library.section` (one of `library.sections[].id`); its search is `<input m-input="library-search">` (Escape clears it,
   then closes the Library); a row restores its tab with `archive.restore`.

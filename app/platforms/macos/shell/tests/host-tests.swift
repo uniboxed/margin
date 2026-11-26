@@ -67,6 +67,7 @@ final class FakeHostWorld: HostSystem {
     var freezes = 0, reveals = 0
     var frozen = false
     var lastArguments: [String] = []
+    var argumentsOf: [pid_t: [String]] = [:] // each launch's arguments (an app started by hand: none)
     var listeners: [pid_t: (Int32) -> Void] = [:]
     var onAppQuit: ((pid_t) -> Void)?
     // The behaviour classes' stand-ins (behaviour-world.swift): told of each dockless launch, and of each step of the clock.
@@ -561,6 +562,7 @@ final class FakeHostWorld: HostSystem {
     var stale: [pid_t: HostApp] = [:]
     func clearStale() { stale = [:] }
     func processRuns(pid: pid_t) -> Bool { apps[pid] != nil }
+    func launchArguments(pid: pid_t) -> [String]? { apps[pid] == nil ? nil : argumentsOf[pid] ?? [] }
     func running(bundleId: String) -> [HostApp] {
         (apps.values.filter { $0.bundle == bundleId && !lsGone.contains($0.pid) }.map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) }
             + stale.values.filter { $0.bundleId == bundleId }).sorted { $0.pid < $1.pid }
@@ -595,6 +597,7 @@ final class FakeHostWorld: HostSystem {
         let firstSpare = nextWindow
         if spareCount > 0 { nextWindow += spareCount }
         let pid = start(bundleId, policy: .accessory, windows: windowOnlyUnhidden.contains(bundleId) ? 0 : launchWindows)
+        argumentsOf[pid] = arguments
         apps[pid]?.sidebarOpen = sidebarOpenAtLaunch
         if spareCount > 0, let real = apps[pid]?.windows.first {
             let size = CGSize(width: 1292, height: 888)
@@ -3837,6 +3840,36 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         hostRun { await e.quitAll() }
     }
     do {
+        // The real Mac, 2026-11-26 10:43:12.700: the person's own window of their app, made before the one Margin hosts,
+        // ordered into Margin's Space by its app (Safari's activation ordering its restored window under the hosted one):
+        // put back on its Desktop by the reconciler, never closed or parked, its frame untouched; the hosted one stays.
+        let (w, _, marker) = world()
+        // (Accessibility read as on the real Mac, the current Space's windows: a window in Margin's Space Accessibility
+        // hasn't read is never taken for the person's own, as it may be its app's sheet or alert.)
+        let e = HostEngine(system: w, marker: marker, pid: 1, observation: FakeObservation(w))
+        e.options.privateRetire = 0
+        e.observer.schedule = { _, run in run() }
+        let p = w.start("com.apple.TextEdit", policy: .regular, windows: 2)
+        let older = w.apps[p]!.windows[0], newer = w.apps[p]!.windows[1]
+        w.main[p] = newer // (the one the person was using: Margin hosts it)
+        let r = open(e, textEdit)
+        w.axCurrentOnly = true
+        let hosted = e.hosts[textEdit.id]?.window
+        w.clock += e.options.lateWatch
+        func polls(_ n: Int) { for _ in 0..<n { w.clock += 0.25; e.poll(); _ = hostRun { await w.sleep(0.001); return true } } }
+        polls(2)
+        let frame = w.wins[older]?.frame
+        w.wins[older]?.spaces = [FakeHostWorld.marginSpace] // (its app orders it in under the hosted one)
+        w.calls = []
+        polls(8)
+        check("person's app: their own older window its app ordered into Margin's Space: back on its Desktop (never closed, never parked, its frame as it was), the hosted one still shown",
+              r == .shown(textEdit.id, placed: true) && hosted == newer && older < newer && w.spaces(window: older) == [FakeHostWorld.desktop] && w.wins[older]?.priv == nil
+              && w.wins[older]?.frame == frame && w.apps[p]?.windows.contains(older) == true && w.calls.contains("move \(older) \(FakeHostWorld.desktop)")
+              && !w.calls.contains { $0.hasPrefix("close \(older)") } && e.shown == textEdit.id && w.spaces(window: newer) == [FakeHostWorld.marginSpace],
+              "\(String(describing: r)) hosted \(String(describing: hosted)) older \(older) \(String(describing: w.wins[older])) \(w.calls) model: \(e.observer.model.apps[p].map { $0.windows.values.sorted { $0.number < $1.number }.map { "\($0.number) \($0.kind) (\($0.why)) \($0.place)" } } ?? [])")
+        hostRun { await e.quitAll() }
+    }
+    do {
         // The person's window already full screen in a Space of its own: left alone.
         let (w, e, _) = world()
         w.jumpOnFullScreen = false
@@ -4704,6 +4737,69 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
               "\(none) \(one) \(String(describing: w.wins[n]))")
         w.closeWindow(n)
         e.releaseWoken(bundleId: "com.apple.Safari")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // A Safari the person opened (margin-core session/restart.rs): read as theirs, then restarted on the person's
+        // answer: asked to quit, its exit waited for, started again with no Dock icon and the hosting arguments, Margin's
+        // from then on. The shell's engine (LateHostEngine) answers both as the engine does.
+        let (w, e, _) = world()
+        let late = LateHostEngine { e }
+        let theirs = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let before = late.safariRun()
+        check("restart: a Safari the person opened read as theirs: none of Margin's hosting arguments, nothing of it hosted",
+              before == HostSafariRun(pid: theirs, hosting: false, hosted: false), "\(String(describing: before))")
+        w.calls = []
+        let r = hostRun { await late.restartSafari(pid: theirs) }
+        var now: pid_t = 0
+        if case .restarted(let p) = r { now = p }
+        let quitAt = w.calls.firstIndex(of: "terminate \(theirs)") ?? -1, launchAt = w.calls.firstIndex(of: "launch com.apple.Safari") ?? -1
+        check("restart: asked to quit, its exit waited for, then started again with no Dock icon and Margin's hosting arguments",
+              now != 0 && now != theirs && w.apps[theirs] == nil && w.apps[now]?.policy == .accessory && quitAt >= 0 && quitAt < launchAt
+              && w.lastArguments == e.options.safariArguments, "\(r) \(w.calls)")
+        check("restart: from then on the Safari Margin started (its restored windows swept, quit with Margin)",
+              e.launchedPid(bundleId: "com.apple.Safari") == now && late.safariRun() == HostSafariRun(pid: now, hosting: true, hosted: false))
+        let again = hostRun { await e.restartSafari(pid: now) }
+        check("restart: never one Margin started", again == .notRestarted("Margin hosts it already"), "\(again)")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // One that doesn't quit (it asks about a download, and the person keeps it): not restarted, why said, still theirs.
+        let (w, e, _) = world()
+        let theirs = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        w.apps[theirs]?.refusesQuit = true
+        let r = hostRun { await e.restartSafari(pid: theirs) }
+        var why = ""
+        if case .notRestarted(let s) = r { why = s }
+        check("restart: one that doesn't quit: not restarted, why said, never started again, still the person's",
+              why.hasPrefix("it didn't quit within") && w.apps[theirs] != nil && !w.calls.contains { $0.hasPrefix("launch") } && e.safariRun()?.hosting == false,
+              "\(r) \(w.calls)")
+        w.apps[theirs]?.refusesQuit = false
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // Margin's Safari told apart by its process's arguments too (a Margin before this one started it); none running: nil.
+        let (w, e, _) = world()
+        check("restart: no Safari running: nothing read", e.safariRun() == nil)
+        let p = w.start("com.apple.Safari", policy: .accessory, windows: 1)
+        w.argumentsOf[p] = ["-NSMenuEnableMenuBarAgent", "NO", "-AutoShowToolbarInFullScreen", "YES"]
+        let started = e.safariRun()
+        w.argumentsOf[p] = ["-NSMenuEnableMenuBarAgent", "YES"]
+        let other = e.safariRun()
+        check("restart: a Safari started with Margin's menu bar argument is Margin's; another value isn't",
+              started?.hosting == true && other?.hosting == false, "\(String(describing: started)) \(String(describing: other))")
+        let hosting = ["-NSMenuEnableMenuBarAgent", "NO", "-AutoShowToolbarInFullScreen", "YES"]
+        check("restart: the argument and its value next to each other, in that order",
+              HostEngine.hasHostingArguments(["-x", "-NSMenuEnableMenuBarAgent", "NO"], hosting) && !HostEngine.hasHostingArguments(["NO", "-NSMenuEnableMenuBarAgent"], hosting)
+              && !HostEngine.hasHostingArguments(nil, hosting) && !HostEngine.hasHostingArguments([], hosting) && !HostEngine.hasHostingArguments(["-NSMenuEnableMenuBarAgent", "NO"], []))
+        // KERN_PROCARGS2's layout: the count, the executable's path and its padding, the arguments, the environment.
+        var raw: [UInt8] = [3, 0, 0, 0]
+        raw += Array("/A/Safari".utf8) + [0, 0, 0] + Array("Safari".utf8) + [0] + Array("-NSMenuEnableMenuBarAgent".utf8) + [0] + Array("NO".utf8) + [0] + Array("HOME=/x".utf8) + [0]
+        check("restart: a process's arguments read from the kernel's layout, its own name and the environment left out",
+              RealHostSystem.arguments(procargs: raw) == ["-NSMenuEnableMenuBarAgent", "NO"] && RealHostSystem.arguments(procargs: [9, 0, 0, 0, 65, 0, 66, 0]) == nil
+              && RealHostSystem.arguments(procargs: [1, 0]) == nil, "\(String(describing: RealHostSystem.arguments(procargs: raw)))")
+        let real = RealHostSystem.arguments(procargs: [1, 0, 0, 0] + Array("/bin/x".utf8) + [0, 0] + Array("x".utf8) + [0])
+        check("restart: a process with no arguments of its own: none", real == [], "\(String(describing: real))")
         hostRun { await e.quitAll() }
     }
 }

@@ -38,15 +38,28 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
     current = null;
     if (had && redraw) show(null);
   }
+  // An overlay's own question gone unanswered (its time out, closed, another in its place, the overlay gone): its
+  // `expires` action told, so whoever asked never waits on it (shared/notices.ts).
+  function unanswered(c: { kind: string } | null) {
+    const words = c ? NOTICES[c.kind] : null;
+    if (c && words?.local && words.expires) local(c.kind, words.expires);
+  }
   function put(kind: unknown, tabId: unknown = null, values?: Record<string, unknown>) {
     if (!isNotice(kind)) return false;
     const words = NOTICES[(kind as string)];
+    const before = current;
     clear(false);
+    unanswered(before);
     const id = `${kind}#${++count}`;
     const tab = words.tab && Number.isInteger(tabId) ? (tabId as number) : null;
     current = { id, kind: (kind as string), tabId: tab, front: tab != null && frontTab() === tab, ...(values ? { values } : {}) };
     show(viewOf(current));
-    timer = setTimer(() => { if (current?.id === id) clear(); }, words.ms);
+    timer = setTimer(() => {
+      if (current?.id !== id) return;
+      const had = current;
+      clear();
+      unanswered(had);
+    }, words.ms);
     return true;
   }
   return {
@@ -77,11 +90,19 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
     },
     /**
      * One of its buttons, pressed (the runtime's notice.run, through the
-     * host's perform): closed, and the copy told what was chosen.
+     * host's perform): closed, and the copy told what was chosen. Closed
+     * with no button (`closed`: the theme's close, the runtime's
+     * notice.close): nothing chosen; an overlay's own question says so.
      * */
-    run(arg: { id?: string, action?: string }) {
+    run(arg: { id?: string, action?: string, closed?: boolean }) {
       if (!current || arg?.id !== current.id) return false;
       const { kind, tabId } = current;
+      if (arg.closed === true) {
+        const had = current;
+        clear(false);
+        unanswered(had);
+        return true;
+      }
       clear(false);
       // The overlay's own: its buttons are the overlay's (`local`); the copy hears nothing.
       if (NOTICES[kind].local) local(kind, String(arg.action ?? ''));
@@ -94,7 +115,11 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
     view: () => (current ? viewOf(current) : null),
     /** Which notice is up, and about which tab. */
     get current() { return current ? { kind: current.kind, tabId: current.tabId } : null; },
-    destroy: () => clear(false),
+    destroy: () => {
+      const had = current;
+      clear(false);
+      unanswered(had);
+    },
   };
 }
 

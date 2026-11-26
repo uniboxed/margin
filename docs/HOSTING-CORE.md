@@ -169,8 +169,8 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
   `askFullScreen`, `frameWindow`), done by the primitives (early path under the freeze, edge reservation, bridged moves).
   The poll reconciles every host in steady state and applies one correction at a time in the engine's queue.
 - **The menu as built** (budget per show, or per 30 s for what's not tied to a show): `launch` 1, `reopen` 2, `unhide` 2,
-  `adopt` 20, `putBack` 3, `parkAgain` 3, a leftover's `closeLeftover`/`parkLeftover` 2, `parkStrip` 3, `frameWindow`
-  2 a show (a window-mode window not where it was framed), `bringForward` one try a rung (`activate`, `reopen`), then
+  `adopt` 20, `putBack` 3, `parkAgain` 3, a leftover's `closeLeftover`/`parkLeftover` 2, `parkStrip` 3, a person's own
+  window's `putAway` 3 (back on its Desktop from Margin's Space, 2026-11-26), `frameWindow` 2 a show (a window-mode window not where it was framed), `bringForward` one try a rung (`activate`, `reopen`), then
   `fallback`; `closeItem` once its window has been gone `goneGrace` (1 s) with no other main window; `placeAgain` 1 per
   30 s. One log line each: `host: <app>: <observed> → <correction> (<budget left>)`.
 - **Since 2026-11-18 the decisions are margin-core's** (`app/shared/core/src/host/`, docs/ARCHITECTURE-PLAN.md): the

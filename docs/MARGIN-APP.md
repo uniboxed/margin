@@ -62,8 +62,12 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    `AutoShowToolbarInFullScreen` = 1 means the toolbar hides (Tirth's Safari
    has 1; STP had 0, which is "always show" and gave the band). A Safari
    already open the normal way gets no launch arguments: its own setting
-   decides. Safari's sidebar must be hidden in hosted windows (Margin
-   replaces it).
+   decides, and its own menu bar slides out at the top edge. Since
+   2026-11-26 the person is asked once before Margin hosts it whether to
+   restart it (Margin's Safari from then on; margin-core
+   session/restart.rs, DECISIONS.md "Restarting a Safari the person
+   opened, asked first"). Safari's sidebar must be hidden in hosted
+   windows (Margin replaces it).
 2. **Mission Control.** A hosted app's full-screen Space is listed by Mission
    Control (`SLSCopyManagedDisplaySpaces`). **Found 2026-11-15 (own test
    windows, `/tmp/margin-toolbar-test/mc/mc1–4`):** move the hosted window's

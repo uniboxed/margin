@@ -44,6 +44,9 @@
 //   parkLeftover       any other leftover (restored, made as it launched, opened only to wake it): parked in a private
 //                      Space (its own emptied full-screen Space destroyed), given back to its Desktop at the end
 //   parkStrip          a strip on screen or in a user Space while its window is shown: parked, never let in front
+//   putAway            the person's own window (an app they opened, made before the one Margin hosts) in Margin's Space
+//                      (its app's activation ordered it in under the one shown, the real Mac 2026-11-26): back on its
+//                      Desktop (the one it was last read in, else Margin's display's), never closed or parked
 //   parkAgain          parked, found in a user Space: parked again
 //   fallback           a correction's budget used up: window mode if it can be framed, else parked with nothing shown and
 //                      the page card says so; never a flicker, a jump between Spaces, the sidebar covered
@@ -80,6 +83,7 @@ nonisolated enum HostCorrection: Equatable, Sendable {
     case closeLeftover(Int)
     case parkLeftover(Int)
     case parkStrip(Int)
+    case putAway(Int, UInt64?) // the person's own window back on its Desktop (that one; nil: the Desktop of Margin's display)
     case parkAgain
     case closeItem
     case placeAgain
@@ -103,6 +107,7 @@ nonisolated enum HostCorrection: Equatable, Sendable {
         case .closeLeftover: return "close leftover"
         case .parkLeftover: return "park leftover"
         case .parkStrip: return "park strip"
+        case .putAway: return "put away"
         case .parkAgain: return "park again"
         case .closeItem: return "close its item"
         case .placeAgain: return "place again"
@@ -118,6 +123,7 @@ nonisolated enum HostCorrection: Equatable, Sendable {
         case .closeLeftover(let n): return "close leftover \(n)"
         case .parkLeftover(let n): return "park leftover \(n)"
         case .parkStrip(let n): return "park strip \(n)"
+        case .putAway(let n, let home): return home.map { "put away \(n) (back on its Desktop \($0))" } ?? "put away \(n) (onto the Desktop of Margin's display)"
         case .fallback(let why): return "fallback (\(why))"
         default: return name
         }
@@ -127,6 +133,7 @@ nonisolated enum HostCorrection: Equatable, Sendable {
         switch self {
         case .closeLeftover(let n), .parkLeftover(let n): return "leftover \(n)"
         case .parkStrip(let n): return "strip \(n)"
+        case .putAway(let n, _): return "own \(n)"
         case .adopt(let n): return "adopt \(n)"
         default: return name
         }
@@ -142,6 +149,8 @@ nonisolated struct HostOther: Equatable, Sendable {
     // next launch reopens; Accessibility reads it on the current Space; never one Margin opened only to wake its app,
     // which its own close handles).
     var closable = false
+    // The person's own window only: the Desktop it was last read in (nil: never read on one).
+    var home: UInt64? = nil
 
     var inUserSpace: Bool { place == .margin || place == .desktop || place == .fullScreen || place == .several }
 }
@@ -184,6 +193,7 @@ nonisolated struct HostSituation: Equatable, Sendable {
     var replacement: Int? = nil // a main-kind window that replaced the hosted one (or the only one after it went)
     var leftovers: [HostOther] = []
     var strips: [HostOther] = []
+    var ownWindows: [HostOther] = [] // the person's own windows of its app (kinds' `own`): one in Margin's Space is put away
 
     // Corrections tried this show, by key (`HostCorrection.key`), and the budget of each.
     var tries: [String: Int] = [:]
@@ -208,6 +218,8 @@ nonisolated struct HostSituation: Equatable, Sendable {
         if !left.isEmpty { parts.append("leftover\(left.count == 1 ? "" : "s") \(left.map { "\($0.number) (\($0.place.text)\($0.onScreen == true ? ", on screen" : ""))" }.joined(separator: ", "))") }
         let st = strips.filter { $0.inUserSpace || $0.onScreen == true }
         if !st.isEmpty { parts.append("strip\(st.count == 1 ? "" : "s") \(st.map { "\($0.number)" }.joined(separator: ", "))") }
+        let own = ownWindows.filter { $0.place == .margin }
+        if !own.isEmpty { parts.append("the person's own window\(own.count == 1 ? "" : "s") \(own.map { "\($0.number)" }.joined(separator: ", ")) in Margin's Space") }
         if !marginCurrent { parts.append("Margin's Space not current") }
         return parts.joined(separator: "; ")
     }
@@ -257,7 +269,7 @@ nonisolated extension HostSituation {
             "running": running, "launchedByMargin": launchedByMargin, "phase": phase.rawValue, "mode": mode == .window ? "window" : "fullScreen",
             "member": member, "windowGone": windowGone, "place": place.coreName, "offScreenReads": offScreenReads, "strayReads": strayReads,
             "offPageReads": offPageReads, "tile": tile, "tileStale": tileStale, "dragging": dragging, "marginCurrent": marginCurrent, "busy": busy,
-            "leftovers": leftovers.map(\.coreJSON), "strips": strips.map(\.coreJSON), "tries": tries,
+            "leftovers": leftovers.map(\.coreJSON), "strips": strips.map(\.coreJSON), "ownWindows": ownWindows.map(\.coreJSON), "tries": tries,
         ]
         if let hidden { d["hidden"] = hidden }
         if let window { d["window"] = window }
@@ -276,6 +288,7 @@ nonisolated extension HostOther {
     var coreJSON: [String: Any] {
         var d: [String: Any] = ["number": number, "place": place.coreName, "closable": closable]
         if let onScreen { d["onScreen"] = onScreen }
+        if let home { d["home"] = home }
         return d
     }
 }
@@ -298,6 +311,10 @@ nonisolated extension HostCorrection {
         case .closeLeftover(let w): return ["type": "closeLeftover", "window": w]
         case .parkLeftover(let w): return ["type": "parkLeftover", "window": w]
         case .parkStrip(let w): return ["type": "parkStrip", "window": w]
+        case .putAway(let w, let home):
+            var d: [String: Any] = ["type": "putAway", "window": w]
+            if let home { d["home"] = home }
+            return d
         case .parkAgain: return ["type": "parkAgain"]
         case .closeItem: return ["type": "closeItem"]
         case .placeAgain: return ["type": "placeAgain"]
@@ -322,6 +339,7 @@ nonisolated extension HostCorrection {
         case "closeLeftover": guard let w = n("window") else { return nil }; self = .closeLeftover(w)
         case "parkLeftover": guard let w = n("window") else { return nil }; self = .parkLeftover(w)
         case "parkStrip": guard let w = n("window") else { return nil }; self = .parkStrip(w)
+        case "putAway": guard let w = n("window") else { return nil }; self = .putAway(w, (d["home"] as? NSNumber)?.uint64Value)
         case "parkAgain": self = .parkAgain
         case "closeItem": self = .closeItem
         case "placeAgain": self = .placeAgain

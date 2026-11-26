@@ -12,7 +12,10 @@
 //   1. launch   an app not running is started with no Dock icon (`-NSMenuEnableMenuBarAgent NO`: it never shows
 //               its own title strip; Safari also `-AutoShowToolbarInFullScreen YES`). An app already running (the
 //               person opened it, its Dock icon) is hosted as it is: never started again, never quit, its Dock icon
-//               left; its window given back exactly as it was when Margin stops hosting it. Safari: Margin asks its
+//               left; its window given back exactly as it was when Margin stops hosting it. (Safari the person opened:
+//               the person is asked first whether Margin restarts it with those arguments, margin-core
+//               session/restart.rs; on Restart it's quit and started again here, `restartSafari`, Margin's from then
+//               on; on Not now it's hosted as it is.) Safari: Margin asks its
 //               own extension for a new window there (`requestSafariWindow`) and hosts only that window; Safari is
 //               never restarted. The one shown before is parked first, so the loading animation is what's seen.
 //   2. window   its main window (Safari: the new one Margin asked for, found by the window server: a new layer-0
@@ -942,6 +945,52 @@ final class HostEngine {
         }
     }
 
+    // ---- a Safari the person opened, started again with the hosting arguments (margin-core session/restart.rs) ----
+
+    // The Safari running: its process, whether it has Margin's hosting arguments (Margin started it, or its launch had
+    // them: read from its process, so one a Margin before this one started counts), and whether Margin hosts any window
+    // of it now. Nil: none runs. (Whether to ask, and what an answer does, are the core's.)
+    func safariRun() -> HostSafariRun? {
+        guard let app = liveInstances(of: options.safariBundle).first else { return nil }
+        let hosting = launched[app.pid] != nil || Self.hasHostingArguments(sys.launchArguments(pid: app.pid), options.safariArguments)
+        return HostSafariRun(pid: app.pid, hosting: hosting, hosted: hosts.values.contains { $0.pid == app.pid })
+    }
+    // Whether a launch's arguments have the menu bar one of Margin's hosting arguments (its key, then its value).
+    nonisolated static func hasHostingArguments(_ args: [String]?, _ hosting: [String]) -> Bool {
+        let key = "-NSMenuEnableMenuBarAgent"
+        guard let args, let k = hosting.firstIndex(of: key), k + 1 < hosting.count else { return false }
+        return zip(args, args.dropFirst()).contains { $0 == key && $1 == hosting[k + 1] }
+    }
+
+    // That Safari asked to quit (politely, once: it may ask about a download, and the person may keep it), its exit
+    // waited for on its process (`quitWait` at most), then started again as `start` starts one: no Dock icon, the hosting
+    // arguments, its new instance as any launch's (`launchWait`). From then on a Safari Margin started (its restored
+    // windows closed by SafariWaker.sweep, quit with Margin: Tirth's answer, 2026-11-26). Its copies' links drop and come
+    // back by themselves: the session's waits for a profile's link are on evidence.
+    func restartSafari(pid: pid_t) async -> HostSafariRestart {
+        await serial(planned: true) {
+            guard !self.quitting else { return .notRestarted("Margin quits") }
+            let bundle = self.options.safariBundle
+            guard self.sys.app(pid: pid)?.bundleId == bundle, self.sys.processRuns(pid: pid) else { return .notRestarted("that Safari isn't running any more") }
+            guard self.launched[pid] == nil, !self.hosts.values.contains(where: { $0.pid == pid }) else { return .notRestarted("Margin hosts it already") }
+            let t0 = self.sys.now()
+            guard self.sys.terminate(pid: pid) else { return .notRestarted("it didn't take the quit ask") }
+            guard await self.wait(self.options.quitWait, { !self.sys.processRuns(pid: pid) }) else {
+                return .notRestarted("it didn't quit within \(Int(self.options.quitWait)) s (\(await self.whyNotQuit(pid, hosted: nil)))")
+            }
+            self.leftSafariWindows.removeAll { $0.pid == pid } // (its windows went with it)
+            let quit = self.ms(since: t0)
+            guard self.sys.launchDockless(bundleId: bundle, arguments: self.options.safariArguments) else { return .notRestarted("it quit, and couldn't be started again with no Dock icon") }
+            var found: HostApp?
+            _ = await self.wait(self.options.launchWait) { found = self.liveInstances(of: bundle).first; return found != nil }
+            guard let found else { return .notRestarted("it quit, and didn't start again within \(Int(self.options.launchWait)) s") }
+            self.launched[found.pid] = found
+            self.saveMarker()
+            Diagnostics.note("host: Safari (pid \(pid)) restarted with no Dock icon and the hosting arguments in \(self.ms(since: t0)) ms (quit \(quit)), pid \(found.pid)")
+            return .restarted(found.pid)
+        }
+    }
+
     var preparesOutOfSight: Bool { options.earlyFullScreen && sys.fullScreenSpaceOwners() != nil }
 
     // Made ready out of sight (the person's default browser's window, at Margin's launch, Tirth 2026-11-16): opened as a
@@ -1464,6 +1513,9 @@ final class HostEngine {
                 // (Any of its app's hosts' own: a card's or a pane's toolbar is its own, as main's is.)
                 guard !sameApp.contains(where: { $0 === host ? ownToolbar(w, of: host, mine: mine) : ownToolbar(w, of: $0, mine: app.windows[$0.window]) }) else { continue }
                 s.strips.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen))
+            case .own:
+                // (The person's own window: the core puts one in Margin's Space back on its Desktop, `putAway`.)
+                s.ownWindows.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen, home: w.home))
             default: break
             }
         }
@@ -1701,6 +1753,8 @@ final class HostEngine {
             await parkOther(n, of: host)
         case .closeLeftover(let n):
             if await !closeOther(n, of: host) { await parkOther(n, of: host) }
+        case .putAway(let n, let home):
+            await putAway(n, home: home, of: host)
         case .parkAgain:
             await parkAgain(host)
         case .unhide:
@@ -1759,6 +1813,18 @@ final class HostEngine {
             if await !destroyOwn(space) { leftSpaces.insert(space) }
         }
         saveMarker()
+    }
+
+    // The person's own window (the core's `putAway`) out of Margin's Space, back on its Desktop: `home`, the Desktop it was
+    // last read in, while that's still a Desktop; else the Desktop of Margin's display. Never closed, never parked: it's
+    // theirs, as they left it (its frame untouched).
+    private func putAway(_ n: Int, home: UInt64?, of host: Host) async {
+        let dest = home.flatMap { sys.spaceExists($0) == true && sys.spaceType($0) == ManagedSpace.desktopType ? $0 : nil } ?? sys.desktop(onDisplayOf: marginSpace)
+        guard let dest else { return Diagnostics.note("host: \(host.id): the person's own window \(n) not put away: no Desktop found") }
+        guard sys.move(window: n, to: dest), await wait(options.parkWait, every: options.memberEvery, { self.sys.spaces(window: n) == [dest] }) else {
+            return Diagnostics.note("host: \(host.id): the person's own window \(n) didn't go back on its Desktop \(dest)")
+        }
+        Diagnostics.note("host: \(host.id): the person's own window \(n) put back on its Desktop \(dest)\(dest == home ? "" : " (Margin's display's)")")
     }
 
     // A leftover Margin may close (`HostOther.closable`): its own close button (Accessibility, on the current Space). True:

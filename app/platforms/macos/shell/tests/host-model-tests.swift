@@ -62,9 +62,15 @@ func windowKindsTests() {
             windows: [unread(71150, area, .fullScreen), unread(71151, area, .fullScreen), unread(71152, desk, .desktop), std(71157, page, .parked)],
             app: .init(launchedByMargin: true, hosted: [71157]), want: [71150: .leftover, 71151: .leftover, 71152: .leftover, 71157: .main],
             why: [71150: "restored", 71157: "the window Margin hosts"]),
-        Row(name: "Safari the person opened: their own windows are auxiliary (never leftovers), the one Margin asked for main",
+        Row(name: "Safari the person opened: their own windows are their own (never leftovers), the one Margin asked for main",
             windows: [unread(71150, area, .fullScreen), unread(71152, desk, .desktop, onScreen: true), std(71157, page, .margin, onScreen: true)],
-            app: .init(launchedByMargin: false, hosted: [71157]), want: [71150: .auxiliary, 71152: .auxiliary, 71157: .main], why: [71152: "the person opened"]),
+            app: .init(launchedByMargin: false, hosted: [71157]), want: [71150: .own, 71152: .own, 71157: .main], why: [71152: "the person opened"]),
+        // The real Mac, 2026-11-26 10:43:12.700: Safari's activation ordered the person's restored window (25059, in no
+        // Space since Safari's background start) in under the one Margin asked for, into Margin's Space, over the page.
+        Row(name: "Safari the person opened: their window its activation ordered into Margin's Space is their own, a newer one auxiliary",
+            windows: [std(25059, CGRect(x: 400, y: 60, width: 667, height: 865), .margin, onScreen: true), std(26084, page, .margin, onScreen: true),
+                      std(26092, CGRect(x: 600, y: 300, width: 454, height: 161), .margin, onScreen: true)],
+            app: .init(launchedByMargin: false, hosted: [26084]), want: [25059: .own, 26084: .main, 26092: .auxiliary], why: [25059: "made before the window Margin hosts"]),
         // Maps, 07:52: its window restored already in full screen, in a Space the Dock made for it, its app hidden.
         Row(name: "Maps' window restored in full screen in a Space of its own, hosted: main",
             windows: [unread(1563, area, .fullScreen)], app: .init(launchedByMargin: true, hosted: [1563]), want: [1563: .main]),

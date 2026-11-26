@@ -11316,3 +11316,132 @@ so a hosted window would follow the page area live) met `fix/library-hosted` on 
 never moving the page area while an app is hosted. With both, the bracket had nothing to follow: over a hosted page
 it only started a live resize and placed the app again once at its end (session/page_area.rs `sidebar_resizing`:
 off queues `place_again`), and with no hosted page the session ignores it. Reverted; `fix/library-hosted` is the fix.
+
+## The Library slides the page, as Arc's (`fix/library-shift`, 2026-11-26)
+
+Tirth didn't want `fix/library-hosted`'s answer (the Library kept the sidebar's width over a hosted app, the page
+still): "keep it exactly like arc, where the window shifts on the right when I open the Library, not resize".
+- **Theme** (Arcadia): `--card-shift` (the Library's width less the sidebar's, times its progress) moves the card's
+  left; in Margin.app's own window (`m-page-state`) its right too, so the card keeps its width and slides past the
+  window's right edge (the root clips it). Full Library again (417 pt, its labels) with a hosted app. The browsers'
+  overlay (no `m-page-state`: a real page under it) makes room as before; Margin's window a tile beside the app
+  (`m-sidebar-fixed`) keeps the sidebar's width and the page still.
+- **The host** (behaviors/swipe.ts `setLibrary`): once the page's measured place moves from where it was before the
+  Library's first progress, `sidebar.resizing` on, once; off in `finish` after a flushed last report (resize.ts's
+  order). The session then follows each frame live (session/page_area.rs): a tile moved past the display's edge,
+  which macOS keeps (layout.rs `tile`, proven 2026-11-22), the same size, so Safari lays nothing out again; one
+  placing at the end, the cheap tile path. A page that never moves (a tile beside the app) never tells it, so no
+  needless placing. Without tiles (`tilesOff`) the session holds the frames and places once at the end, where a
+  reservation can't pass the display: shown at the frame it had (`not fitted`), the Library over its left.
+- **Test** (tests/theme/arcadia.test.ts, both engines): with `m-page-state="shown"` a swipe slides the card right at
+  its width, the host told once before the first moved place, each reported place as wide, open at 417 past the
+  window's edge, over once after its last place; `m-sidebar-fixed`: the page stays, nothing told. Failed before the
+  change (the card at 260 every step).
+- **Still to see on the real screen**: Safari's tile moved live past the display's edge, smooth, and placed once.
+
+## The person's own window out of Margin's Space (`fix/person-window-space`, 2026-11-26)
+
+Tirth: opening Margin's window put "a Safari window on top of my tab content" (a normal browser window of his).
+Margin's log: Safari's 25059 (667×865) "auxiliary (another window of an app the person opened)", in Margin's Space,
+on screen, from the first model read on, until Margin quit. The mechanism, from macOS's own log (WindowServer,
+SkyLight packages; window ids in hex there, 25059 = 0x61e3):
+- Safari was started in the background at 07:42:18 (CoreServicesUIAgent, `LaunchRoleBackground`, "starting stopped
+  process"); its restored window 25059 was created at 07:42:19.98 "hidden" and joined no Space for three hours (no
+  activation of Safari's since).
+- 10:43:12.643: Margin's activation of Safari for the window it hosts (`SETFRONT pid=30314`, Margin the old front).
+- 10:43:12.700: Safari's AppKit, made active, gave the hosted window (0x65e4) key and main appearance and ordered its
+  window group: `478f53[OrderWindowGroup]: window 61e3 joined space 3969`, `order window: 61e3 op: -1 relative: 65e4`
+  (ordered under the hosted one, relative ordering putting it in that window's Space: Margin's). Margin moved nothing
+  (no move of 25059 in its log or in the window server's); at 10:48:59, Margin's Space gone, macOS put it on Space 1.
+- **Fix** (margin-core, the rules; the Mac's Swift the mechanism): a new kind, `own` (host/kinds.rs rule 11): a window
+  of an app the person opened, made before the window Margin hosts (window numbers only grow), not hosted, read by
+  Accessibility if it's in Margin's Space (unread there it may be the app's sheet or alert, as rule 8 keeps). Kept
+  behind Margin's window. The reconciler's new `putAway { window, home }` (host/reconciler.rs, shown and parked alike,
+  never while an operation runs, budget 3 a show): one in Margin's Space alone goes back on its Desktop, `home` (the
+  Desktop the observer last read it in, HostModelWindow.home) or the Desktop of Margin's display; never closed, never
+  parked, its frame untouched. One on several Spaces (perhaps on every Space by the person's choice), on a Desktop or
+  in a full-screen Space of its own is left. A window of its app made after the one Margin hosts stays auxiliary (it may
+  be what the person just opened there). An app Margin started is unchanged (its older windows are restored leftovers).
+- **Tests:** kinds rows (25059/26084/26092 as the real Mac had them, unread, Margin-started, newer), reconciler rows
+  (shown, home known, parked, left where it is, budget, busy), the Swift mirrors (host-model-tests, host-reconciler-
+  tests: the JSON both ways), and host-tests.swift: a person's TextEdit, its older window ordered into Margin's Space
+  by its app, back on its Desktop at the same frame, the hosted one still shown. Each fails with the rule off.
+- **Not covered:** the moment between the activation and the next poll (a quarter second or so: the window shows over
+  the page until it's read and put away), and whether Safari orders it in again at every activation once it's on its
+  Desktop (then put away again, within the budget). Not checked on the real Mac (no screen tests run).
+
+## Restarting a Safari the person opened, asked first (`feat/safari-restart-ask`, 2026-11-26)
+
+Tirth (2026-11-26): Safari's own menu bar and full-screen toolbar slid out on a top-edge hover in Margin's Space; Margin's
+log: the pointer at y=0, "its full-screen toolbar 26086: OUT over its window by 52 pt". That Safari was opened by him
+at 07:42 (margin-helper then started Margin), so it had none of Margin's hosting arguments (HostEngine.Options
+`safariArguments`: `-NSMenuEnableMenuBarAgent NO` keeps it from macOS's menu bar agent, so its bar and toolbar never
+reveal). An app already running is hosted as it is (HostEngine.swift's header, docs/MARGIN-APP.md), and those arguments
+can only be given at launch. His choice: **ask, then restart** ("Restart Safari so Margin's menu bar shows? Your windows
+and tabs reopen", unsaved page text and downloads may be lost).
+
+**Plan (the parts that are clear):**
+- **Rule, margin-core** (session: one copy, Rust tests): before the first Safari show or the launch's preparation in a
+  Safari run that lacks the hosting arguments, ask once; the answer kept for that Safari process only (a new Safari run
+  asks again: per run, never written to disk). "Not now", or the notice's time running out, = hosted as it is today.
+  Never asked for Chrome or Edge (not hosted this way). The open waits behind the page card's loader while it's asked.
+- **Prompt:** a Margin notice in the theme's guarded `notice` part (extension/shared/notices.ts, a `local` kind
+  `safari-restart`, raised by the core's `hostNote` push, as `safari-profile` is), buttons Restart Safari / Not now; the
+  button goes back as `host.send('safariRestart', { action })` (MarginWindowController.pageSend → the session). All
+  visible UI themed; Margin's native quit panel isn't reused (it's AppKit, not the theme's).
+- **Mechanism, Swift only:** whether the running Safari has the arguments (its process's argv, KERN_PROCARGS2, or the
+  engine's `launched`); a polite quit (`terminate`; Safari asking about unsaved work and the person cancelling = hosted
+  as it is, said); its exit on the app-quit event; started again with the arguments; its copies' links waited for on
+  evidence (`safariLinked`); then the open goes on. No fixed waits.
+
+**Asked of Tirth before building (each changed what the person sees):**
+1. **Whose Safari is it after the restart?** Margin's launch path makes it a Safari *Margin started*, which today means:
+   no Dock icon (`launchDockless`), the windows it restores from its last session **closed** (SafariWaker.sweep, decided
+   2026-11-15), and **quit when Margin quits** (`askQuit`). So the promised "your windows and tabs reopen" would not
+   hold, and his own Safari would disappear from the Dock and close with Margin. The other way: started with the
+   arguments but with its Dock icon (an ordinary launch), counted as still his (its restored windows kept, left running
+   at Margin's quit). Untested: a Dock-icon Safari with `-NSMenuEnableMenuBarAgent NO`.
+2. **Safari's menus outside Margin:** the argument is the whole process's. While that Safari runs, its own menu bar
+   is gone on the Desktop too, not only in Margin's Space (the kit: with the agent link off an app has no titles of
+   its own in the bar).
+3. **What reopens:** Safari restores its windows only by its own setting (Safari › Settings › General, "Safari opens
+   with") or macOS's "Close windows when quitting an application" (HostSystem `keepsWindowsAtQuit`). The prompt's
+   words would have to say which, read before asking.
+
+**Decided (Tirth, 2026-11-26):** after the restart it's **Margin's Safari**, exactly as one Margin starts today (no Dock
+icon, its restored windows closed by the sweep, quit with Margin). So the prompt never promises windows reopen; it says
+plainly that Safari's own windows close and what's lost, and that Margin's own tabs stay. (2) and (3) follow from that:
+a Margin Safari has no windows of the person's on the Desktop. (2) was to be checked off screen first: it can't be
+(the Desktop's menu bar is only seen on the screen, and reading it means activating Safari there), so it's left for the
+real-screen check below.
+
+**Built:**
+- **margin-core** `session/restart.rs`: the rule (`step`: Go, Ask, Wait, Restart, from the running Safari and where its
+  question stands), kept per Safari process (`Core::restart_ask`, never written); `safari_restart_gate` at the start of
+  `host` for every Safari target (main, card, pane): asked once in Margin's window (the core's `hostNote`
+  `safari-restart` push), the show waiting outside the session's turn (other picks go on) and given up when another item
+  is asked for or shown in that window, the window closes, or Margin quits; Restart: the engine's `restartSafari`, then
+  the show goes on in the new Safari; one that didn't happen is said and that process hosted as it is, never asked
+  again. The answer is the UI's `safariRestart` (`ui_request`). The launch's preparation (`prepare_browser`) makes
+  nothing ready in a Safari whose question isn't over ("browser not prepared: Safari was opened outside Margin (asked
+  about at its first show)"): it would host it as it is before the person is asked.
+- **The notice** (`extension/shared/notices.ts` `safari-restart`, the theme's guarded notice part): Restart Safari / Not
+  now, 30 s. A new `expires` on an overlay's own notice: its time out, the theme's close (`notice.close` now tells the
+  host), another notice in its place, or the overlay gone gives that action (`later`), so the show never waits on a
+  question no one sees (ui/app-feedback.ts). The overlay sends every answer back (`host.send('safariRestart')`).
+- **Mac mechanism:** `HostSystem.launchArguments` (KERN_PROCARGS2, its layout parsed by `RealHostSystem.arguments`);
+  `HostEngine.safariRun` (the running Safari, with the menu bar argument from `launched` or its process) and
+  `restartSafari` (a polite quit, its exit on its process within `quitWait`, started as `start` does with no Dock icon
+  and the arguments, within `launchWait`, then Margin's in the marker); HostedSession's `safariRun` port and
+  `restartSafari` operation; LateHostEngine forwards both (a missed forward takes the stand-in's answer).
+- **Tests:** margin-core restart.rs (the rule) and session/restart_tests.rs (asked once, Not now, Restart, a restart that
+  didn't happen, never asked for Margin's or a hosted or no Safari, another pick ending the wait, an answer with nothing
+  asked, the preparation), failing first; tests/app-feedback.test.ts (the words, an unanswered question's `later`);
+  host-tests.swift (read as theirs, restarted, one that doesn't quit, arguments read from the process, the kernel's
+  layout, LateHostEngine), hosted-tests.swift (the whole path, Restart and Not now; a Safari with the arguments never
+  asked; the preparation's skip, replacing "the person's Safari used as it is").
+
+**Left for the real screen (Tirth's):** the notice over a real Safari page; Restart with his real Safari (its own windows
+closing, Safari asking about a download, the copies relinking, the item shown); Margin's menu bar on a top-edge hover
+after it; whether a Margin Safari ever shows its own (empty) menu bar on the Desktop (a link opened from another app
+promotes it to a Dock app: docs/MARGIN-APP.md, external-open research).

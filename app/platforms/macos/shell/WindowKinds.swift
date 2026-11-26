@@ -13,15 +13,17 @@
 //              or reacted to
 //   transient  menus, tooltips, popovers, spares never ordered in, a twin at the main window's frame, a hosted
 //              window its app replaced: nothing to do with them
+//   own        the person's own window of an app the person opened, made before the window Margin hosts: never
+//              Margin's to show; one its app orders into Margin's Space is put back on its Desktop (`putAway`)
 
 import AppKit
 import MarginCore
 
 nonisolated enum WindowKind: String, Sendable, Codable, CaseIterable {
-    case main, auxiliary, dialog, strip, leftover, helper, transient
+    case main, auxiliary, dialog, strip, leftover, helper, transient, own
 
-    // Kept behind Margin's window and never acted on as the app's own.
-    var keptBehind: Bool { self == .leftover || self == .strip || self == .transient || self == .helper }
+    // Kept behind Margin's window and never acted on as the app's own (the core's `kept_behind`).
+    var keptBehind: Bool { self == .leftover || self == .strip || self == .transient || self == .helper || self == .own }
 }
 
 // Where a window is: its Spaces by the window server (mask 7, user Spaces only) and Margin's own record of the private

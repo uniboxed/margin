@@ -480,17 +480,71 @@ func preparedBrowserTests(_ library: Library) {
         check("prepared: quit before it's used: its window closed by its copy, Safari quit", r.links.types().contains("closeWindow") && r.w.running(bundleId: "com.apple.Safari").isEmpty && r.w.listsMarginOnly)
     }
     do {
-        // The person's own Safari, running with their windows: used as it is (never restarted or quit, its Dock icon left).
+        // The person's own Safari, running with their windows (margin-core session/restart.rs, 2026-11-26): nothing made
+        // ready in it, which would host it as it is before they're asked whether Margin restarts it (asked at the first
+        // show they want); never restarted or quit by the launch, its windows untouched.
         let r = rig()
         let pid = r.w.start("com.apple.Safari", policy: .regular, windows: 2)
         let theirs = r.w.apps[pid]?.windows ?? []
-        _ = prepare(r)
-        let n = r.copy()[90] ?? 0
-        check("prepared: the person's Safari used as it is: never launched, its windows untouched, Margin's own window prepared",
-              !r.w.calls.contains { $0.hasPrefix("launch") } && r.engine.launchedPid(bundleId: safariIdentifier) == nil && r.engine.hosts[safari]?.madeByMargin == true
-              && r.engine.hosts[safari]?.phase == .parked && !theirs.contains(n) && theirs.allSatisfy { r.w.wins[$0]?.fullScreen == false && r.w.spaces(window: $0) == [FakeHostWorld.desktop] }, "\(r.w.calls)")
+        let lines = prepare(r)
+        check("prepared: the person's Safari not made ready (asked about at its first show): never launched or quit, nothing hosted, its windows untouched",
+              !r.w.calls.contains { $0.hasPrefix("launch") || $0.hasPrefix("terminate") } && r.engine.hosts[safari] == nil
+              && theirs.allSatisfy { r.w.wins[$0]?.fullScreen == false && r.w.spaces(window: $0) == [FakeHostWorld.desktop] }
+              && lines.contains { $0.contains("browser not prepared: Safari was opened outside Margin (asked about at its first show)") },
+              "\(r.w.calls) \(lines.filter { $0.contains("browser") })")
         hostRun { await r.engine.quitAll() }
-        check("prepared: quit: Margin's window closed, the person's Safari left running", r.w.apps[pid] != nil && r.w.wins[n] == nil && theirs.allSatisfy { r.w.wins[$0] != nil })
+        check("prepared: quit: the person's Safari left running", r.w.apps[pid] != nil && theirs.allSatisfy { r.w.wins[$0] != nil })
+    }
+    do {
+        // A Safari started with Margin's hosting arguments (by a Margin before this one): read from its process, never
+        // asked about, shown at once.
+        let r = rig()
+        let pid = r.w.start("com.apple.Safari", policy: .accessory, windows: 2)
+        r.w.argumentsOf[pid] = r.engine.options.safariArguments
+        if library.space(ofWindow: 1) == nil { _ = library.perform("createSpace", ["windowId": 1, "name": "Restart", "emoji": "⚡"]) }
+        r.session.takeLibraryRequests()
+        let pushes = r.window.pushed.count
+        hostRun { _ = library.perform("newTab", ["windowId": 1, "url": "https://asked.example/"]); await r.session.idle() }
+        check("restart: a Safari with Margin's hosting arguments: never asked, shown at once, never quit or started again",
+              !r.window.pushed.dropFirst(pushes).contains { $0.contains("safari-restart") } && r.engine.shown == safari && r.engine.hosts[safari]?.pid == pid
+              && !r.w.calls.contains { $0.hasPrefix("terminate") || $0.hasPrefix("launch") }, "\(r.links.types()) \(r.w.calls)")
+        hostRun { await r.engine.quitAll() }
+        for item in library.items().map(\.id) { _ = library.perform("closeTab", ["windowId": 1, "tabId": item]) }
+    }
+    for answer in ["restart", "later"] {
+        // Its first show (margin-core session/restart.rs): asked in Margin's window, the show waiting meanwhile. Restart
+        // Safari: theirs quit, Margin's started with no Dock icon and the hosting arguments, its copy linked again, then
+        // the item shown in it. Not now: shown in theirs, as it is.
+        let r = rig()
+        let pid = r.w.start("com.apple.Safari", policy: .regular, windows: 2)
+        if library.space(ofWindow: 1) == nil { _ = library.perform("createSpace", ["windowId": 1, "name": "Restart", "emoji": "⚡"]) }
+        r.session.takeLibraryRequests()
+        let pushes = r.window.pushed.count
+        hostRun { _ = library.perform("newTab", ["windowId": 1, "url": "https://asked.example/"]); await r.session.idle() }
+        let asked = r.window.pushed.dropFirst(pushes).filter { $0.contains("safari-restart") }
+        check("restart (\(answer)): a web item's first show in the person's Safari: asked in Margin's window, nothing hosted or asked of its copy meanwhile",
+              asked == [#"{"type":"hostNote","kind":"safari-restart"}"#] && r.engine.hosts[safari] == nil && !r.links.types().contains("newWindow") && r.w.apps[pid] != nil,
+              "\(asked) \(r.links.types())")
+        // (The answer wakes the waiting show, which takes the session's turn back at the core's next run: waited for, then
+        // its open, before looking.)
+        hostRun {
+            _ = r.session.uiRequest("safariRestart", ["action": answer])
+            var turns = 0
+            repeat { await Task.yield(); await r.session.idle(); turns += 1 } while r.engine.shown == nil && turns < 200
+        }
+        let now = r.w.running(bundleId: "com.apple.Safari").first?.pid ?? 0
+        if answer == "restart" {
+            check("restart: Restart Safari: the person's quit, Margin's started with no Dock icon and the hosting arguments, then the item shown in it",
+                  r.w.apps[pid] == nil && now != 0 && now != pid && r.w.apps[now]?.policy == .accessory && r.w.lastArguments == r.engine.options.safariArguments
+                  && r.engine.shown == safari && r.engine.hosts[safari]?.pid == now && r.engine.launchedPid(bundleId: safariIdentifier) == now && r.links.types().contains("hostShow"),
+                  "\(r.w.calls) \(r.links.types())")
+        } else {
+            check("restart: Not now: shown in the person's Safari as it is, never quit or started again",
+                  now == pid && r.engine.shown == safari && r.engine.hosts[safari]?.pid == pid && !r.w.calls.contains { $0.hasPrefix("terminate") || $0.hasPrefix("launch") }
+                  && r.links.types().contains("hostShow"), "\(r.w.calls) \(r.links.types())")
+        }
+        hostRun { await r.engine.quitAll() }
+        for item in library.items().map(\.id) { _ = library.perform("closeTab", ["windowId": 1, "tabId": item]) }
     }
     do {
         // An unsupported setting: Safari, said.

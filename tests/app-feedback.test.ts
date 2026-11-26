@@ -135,7 +135,7 @@ const kinds = (kind: string) => pushed.filter((p) => p.msg.type === 'notice' && 
 // ---- the words ------------------------------------------------------------------
 
 test('notices: Margin\'s words, each kind\'s buttons; a switch that didn\'t happen gets the notice for why', () => {
-  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['app-asking', 'new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'safari-profile', 'tab-gone', 'theme-failed', 'updated-while-open']);
+  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['app-asking', 'new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'safari-profile', 'safari-restart', 'tab-gone', 'theme-failed', 'updated-while-open']);
   assert.match(words.NOTICES['not-responding'].text, /isn’t responding on this page/);
   assert.deepEqual(words.NOTICES['not-responding'].actions.map((a) => a.id), ['reload', 'later']);
   assert.match(words.NOTICES['updated-while-open'].text, /Quit and reopen Safari/);
@@ -535,4 +535,53 @@ test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push
   assert.equal(n.run({ id: v.id, action: 'settings' }), true);
   assert.deepEqual(ran, [['theme-failed', 'settings']]);
   assert.deepEqual(sent, [], 'nothing went to the copy');
+});
+
+test('Margin.app\'s own question: restart a Safari the person opened; its buttons the app\'s, and an unanswered one says Not now (its time out, closed, another in its place)', () => {
+  assert.deepEqual(words.NOTICES['safari-restart'].actions.map((a) => [a.id, a.label]), [['restart', 'Restart Safari'], ['later', 'Not now']]);
+  assert.match(words.NOTICES['safari-restart'].text, /Safari’s own windows close/, 'says what\'s lost, never that they reopen');
+  assert.match(words.NOTICES['safari-restart'].text, /Your tabs in Margin stay/);
+  assert.doesNotMatch(words.NOTICES['safari-restart'].text, /reopen/);
+  assert.equal(words.NOTICES['safari-restart'].expires, 'later');
+  assert.equal(words.isNoticeAction('safari-restart', 'restart'), false, 'never the copy\'s to run');
+  const ran: [string, string][] = [];
+  const shown: (AppNotice | null)[] = [];
+  const timers: (() => void)[] = [];
+  const make = () => createAppNotices({ show: (v) => shown.push(v), send: () => assert.fail('nothing to the copy'), local: (kind, action) => ran.push([kind, action]), setTimer: (fn) => timers.push(fn), clearTimer: () => {} });
+  let n = make();
+  assert.equal(n.push({ type: 'notice', kind: 'safari-restart' }), false, 'not the copy\'s to say');
+  // Its button: that answer, once.
+  assert.equal(n.say('safari-restart'), true);
+  assert.equal(n.run({ id: shown.at(-1)!.id, action: 'restart' }), true);
+  timers.at(-1)!();
+  assert.deepEqual(ran, [['safari-restart', 'restart']], 'its time out after an answer says nothing more');
+  // Its time out with no answer: Not now.
+  ran.length = 0;
+  n.say('safari-restart');
+  timers.at(-1)!();
+  assert.deepEqual(ran, [['safari-restart', 'later']]);
+  assert.equal(shown.at(-1), null, 'gone');
+  // Closed by the theme's close: Not now.
+  ran.length = 0;
+  n.say('safari-restart');
+  assert.equal(n.run({ id: shown.at(-1)!.id, closed: true }), true);
+  assert.deepEqual(ran, [['safari-restart', 'later']]);
+  // Another notice in its place: Not now.
+  ran.length = 0;
+  n.say('safari-restart');
+  n.say('theme-failed');
+  assert.deepEqual(ran, [['safari-restart', 'later']]);
+  // The overlay gone (a new theme's runtime keeps it: `view`; destroyed for good): Not now.
+  ran.length = 0;
+  n = make();
+  n.say('safari-restart');
+  n.destroy();
+  assert.deepEqual(ran, [['safari-restart', 'later']]);
+  // Another notice closed: nothing said for it.
+  ran.length = 0;
+  n = make();
+  n.say('theme-failed');
+  assert.equal(n.run({ id: shown.at(-1)!.id, closed: true }), true);
+  timers.at(-1)!();
+  assert.deepEqual(ran, []);
 });
