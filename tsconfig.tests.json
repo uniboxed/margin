@@ -17,7 +17,8 @@
     "scripts/*.ts",
     "scripts/*.mts",
     "tools/**/*.ts",
-    "tools/**/*.mts"
+    "tools/**/*.mts",
+    "cloud/*/scripts/*.ts"
   ],
   // Build output (git-ignored: the WebKit host keeps a copy of an older build in tools/webkit-host/build/old).
   "exclude": ["**/build/**", "**/node_modules/**"]

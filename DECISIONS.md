@@ -11120,3 +11120,40 @@ Margin; its text is also what the generator will use.
 - **Tests**: tests/theme-skill.test.ts (SKILL.md's name and description, the guide as the repo has it, the template's
   id, the checker's imports Node's only and the packer's command not in it, the template passing and a broken copy
   refused with why, run from another folder as someone would).
+
+## The themes server's skeleton (`feat/theme-server`, 2026-11-25; docs/THEME-STORE.md §2–§4)
+
+Step 3 of the theme store plan: `cloud/themes/`, a Cloudflare Worker for the free plan, local with tests, not deployed
+(it needs Tirth's Cloudflare login, the D1 id and the secrets; cloud/themes/README.md says how).
+- **No accounts** (§2): an Ed25519 key per install, registered once with a proof of work (a challenge HMAC-signed by
+  the server, 10 minutes, `POW_BITS` 24), every request after that signed (method, path, time within 5 minutes, the
+  body's SHA-256, the `X-Margin-Meta` header). No query strings: a proxy may respell one, so an upload's author and
+  tags travel in that signed header. Registering must be signed by the key registered, under its own id.
+- **The cheap check, one copy of the rules**: `ui/theme-import.ts`'s zip reader split into `zipEntries` (the shape,
+  names, kinds and stated sizes, from the directory alone) and `zipEntryBytes` (one entry inflated, held to its size
+  and CRC-32); `packageFromZip` is the two, with the same refusals and words as before. The server uses `zipEntries`,
+  `packageFromFiles` on the names (the layout), and inflates only theme.json for `checkManifest`; a built-in's id is
+  refused. Measured on an M-series Mac in Node: 0.3–2.5 ms of CPU warm per built-in-sized package with its SHA-256,
+  about 6 ms for the first in a fresh process (Cloudflare's own figure to read after the first deploy).
+- **Limits** (limits.ts `RATES`, one table): 20 new keys a day per network, uploads 5 a day per key and 20 per
+  network, reports 20 and 60. Counted in a Limiter Durable Object per key and per network (fetch-style, KV storage on
+  a SQLite-backed class: the free plan's kind), all-or-nothing per request; a network's refusal gives the key's count
+  back. A network is an IPv4 address or an IPv6 /64. Refused uploads count too (the check costs CPU).
+- **Ownership and versions**: the first key to upload a theme id owns it; a version must not be older than any before
+  it; the same bytes again answer as the first time (a retry), other bytes under a taken version are refused.
+- **Review and trust**: a key's versions wait for review until two were approved (counted from what review approved,
+  so a double approval counts once), then publish at once. Rejected versions aren't approvals.
+- **Reports**: one per key per theme, never on one's own; reports from 3 networks (kept as an HMAC, never the address)
+  hide a theme, so three keys from one network can't. Showing it again clears its reports.
+- **The index**: Ed25519-signed over `margin-themes-index-v1\n` + its exact text, the newest published version per
+  listed theme. Stored in R2 with the D1 generation it was built from, rebuilt only when that generation moved (every
+  change to what's listed raises it in the same transaction), so a request costs one D1 row and one R2 read.
+- **Review page** (`/admin`): HTTP Basic with `ADMIN_TOKEN`, a strict CSP, every value escaped; changes are POSTs that
+  must come from the page's own origin with its token. Without `ADMIN_TOKEN` there's no page at all.
+- **Tests**: tests/cloud-themes.test.ts (21) on fakes (tests/cloud-themes/fakes.ts: D1 on node:sqlite with the real
+  migration, R2 checking a put's SHA-256, Limiter objects one request at a time). Each rule was broken on purpose
+  (signature, clock, proof of work, challenge MAC, key id, trust, approvals, reports by network, give-back, day limit,
+  ownership, older versions, own reports, unlisted packages, index refresh, built-in ids, the declared-size cap, the
+  admin origin and token) and a test failed for each.
+- **Not in this step**: screenshots (step 4, with Margin's renderer), generation and its day's budget (step 5), App
+  Attest (to test on macOS 27). A WAF rate rule for the public reads (the free plan has one) is a deploy step.

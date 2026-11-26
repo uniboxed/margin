@@ -1,0 +1,31 @@
+# Margin's themes server (docs/THEME-STORE.md), on Cloudflare's free plan. Nothing here is secret: the secrets
+# (SIGNING_KEY, CHALLENGE_SECRET, ADMIN_TOKEN, later the Claude API key) are set with `wrangler secret put`, never
+# written in this repo (npm run themes:keys makes the first three; cloud/themes/README.md).
+name = "margin-themes"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "margin-themes"
+# `wrangler d1 create margin-themes` prints the id to put here.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "margin-themes"
+
+[[durable_objects.bindings]]
+name = "LIMITER"
+class_name = "Limiter"
+
+# SQLite-backed: the only kind on the free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Limiter"]
+
+[vars]
+# The proof of work's zero bits: 24 is about 2 s on a Mac, once per install.
+POW_BITS = "24"
