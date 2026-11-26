@@ -223,6 +223,12 @@ final class PageCore {
         let bits = margin_page_set_hosting(page, on)
         return bits & 1 == 0 ? nil : bits & 2 != 0
     }
+    // The hosted window in a tile of Margin's Space (it can be placed past the window's edge), the engine's word.
+    func setHostedTile(_ on: Bool) { margin_page_set_hosted_tile(page, on) }
+    // Whether the page area may pass the window's edge, when it changed since the page was told: nil, no change.
+    func slidesChange() -> Bool? {
+        switch margin_page_slides_change(page) { case 1: return false; case 2: return true; default: return nil }
+    }
     func setLoading(_ label: String?, app: String?) -> Bool {
         withText(label) { l, ln, lh in withText(app) { a, an, ah in margin_page_set_loading(page, l, ln, lh, a, an, ah) } }
     }

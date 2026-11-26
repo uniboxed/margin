@@ -727,6 +727,8 @@ bool margin_page_hosted_placement(const MarginPage *page, MarginRect content, co
 bool margin_page_idle_placement(const MarginPage *page, MarginRect content, MarginPlacement *out);
 ptrdiff_t margin_page_panes(const MarginPage *page, MarginRect content, MarginPagePanes *out, uint8_t *text, size_t cap); // -1: none
 uint8_t margin_page_set_hosting(MarginPage *page, bool on); // 0 no change; bits 1 changed, 2 several were visible
+void margin_page_set_hosted_tile(MarginPage *page, bool on); // the hosted window in a tile of Margin's Space
+uint8_t margin_page_slides_change(MarginPage *page); // pageSlides: 0 no change, 1 now no, 2 now yes
 bool margin_page_set_loading(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app);
 bool margin_page_set_showing(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app, uint8_t pace); // pace: 0 usual, 1 a quick switch, 2 slow
 bool margin_page_set_elsewhere(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app);

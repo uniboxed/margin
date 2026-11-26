@@ -11529,3 +11529,23 @@ darker fading out by about 38 pt; the rail and the section the same ground, the 
   gap at the window's edge (or it would have to be resized at every frame). `--library-width: max(417px, var(--width))`:
   the Library as wide as such a sidebar, the page never moved, nothing to follow. Test: arcadia.test.ts at 500 (failed
   before: the card 500 → 417, its right 1272 → 1189).
+
+## Whether the page may pass the window's edge: the app's word, not the theme's guess (`feat/page-slides`, 2026-11-26)
+
+Arcadia slid the page past the window's edge wherever `m-page-state` was set (Margin.app's own window): a guess at a
+capability only the app knows. A hosted window can follow the page there only from a tile of Margin's Space (macOS
+keeps a tile past the display's edge); placed by its own Space's reservation (the tiles off for the run, a host held
+below tiles) it can't, and the card would have slid away from it. Tirth asked for it done properly.
+- **Rule** (margin-core page/mod.rs `page_slides`): Margin's own page (nothing hosted, or nothing shown yet), or the
+  hosted window in a tile; `slides_change` says a change once (the hello says it first: `pageSlides`).
+- **Mechanism** (Swift): HostEngine's `hostedTile` (the one shown's `shownFillsPage`, before each `hostedWindow` and
+  when its tile goes, `tileLeft`) → HostedSession → MarginWindowController `setHostedTile` → the core; the window
+  pushes `{ type: 'pageSlides', on }` when the core says it changed (after hosting, the hosted window, the tile).
+- **Page** (ui/host-app.ts `pageSlides`, overlay.ts): the theme's root `m-page-slides` (ui/render.ts's list; the
+  themes README "Moving the page past the window's edge"). Never over a browser's page.
+- **Theme**: Arcadia's slide (the card's right edge, Spaces' shift, the panel see-through, no shadow between) keyed
+  on `m-page-slides`; without it the Library makes room as it does in the browsers' overlay.
+- **Tests**: Rust (the rule, said once, the hello), the FFI through the Swift suites (the engine says a tile with the
+  tiles on, none with them off, the session passes it to the window: each failed when flipped), ui-host-app (hello,
+  message, never over a browser), Arcadia in both engines (with `m-page-slides` it slides; without, room made and the
+  panel's colour over the page: failed with the old `m-page-state` rules).

@@ -89,6 +89,10 @@ impl Page {
         o.push_str(",\"apps\":");
         o.push_str(f.apps);
         o.push_str(if self.hosting() { ",\"pageHosted\":true" } else { ",\"pageHosted\":false" });
+        // (Whether the page area may pass the window's edge, as said now: a change after it is `pageSlides`.)
+        let slides = self.page_slides();
+        self.slides_said.set(slides);
+        o.push_str(if slides { ",\"pageSlides\":true" } else { ",\"pageSlides\":false" });
         o.push_str(",\"layoutText\":true,\"saidText\":true,\"marginPage\":");
         opt(&mut o, f.margin_page);
         o.push_str(",\"pageMinWidth\":");
@@ -184,5 +188,13 @@ mod tests {
         assert!(v.get("paneMin").is_none() && v.get("pagePicture").is_none() && v.get("pageStarting").is_none());
         assert_eq!(v["pageState"], "empty");
         assert!(h.ends_with(",\"hostedFrame\":null,\"hostedFrames\":[],\"theme\":null}"));
+        assert_eq!(v["pageSlides"], true, "Margin's own page slides past the window's edge");
+        // (A window its own Space places: told in the hello, so no change is said after it.)
+        let mut q = Page::default();
+        let _ = q.set_hosting(true);
+        let _ = q.set_hosted(Some(4));
+        let w: serde_json::Value = serde_json::from_str(&q.hello(&f)).unwrap_or_default();
+        assert_eq!(w["pageSlides"], false);
+        assert_eq!(q.slides_change(), None, "the hello said it");
     }
 }

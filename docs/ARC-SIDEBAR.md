@@ -185,8 +185,9 @@ second frame, done in ≈ 200 ms):
   14 pt, the address under it at 12 pt, no scheme or www). Easels empty: its icon, "Out of ideas!", a line. Spaces is
   a whole-window manager (a card per space).
 - **In Margin** (Tirth's choices, 2026-11-25): Archived Tabs is Margin's archive; Media, Downloads, Easels, Spaces and
-  Boosts are drawn with words saying they aren't in Margin yet; the box button opens it as Arc's does. 417 pt; in
-  Margin.app's own window (`m-page-state`) the page slides right as Arc's does, its width kept, the rest past the
+  Boosts are drawn with words saying they aren't in Margin yet; the box button opens it as Arc's does. 417 pt (never
+  narrower than the sidebar); where the page area may pass the window's edge (`m-page-slides`: margin-core's
+  `page_slides`, Margin's own page or a hosted window in a tile) the page slides right as Arc's does, its width kept, the rest past the
   window's edge (Tirth, 2026-11-26: "shifts on the right, not resize"): a hosted window is then only moved, followed
   live (its tile moved: nothing laid out again), never resized at every frame (each width placed Safari again, out of
   full screen and back). The browsers' overlay (a real page under it) makes room instead. Margin's window a tile beside

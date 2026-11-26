@@ -316,6 +316,7 @@ protocol HostedWindow: AnyObject {
     // front, and each one's row (host-app.ts `loading`, as a browser copy's `loading` push draws it over a browser).
     func setLoadingTabs(_ numbers: [Int])
     func setHosted(_ number: Int?) // the hosted window shown in its page area (this window in front of it), nil: none
+    func setHostedTile(_ on: Bool) // that window in a tile of Margin's Space (its page area may pass the window's edge)
     func hostedMoved() // that window was placed again, or kept where it was: its bounds read again
     func followsPage(_ on: Bool) // the hosted window follows a drag live: the hole is the page area as it is meanwhile
     // The one shown's own minimum width (nil: none): the sidebar's edge stops where the page area would be narrower
@@ -1254,6 +1255,12 @@ final class HostedSession {
     func hosted(_ number: Int?) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.setHosted(number)
+    }
+
+    // Whether the window shown lies in a tile of Margin's Space (HostEngine `hostedTile`): told to the Margin window hosting.
+    func hostedTile(_ on: Bool) {
+        guard let id = hostingWindow, let w = window(id) else { return }
+        w.setHostedTile(on)
     }
 
     // Every visible host's window (HostEngine `hostedWindows`), while more than one is: told to the Margin window hosting.

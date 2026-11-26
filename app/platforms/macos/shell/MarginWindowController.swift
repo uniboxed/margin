@@ -518,8 +518,22 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             Diagnostics.note("Margin's window \(id): hosting nothing: its launcher in the page area again")
         }
         push(#"{"type":"pageHosted","on":\#(on)}"#)
+        saySlides()
         updatePage()
         settlePage()
+    }
+
+    // The hosted window in a tile of Margin's Space or not (the engine's word, said with each window it hosts): whether
+    // the page area may pass the window's edge follows (the core's `page_slides`), told to the page when it changes.
+    func setHostedTile(_ on: Bool) {
+        core.setHostedTile(on)
+        saySlides()
+    }
+    // (`pageSlides`: the theme's `m-page-slides`, ui/host-app.ts: its Library slides the page past the window's edge,
+    // or makes room. Said only when it changed since the page was told: the hello says it first.)
+    private func saySlides() {
+        guard let on = core.slidesChange() else { return }
+        push(#"{"type":"pageSlides","on":\#(on)}"#)
     }
 
     // A host's first open, or its placing again (the app's name; nil: over): the page card opaque with the loader at
@@ -559,6 +573,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         case .changed: break
         }
         Diagnostics.note("Margin's window \(id): \(number.map { "in front of the hosted window \($0)" } ?? "no hosted window under it")")
+        saySlides()
         readHosted()
         settlePage()
     }
