@@ -11067,3 +11067,36 @@ screen-size change; switched back after each run):
   last it acted on: macOS says it five times for one change here, the first still naming the old display, and for
   changes that leave the display as it was; another display of the same size counts, the backdrop goes there), and the
   backdrop is set by that, not at every resize of the window (a full-screen entry resizes it too).
+
+## Load Unpacked, and `theme:check` (`feat/theme-unpacked`, 2026-11-25; docs/THEME-STORE.md §1)
+
+The theme store plan's first step: a theme folder Margin follows as it's edited, like Chrome's unpacked extensions.
+- **Found first: Import Theme did nothing in Margin.app.** Its Settings showed Import Theme…, but the page's
+  `theme.import`, `theme.save` and `theme.remove` were never routed from Margin's own window to the shell (ShellThemes'
+  own header: "not wired to Margin's own window yet"): they fell through to the library as unknown actions. Now the
+  core routes them (core/session/ui.rs: `theme.import`, `theme.link`, `theme.save`, `theme.remove`, `theme.unlink` →
+  the `theme` route, never the library's), the window source hands them to the shell (`onTheme` →
+  ShellThemes.swift `themeAsked`), replies go to that window's page, and a theme chosen is set through Margin's own
+  settings route (as Settings' Theme choice). Every window gets the index again when it changes (`tellThemes`).
+- **Links in margin-core** (`data::themes`): `links.json` beside `index.json`, `{ id: { path, linkedAt } }`; a link
+  only for a stored theme, a full path at most 1024 bytes, one theme per folder; links to themes no longer listed
+  ignored; removing a theme unlinks it; the index as shown (Settings, the copies) says `linked`, never written into
+  `index.json`. FFI `link`, `unlink`, `links`.
+- **The folder's path never comes from a page**: Load Unpacked's picker (the shell's NSOpenPanel, folders only)
+  remembers what it picked (`pendingLink`, 10 minutes, taken once); the page's Use Theme says only `linked: true`. A
+  linked folder's save is stored again only under the id it's linked as.
+- **Followed with FSEvents** (`FolderWatch`, the shell's: file events, 0.2 s), each linked folder from Margin's windows'
+  making on. A change: the folder read again within the import's caps (the core's reader), handed to a ready Margin
+  window's page with `link`; the page checks it with the same code as every load (`readThemeFile`), and only when it
+  passes and still names that id asks for it to be stored again (`theme.save` `link`), and every window drawing it
+  draws it again (`themeStored`). Else Settings says why on Load Unpacked's own line (`themeLink`) and the last good
+  one stays drawn. A preview up: the save ignored (the next comes after it).
+- **Settings**: Load Unpacked… under Import Theme…, a linked theme said so ("its folder followed") with Unlink before
+  Remove; Load Unpacked's preview and save report on its line.
+- **`npm run theme:check <folder>`** (scripts/check-theme.ts): the folder read as `theme:pack` reads it and checked
+  with the app's own `checkImport`; exits 1 when Margin wouldn't use it.
+- **Tests**: Rust (the links' rules; the routes; the FFI calls), unit (Settings' fields, the host's requests, never a
+  path from the page; `theme:check`), and an end-to-end scenario (tools/app-tests/e2e-themes.swift, 17 checks, the
+  whole shell with Margin's real window and page): Load Unpacked previewed then linked, followed and chosen; a save
+  stored and drawn again; saves that fail (another id, no Settings part) not stored, why said, the last good one
+  drawn; refusals; Unlink; Import through the same route; Remove back to Arcadia.

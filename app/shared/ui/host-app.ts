@@ -67,6 +67,7 @@ import { isLauncherPage } from '../../../extension/shared/view.ts';
 import { appsOf, isBundleId } from '../../../extension/shared/apps.ts';
 import { capabilities } from '../../../extension/shared/capabilities.ts';
 import { deviceOf } from './picker/feedback.ts';
+import { USER_THEME_ID } from './themes/packages.ts';
 import type { FeedbackDevice } from './picker/feedback.ts';
 
 /**
@@ -618,13 +619,22 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return true;
         }
         // Themes (app/platforms/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
+        // Load Unpacked (docs/THEME-STORE.md §1): the folder picker; a linked theme's folder followed no more. A save
+        // says whether it links the folder just picked (`linked`) or stores a linked folder's theme again (`link`).
         case 'theme.import':
+        case 'theme.link':
           void post('perform', { name, arg: null }).catch(() => {});
           return true;
-        case 'theme.save':
-          if (!arg?.value || typeof arg.value !== 'object') return false;
-          void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
+        case 'theme.unlink':
+          if (typeof arg?.id !== 'string' || !USER_THEME_ID.test(arg.id)) return false;
+          void post('perform', { name, arg: { id: arg.id } }).catch(() => {});
           return true;
+        case 'theme.save': {
+          if (!arg?.value || typeof arg.value !== 'object') return false;
+          const link = typeof arg.link === 'string' && USER_THEME_ID.test(arg.link) ? arg.link : null;
+          void post('perform', { name, arg: { value: arg.value, ...(link ? { link } : arg.linked === true ? { linked: true } : {}) } }).catch(() => {});
+          return true;
+        }
         // The start screen's choices while Margin's start is held up (HostedSession.swift startupRetry, startupSkip).
         case 'startup.retry':
         case 'startup.skip':

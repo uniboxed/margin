@@ -6,7 +6,12 @@
 //! <id>.json    the stored package, as the overlay made it (ui/theme-loader.ts encodeStoredTheme: format 2, id,
 //!              version, savedAt, manifest, html, css, files as base64)
 //! index.json   the short list: [{ id, name, version, author, bytes, savedAt }]
+//! links.json   the themes linked to a folder (Load Unpacked, docs/THEME-STORE.md §1): { "<id>": { path, linkedAt } }
 //! ```
+//!
+//! A linked theme is stored as any other (its last good package: what's drawn); its folder, followed by the app as it's
+//! edited, is read again on each change, checked by the overlay, and stored again when it passes. The folder's path
+//! comes only from the app's own picker, never from a page.
 //!
 //! Each written as the data sets' files are (a temporary file, flushed, the old one kept as `.bak`, a rename). The app
 //! checks a value's shape, id and size; what's in it is checked by the overlay, in JS, every time it loads (the same
@@ -100,6 +105,10 @@ impl ThemeStore {
         self.root.join("index.json")
     }
 
+    fn links_path(&self) -> PathBuf {
+        self.root.join("links.json")
+    }
+
     /// Only for an id `id_ok` allows (so never a path).
     fn file_path(&self, id: &str) -> PathBuf {
         self.root.join(format!("{id}.json"))
@@ -124,6 +133,80 @@ impl ThemeStore {
 
     pub fn has(&self, id: &str) -> bool {
         self.list().iter().any(|e| json::string(e.get("id")) == Some(id))
+    }
+
+    /// The index as Settings and the copies get it: each entry with `linked: true` when its theme is linked to a folder
+    /// (never written into `index.json`).
+    pub fn shown(&self) -> Vec<Object> {
+        let linked: std::collections::HashSet<String> = self.read_links().into_keys().collect();
+        self.list()
+            .into_iter()
+            .map(|mut e| {
+                if json::string(e.get("id")).is_some_and(|id| linked.contains(id)) {
+                    e.insert("linked".into(), Value::Bool(true));
+                }
+                e
+            })
+            .collect()
+    }
+
+    /// The links in `links.json` whose id the rule allows and whose path is a full one (not the listed check: see
+    /// `links`).
+    fn read_links(&self) -> BTreeMap<String, Object> {
+        let Some(Value::Object(m)) = read_json(&self.links_path()) else { return BTreeMap::new() };
+        m.into_iter()
+            .filter_map(|(id, v)| {
+                let o = v.as_object()?;
+                let ok =
+                    id_ok(&id) && !BUILTINS.contains(&id.as_str()) && json::string(o.get("path")).is_some_and(path_ok);
+                ok.then(|| (id, o.clone()))
+            })
+            .collect()
+    }
+
+    /// The themes linked to a folder, each `(id, path)`: only themes still listed.
+    pub fn links(&self) -> Vec<(String, String)> {
+        let listed: std::collections::HashSet<String> =
+            self.list().iter().filter_map(|e| json::string(e.get("id")).map(str::to_string)).collect();
+        self.read_links()
+            .into_iter()
+            .filter(|(id, _)| listed.contains(id))
+            .filter_map(|(id, o)| json::string(o.get("path")).map(|p| (id.clone(), p.to_string())))
+            .collect()
+    }
+
+    /// A stored theme linked to the folder at `path` (a full path, from the app's picker): one theme per folder (a folder
+    /// linked before under another id is that one's no more). `now`: milliseconds since 1970.
+    pub fn link(&mut self, id: &str, path: &str, now: f64) -> Result<(), ThemeError> {
+        if !id_ok(id) || BUILTINS.contains(&id) {
+            return Err(refused("a bad id"));
+        }
+        if !path_ok(path) {
+            return Err(refused("not a folder's full path"));
+        }
+        if !self.has(id) {
+            return Err(refused("not a stored theme"));
+        }
+        let mut links = self.read_links();
+        links.retain(|other, o| other == id || json::string(o.get("path")) != Some(path));
+        let entry = json!({ "path": path, "linkedAt": number(now) }).as_object().cloned().unwrap_or_default();
+        links.insert(id.to_string(), entry);
+        self.write_links(&links)
+    }
+
+    /// Its link gone (the theme stays stored). Whether it was linked.
+    pub fn unlink(&mut self, id: &str) -> Result<bool, ThemeError> {
+        let mut links = self.read_links();
+        if links.remove(id).is_none() {
+            return Ok(false);
+        }
+        self.write_links(&links)?;
+        Ok(true)
+    }
+
+    fn write_links(&self, links: &BTreeMap<String, Object>) -> Result<(), ThemeError> {
+        let map: Object = links.iter().map(|(k, v)| (k.clone(), Value::Object(v.clone()))).collect();
+        Ok(write_atomically(&sorted_json(&Value::Object(map)), &self.links_path())?)
     }
 
     /// A value from the overlay (`theme.save`), checked for shape, id and size, then stored and listed. Its entry.
@@ -212,6 +295,7 @@ impl ThemeStore {
         }
         let kept: Vec<Object> = index.into_iter().filter(|e| json::string(e.get("id")) != Some(id)).collect();
         self.write_index(&kept)?;
+        self.unlink(id)?; // (a removed theme's folder is followed no more)
         let file = self.file_path(id);
         let _ = fs::remove_file(&file);
         let _ = fs::remove_file(bak_of(&file));
@@ -223,6 +307,11 @@ impl ThemeStore {
         let list = Value::Array(index.iter().cloned().map(Value::Object).collect());
         Ok(write_atomically(&sorted_json(&list), &self.index_path())?)
     }
+}
+
+/// A folder's path as a link keeps it: a full path, at most 1024 bytes, no NUL.
+fn path_ok(path: &str) -> bool {
+    !path.is_empty() && path.len() <= 1024 && !path.contains('\0') && Path::new(path).is_absolute()
 }
 
 /// A file's JSON, else its backup's.
@@ -462,6 +551,57 @@ mod tests {
 
     fn error(f: &ThemeFile) -> String {
         f.message.get("error").and_then(Value::as_str).unwrap_or("").to_string()
+    }
+
+    #[test]
+    fn links() {
+        let tmp = temp();
+        let root = tmp.path().join("themes");
+        let mut store = ThemeStore::new(&root);
+        let folder = tmp.path().join("my-theme");
+        let path = folder.to_string_lossy().to_string();
+        let refused = |r: Result<(), ThemeError>| r.err().map(|e| e.to_string()).unwrap_or_default();
+
+        // A link only for a stored theme, with a full path.
+        assert!(refused(store.link("mine", &path, 1.0)).contains("not a stored theme"), "nothing stored yet");
+        store.save(&value("mine", "Mine", "1", None), 2.0).expect("stored");
+        assert!(refused(store.link("mine", "relative/folder", 3.0)).contains("full path"));
+        assert!(refused(store.link("mine", "", 3.0)).contains("full path"));
+        assert!(
+            refused(store.link("mine", &format!("/{}", "a".repeat(1100)), 3.0)).contains("full path"),
+            "1024 at most"
+        );
+        assert!(refused(store.link("arcadia", &path, 3.0)).contains("bad id"), "never a built-in's");
+        assert!(refused(store.link("../evil", &path, 3.0)).contains("bad id"));
+        assert!(store.links().is_empty() && !root.join("links.json").exists(), "nothing written for a refusal");
+
+        // Linked: listed with the flag for Settings, the index itself untouched.
+        store.link("mine", &path, 4.0).expect("linked");
+        assert_eq!(store.links(), vec![("mine".to_string(), path.clone())]);
+        assert!(store.shown()[0]["linked"] == true && store.list()[0].get("linked").is_none());
+        let index = fs::read_to_string(root.join("index.json")).expect("index");
+        assert!(!index.contains("linked"), "never written into index.json");
+        // Stored again (its folder read again and passed): still linked, the flag still only shown.
+        store.save(&value("mine", "Mine", "2", None), 5.0).expect("stored again");
+        assert!(
+            store.links().len() == 1 && !fs::read_to_string(root.join("index.json")).expect("index").contains("linked")
+        );
+
+        // One theme per folder: the same folder linked under another id is that one's only.
+        store.save(&value("other", "Other", "1", None), 6.0).expect("stored");
+        store.link("other", &path, 7.0).expect("linked");
+        assert_eq!(store.links(), vec![("other".to_string(), path.clone())], "the folder is the other's now");
+        assert!(store.shown().iter().all(|e| (e["id"] == "other") == (e.get("linked") == Some(&Value::Bool(true)))));
+
+        // Unlinked: stored still. Removed: unlinked too. A link whose theme isn't listed is ignored.
+        assert!(store.unlink("other").expect("unlinked") && store.links().is_empty() && store.has("other"));
+        assert!(!store.unlink("other").expect("nothing"), "not linked any more");
+        store.link("mine", &path, 8.0).expect("linked");
+        store.remove("mine").expect("removed");
+        assert!(store.links().is_empty(), "a removed theme is followed no more");
+        let stale = json!({ "gone": { "path": path, "linkedAt": 1 }, "Bad": { "path": path }, "x": { "path": "rel" } });
+        fs::write(root.join("links.json"), stale.to_string()).expect("written");
+        assert!(store.links().is_empty(), "not listed, a bad id, a relative path: none");
     }
 
     #[test]

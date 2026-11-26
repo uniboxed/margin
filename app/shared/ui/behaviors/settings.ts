@@ -10,7 +10,7 @@
 // and Margin's own shortcuts wait meanwhile (`ui.recording`).
 import { spaceThemesOn } from '../space-theme.ts';
 import type { Rt } from '../runtime.ts';
-import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.ts';
+import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP, UNLINK_PREFIX } from '../settings-form.ts';
 import * as shortcuts from '../../../../extension/shared/shortcuts.ts';
 import { appKeyValue, isAppKey } from '../../../../extension/shared/app-keys.ts';
 
@@ -147,6 +147,17 @@ export function installSettings(rt: Rt) {
       if (id === 'themeImport') {
         status('themeImport', 'Choose a theme’s folder or a .margintheme file…');
         return rt.host.perform?.('theme.import') === true;
+      }
+      // Load Unpacked asks for the app's folder picker; Unlink stops following a linked theme's folder (it stays).
+      if (id === 'themeLink') {
+        status('themeLink', 'Choose a theme’s folder…');
+        return rt.host.perform?.('theme.link') === true;
+      }
+      if (id.startsWith(UNLINK_PREFIX) && f) {
+        const themeId = id.slice(UNLINK_PREFIX.length);
+        const done = rt.host.perform?.('theme.unlink', { id: themeId }) === true;
+        if (done) status('themeLink', 'Unlinked: the theme stays as it was last drawn, its folder followed no more.');
+        return done;
       }
       const prompt = f ? removePrompt(id, rt.host.userThemes ?? []) : null;
       if (prompt) { rt.setUi({ prompt }); return true; }

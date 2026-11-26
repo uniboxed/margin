@@ -209,6 +209,15 @@ fn the_uis_requests_routed() {
         "a number never given: as it came"
     );
     assert_eq!(ui(&s, "updateSettings", json!({ "x": 1 }))["route"], json!("settings"));
+    // A theme imported or linked: the shell's, for the window that asked (docs/THEME-STORE.md §1), never the library's.
+    for name in ["theme.import", "theme.link", "theme.save", "theme.remove", "theme.unlink"] {
+        assert_eq!(
+            ui(&s, name, json!({ "windowId": 3, "id": "mine" })),
+            json!({ "route": "theme", "name": name, "payload": { "windowId": 3, "id": "mine" }, "window": 3 }),
+            "{name}"
+        );
+    }
+    assert_eq!(ui(&s, "theme.other", json!({}))["route"], json!("perform"), "only those five");
     assert_eq!(
         ui(&s, "copyUrl", json!({ "url": "https://a/" })),
         json!({ "route": "answer", "value": { "ok": true, "result": true }, "pasteboard": "https://a/" })

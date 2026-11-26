@@ -81,11 +81,30 @@ final class ThemeStore {
         KeysCore.bytes(id) { p, n in ThemesCore.text { margin_themes_message(core, p, n, $0) } }
     }
 
-    // The theme's file and its entry gone. Whether it was there.
+    // The theme's file and its entry gone (and its link). Whether it was there.
     @discardableResult func remove(_ id: String) throws -> Bool {
         let answer = call(["type": "remove", "id": id])
         if let removed = answer["removed"] as? Bool { return removed }
         throw Refused(description: answer["refused"] as? String ?? answer["error"] as? String ?? "not removed")
+    }
+
+    // A stored theme linked to a folder (Load Unpacked, docs/THEME-STORE.md §1): its full path, from Margin's own picker
+    // only. One theme per folder (the core's).
+    func link(_ id: String, path: String, now: Double = Date().timeIntervalSince1970 * 1000) throws {
+        let answer = call(["type": "link", "id": id, "path": path, "now": now])
+        if answer["linked"] as? Bool == true { return }
+        throw Refused(description: answer["refused"] as? String ?? answer["error"] as? String ?? "not linked")
+    }
+
+    // Its link gone; the theme stays stored. Whether it was linked.
+    @discardableResult func unlink(_ id: String) -> Bool { call(["type": "unlink", "id": id])["unlinked"] as? Bool == true }
+
+    // The linked themes still listed: id and folder.
+    func links() -> [(id: String, path: String)] {
+        (call(["type": "links"])["links"] as? [JSONObject] ?? []).compactMap { o in
+            guard let id = o["id"] as? String, let path = o["path"] as? String else { return nil }
+            return (id, path)
+        }
     }
 }
 

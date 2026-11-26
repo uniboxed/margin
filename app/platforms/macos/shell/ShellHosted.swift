@@ -194,6 +194,7 @@ extension Shell {
         windows.browser = options.lastBrowser()
         marginWindows = windows
         joinHosted(windows)
+        followLinkedFolders() // (the themes loaded unpacked: their folders followed again)
         Diagnostics.note("Margin's window: its settings read from \(hostedProfile().map(\.key) ?? "no data set yet")")
         return windows
     }

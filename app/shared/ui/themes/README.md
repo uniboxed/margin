@@ -67,13 +67,20 @@ my-theme/
    `notice` parts, with `<m-launcher>`, `<m-prompt>` and `<m-notice>` in
    the window's tree and `<m-settings>` in the launcher part. An import
    without them is refused: Settings is where a theme is switched or removed.
-6. **Check it** before you share it, as Margin will:
-   `MARGIN_THEMES=~/my-theme npm run test:security`.
-7. **Share it** as one file: zip the folder and name it
+6. **Check it** as Margin will: `npm run theme:check ~/my-theme` (Margin's own
+   import check: what's wrong, what it would remove, motion that may not be
+   smooth), and before you share it `MARGIN_THEMES=~/my-theme npm run test:security`.
+7. **Work on it live:** in Margin, Settings › Theme › Load Unpacked…, pick the
+   folder, look at the preview and choose Use Theme. Margin then follows the
+   folder: each save is checked and drawn at once when it passes. When it
+   doesn't, Settings says why on Load Unpacked's line and the last version
+   that passed stays drawn. Keep the same `id` while it's linked. Unlink it
+   from the same place (it stays as it was last drawn).
+8. **Share it** as one file: zip the folder and name it
    `my-theme.margintheme`. Finder's Compress works (rename the `.zip`), and
    so does `npm run theme:pack ~/my-theme` (it also checks it, and says what
    it left out).
-8. **Import it:** in Margin, Settings › Theme › Import Theme…, pick the
+9. **Import it:** in Margin, Settings › Theme › Import Theme…, pick the
    folder or the `.margintheme` file, look at the preview, and choose Use
    Theme. Importing the same `id` again replaces it. Remove it from the
    same place.

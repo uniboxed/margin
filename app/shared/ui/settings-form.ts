@@ -254,19 +254,26 @@ export const themeText = (text: unknown, max: number) => { const t = String(text
 /** Margin.app's index of imported themes, as Settings shows it. */
 export function userThemeList(list: unknown) {
   return (Array.isArray(list) ? list : []).filter((e) => e && typeof e.id === 'string' && USER_THEME_ID.test(e.id) && !PACKAGE_THEMES.includes(e.id)).slice(0, 50)
-    .map((e) => ({ id: e.id, name: themeText(e.name, 40), version: themeText(e.version, 16), author: themeText(e.author, 40) }));
+    .map((e) => ({ id: e.id, name: themeText(e.name, 40), version: themeText(e.version, 16), author: themeText(e.author, 40), linked: e.linked === true }));
 }
 
 const SETTING_PREFIX = 'themeSetting:';
 const REMOVE_PREFIX = 'removeTheme:';
+/** Unlink “Name” (a theme loaded unpacked: its folder followed no more). */
+export const UNLINK_PREFIX = 'unlinkTheme:';
 
-/** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
-function importFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; }[]) {
+/**
+ * Import Theme… and Load Unpacked… (Margin.app only: `features.importThemes`) and each imported theme with Remove (a
+ * linked one, loaded unpacked, with Unlink too), under the theme choice.
+ */
+function importFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; linked?: boolean; }[]) {
   const out: SettingsField[] = [];
   if (!f.importThemes) return out;
   out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
+  out.push(field({ id: 'themeLink', kind: 'button', label: 'Load Unpacked…', status: status.themeLink?.text ?? 'A theme’s folder, followed as you edit it: each save is drawn once it passes Margin’s checks.', error: !!status.themeLink?.error }));
   for (const t of imported) {
-    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}` }));
+    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}${t.linked ? ' · its folder followed' : ''}` }));
+    if (t.linked) out.push(field({ id: `${UNLINK_PREFIX}${t.id}`, kind: 'button', label: `Unlink “${t.name || t.id}”` }));
     out.push(field({ id: `${REMOVE_PREFIX}${t.id}`, kind: 'button', label: `Remove “${t.name || t.id}”` }));
   }
   return out;
