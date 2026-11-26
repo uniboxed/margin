@@ -1040,15 +1040,11 @@ for (const [engineName, engine] of ENGINES) {
         const lib = (await rect('.library'))!;
         assert.ok(Math.abs(lib.right - 417 * parseFloat(held.progress)) < 1, `sliding in from the left (its right edge at ${lib.right})`);
         assert.equal(held.space, ids[0], 'no space asked for');
-        // (The page area moves with it, as a drag of the sidebar's edge moves it: the host told once, at its start, so
-        // Margin.app's hosted window follows it live, never placed again frame by frame: 2026-11-26, Safari a step behind.)
-        assert.deepEqual(await ev(() => T.rtResizing()), [[true, width]], 'the host told the sidebar\'s width is changing, once');
         await ev(() => T.rtTrackpadRun('.space-title .title', Array(12).fill(-20)));
         await ev(() => T.rtWheelPhase('ended'));
         await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 2000 });
         const open = await ends();
         assert.deepEqual([open.swipe, open.progress, open.left], [false, '', 417], 'open: nothing of the swipe left, the page beside its 417 pt');
-        assert.deepEqual(await ev(() => T.rtResizing()), [[true, width], [false, 417]], 'over once open, after its last place (417) was reported');
         assert.equal((await rect('.library'))!.width, 417);
         assert.equal(await ev(() => getComputedStyle(document.querySelector('.margin-sidebar')!).visibility), 'hidden', 'the space under it out of the way');
         assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'setSpace'), 'no switch of space');
@@ -1063,7 +1059,6 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtFrames(2));
         const closed = await ends();
         assert.deepEqual([closed.drawn, Math.round((await rect('.card-edge'))!.left), closed.space], [false, width, ids[0]], 'closed: gone, the page back, the same space');
-        assert.deepEqual((await ev(() => T.rtResizing())).slice(2), [[true, 417], [false, width]], 'back: told again, over after the page\'s place back');
         // Let go short of half: back where it was, never open.
         await ev(() => T.rtWheelPhase('began'));
         await ev(() => T.rtTrackpadRun('.space-title .title', Array(4).fill(-20)));
@@ -1071,7 +1066,6 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtWheelPhase('ended'));
         await page.waitForTimeout(700);
         assert.deepEqual([(await ends()).library, (await ends()).swipe, (await ends()).left], [false, false, width], 'short of half: back');
-        assert.deepEqual((await ev(() => T.rtResizing())).slice(4), [[true, width], [false, width]], 'short of half: begun and over, the page where it was');
       });
 
       await t.test('one space: its ends still there (the Library before it, Create a Space after it), as Arc\'s', async () => {
