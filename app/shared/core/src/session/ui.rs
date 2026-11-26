@@ -152,6 +152,13 @@ impl Core {
             "updateSettings" | "updateThemeSettings" => {
                 return json!({ "route": "settings", "kind": kind, "payload": payload });
             }
+            // The themes a person imports or links (docs/THEME-STORE.md §1; the shell's ShellThemes.swift: its pickers,
+            // a linked folder followed) and the theme store's (§3, §4: its list, a theme tried, reported or shared): the
+            // shell's, for the window that asked. Never the library's.
+            "theme.import" | "theme.link" | "theme.save" | "theme.remove" | "theme.unlink" | "theme.store.open"
+            | "theme.store.try" | "theme.store.report" | "theme.share" => {
+                return json!({ "route": "theme", "name": kind, "payload": payload, "window": window });
+            }
             "copyUrl" => {
                 let mut out = ok();
                 if let Some(url) = json::string(payload.get("url")).filter(|u| !u.is_empty()) {

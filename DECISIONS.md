@@ -11130,3 +11130,145 @@ has (docs/ARC-SIDEBAR.md "The Library's sections, as Arc draws them"):
   drawn.
 - **Tests** (tests/theme/arcadia.test.ts, both engines): Arc's words per section, the shown icon filled white, the
   space manager's cards (every space in order, 240 pt, their rows), its width, the page under it, a card's pencil.
+
+## Load Unpacked, and `theme:check` (`feat/theme-unpacked`, 2026-11-25; docs/THEME-STORE.md §1)
+
+The theme store plan's first step: a theme folder Margin follows as it's edited, like Chrome's unpacked extensions.
+- **Found first: Import Theme did nothing in Margin.app.** Its Settings showed Import Theme…, but the page's
+  `theme.import`, `theme.save` and `theme.remove` were never routed from Margin's own window to the shell (ShellThemes'
+  own header: "not wired to Margin's own window yet"): they fell through to the library as unknown actions. Now the
+  core routes them (core/session/ui.rs: `theme.import`, `theme.link`, `theme.save`, `theme.remove`, `theme.unlink` →
+  the `theme` route, never the library's), the window source hands them to the shell (`onTheme` →
+  ShellThemes.swift `themeAsked`), replies go to that window's page, and a theme chosen is set through Margin's own
+  settings route (as Settings' Theme choice). Every window gets the index again when it changes (`tellThemes`).
+- **Links in margin-core** (`data::themes`): `links.json` beside `index.json`, `{ id: { path, linkedAt } }`; a link
+  only for a stored theme, a full path at most 1024 bytes, one theme per folder; links to themes no longer listed
+  ignored; removing a theme unlinks it; the index as shown (Settings, the copies) says `linked`, never written into
+  `index.json`. FFI `link`, `unlink`, `links`.
+- **The folder's path never comes from a page**: Load Unpacked's picker (the shell's NSOpenPanel, folders only)
+  remembers what it picked (`pendingLink`, 10 minutes, taken once); the page's Use Theme says only `linked: true`. A
+  linked folder's save is stored again only under the id it's linked as.
+- **Followed with FSEvents** (`FolderWatch`, the shell's: file events, 0.2 s), each linked folder from Margin's windows'
+  making on. A change: the folder read again within the import's caps (the core's reader), handed to a ready Margin
+  window's page with `link`; the page checks it with the same code as every load (`readThemeFile`), and only when it
+  passes and still names that id asks for it to be stored again (`theme.save` `link`), and every window drawing it
+  draws it again (`themeStored`). Else Settings says why on Load Unpacked's own line (`themeLink`) and the last good
+  one stays drawn. A preview up: the save ignored (the next comes after it).
+- **Settings**: Load Unpacked… under Import Theme…, a linked theme said so ("linked to its folder") with Unlink before
+  Remove; Load Unpacked's preview and save report on its line.
+- **`npm run theme:check <folder>`** (scripts/check-theme.ts): the folder read as `theme:pack` reads it and checked
+  with the app's own `checkImport`; exits 1 when Margin wouldn't use it.
+- **Tests**: Rust (the links' rules; the routes; the FFI calls), unit (Settings' fields, the host's requests, never a
+  path from the page; `theme:check`), and an end-to-end scenario (tools/app-tests/e2e-themes.swift, 17 checks, the
+  whole shell with Margin's real window and page): Load Unpacked previewed then linked, followed and chosen; a save
+  stored and drawn again; saves that fail (another id, no Settings part) not stored, why said, the last good one
+  drawn; refusals; Unlink; Import through the same route; Remove back to Arcadia.
+
+## The margin-theme skill (`feat/theme-skill`, 2026-11-25; docs/THEME-STORE.md §6)
+
+Step 2 of the theme store plan: a Claude skill anyone can use with their own Claude to make Margin themes, at no cost to
+Margin; its text is also what the generator will use.
+- **Assembled from the one copy of each part** (`npm run skill:build` → `dist/skills/margin-theme`, scripts/build-skill.ts):
+  `skills/margin-theme/SKILL.md` (written once: how to work, the rules that trip people up: a stylesheet writes no
+  text, Margin's own words in its parts, reserved ids, the ways back out), `reference/README.md` (the theme guide as
+  the repo has it), `template/` (Neubrutalism under the id `my-theme`, author "Your Name": an empty author is refused),
+  and `scripts/check-theme.mjs` (scripts/check-theme.ts bundled with esbuild: Margin's own `checkImport`, Node's
+  built-ins only).
+- **Found by its test, fixed**: (1) bundling the checker pulled in `pack-theme.ts`'s command, which ran inside it and
+  refused every theme ("not packed"): the folder reader moved to scripts/theme-folder.ts, a module with no command,
+  imported by both. (2) The scripts knew they were the command by comparing `import.meta.url` with the path they were
+  run by, and macOS's temporary folders are behind a link (`/var` → `/private/var`): run from there, the checker
+  printed nothing and exited 0, a silent pass. Now the real paths are compared (`isCommand`, in check-theme, pack-theme
+  and build-skill).
+- **Tests**: tests/theme-skill.test.ts (SKILL.md's name and description, the guide as the repo has it, the template's
+  id, the checker's imports Node's only and the packer's command not in it, the template passing and a broken copy
+  refused with why, run from another folder as someone would).
+
+## The themes server's skeleton (`feat/theme-server`, 2026-11-25; docs/THEME-STORE.md §2–§4)
+
+Step 3 of the theme store plan: `cloud/themes/`, a Cloudflare Worker for the free plan, local with tests, not deployed
+(it needs Tirth's Cloudflare login, the D1 id and the secrets; cloud/themes/README.md says how).
+- **No accounts** (§2): an Ed25519 key per install, registered once with a proof of work (a challenge HMAC-signed by
+  the server, 10 minutes, `POW_BITS` 28: raised from 24 once margin-core's search was measured, see the client's entry), every request after that signed (method, path, time within 5 minutes, the
+  body's SHA-256, the `X-Margin-Meta` header). No query strings: a proxy may respell one, so an upload's author and
+  tags travel in that signed header. Registering must be signed by the key registered, under its own id.
+- **The cheap check, one copy of the rules**: `ui/theme-import.ts`'s zip reader split into `zipEntries` (the shape,
+  names, kinds and stated sizes, from the directory alone) and `zipEntryBytes` (one entry inflated, held to its size
+  and CRC-32); `packageFromZip` is the two, with the same refusals and words as before. The server uses `zipEntries`,
+  `packageFromFiles` on the names (the layout), and inflates only theme.json for `checkManifest`; a built-in's id is
+  refused. Measured on an M-series Mac in Node: 0.3–2.5 ms of CPU warm per built-in-sized package with its SHA-256,
+  about 6 ms for the first in a fresh process (Cloudflare's own figure to read after the first deploy).
+- **Limits** (limits.ts `RATES`, one table): 20 new keys a day per network, uploads 5 a day per key and 20 per
+  network, reports 20 and 60. Counted in a Limiter Durable Object per key and per network (fetch-style, KV storage on
+  a SQLite-backed class: the free plan's kind), all-or-nothing per request; a network's refusal gives the key's count
+  back. A network is an IPv4 address or an IPv6 /64. Refused uploads count too (the check costs CPU).
+- **Ownership and versions**: the first key to upload a theme id owns it; a version must not be older than any before
+  it; the same bytes again answer as the first time (a retry), other bytes under a taken version are refused.
+- **Review and trust**: a key's versions wait for review until two were approved (counted from what review approved,
+  so a double approval counts once), then publish at once. Rejected versions aren't approvals.
+- **Reports**: one per key per theme, never on one's own; reports from 3 networks (kept as an HMAC, never the address)
+  hide a theme, so three keys from one network can't. Showing it again clears its reports.
+- **The index**: Ed25519-signed over `margin-themes-index-v1\n` + its exact text, the newest published version per
+  listed theme. Stored in R2 with the D1 generation it was built from, rebuilt only when that generation moved (every
+  change to what's listed raises it in the same transaction), so a request costs one D1 row and one R2 read.
+- **Review page** (`/admin`): HTTP Basic with `ADMIN_TOKEN`, a strict CSP, every value escaped; changes are POSTs that
+  must come from the page's own origin with its token. Without `ADMIN_TOKEN` there's no page at all.
+- **Tests**: tests/cloud-themes.test.ts (21) on fakes (tests/cloud-themes/fakes.ts: D1 on node:sqlite with the real
+  migration, R2 checking a put's SHA-256, Limiter objects one request at a time). Each rule was broken on purpose
+  (signature, clock, proof of work, challenge MAC, key id, trust, approvals, reports by network, give-back, day limit,
+  ownership, older versions, own reports, unlisted packages, index refresh, built-in ids, the declared-size cap, the
+  admin origin and token) and a test failed for each.
+- **Not in this step**: screenshots (step 4, with Margin's renderer), generation and its day's budget (step 5), App
+  Attest (to test on macOS 27). A WAF rate rule for the public reads (the free plan has one) is a deploy step.
+
+## Import Theme and Load Unpacked, told apart (`feat/theme-sources-clear`, 2026-11-25)
+
+Tirth: the difference between the two wasn't clear. Each button now has a line of its own under it, an info line every
+theme draws (a button's status is replaced by what happened, so it can't hold the explanation): Import Theme "adds a
+copy … later changes to the original don't reach the copy: import it again to update it"; Load Unpacked is "for making
+or editing a theme: links its folder instead of copying it … Unlink stops following the folder". Each added theme says
+"· a copy" or "· linked to its folder", and the macOS pickers say the same.
+
+## The theme store in Margin (`feat/theme-store-client`, 2026-11-26; docs/THEME-STORE.md §2–§4)
+
+Step 4 of the theme store plan, with Tirth's two choices (2026-11-25): the store is a category of Settings, **Themes**,
+drawn with the rows every theme already draws (so people's imported themes show it too), and **no screenshots yet**:
+Try draws a theme live under Import's preview bar.
+- **The rules in margin-core, one copy for the Mac and Windows** (`data::theme_store`): where the store is (`STORE`,
+  `None` until it's deployed: Settings says "not open yet"; a test's or a developer's local server from the process's
+  environment only, `http` only to 127.0.0.1); the install's key (Ed25519, `ed25519-dalek` 3); what a request signs; the
+  proof of work (on every core, the hash state after the fixed prefix kept, each try hashing only the nonce); the index
+  read only when its signature verifies (`verify_strict`, over the context line and its text), each entry checked and
+  the bad ones left out; what each store theme is here (`install`, `installed`, `update`, `yours`: a copy or a linked
+  theme of that id, never replaced from the store); a download held to the index's size and SHA-256; a shared theme as a
+  stored `.margintheme` (sorted, dated, the same bytes every time); what an answer means, the server's words cleaned.
+  `data::themes` keeps `sources.json` (version, SHA-256 of each theme installed from the store); storing a theme any
+  other way makes it the person's copy again; the store never replaces the person's own theme of that id.
+- **The formats held to the server's own code**: cloud/themes/vectors.json is made by the server's code
+  (`npm run themes:vectors`, checked by tests/cloud-themes-vectors.test.ts) and margin-core's tests must produce the same
+  bytes from it (the key's id, a signature, the smallest nonce, the index, the shared zip: two zip writers agree, and the
+  app's reader and the server's cheap check take it).
+- **The proof of work is cheaper than planned**: margin-core finds 24 bits in about 0.1 s on an M-series Mac's 8 cores
+  (the plan said about 2 s). The server's default is 28 bits now (about 1.6 s here, a few seconds on an older Mac,
+  once per install), and Margin refuses to do more than 30 whatever a server asks.
+- **The key is a file, not the Keychain** (`theme-store/key` in Margin's data folder, 0600): a login-keychain item asks
+  the person again whenever Margin is signed differently (development and release builds are), and iCloud Keychain
+  needs a provisioned keychain group a Developer ID app doesn't have. So the key is per Mac for now. Made only for the
+  first signed request; a key file that isn't a key is never replaced (that would lose the themes it shared).
+- **The shell does the sending only** (ShellThemeStore.swift: URLSession, ephemeral, no cookies): what it sends the core
+  made, what it got the core reads. A signed request the server answers "unknown key" is sent again once the key is
+  registered, once. The proof of work runs off the main thread, a call with no object (the client object stays on the
+  main thread). A page names a theme by id only: its package's address and SHA-256 are the last checked index's.
+  Install is `theme.save` with `store`, taken only for the theme downloaded for that page's Try in the last 10 minutes.
+- **Settings**: Themes (Margin.app's window only) asks for the list the first time it's drawn; each row with Try or
+  Update and Report (its reasons as prompt buttons); Share on the person's own themes in Appearance asks first and
+  takes the author from the theme's theme.json (nothing typed). Each answer on its own line. A store theme's line in
+  Appearance says it's from the store, and when an update is in Themes. The five built-ins got an icon for the category.
+- **Tests**: margin-core (the vectors; the index refused for another key or one letter changed; states; the key file;
+  sources), margin-ffi (closed store makes no key; never more work than 30 bits), UI units (tests/theme-store-ui.test.ts:
+  rows, states, words, prompts, the category only where offered, only an id sent), Swift units (store-client-tests.swift:
+  closed, a tampered package, a list another key signed, no network), and end to end (tools/app-tests/e2e-store.swift,
+  17 checks: the real shell and page against the server's own code over HTTP, `npm run themes:dev`: Share with the key
+  registered, review approving through its page, the signed list, Try, Install, Update, and three refusals).
+- **Not yet**: search, tags and sections (when there are enough themes), screenshots, the store's address (after the
+  deploy), the Windows shell's side (its rules are in margin-core already).

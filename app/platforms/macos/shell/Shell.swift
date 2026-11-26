@@ -47,6 +47,9 @@ final class Shell: ExtensionLinkDelegate {
         // A harness's stand-in for the system the host engine runs on (never the real one: ShellHost.swift makes that
         // from the private calls' check). Given, the engine is made at once on it, with no marker.
         var hostSystem: HostSystem?
+        // The theme store to use (a test's local one, tools/app-tests/e2e-store.swift); nil: the process's environment's
+        // (MARGIN_THEME_STORE_URL and _KEY), else the one Margin is built with (margin-core's data::theme_store STORE).
+        var themeStore: (base: String, key: String)?
         var hostOptions: HostEngine.Options?
         var hostedOptions: HostedSession.Options?
         // Whether ⌘Q asks first (Margin's own prompt: ShellQuit.swift) and its "Always quit" (MarginAskBeforeQuit in
@@ -117,7 +120,7 @@ final class Shell: ExtensionLinkDelegate {
     var quitsAsked = 0 // Margin's quit asked of the app (Options.quit) by the prompt's Quit or Always quit (the tests read it)
     var devHooks: DevHooks? // DEV-HOOK: the dev-only test hook (DevHooks.swift), only with Options.devHooksOn
     // ---- user themes (ShellThemes.swift) ----
-    lazy var userThemes = UserThemes(harness: options.harness)
+    lazy var userThemes = UserThemes(harness: options.harness, themeStore: options.themeStore ?? ThemeStoreClient.environmentStore)
 
     init(link: SocketLink, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link

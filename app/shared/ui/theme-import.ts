@@ -28,7 +28,7 @@ const TEXTS = ['theme.json', 'theme.html', 'theme.css'];
 // macOS's leftovers, skipped: resource forks and extended attributes (Finder's
 // Compress puts them in __MACOSX/, ditto and others beside each file as ._name)
 // and folder settings (.DS_Store).
-const JUNK = (path: string) => path.startsWith('__MACOSX/') || path.split('/').some((seg) => seg === '.DS_Store' || seg.startsWith('._'));
+export const JUNK = (path: string) => path.startsWith('__MACOSX/') || path.split('/').some((seg) => seg === '.DS_Store' || seg.startsWith('._'));
 const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
 /**
@@ -38,7 +38,7 @@ const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 export type ReadResult = { ok: true, pkg: import('./theme-loader.ts').ThemePackage, skipped: number } | { ok: false, errors: string[] };
 
 /** A path as a package may hold it, or why not. */
-function pathProblem(path: string): string | null {
+export function pathProblem(path: string): string | null {
   if (typeof path !== 'string' || !path) return 'an empty name';
   if (path.length > IMPORT_LIMITS.pathLength) return 'a name too long';
   if (path.includes('\u0000')) return 'a NUL in a name';
@@ -146,9 +146,22 @@ async function inflate(data: Uint8Array, max: number) {
 }
 
 /**
- * A `.margintheme` file's bytes as a package.
+ * A zip entry as its directory and local header describe it, checked
+ * (zipEntries): its name (a leading "./" dropped), how it's stored, its
+ * CRC-32 and sizes as it states them, and where its data starts.
+ * `junk`: one of macOS's leftovers, never read.
+ */
+export type ZipEntry = { name: string, method: number, crc: number, csize: number, size: number, data: number, dir: boolean, junk: boolean };
+
+/**
+ * A `.margintheme` file's entries, in the order they sit in the file, read
+ * from its directory alone (nothing inflated): its shape, each entry's name
+ * and kind, and the sizes it says each inflates to against the caps (the
+ * inflating, in packageFromZip, then holds each to the size it said). The
+ * themes server (cloud/themes) checks an upload with this and inflates only
+ * theme.json.
  * */
-export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
+export function zipEntries(zip: Uint8Array): { ok: true, entries: ZipEntry[] } | { ok: false, errors: string[] } {
   const fail = (why: string) => ({ ok: (false as false), errors: [why] });
   if (!(zip instanceof Uint8Array)) return fail('not bytes');
   if (zip.length > IMPORT_LIMITS.zipBytes) return fail(`the file is larger than ${IMPORT_LIMITS.zipBytes} bytes`);
@@ -225,16 +238,17 @@ export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
   spans.sort((a, b) => a[0] - b[0]);
   if (spans.length && spans[0][0] !== 0) return fail('data before the zip (not taken)');
   for (let i = 1; i < spans.length; i++) if (spans[i][0] < spans[i - 1][1]) return fail('two entries share bytes (not taken)');
-  // Each entry, read.
-  const files: Record<string, Uint8Array> = {};
-  const seen = new Set<any>();
+  // Each entry's name and kind, and the sizes it says it inflates to.
+  const entries: ZipEntry[] = [];
+  const seen = new Set<string>();
   let total = 0;
   for (const [, , e, data] of spans) {
     const name = e.name.replace(/^\.\//, '');
     if (seen.has(name.toLowerCase())) return fail(`${JSON.stringify(name.slice(0, 80))}: twice in the zip`);
     seen.add(name.toLowerCase());
-    if (e.dir) continue;
-    if (JUNK(name)) { files[name] = new Uint8Array(0); continue; } // dropped by packageFromFiles, counted as skipped
+    const entry = { name, method: e.method, crc: e.crc, csize: e.csize, size: e.size, data, dir: e.dir, junk: false };
+    if (e.dir) { entries.push(entry); continue; }
+    if (JUNK(name)) { entries.push({ ...entry, junk: true }); continue; } // dropped by packageFromFiles, counted as skipped
     const problem = pathProblem(name);
     if (problem) return fail(`${JSON.stringify(name.slice(0, 80))}: ${problem}`);
     // A kind no package holds is refused before anything is inflated (its
@@ -242,20 +256,46 @@ export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
     if (!capFor(name)) return fail(`${name}: not a file a theme may bundle (woff2 fonts, png, jpg, gif, webp, avif, svg images, txt or md notes)`);
     const cap = Math.min(capFor(name), PACKAGE_LIMITS.totalBytes - total);
     if (e.size > cap) return fail(cap < capFor(name) ? `it holds more than ${PACKAGE_LIMITS.totalBytes} bytes` : `${name}: larger than ${cap} bytes`);
-    const raw = zip.subarray(data, data + e.csize);
-    let bytes;
-    if (e.method === 0) {
-      if (e.csize !== e.size) return fail(`${name}: its sizes disagree`);
-      bytes = raw.slice();
-    } else {
-      // Never past what it says it holds, which is within its kind's cap and what's left of the package's.
-      try { bytes = await inflate(raw, Math.min(Math.max(e.size, 0), cap)); } catch (err) { return fail(`${name}: ${(err as Error).message}`); } // (inflate's own)
-      if (bytes.length !== e.size) return fail(`${name}: it inflates to another size than it says`);
-    }
-    if (crc32(bytes) !== e.crc) return fail(`${name}: its check (CRC-32) doesn't match`);
-    total += bytes.length;
-    if (total > PACKAGE_LIMITS.totalBytes) return fail(`it holds more than ${PACKAGE_LIMITS.totalBytes} bytes`);
-    files[name] = bytes;
+    if (e.method === 0 && e.csize !== e.size) return fail(`${name}: its sizes disagree`);
+    total += e.size;
+    entries.push(entry);
+  }
+  return { ok: true, entries };
+}
+
+/**
+ * One entry's bytes (zipEntries'), inflated if it's deflated, never past the
+ * size it says, and checked against it and its CRC-32.
+ * */
+export async function zipEntryBytes(zip: Uint8Array, e: ZipEntry): Promise<{ ok: true, bytes: Uint8Array } | { ok: false, errors: string[] }> {
+  const fail = (why: string) => ({ ok: (false as false), errors: [why] });
+  const raw = zip.subarray(e.data, e.data + e.csize);
+  let bytes;
+  if (e.method === 0) {
+    if (e.csize !== e.size) return fail(`${e.name}: its sizes disagree`);
+    bytes = raw.slice();
+  } else {
+    // Never past what it says it holds, which zipEntries held within its kind's cap and what's left of the package's.
+    try { bytes = await inflate(raw, e.size); } catch (err) { return fail(`${e.name}: ${(err as Error).message}`); } // (inflate's own)
+    if (bytes.length !== e.size) return fail(`${e.name}: it inflates to another size than it says`);
+  }
+  if (crc32(bytes) !== e.crc) return fail(`${e.name}: its check (CRC-32) doesn't match`);
+  return { ok: true, bytes };
+}
+
+/**
+ * A `.margintheme` file's bytes as a package.
+ * */
+export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
+  const read = zipEntries(zip);
+  if (!read.ok) return read;
+  const files: Record<string, Uint8Array> = {};
+  for (const e of read.entries) {
+    if (e.dir) continue;
+    if (e.junk) { files[e.name] = new Uint8Array(0); continue; } // dropped by packageFromFiles, counted as skipped
+    const got = await zipEntryBytes(zip, e);
+    if (!got.ok) return got;
+    files[e.name] = got.bytes;
   }
   return packageFromFiles(files);
 }

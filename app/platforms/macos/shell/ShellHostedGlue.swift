@@ -219,7 +219,9 @@ extension Shell {
             Diagnostics.note("hosted: the library is empty (nothing imported): a first space made, for the person to name")
         }
         Diagnostics.note("Margin's window: the library's \(library.spaces().count) space(s), \(library.items().count) item(s); hosting \(host == nil ? "off (no host engine)" : "on")")
-        return LibraryWindowSource(library: library, session: session, profileSource: profiles)
+        let source = LibraryWindowSource(library: library, session: session, profileSource: profiles)
+        source.onTheme = { [weak self] name, payload, window in self?.themeAsked(name, payload, window: window) }
+        return source
     }
 
     // The person's default browser made ready out of sight (HostedSession.prepareBrowser), once both the session and the

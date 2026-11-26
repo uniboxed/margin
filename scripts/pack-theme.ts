@@ -4,38 +4,16 @@
 // theme.json, theme.html, theme.css, fonts (.woff2), images and notes
 // (.txt, .md); anything else is left out and said. Entries are sorted, with
 // a fixed date, so the same folder always makes the same file.
-import { readFileSync, readdirSync, lstatSync, writeFileSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { writeFileSync, realpathSync } from 'node:fs';
+import { resolve, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 import { packageFromFiles, crc32, IMPORT_LIMITS } from '../app/shared/ui/theme-import.ts';
+import { folderFiles } from './theme-folder.ts';
 import { checkPackage, sanitizeTheme } from '../app/shared/ui/theme-loader.ts';
 import { motionAdvice, motionNotes } from './theme-motion.ts';
 
-const KEEP = /^(theme\.(json|html|css)|.+\.(woff2|png|jpe?g|gif|webp|avif|svg|txt|md))$/i;
-
-/** The folder's package files (path → bytes), and what was left out. */
-export function folderFiles(dir: string) {
-  const files: Record<string, Uint8Array> = {};
-  const left: string[] = [];
-  const walk = (sub: string, depth: number) => {
-    for (const name of readdirSync(join(dir, sub)).sort()) {
-      if (name === '.DS_Store') continue;
-      const rel = sub ? `${sub}/${name}` : name;
-      const st = lstatSync(join(dir, rel));
-      if (st.isSymbolicLink()) throw new Error(`${rel} is a link: Margin takes none`);
-      if (st.isDirectory()) {
-        if (name.startsWith('.')) { left.push(`${rel}/`); continue; }
-        if (depth >= IMPORT_LIMITS.depth) throw new Error(`${rel}: more than ${IMPORT_LIMITS.depth} folders deep`);
-        walk(rel, depth + 1);
-      } else if (st.isFile()) {
-        if (KEEP.test(name) && !name.startsWith('.') && (sub || /^theme\.|\.(txt|md)$/i.test(name))) files[rel] = new Uint8Array(readFileSync(join(dir, rel)));
-        else left.push(rel);
-      }
-    }
-  };
-  walk('', 0);
-  return { files, left };
-}
+export { folderFiles };
 
 /** Files (path → bytes) as zip bytes: deflated, sorted, dated 1 January 2026. */
 export function zipFiles(files: Record<string, Uint8Array>) {
@@ -84,7 +62,12 @@ export function packTheme(dir: string) {
   return { bytes, id: report.manifest.id, version: report.manifest.version, left, removed: report.removed, motion: motionNotes(read.pkg.css) };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/** Whether this module is the command Node was given (its real path: macOS's temporary folders are behind a link). */
+function isCommand(url: string) {
+  try { return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url)); } catch { return false; }
+}
+
+if (isCommand(import.meta.url)) {
   const [dirArg, outArg] = process.argv.slice(2);
   if (!dirArg) { console.error('npm run theme:pack <theme folder> [out.margintheme]'); process.exit(2); }
   try {

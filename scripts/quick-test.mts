@@ -73,7 +73,7 @@ function resolveImport(from: string, spec: string): string | null {
 }
 const graph = new Map<string, Set<string>>(); // file → files it imports
 const texts = new Map<string, string>();
-for (const f of [...walk(join(ROOT, 'extension')), ...walk(join(ROOT, 'app')), ...walk(join(ROOT, 'tests')), ...walk(join(ROOT, 'scripts'))]) {
+for (const f of [...walk(join(ROOT, 'extension')), ...walk(join(ROOT, 'app')), ...walk(join(ROOT, 'tests')), ...walk(join(ROOT, 'scripts')), ...walk(join(ROOT, 'cloud'))]) {
   const text = readFileSync(f, 'utf8');
   texts.set(f, text);
   const deps = new Set<string>();
@@ -122,6 +122,8 @@ for (const t of [...UNIT, ...SECURITY, ...THEME]) {
 // A theme changed (any of its files): every theme and security test, and the unit tests about themes.
 const themeChanged = changed.some((f) => f.startsWith('app/shared/ui/'));
 if (themeChanged) for (const t of [...THEME, ...SECURITY, ...UNIT.filter((u) => /theme/.test(basename(u)))]) pick(t, 'a theme or the UI runtime changed');
+// The themes server (cloud/): its tests, whatever changed there (its SQL and wrangler.toml too).
+if (changed.some((f) => f.startsWith('cloud/'))) for (const t of UNIT.filter((u) => basename(u).startsWith('cloud-'))) pick(t, 'the themes server changed');
 // The build's inputs: the build and manifest tests.
 if (changed.some((f) => /^(extension|app\/shared\/(host|ui))\/|^scripts\/build\.ts$|^package\.json$/.test(f))) {
   for (const n of ['build.test.ts', 'manifest.test.ts']) { const t = join(ROOT, 'tests', n); if (existsSync(t)) pick(t, 'the build\'s inputs changed'); }
@@ -129,7 +131,8 @@ if (changed.some((f) => /^(extension|app\/shared\/(host|ui))\/|^scripts\/build\.
 // (The app's Swift: app/platforms/macos/, each engine's app side (app/engines/), the connector, and the Swift tests.)
 const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|app\/shared\/connector|tools\/app-tests|tools\/screen-tests\/apps)\//.test(f));
 // (The Rust workspace: any crate's source or the workspace's own files.)
-const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
+// (And the theme store's vectors, which margin-core's tests read: cloud/themes/vectors.json.)
+const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^cloud\/themes\/vectors\.json$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
 const notRun: string[] = [];
 if (changed.some((f) => /^(extension|app\/shared\/(host|ui)|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');

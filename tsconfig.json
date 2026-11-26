@@ -21,6 +21,7 @@
     "app/shared/host/*.ts",
     "app/shared/ui/**/*.ts",
     "app/shared/library/*.ts",
+    "cloud/*/src/*.ts",
     "types/*.d.ts"
   ],
   "exclude": [

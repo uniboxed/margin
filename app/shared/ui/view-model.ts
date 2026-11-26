@@ -275,7 +275,7 @@ export type SettingsFormView = { fields: import('./settings-form.ts').SettingsFi
  * categories for a sidebar (`is…`: which one, for a theme's icon), the one shown (`current`) beside them, its fields
  * in `settingsForm`. Every word is Margin's.
  */
-export type SettingsCategoryView = { id: string, label: string, help: string, selected: boolean, isAppearance: boolean, isTabs: boolean, isBrowsing: boolean, isKeyboard: boolean };
+export type SettingsCategoryView = { id: string, label: string, help: string, selected: boolean, isAppearance: boolean, isThemes: boolean, isTabs: boolean, isBrowsing: boolean, isKeyboard: boolean };
 export type SettingsTabView = { title: string, categories: SettingsCategoryView[], current: SettingsCategoryView };
 export type ViewModel = {
   version: number,
@@ -819,11 +819,14 @@ function fresh(input: ViewModelInput): ViewModel {
   }
   // Settings as its own page: its categories, the one shown.
   let settingsTab: ViewModel['settingsTab'] = null;
-  const category = categoryNamed(ui.settingsCategory);
+  // (Themes, the theme store, only where Margin.app offers it: `features.themeStore`.)
+  const offered = SETTINGS_CATEGORIES.filter((c) => c.id !== 'themes' || !!input.platform?.features?.themeStore);
+  const named = categoryNamed(ui.settingsCategory);
+  const category = offered.some((c) => c.id === named) ? named : offered[0].id;
   if (launcher && ui.settingsPage) {
-    const categories = SETTINGS_CATEGORIES.map((c) => ({
+    const categories = offered.map((c) => ({
       id: c.id, label: c.label, help: c.help, selected: c.id === category,
-      isAppearance: c.id === 'appearance', isTabs: c.id === 'tabs', isBrowsing: c.id === 'browsing', isKeyboard: c.id === 'keyboard',
+      isAppearance: c.id === 'appearance', isThemes: c.id === 'themes', isTabs: c.id === 'tabs', isBrowsing: c.id === 'browsing', isKeyboard: c.id === 'keyboard',
     }));
     settingsTab = { title: 'Settings', categories, current: categories.find((c) => c.selected)! };
   }

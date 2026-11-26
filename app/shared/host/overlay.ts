@@ -29,6 +29,7 @@ import { loadTheme, encodeStoredTheme } from '../ui/theme-loader.ts';
 import { wantsSystemMaterials } from '../ui/theme-schema.ts';
 import { readThemeFile } from '../ui/theme-import.ts';
 import { createPreviewBar } from '../ui/theme-preview.ts';
+import { storeKey, storeWords } from '../ui/settings-form.ts';
 import { chromeRects, cornerFill, createAppHost, hitRects, sidebarFixed } from '../ui/host-app.ts';
 import { createAppNotices, createGestureFeedback } from '../ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
@@ -704,6 +705,11 @@ function openPaletteTimed(options: { newTab: boolean, query?: string, selectAll?
 // and the theme from before is kept, until the app's package for it comes (`theme`): a refusal
 // (`themeSaved` not ok), a package that can't be stored, or no package within SAVE_WAIT_MS put
 // the theme from before back.
+// Load Unpacked (docs/THEME-STORE.md §1, `perform theme.link`) is the same, on its own status line
+// (`themeLink`), its Use Theme linking the folder (`theme.save` `linked`). Then each save in the
+// folder comes as `themeFile` with `link` (its id): checked here with the same code, stored again
+// (`theme.save` `link`) and drawn only when it passes and still names that id; else the reasons
+// on that line, and the last good one stays drawn (`linkedChanged`).
 /**
  * What's drawn now (not a preview): the profile's package, or Arcadia standing in for it (`fallback`).
  * */
@@ -719,13 +725,23 @@ function putBack(before: { pkg: any, fallback: boolean } | null) {
 const preview = {
    pkg: null as any,
    before: null as any,
+  /** Load Unpacked's preview: its Use Theme links the folder. */
+  linking: false,
+  /** A theme store theme's preview (Settings' Themes, Try or Update): its Use Theme installs it. */
+  store: false,
   bar: createPreviewBar({
     onUse: () => usePreview(),
     onCancel: (why) => { void endPreview(why === 'timeout' ? 'The preview ended by itself after 30 seconds; nothing changed.' : null); },
   }),
 };
+/** Which of Settings' theme lines the preview and its save report on: Import's, Load Unpacked's, or a store theme's
+ *  Try (`storeTry:<id>`). */
+let statusOf: string = 'themeImport';
+function themeStatus(key: string, text: string | null, error: boolean = false) {
+  runtime?.setUi({ settingsStatus: { ...(runtime.ui.settingsStatus ?? {}), [key]: text == null ? undefined : { text, error } } });
+}
 function importStatus(text: string | null, error: boolean = false) {
-  runtime?.setUi({ settingsStatus: { ...(runtime.ui.settingsStatus ?? {}), themeImport: text == null ? undefined : { text, error } } });
+  themeStatus(statusOf, text, error);
 }
 function previewFailed(text: string) {
   preview.bar.hide();
@@ -733,22 +749,31 @@ function previewFailed(text: string) {
   const before = preview.before;
   preview.pkg = null;
   preview.before = null;
+  preview.linking = false;
+  preview.store = false;
   if (before) putBack(before).then(() => importStatus(text, true));
   else importStatus(text, true);
   return false;
 }
 const toBase64 = (bytes: Uint8Array) => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]); return btoa(bin); }; // (apply takes an array-like)
-/** What the app read from the picker's choice. */
+/** What the app read from the picker's choice (Import's or Load Unpacked's), or from a linked folder (`link`). */
 async function themeFile(msg: any) {
+  if (typeof msg?.link === 'string') return linkedChanged(msg);
+  // (A store theme: its id is the one the app downloaded for this page's Try, and its theme.json must say it.)
+  const storeId = typeof msg?.store?.id === 'string' && /^[a-z0-9][a-z0-9-]{0,40}$/.test(msg.store.id) ? msg.store.id as string : null;
+  if (!preview.pkg) statusOf = storeId ? `storeTry:${storeId}` : msg?.linking === true ? 'themeLink' : 'themeImport';
   const read = await readThemeFile(msg);
   if (!read.ok) {
     log('note', `import: refused (${read.errors?.length ?? 0} problem(s))`);
     return importStatus(`Margin can’t use that theme: ${read.errors.slice(0, 2).map((e) => String(e).slice(0, 160)).join('; ')}.`, true);
   }
   const m = read.manifest;
+  if (storeId && m.id !== storeId) return importStatus(`Margin can’t use that theme: the store’s list says “${storeId}”, its theme.json “${String(m.id).slice(0, 41)}”.`, true);
   const message = { id: m.id, manifest: read.pkg.manifest, html: read.pkg.html, css: read.pkg.css, files: Object.fromEntries(Object.entries(read.pkg.files).map(([p, b]) => [p, toBase64(b)])) };
   preview.before ??= drawn;
   preview.pkg = read.pkg;
+  preview.linking = msg?.linking === true;
+  preview.store = !!storeId;
   log('note', `import: previewing (${Object.keys(read.pkg.files).length} files, ${read.removed.length} kind(s) of thing removed)`);
   const shown = await (mounting = mounting.then(() => mount(message, { preview: true })));
   if (!shown || preview.pkg !== read.pkg) return;
@@ -761,8 +786,12 @@ async function themeFile(msg: any) {
 function usePreview() {
   const pkg = preview.pkg;
   const before = preview.before;
+  const linking = preview.linking;
+  const fromStore = preview.store;
   preview.pkg = null;
   preview.before = null;
+  preview.linking = false;
+  preview.store = false;
   setKeys(editable(document.activeElement));
   hitsSoon();
   if (!pkg) return;
@@ -774,8 +803,32 @@ function usePreview() {
   const id = String(stored.id);
   if (saving) clearTimeout(saving.timer);
   saving = { id, before, timer: setTimeout(() => saveUnanswered(id), SAVE_WAIT_MS) };
-  host?.perform('theme.save', { value: stored });
-  importStatus('Saving…');
+  host?.perform('theme.save', { value: stored, ...(linking ? { linked: true } : fromStore ? { store: true } : {}) });
+  importStatus(fromStore ? 'Installing…' : 'Saving…');
+}
+/** A linked folder read again after a save in it (`link`: the theme's id): checked as every load; stored again and drawn
+ *  only when it passes and still names that id; else why, and the last good one stays drawn. Ignored while a preview
+ *  is up (the next save comes after it). */
+async function linkedChanged(msg: any) {
+  const id = String(msg.link);
+  const read = await readThemeFile(msg);
+  const kept = 'The last version that passed is still drawn.';
+  if (!read.ok) {
+    log('note', `linked folder: refused (${read.errors?.length ?? 0} problem(s))`);
+    return themeStatus('themeLink', `Not drawn: ${read.errors.slice(0, 2).map((e) => String(e).slice(0, 160)).join('; ')}. ${kept}`, true);
+  }
+  if (read.manifest.id !== id) {
+    return themeStatus('themeLink', `Not drawn: its theme.json names “${String(read.manifest.id).slice(0, 41)}”, not “${id}”. Unlink it and load the folder again to use the new id. ${kept}`, true);
+  }
+  if (preview.pkg) return;
+  let stored;
+  try { stored = encodeStoredTheme(read.pkg).value; } catch (err) {
+    return themeStatus('themeLink', `Not drawn: ${String((err as Error | undefined)?.message ?? err).slice(0, 160)}. ${kept}`, true);
+  }
+  host?.perform('theme.save', { value: stored, link: id });
+  const at = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  log('note', `linked folder: stored again (${Object.keys(read.pkg.files).length} files, ${read.removed.length} kind(s) of thing removed)`);
+  themeStatus('themeLink', read.removed.length ? `Drawn at ${at}. Margin removed: ${read.removed.join('; ')}.` : `Drawn at ${at}.`);
 }
 /** No package for the theme came in time: the theme from before back, and why. */
 function saveUnanswered(id: string) {
@@ -790,6 +843,8 @@ async function endPreview(text: string | null) {
   const before = preview.before;
   preview.pkg = null;
   preview.before = null;
+  preview.linking = false;
+  preview.store = false;
   setKeys(editable(document.activeElement));
   hitsSoon();
   if (before) await putBack(before);
@@ -803,6 +858,20 @@ function onMessage(msg: any) {
     case 'themeFile':
       void themeFile(msg);
       return;
+    // The theme store (ShellThemes.swift): its list came (Refresh's line back to what the list says); a request on its
+    // way (`themeStoreBusy`, from the prompts) or come back (`themeStoreResult`), on its own Settings line.
+    case 'themeStore':
+      themeStatus('storeRefresh', null);
+      return;
+    case 'themeStoreBusy':
+      if (storeKey(msg.key)) themeStatus(msg.key, String(msg.text ?? '').slice(0, 100));
+      return;
+    case 'themeStoreResult': {
+      if (!storeKey(msg.key)) return;
+      const words = storeWords(msg);
+      themeStatus(msg.key, words.text, words.error);
+      return;
+    }
     case 'themeSaved':
       if (msg.ok !== false) return;
       // Refused by the app: the theme from before back (the previewed one stays drawn otherwise).
@@ -821,7 +890,7 @@ function onMessage(msg: any) {
         const ok = msg.theme?.id === saving.id;
         clearTimeout(saving.timer);
         saving = null;
-        if (ok) importStatus('Saved. This profile uses it now; choose it in other profiles’ Settings.');
+        if (ok) importStatus(statusOf === 'themeLink' ? 'Loaded. Margin follows its folder: each save is drawn once it passes Margin’s checks.' : 'Saved. This profile uses it now; choose it in other profiles’ Settings.');
       }
       pendingTheme = msg.theme;
       if (host?.getState()) mounting = mounting.then(() => swapTheme(msg.theme));
@@ -1072,6 +1141,11 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   previewPress: (which: 'use' | 'cancel') => preview.bar.press(which),
   // What Settings says about the last import (the app's tests read it).
   importStatus: () => runtime?.ui.settingsStatus?.themeImport ?? null,
+  // …and Load Unpacked's line (a linked folder's saves report there too).
+  linkStatus: () => runtime?.ui.settingsStatus?.themeLink ?? null,
+  // The theme store as Settings' Themes has it (its state, each row's id and state) and a line of it (the app's tests).
+  storeState: () => { const s = (host as any)?.themeStore; return s && typeof s === 'object' ? { state: s.state ?? null, rows: (s.rows ?? []).map((r: any) => ({ id: r.id, state: r.state, version: r.version })) } : null; },
+  storeStatus: (key: string) => runtime?.ui.settingsStatus?.[key] ?? null,
   // Use Theme pressed and the app's word not in yet (the app's tests read it).
   saving: () => (saving ? saving.id : null),
 };

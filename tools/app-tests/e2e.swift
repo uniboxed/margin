@@ -160,6 +160,16 @@ final class Runner: NSObject, NSApplicationDelegate {
         print(failures == 0 ? "all \(passed) resilience checks passed" : "\(failures) resilience checks failed")
         exit(failures == 0 ? 0 : 1)
       }
+      if env["MARGIN_E2E_ONLY"] == "themes" {
+        await themesScenario()
+        print(failures == 0 ? "all \(passed) theme checks passed" : "\(failures) theme checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
+      if env["MARGIN_E2E_ONLY"] == "store" {
+        await storeScenario()
+        print(failures == 0 ? "all \(passed) theme store checks passed" : "\(failures) theme store checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       if env["MARGIN_E2E_ONLY"] == "hosted" {
         await hostedScenario()
         print(failures == 0 ? "all \(passed) Margin window checks passed" : "\(failures) Margin window checks failed")
@@ -173,6 +183,8 @@ final class Runner: NSObject, NSApplicationDelegate {
       await glueResumeScenario()
       await glueSplitScenario() // e2e-split.swift
       await resilienceScenario() // e2e-resilience.swift
+      await themesScenario() // e2e-themes.swift
+      await storeScenario() // e2e-store.swift
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

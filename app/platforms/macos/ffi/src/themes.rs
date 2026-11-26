@@ -2,7 +2,9 @@
 //! the Mac app's Swift (docs/CORE-REFACTOR.md step 1.6):
 //!
 //! - the store (`margin_themes_*`): one object over its folder, one JSON call for the index and its changes
-//!   (`list`, `has`, `save`, `remove`), and a typed call for the package a window draws (`margin_themes_message`: its
+//!   (`list`: each entry with `linked` when it's linked to a folder and `store` when it came from the theme store;
+//!   `has`, `save`, `saveFromStore`, `remove`; the links: `link`,
+//!   `unlink`, `links`), and a typed call for the package a window draws (`margin_themes_message`: its
 //!   JSON's bytes as they are, never wrapped in another JSON string: a package is up to 4.5 MB);
 //! - the built-ins' packages (`margin_builtin_themes_*`): one object over the app's folder, the package's bytes typed;
 //! - no object (`margin_themes_protocol`): the id rule, the limits, and what the picker chose read within its caps.
@@ -42,7 +44,7 @@ impl MarginThemes {
     fn call(&mut self, o: &json::Object) -> Value {
         let id = json::string(o.get("id")).unwrap_or("");
         match json::string(o.get("type")).unwrap_or("") {
-            "list" => json!({ "list": self.store.list() }),
+            "list" => json!({ "list": self.store.shown() }),
             "has" => json!({ "has": self.store.has(id) }),
             "save" => {
                 let Some(value) = json::object(o.get("value")) else {
@@ -54,10 +56,40 @@ impl MarginThemes {
                     Err(e) => error_text(&e),
                 }
             }
+            // A theme installed from the theme store (data::theme_store): its version and package recorded.
+            "saveFromStore" => {
+                let Some(value) = json::object(o.get("value")) else {
+                    return json!({ "refused": "not a theme package" });
+                };
+                let now = json::num(o.get("now")).unwrap_or(0.0);
+                let version = json::string(o.get("version")).unwrap_or("");
+                let sha256 = json::string(o.get("sha256")).unwrap_or("");
+                match self.store.save_from_store(value, now, version, sha256) {
+                    Ok(entry) => json!({ "entry": entry }),
+                    Err(e) => error_text(&e),
+                }
+            }
             "remove" => match self.store.remove(id) {
                 Ok(was) => json!({ "removed": was }),
                 Err(e) => error_text(&e),
             },
+            "link" => {
+                let path = json::string(o.get("path")).unwrap_or("");
+                let now = json::num(o.get("now")).unwrap_or(0.0);
+                match self.store.link(id, path, now) {
+                    Ok(()) => json!({ "linked": true }),
+                    Err(e) => error_text(&e),
+                }
+            }
+            "unlink" => match self.store.unlink(id) {
+                Ok(was) => json!({ "unlinked": was }),
+                Err(e) => error_text(&e),
+            },
+            "links" => {
+                let links: Vec<Value> =
+                    self.store.links().into_iter().map(|(id, path)| json!({ "id": id, "path": path })).collect();
+                json!({ "links": links })
+            }
             other => json!({ "error": format!("bad request: no call {other:?}") }),
         }
     }
@@ -258,6 +290,19 @@ mod tests {
         let refused = call(t, json!({"type":"save","value":value("material"),"now":1}));
         assert!(refused["refused"].as_str().is_some_and(|w| w.contains("built-in")) && refused.get("io").is_none());
         assert_eq!(call(t, json!({"type":"save","value":5}))["refused"], "not a theme package");
+        // Linked to a folder (Load Unpacked): listed with the flag, the links read back; unlinked; refused shapes.
+        let folder = tmp.path().join("my-theme").to_string_lossy().into_owned();
+        assert_eq!(call(t, json!({"type":"link","id":"mine","path":folder,"now":5})), json!({"linked":true}));
+        assert_eq!(call(t, json!({"type":"links"})), json!({"links":[{"id":"mine","path":folder}]}));
+        assert_eq!(call(t, json!({"type":"list"}))["list"][0]["linked"], true);
+        assert!(
+            call(t, json!({"type":"link","id":"mine","path":"rel"}))["refused"]
+                .as_str()
+                .is_some_and(|w| w.contains("full path"))
+        );
+        assert!(call(t, json!({"type":"link","id":"other","path":folder}))["refused"].is_string(), "not stored");
+        assert_eq!(call(t, json!({"type":"unlink","id":"mine"})), json!({"unlinked":true}));
+        assert_eq!(call(t, json!({"type":"list"}))["list"][0].get("linked"), None);
         assert_eq!(call(t, json!({"type":"remove","id":"mine"})), json!({"removed":true}));
         assert_eq!(call(t, json!({"type":"remove","id":"mine"})), json!({"removed":false}));
         assert!(call(t, json!({"type":"nope"}))["error"].is_string());

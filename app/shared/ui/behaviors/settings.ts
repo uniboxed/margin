@@ -10,7 +10,7 @@
 // and Margin's own shortcuts wait meanwhile (`ui.recording`).
 import { spaceThemesOn } from '../space-theme.ts';
 import type { Rt } from '../runtime.ts';
-import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.ts';
+import { saveField, saveThemeField, runField, removePrompt, storePrompt, shortcutTaken, wokeText, SHORTCUT_HELP, UNLINK_PREFIX, STORE_TRY } from '../settings-form.ts';
 import * as shortcuts from '../../../../extension/shared/shortcuts.ts';
 import { appKeyValue, isAppKey } from '../../../../extension/shared/app-keys.ts';
 
@@ -138,8 +138,17 @@ export function installSettings(rt: Rt) {
     el.blur();
   }, true);
 
+  // Settings' Themes drawn for the first time (its Refresh shown, the store not asked yet): Margin.app asked for its list.
+  let storeAsked = false;
+  function askStore() {
+    if (storeAsked || !rt.vm?.settingsForm?.fields.some((x) => x.id === 'storeRefresh')) return;
+    if (rt.host.themeStore?.state) return; // (told already)
+    storeAsked = true;
+    rt.host.perform?.('theme.store.open');
+  }
+
   return {
-    afterRender() { sync(); },
+    afterRender() { sync(); askStore(); },
     /** A button of the form (settings.run). */
     run(id: string) {
       const f = rt.vm?.settingsForm?.fields.find((x) => x.id === id && x.isButton);
@@ -148,7 +157,29 @@ export function installSettings(rt: Rt) {
         status('themeImport', 'Choose a theme’s folder or a .margintheme file…');
         return rt.host.perform?.('theme.import') === true;
       }
-      const prompt = f ? removePrompt(id, rt.host.userThemes ?? []) : null;
+      // Load Unpacked asks for the app's folder picker; Unlink stops following a linked theme's folder (it stays).
+      if (id === 'themeLink') {
+        status('themeLink', 'Choose a theme’s folder…');
+        return rt.host.perform?.('theme.link') === true;
+      }
+      if (id.startsWith(UNLINK_PREFIX) && f) {
+        const themeId = id.slice(UNLINK_PREFIX.length);
+        const done = rt.host.perform?.('theme.unlink', { id: themeId }) === true;
+        if (done) status('themeLink', 'Unlinked: the theme stays as it was last drawn, now a copy; its folder isn’t followed any more.');
+        return done;
+      }
+      // The theme store (Margin.app): its list asked again; a theme tried (downloaded, then previewed as an import is,
+      // Use Theme installing it) or updated the same way. Report and Share ask first, in Margin's prompt.
+      if (id === 'storeRefresh' && f) {
+        storeAsked = true;
+        status('storeRefresh', 'Loading the store’s themes…');
+        return rt.host.perform?.('theme.store.open') === true;
+      }
+      if (id.startsWith(STORE_TRY) && f) {
+        status(id, 'Downloading it…');
+        return rt.host.perform?.('theme.store.try', { id: id.slice(STORE_TRY.length) }) === true;
+      }
+      const prompt = f ? removePrompt(id, rt.host.userThemes ?? []) ?? storePrompt(id, { userThemes: rt.host.userThemes ?? [], themeStore: rt.host.themeStore }) : null;
       if (prompt) { rt.setUi({ prompt }); return true; }
       const request = runField(f);
       if (!request) return false;

@@ -111,6 +111,7 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   const options = [...PACKAGE_THEMES.map((id) => ({ id, label: (PACKAGE_THEME_NAMES as Record<string, string>)[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
   list.push(field({ id: 'theme', kind: 'choice', label: spaced ? 'Theme of this space' : 'Theme', help: spaced ? 'Each space has its own theme. New spaces start with the theme of the space they’re made from.' : '', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
   list.push(...importFields(f, status, imported));
+  list.push(...storeFields(f, status));
   // Edit Theme Color's ticks (M2.9 step 6, ui/picker/feedback.ts): haptics only where Margin.app plays them (`haptics`:
   // its own window, on the Mac), a click anywhere.
   const feedbackChoices = FEEDBACK_SETTINGS.filter((v) => v !== 'haptics' || f.haptics);
@@ -186,6 +187,8 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
  */
 export const SETTINGS_CATEGORIES = Object.freeze([
   { id: 'appearance', label: 'Appearance', help: 'The theme Margin is drawn with, and its own settings.' },
+  // Margin.app only (`features.themeStore`): view-model.ts leaves it out elsewhere.
+  { id: 'themes', label: 'Themes', help: 'Themes other people made: try one in your window before you install it.' },
   { id: 'tabs', label: 'Tabs', help: 'When tabs are archived or put to sleep.' },
   { id: 'browsing', label: 'Browsing', help: 'Searches, gestures and pages.' },
   { id: 'keyboard', label: 'Keyboard', help: 'Shortcuts for Margin’s sidebar, tabs and spaces.' },
@@ -199,6 +202,7 @@ const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), '
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */
 export function categoryOf(id: string): SettingsCategory {
+  if (STORE_FIELDS.has(id) || STORE_PREFIXES.some((p) => id.startsWith(p))) return 'themes';
   if (TABS_FIELDS.has(id)) return 'tabs';
   if (BROWSING_FIELDS.has(id)) return 'browsing';
   if (KEYBOARD_FIELDS.has(id)) return 'keyboard';
@@ -254,22 +258,139 @@ export const themeText = (text: unknown, max: number) => { const t = String(text
 /** Margin.app's index of imported themes, as Settings shows it. */
 export function userThemeList(list: unknown) {
   return (Array.isArray(list) ? list : []).filter((e) => e && typeof e.id === 'string' && USER_THEME_ID.test(e.id) && !PACKAGE_THEMES.includes(e.id)).slice(0, 50)
-    .map((e) => ({ id: e.id, name: themeText(e.name, 40), version: themeText(e.version, 16), author: themeText(e.author, 40) }));
+    .map((e) => ({ id: e.id, name: themeText(e.name, 40), version: themeText(e.version, 16), author: themeText(e.author, 40), linked: e.linked === true, store: !!e.store && typeof e.store === 'object' }));
 }
 
 const SETTING_PREFIX = 'themeSetting:';
 const REMOVE_PREFIX = 'removeTheme:';
+/** Unlink “Name” (a theme loaded unpacked: its folder followed no more). */
+export const UNLINK_PREFIX = 'unlinkTheme:';
 
-/** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
-function importFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; }[]) {
+/**
+ * Import Theme… and Load Unpacked… (Margin.app only: `features.importThemes`) and each imported theme with Remove (a
+ * linked one, loaded unpacked, with Unlink too), under the theme choice.
+ */
+function importFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; linked?: boolean; store?: boolean; }[]) {
   const out: SettingsField[] = [];
   if (!f.importThemes) return out;
-  out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
+  // What each one does, under its button as a line of its own (every theme draws an info line; a button's status is
+  // replaced by what happened): a copy taken once, or a folder followed while a theme is made.
+  out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? '', error: !!status.themeImport?.error }));
+  out.push(field({ id: 'themeImportAbout', kind: 'info', label: 'Adds a copy of a theme, from a .margintheme file or a folder, to use as it is. Later changes to the original don’t reach the copy: import it again to update it.' }));
+  out.push(field({ id: 'themeLink', kind: 'button', label: 'Load Unpacked…', status: status.themeLink?.text ?? '', error: !!status.themeLink?.error }));
+  out.push(field({ id: 'themeLinkAbout', kind: 'info', label: 'For making or editing a theme: links its folder instead of copying it. Each time you save a file in it, Margin checks the theme and draws it again. Unlink stops following the folder.' }));
+  const rows = storeRows(f.themeStore);
   for (const t of imported) {
-    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}` }));
+    // Where it came from: the theme store (an update said when its list has one), a folder followed, or a copy.
+    const newer = t.store ? rows.find((r) => r.id === t.id && r.state === 'update') : null;
+    const source = t.store ? ` · from the theme store${newer ? `, ${newer.version} is in Themes` : ''}` : t.linked ? ' · linked to its folder' : ' · a copy';
+    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}${source}` }));
+    if (t.linked) out.push(field({ id: `${UNLINK_PREFIX}${t.id}`, kind: 'button', label: `Unlink “${t.name || t.id}”` }));
+    // One of the person's own (a copy or linked: never one from the store) can be shared to the store.
+    if (f.themeStore && !t.store) out.push(field({ id: `${THEME_SHARE}${t.id}`, kind: 'button', label: `Share “${t.name || t.id}”…`, status: status[`${THEME_SHARE}${t.id}`]?.text ?? '', error: !!status[`${THEME_SHARE}${t.id}`]?.error }));
     out.push(field({ id: `${REMOVE_PREFIX}${t.id}`, kind: 'button', label: `Remove “${t.name || t.id}”` }));
   }
   return out;
+}
+
+// ---- the theme store (Margin.app: docs/THEME-STORE.md §4) -------------------------------------------------
+// Settings' Themes: the store's themes (Margin.app checked its list's signature and says what each is to this install:
+// `features.themeStore`, `{ state, rows, message }`), each with Try (it's downloaded and previewed like an import, and
+// Use Theme in the preview's bar installs it), Update, and Report. Every word is Margin's; a theme's name, author and
+// description are the store's, cleaned.
+export const STORE_TRY = 'storeTry:';
+export const STORE_REPORT = 'storeReport:';
+export const THEME_SHARE = 'themeShare:';
+const STORE_FIELDS = new Set(['storeGroup', 'storeAbout', 'storeRefresh']);
+const STORE_PREFIXES = ['storeTheme:', 'storeText:', STORE_TRY, STORE_REPORT];
+const STORE_MAX = 200;
+const STORE_STATES = ['install', 'installed', 'update', 'yours'];
+
+/** The store's rows as Margin.app sent them, each checked and its texts cleaned. */
+export function storeRows(store: unknown) {
+  const rows = (store as { rows?: unknown } | null)?.rows;
+  return (Array.isArray(rows) ? rows : []).filter((r) => r && typeof r.id === 'string' && USER_THEME_ID.test(r.id) && !PACKAGE_THEMES.includes(r.id) && STORE_STATES.includes(r.state)).slice(0, STORE_MAX)
+    .map((r) => ({
+      id: r.id as string, name: themeText(r.name, 60) || r.id, version: themeText(r.version, 16), author: themeText(r.author, 40), authorKey: /^[0-9a-f]{8}$/.test(r.authorKey) ? r.authorKey as string : '',
+      description: themeText(r.description, 280), state: r.state as string, installedVersion: themeText(r.installedVersion, 16),
+    }));
+}
+
+function storeFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>) {
+  const out: SettingsField[] = [];
+  if (!f.themeStore) return out;
+  const store = f.themeStore && typeof f.themeStore === 'object' ? f.themeStore : {};
+  const rows = storeRows(store);
+  out.push(field({ id: 'storeGroup', kind: 'group', label: 'The theme store' }));
+  out.push(field({ id: 'storeAbout', kind: 'info', label: 'Themes other people made. Try draws one in your window first, and Use Theme in its bar installs it. Margin checks each one as it checks a theme you import: a theme runs no code and loads nothing from outside itself.' }));
+  const said = store.state === 'ready' ? (rows.length ? `${rows.length} ${rows.length === 1 ? 'theme' : 'themes'}.` : 'No themes yet.')
+    : store.state === 'closed' ? 'The theme store isn’t open yet.'
+    : store.state === 'error' ? themeText(store.message, 300) || 'Margin couldn’t read the theme store’s list.'
+    : 'Loading the store’s themes…';
+  out.push(field({ id: 'storeRefresh', kind: 'button', label: 'Refresh', status: status.storeRefresh?.text ?? said, error: status.storeRefresh ? !!status.storeRefresh.error : store.state === 'error' }));
+  for (const r of rows) {
+    const by = `${r.author ? ` · by ${r.author}` : ''}${r.authorKey ? ` (${r.authorKey})` : ''}`;
+    const state = r.state === 'installed' ? ' · installed' : r.state === 'update' ? ` · ${r.installedVersion} installed` : r.state === 'yours' ? ' · you have a theme of your own with this id' : '';
+    out.push(field({ id: `storeTheme:${r.id}`, kind: 'info', label: `“${r.name}” ${r.version}${by}${state}` }));
+    if (r.description) out.push(field({ id: `storeText:${r.id}`, kind: 'info', label: r.description }));
+    const tryLabel = r.state === 'update' ? `Update “${r.name}” to ${r.version}` : r.state === 'install' ? `Try “${r.name}”` : null;
+    if (tryLabel) out.push(field({ id: `${STORE_TRY}${r.id}`, kind: 'button', label: tryLabel, status: status[`${STORE_TRY}${r.id}`]?.text ?? '', error: !!status[`${STORE_TRY}${r.id}`]?.error }));
+    if (r.state !== 'yours') out.push(field({ id: `${STORE_REPORT}${r.id}`, kind: 'button', label: `Report “${r.name}”…`, status: status[`${STORE_REPORT}${r.id}`]?.text ?? '', error: !!status[`${STORE_REPORT}${r.id}`]?.error }));
+  }
+  return out;
+}
+
+/** The reasons a report gives, as the store takes them (cloud/themes/src/store.ts REPORT_REASONS). */
+export const REPORT_REASONS = Object.freeze([
+  { id: 'broken', label: 'It’s broken' },
+  { id: 'offensive', label: 'It’s offensive' },
+  { id: 'impersonation', label: 'It pretends to be another' },
+  { id: 'copied', label: 'It’s copied' },
+]);
+
+/** Report “Name”… and Share “Name”… ask first, in Margin's prompt: why, or whether. */
+export function storePrompt(fieldId: string, features: Record<string, any>) {
+  if (fieldId.startsWith(STORE_REPORT)) {
+    const id = fieldId.slice(STORE_REPORT.length);
+    const r = storeRows(features?.themeStore).find((x) => x.id === id);
+    if (!r) return null;
+    return {
+      id: `report-theme:${id}`,
+      title: `Report “${r.name}”`,
+      text: 'What’s wrong with it? Reports from three different places hide a theme until it’s reviewed.',
+      actions: [...REPORT_REASONS.map((x) => ({ id: x.id, label: x.label })), { id: 'cancel', label: 'Cancel' }],
+    };
+  }
+  if (fieldId.startsWith(THEME_SHARE)) {
+    const id = fieldId.slice(THEME_SHARE.length);
+    const t = userThemeList(features?.userThemes).find((e) => e.id === id && !e.store);
+    if (!t) return null;
+    return {
+      id: `share-theme:${id}`,
+      title: `Share “${t.name || t.id}”`,
+      text: `Margin uploads it to the theme store as it is now, with its author${t.author ? `, “${t.author}”,` : ''} from its theme.json and an anonymous key of this Mac’s. It’s reviewed before others can find it.`,
+      actions: [{ id: 'share', label: 'Share', primary: true }, { id: 'cancel', label: 'Cancel' }],
+    };
+  }
+  return null;
+}
+
+/** A Settings line a theme store answer may go to: a store theme's Try or Report, one of the person's Share. */
+export const storeKey = (key: unknown): key is string => typeof key === 'string' && /^(storeTry|storeReport|themeShare):[a-z0-9][a-z0-9-]{0,40}$/.test(key);
+
+/** What a theme store request came to, in Margin's words: the store's own on a refusal (capped by the app). */
+export function storeWords(msg: { key?: string, ok?: boolean, message?: unknown, data?: any }): { text: string, error: boolean } {
+  const theirs = typeof msg.message === 'string' && msg.message.trim() ? msg.message.slice(0, 300) : null;
+  if (!msg.ok) return { text: theirs ?? 'The theme store didn’t answer: try again later.', error: true };
+  const d = msg.data && typeof msg.data === 'object' ? msg.data : {};
+  if (String(msg.key).startsWith('storeReport:')) return { text: d.again ? 'You reported it already.' : 'Reported. Thank you: the store’s review looks at it.', error: false };
+  if (String(msg.key).startsWith('themeShare:')) {
+    const version = typeof d.version === 'string' && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(d.version) ? ` ${d.version}` : '';
+    if (d.status === 'published') return { text: `Shared${version}: others can find it in Themes now.`, error: false };
+    if (d.status === 'rejected') return { text: `This version${version} was shared before, and review didn’t take it: raise its version in its theme.json to share it again.`, error: true };
+    return { text: `Shared${version}: it’s waiting for review before others can find it.`, error: false };
+  }
+  return { text: '', error: false };
 }
 
 /** The active theme's own settings (`theme`: the runtime's loaded theme: id, name, its theme.json settings), under "Settings of “Name”". */

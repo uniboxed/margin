@@ -1744,6 +1744,9 @@ final class LibraryWindowSource: MarginWindowSource {
     let session: HostedSession
     let profileSource: DataSetWindowSource
     var onChange: (() -> Void)?
+    // A theme imported or linked (the core's `theme` route, docs/THEME-STORE.md §1): the shell's (ShellThemes.swift
+    // `themeAsked`), with the window that asked.
+    var onTheme: ((String, JSONObject, Int?) -> Void)?
 
     init(library: Library, session: HostedSession, profileSource: DataSetWindowSource) {
         self.library = library
@@ -1777,6 +1780,9 @@ final class LibraryWindowSource: MarginWindowSource {
             return answer(library.perform(reply["action"] as? String ?? type, reply["payload"] as? JSONObject ?? [:]))
         case "settings":
             return profileSource.perform(reply["kind"] as? String ?? type, reply["payload"] as? JSONObject ?? [:])
+        case "theme":
+            onTheme?(reply["name"] as? String ?? type, reply["payload"] as? JSONObject ?? [:], int(reply["window"]))
+            return nil
         default:
             return nil
         }

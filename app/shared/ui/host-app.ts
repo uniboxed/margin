@@ -67,6 +67,8 @@ import { isLauncherPage } from '../../../extension/shared/view.ts';
 import { appsOf, isBundleId } from '../../../extension/shared/apps.ts';
 import { capabilities } from '../../../extension/shared/capabilities.ts';
 import { deviceOf } from './picker/feedback.ts';
+import { USER_THEME_ID } from './themes/packages.ts';
+import { REPORT_REASONS } from './settings-form.ts';
 import type { FeedbackDevice } from './picker/feedback.ts';
 
 /**
@@ -428,6 +430,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: docs/PROTOCOL.md "User themes").
    (platform.features as any).importThemes = true;
    (platform.features as any).userThemes = Array.isArray(hello?.themes) ? hello.themes : [];
+  // The theme store (docs/THEME-STORE.md §4): Settings' Themes, in Margin.app's own window (its app asks the store):
+  // what it was last told (`themeStore`), `{}` until then (Settings asks for it when Themes is drawn).
+  (platform.features as any).themeStore = appWindow ? {} : false;
   // A theme per space (2026-11-20): Margin.app's own window draws each space's (its app picks the package by the space
   // the window shows); a browser's overlay draws its profile's, so it doesn't offer them (ui/space-theme.ts).
   (platform.features as any).spaceThemes = appWindow;
@@ -578,6 +583,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get windows() { return windows; },
     /** Margin.app's index of imported themes. */
     get userThemes() { return (platform.features as any).userThemes; },
+    get themeStore() { return (platform.features as any).themeStore; },
     perform(name: string, arg: any) {
       switch (name) {
         case 'navigate': {
@@ -618,12 +624,34 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return true;
         }
         // Themes (app/platforms/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
+        // Load Unpacked (docs/THEME-STORE.md §1): the folder picker; a linked theme's folder followed no more. A save
+        // says whether it links the folder just picked (`linked`) or stores a linked folder's theme again (`link`).
         case 'theme.import':
+        case 'theme.link':
           void post('perform', { name, arg: null }).catch(() => {});
           return true;
-        case 'theme.save':
+        case 'theme.unlink':
+          if (typeof arg?.id !== 'string' || !USER_THEME_ID.test(arg.id)) return false;
+          void post('perform', { name, arg: { id: arg.id } }).catch(() => {});
+          return true;
+        case 'theme.save': {
           if (!arg?.value || typeof arg.value !== 'object') return false;
-          void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
+          const link = typeof arg.link === 'string' && USER_THEME_ID.test(arg.link) ? arg.link : null;
+          // (`store`: a theme from the theme store, installed as the version and package the app downloaded.)
+          void post('perform', { name, arg: { value: arg.value, ...(link ? { link } : arg.linked === true ? { linked: true } : arg.store === true ? { store: true } : {}) } }).catch(() => {});
+          return true;
+        }
+        // The theme store (ShellThemes.swift, ShellThemeStore.swift): its list; a theme tried (downloaded and previewed),
+        // reported, or one of the person's shared. Only a theme's id ever goes: where its package is and its SHA-256 are
+        // the store's list's, which the app checked.
+        case 'theme.store.open':
+          if (!appWindow) return false;
+          void post('perform', { name, arg: null }).catch(() => {});
+          return true;
+        case 'theme.store.try':
+        case 'theme.share':
+          if (!appWindow || typeof arg?.id !== 'string' || !USER_THEME_ID.test(arg.id)) return false;
+          void post('perform', { name, arg: { id: arg.id } }).catch(() => {});
           return true;
         // The start screen's choices while Margin's start is held up (HostedSession.swift startupRetry, startupSkip).
         case 'startup.retry':
@@ -665,6 +693,17 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           // The runtime closes it. Settings' Remove asked first (ui/settings-form.ts removePrompt): removed only on Remove.
           const m = /^remove-theme:([a-z0-9][a-z0-9-]{0,40})$/.exec(String(arg?.id ?? ''));
           if (m && arg?.action === 'remove') void post('perform', { name: 'theme.remove', arg: { id: m[1] } }).catch(() => {});
+          // Report “Name”… (its reason) and Share “Name”… (ui/settings-form.ts storePrompt): sent only on a reason, or Share.
+          const report = /^report-theme:([a-z0-9][a-z0-9-]{0,40})$/.exec(String(arg?.id ?? ''));
+          if (report && appWindow && REPORT_REASONS.some((r) => r.id === arg?.action)) {
+            onMessage({ type: 'themeStoreBusy', key: `storeReport:${report[1]}`, text: 'Reporting it…' });
+            void post('perform', { name: 'theme.store.report', arg: { id: report[1], reason: arg.action } }).catch(() => {});
+          }
+          const share = /^share-theme:([a-z0-9][a-z0-9-]{0,40})$/.exec(String(arg?.id ?? ''));
+          if (share && appWindow && arg?.action === 'share') {
+            onMessage({ type: 'themeStoreBusy', key: `themeShare:${share[1]}`, text: 'Sharing it…' });
+            void post('perform', { name: 'theme.share', arg: { id: share[1] } }).catch(() => {});
+          }
           return true;
         }
         default:
@@ -785,6 +824,19 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
            (platform.features as any).userThemes = msg.list;
           rebuild();
           return emit();
+        case 'themeStore': {
+          // The theme store as Settings' Themes shows it (ShellThemes.swift `theme.store.open`): its themes, each with
+          // what it is to this install; or why there are none. The overlay hears it too (Refresh's line).
+          if (!appWindow || !['ready', 'closed', 'error'].includes(msg.state)) return;
+          (platform.features as any).themeStore = {
+            state: msg.state,
+            rows: Array.isArray(msg.rows) ? msg.rows.slice(0, 500) : [],
+            message: typeof msg.message === 'string' ? msg.message.slice(0, 300) : '',
+          };
+          rebuild();
+          emit();
+          return onMessage(msg);
+        }
         case 'windows': {
           if (!Array.isArray(msg.list)) return;
           const page = pageKey();

@@ -51,7 +51,7 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'userThemes']);
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'themeStore', 'userThemes']);
   assert.equal(features.haptics, false, 'a browser\'s overlay plays no haptics (Edit Theme Color\'s ticks)');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).haptics, true, 'Margin.app\'s own window on the Mac does');
   assert.equal(features.spaceThemes, false, 'a browser\'s overlay draws its profile\'s theme');
@@ -775,8 +775,19 @@ test('the app host and themes: the index from the hello and `themes`; Import, a 
   host.perform('prompt', { id: 'remove-theme:mine', action: 'cancel' });
   host.perform('prompt', { id: 'remove-theme:../x', action: 'remove' });
   host.perform('prompt', { id: 'remove-theme:mine', action: 'remove' });
+  // Load Unpacked (docs/THEME-STORE.md §1): the folder picker; a save linking the folder just picked, or storing a linked
+  // folder's theme again (only under a theme's id); Unlink with a theme's id only. Never a path from the page.
+  assert.equal(host.perform('theme.link', { path: '/etc' }), true);
+  assert.equal(host.perform('theme.save', { value: { format: 2, id: 'mine' }, linked: true, path: '/etc' }), true);
+  assert.equal(host.perform('theme.save', { value: { format: 2, id: 'mine' }, link: 'mine' }), true);
+  assert.equal(host.perform('theme.save', { value: { format: 2, id: 'mine' }, link: '../evil' }), true, 'a bad link: a plain save');
+  assert.equal(host.perform('theme.unlink', { id: 'mine' }), true);
+  assert.equal(host.perform('theme.unlink', { id: '../x' }), false);
+  assert.equal(host.perform('theme.unlink', {}), false);
   await new Promise((r) => setTimeout(r, 0));
-  assert.deepEqual(performed(), [['theme.import', null], ['theme.save', { value: { format: 2, id: 'mine' } }], ['theme.remove', { id: 'mine' }]]);
+  assert.deepEqual(performed(), [['theme.import', null], ['theme.save', { value: { format: 2, id: 'mine' } }], ['theme.remove', { id: 'mine' }],
+    ['theme.link', null], ['theme.save', { value: { format: 2, id: 'mine' }, linked: true }], ['theme.save', { value: { format: 2, id: 'mine' }, link: 'mine' }],
+    ['theme.save', { value: { format: 2, id: 'mine' } }], ['theme.unlink', { id: 'mine' }]]);
   host.destroy();
 });
 

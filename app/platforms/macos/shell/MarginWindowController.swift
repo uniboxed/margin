@@ -1698,6 +1698,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
+    // A stored theme changed under the same id (a linked folder's theme stored again, docs/THEME-STORE.md §1): drawn
+    // again if it's the one this window draws.
+    func themeStored() {
+        guard asked, let owner, let theme = owner.theme(id, owner.source.spaceTheme(window: id)), theme != themeSent else { return }
+        themeSent = theme
+        push(#"{"type":"theme","theme":"# + theme + "}")
+    }
+
     @discardableResult func ask(_ type: String, _ payload: JSONObject) -> JSONObject? {
         var payload = payload
         if payload["windowId"] == nil { payload["windowId"] = id }
@@ -1953,6 +1961,16 @@ final class MarginWindows {
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     /// The profiles' names told again to every window's page (they changed: MarginWindows.profiles).
     func tellProfiles() { for c in controllers { c.tellProfiles() } }
+    /// The imported themes' index told again to every window's page (one stored, linked, unlinked or removed: Settings
+    /// lists them).
+    func tellThemes() {
+        let list = themes()
+        for c in controllers where c.isReady { c.push(#"{"type":"themes","list":"# + list + "}") }
+    }
+    /// A message for every ready window's page (the theme store's rows).
+    func tell(_ json: String) { for c in controllers where c.isReady { c.push(json) } }
+    /// A stored theme changed under the same id: each window drawing it draws it again.
+    func themeStored() { for c in controllers { c.themeStored() } }
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?
     private var nextId = 1

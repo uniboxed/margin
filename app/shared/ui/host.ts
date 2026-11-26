@@ -115,6 +115,8 @@ export type Host = {
   perform?(name: string, arg?: any): boolean,
   // Margin.app's imported themes (ui/host-app.ts), for Settings' Remove prompt.
   readonly userThemes?: any[],
+  // Margin.app's theme store as Settings' Themes shows it (`{ state, rows, message }`), for its Report prompt.
+  readonly themeStore?: any,
 };
 
 // ---------------------------------------------------------------------------

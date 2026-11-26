@@ -135,11 +135,17 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
 
 test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Browsing, Keyboard; every field in one, in the form\'s order', () => {
   assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.id), [...SETTINGS_CATEGORY_IDS], 'the action\'s ids (ui/actions.ts) are the categories\'');
-  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Tabs', 'Browsing', 'Keyboard']);
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Themes', 'Tabs', 'Browsing', 'Keyboard'], 'Themes (the theme store) only where Margin.app offers it: the view model leaves it out elsewhere');
   const theme = { id: 'arcadia', name: 'Arcadia', settings: { sidebarWidth: { type: 'number', label: 'Sidebar width', default: 260, min: 160, max: 500 } } };
   const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
   const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
-  assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'pickerFeedback', 'themeSettings', 'themeSetting:sidebarWidth']);
+  assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'themeImportAbout', 'themeLink', 'themeLinkAbout', 'userTheme:mine', 'removeTheme:mine', 'pickerFeedback', 'themeSettings', 'themeSetting:sidebarWidth']);
+  // A theme loaded unpacked (docs/THEME-STORE.md §1): said so, with Unlink before Remove.
+  const linked = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0', linked: true }] }, { theme });
+  const appearance = fieldsIn(linked, 'appearance');
+  assert.deepEqual(appearance.map((f) => f.id).filter((id) => /Theme|theme(Import|Link)/.test(id)), ['themeImport', 'themeImportAbout', 'themeLink', 'themeLinkAbout', 'userTheme:mine', 'unlinkTheme:mine', 'removeTheme:mine']);
+  assert.match(appearance.find((f) => f.id === 'userTheme:mine')!.label, / · linked to its folder$/);
+  assert.equal(appearance.find((f) => f.id === 'unlinkTheme:mine')!.label, 'Unlink “Mine”');
   assert.deepEqual(ids('tabs'), ['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
   assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
   assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'appShortcuts', 'focusAddress', 'copyUrl', 'togglePin', 'reopenArchived', 'littleArc', 'addSplit', 'spaceDigits', 'itemDigits', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
