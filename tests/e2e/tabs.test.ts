@@ -7,7 +7,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { sidebar, palette, drag, tabRow } from './harness/ui.ts';
+import { sidebar, palette, drag, tabRow, settled } from './harness/ui.ts';
 import type { Page } from 'playwright';
 import type { ArchiveEntry } from '../../types/margin.d.ts';
 
@@ -92,6 +92,13 @@ test('the New Tab row opens the palette, for a new tab', async (t) => {
 });
 
 test('dragging a row reorders the tabs, in the sidebar and the browser', async (t) => {
+  // (What the test before left under way landed first: every request answered (its palette's blank tab closed as it
+  // ended), that tab's row gone, the overlay still. A close landing mid-drag redrew the list and the drag was lost:
+  // 3 runs in 4, 2026-11-26, its closeTab ~240 ms before the press.)
+  await m.until(async () => m.shell.requests.every((r) => r.reply !== null), { what: 'every request answered' });
+  const closed = new Set(m.shell.requests.filter((r) => r.type === 'closeTab').map((r) => r.payload.tabId));
+  await m.until(async () => !(await rows()).some((r) => closed.has(r.id)), { what: 'the closed tabs\' rows gone' });
+  await settled(ui);
   const before = (await rows()).map((r) => r.id);
   const last = before.at(-1)!;
   const first = before[0];
