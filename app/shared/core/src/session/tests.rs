@@ -216,6 +216,8 @@ struct World {
     no_idle_place: RefCell<Vec<i64>>,
     out_of_sight: Cell<bool>,
     inactive: Cell<bool>,
+    // (The running Safari: restart.rs's question.)
+    safari_run: Cell<Option<restart::SafariRun>>,
 }
 
 impl World {
@@ -391,6 +393,10 @@ impl Ports for Reentrant {
     fn unopenable(&self, p: &str) -> bool {
         self.reenter("unopenable");
         self.0.unopenable.borrow().iter().any(|w| w == p)
+    }
+    fn safari_run(&self) -> Option<restart::SafariRun> {
+        self.reenter("safariRun");
+        self.0.safari_run.get()
     }
     fn log(&self, warn: bool, text: &str) {
         self.reenter("log");
@@ -880,5 +886,7 @@ mod routing_tests;
 
 #[path = "layouts_tests.rs"]
 mod layouts_tests;
+#[path = "restart_tests.rs"]
+mod restart_tests;
 #[path = "start_tests.rs"]
 mod start_tests;

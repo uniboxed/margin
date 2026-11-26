@@ -68,6 +68,9 @@ const notices = createAppNotices({
     if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true });
     // Margin.app's picker on Safari's folder (app/engines/webkit/safari/SafariFolderGrant.swift).
     if (kind === 'safari-profile' && action === 'allow') void host?.send('allowSafariProfiles', {});
+    // Margin.app's question about a Safari the person opened (margin-core session/restart.rs): every answer goes back,
+    // Not now too (its time out, closed: `expires`), so the show waiting on it goes on.
+    if (kind === 'safari-restart') void host?.send('safariRestart', { action: action === 'restart' ? 'restart' : 'later' });
   },
 });
 // How far a gesture has gone: eased every frame into --gesture-live (ui/gesture-motion.ts), the UI not drawn again.
@@ -993,6 +996,8 @@ function onMessage(msg: any) {
     case 'hostNote':
       if (msg.kind === 'route-simpler' || msg.kind === 'app-asking') notices.say(msg.kind, { app: msg.app });
       if (msg.kind === 'safari-profile') notices.say(msg.kind, { space: msg.space });
+      // (Margin.app's question about a Safari the person opened: its answer comes back through `local`.)
+      if (msg.kind === 'safari-restart') notices.say(msg.kind);
       return;
     case 'push':
       switch (msg.msg?.type) {

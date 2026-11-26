@@ -137,6 +137,8 @@ final class LateHostEngine: HostedEngine {
     // answer. 2026-11-21: `showsAlone` true with a split up (an item of main's profile only a tab switch), and
     // `liveFollowers` one window for a divider's drag of two.)
     func showsAlone(_ id: HostID) -> Bool { resolve()?.showsAlone(id) ?? true }
+    func safariRun() -> HostSafariRun? { resolve()?.safariRun() }
+    func restartSafari(pid: pid_t) async -> HostSafariRestart { await resolve()?.restartSafari(pid: pid) ?? .notRestarted("the host engine is off") }
     func liveFollowers() -> (follow: Int, visible: Int) { resolve()?.liveFollowers() ?? (0, 0) }
     var knownAppMinimums: [String: CGSize] { resolve()?.knownAppMinimums ?? [:] }
     func toolbarsRest(_ ids: [HostID]) async -> String? { await resolve()?.toolbarsRest(ids) }

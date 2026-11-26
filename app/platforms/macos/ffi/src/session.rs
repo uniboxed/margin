@@ -490,6 +490,13 @@ impl Ports for SwiftPorts {
         self.ask(json!({ "port": "wokenByMenu", "profile": profile })).get("woken").and_then(Value::as_bool)
             == Some(true)
     }
+    fn safari_run(&self) -> Option<margin_core::session::restart::SafariRun> {
+        // (Rare: read once a Safari show, by its JSON port.)
+        let a = self.ask(json!({ "port": "safariRun" }));
+        let pid = a.get("pid").and_then(Value::as_i64)?;
+        let flag = |k: &str| a.get(k).and_then(Value::as_bool) == Some(true);
+        Some(margin_core::session::restart::SafariRun { pid, hosting: flag("hosting"), hosted: flag("hosted") })
+    }
     fn unopenable(&self, profile: &str) -> bool {
         if let Some(c) = self.call {
             return self.number(c, PortKind::Unopenable, None, false, [Some(profile), None, None]) == 1;

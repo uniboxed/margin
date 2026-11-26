@@ -193,6 +193,11 @@ impl Core {
                 self.startup_retry();
                 return none();
             }
+            // (The safari-restart notice's answer, its button's or its going unanswered: restart.rs.)
+            "safariRestart" => {
+                self.safari_restart_answer(json::string(payload.get("action")).unwrap_or(""));
+                return ok();
+            }
             "startup.skip" => {
                 self.startup_skip();
                 return none();
