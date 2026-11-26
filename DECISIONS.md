@@ -11272,3 +11272,24 @@ Try draws a theme live under Import's preview bar.
   registered, review approving through its page, the signed list, Try, Install, Update, and three refusals).
 - **Not yet**: search, tags and sections (when there are enough themes), screenshots, the store's address (after the
   deploy), the Windows shell's side (its rules are in margin-core already).
+
+## Margin's quit, bounded (`fix/quit-bound`, 2026-11-26)
+
+Tirth: after opening and closing the Library over a Safari page, Margin's ⌘Q (Quit in its prompt) never finished;
+Margin was force quit 17 s later. The log (01:08:34): "Margin quits (quit)", AppKit's `applicationShouldTerminate:
+NSTerminateLater`, then nothing of the quit: no "closed (Margin quits)", no "host: quit: everything given back".
+Safari quit at 01:08:38 (a second ⌘Q, the quit guard let go) was heard as "quit, not by Margin", so no engine
+operation was under way then: `quitAll` never ran its body, or waited on a turn that never came. Not reproduced (two
+tries with the same build, the same Library churn: both quit in about a second), so its cause isn't known; what is
+known is that nothing bounded the quit.
+- **Fixed:** `quitAll` waits for the operation before it `quitHeldWait` (8 s; the longest operation seen is a placing
+  by the slow path, 5.3 s) at most, then gives everything back without it, said with what held it (`serial`'s
+  `heldAtMost`). `busy` is the set of operations under way (two only then), each named by its caller (`serial`'s
+  `what`, `#function`); the quit's first line says how many hosts it gives back and what's under way. And the shell
+  quits anyway `hostQuitAtMost` (20 s) after the quit began, whatever is left in the marker for the next launch's
+  recovery (a force quit leaves the same, and says nothing). Its timer is the main queue's, as the link's close is:
+  quitting, AppKit runs only its modal panel mode, where a Timer never fires.
+- **Next time:** the log names the operation that held the quit, or says no operation was under way and its turn
+  never came.
+- **Tests:** host-tests.swift (an open whose copy never answers: the quit gives everything back `quitHeldWait` later,
+  the log names it; the open answered afterwards shows nothing).

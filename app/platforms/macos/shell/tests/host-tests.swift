@@ -2293,6 +2293,36 @@ func hostTests() {
         check("host: … closed once its copy answers, its entry gone", e.leftSafariWindows.isEmpty && !copy.isOpen(7914))
     }
     do {
+        // An operation that never ends (a copy that never answers its window's ask) holds Margin's quit
+        // `quitHeldWait` at most: then everything is given back without it (2026-11-26: the quit never started, Margin
+        // was force quit after 17 s).
+        let (w, e, _) = world()
+        var lines: [String] = []
+        Diagnostics.echo = { lines.append($0) }
+        defer { Diagnostics.echo = nil }
+        _ = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        _ = open(e, textEdit)
+        final class Stalled { var asks: [CheckedContinuation<Void, Never>] = [] }
+        let stalled = Stalled()
+        e.requestSafariWindow = { _ in
+            await withCheckedContinuation { stalled.asks.append($0) }
+            return nil
+        }
+        let held = Task { await e.open(app: .safariWindow("Work"), in: placed(page), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        _ = hostRun { while stalled.asks.isEmpty { await Task.yield() } }
+        check("host: an open whose copy never answers: under way, named", e.busy && stalled.asks.count == 1 && (e.underWayLine ?? "").hasPrefix("open("), "\(String(describing: e.underWayLine))")
+        let t0 = w.clock
+        let quit = hostRun { await e.quitAll(); return true }
+        check("host: … Margin's quit isn't held by it longer than quitHeldWait: everything given back", quit == true && w.clock - t0 >= e.options.quitHeldWait
+              && w.clock - t0 < e.options.quitHeldWait + 1 && w.running(bundleId: "com.apple.TextEdit").isEmpty && clean(w), "\(w.clock - t0)")
+        check("host: … the log says what it waited for, and that it went on without it", lines.contains { $0.contains("host: quit: 1 host to give back (open(") && $0.contains("waited for, 8 s at most") }
+              && lines.contains { $0.contains("quitAll(): the operation before it (open(") && $0.contains("not over within 8 s: gone on without it") }
+              && lines.contains { $0.contains("host: quit: everything given back") }, "\(lines.filter { $0.contains("quit") })")
+        for k in stalled.asks { k.resume() }
+        _ = hostRun { await held.value }
+        check("host: … the held open, answered after the quit, shows nothing", e.shown == nil && !e.busy, "\(String(describing: e.shown))")
+    }
+    do {
         // Margin crashed while Margin's Safari window was shown: the next launch has it made normal and closed by its copy.
         let (w, e, markerURL) = world()
         let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)

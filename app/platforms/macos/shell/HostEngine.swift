@@ -168,6 +168,9 @@ final class HostEngine {
         // 5 s watchdog: seen out 6 ms after a 5 s wait). A row's close and Margin's quit never wait for an app's exit
         // (`close`, `quitAll`): a row's app still running this long after it was asked didn't quit (said, Margin's again).
         var quitWait = 6.0
+        // Margin's quit waits this long at most for the operation under way (the longest seen: a placing by the slow path,
+        // 5.3 s), then gives everything back without it (2026-11-26: the quit never started, Margin was force quit).
+        var quitHeldWait = 8.0
         var closeWait = 0.6 // a window closed by its close button before its app's quit: gone by then (seen: 70-290 ms)
         var closePressWait = 0.3 // ...its press retried this long when the window was just brought to the current Space (listed late)
         var frameAskWait = 0.3 // a frame given back: asked again this long while Accessibility doesn't take it (listed late)
@@ -456,7 +459,8 @@ final class HostEngine {
     var pageRect: CGRect { placement.page }
     private(set) var marginWindow = 0
     private(set) var marginSpace: UInt64 = 0
-    private(set) var busy = false
+    // An operation under way (`serial`'s; two only once Margin's quit stopped waiting for one held: `quitHeldWait`).
+    var busy: Bool { !underWay.isEmpty }
     private(set) var quitting = false // Margin quits: nothing is shown or activated any more
     private var quitAsked: Set<pid_t> = [] // apps asked to quit during Margin's quit
     // Apps Margin started, asked to quit by their row's close (Margin keeps running) and not gone yet: no longer
@@ -529,6 +533,11 @@ final class HostEngine {
     private var orderChecks = 0 // switches whose windows' order was read (switchIn): a run's first few only
 
     private var tail: Task<Void, Never>?
+    // The operations under way, by their turn: the caller's name (`serial`'s `what`) and since when.
+    private var underWay: [Int: (what: String, since: Double)] = [:]
+    private var turns = 0
+    // The oldest of them, as the log says it (`quitAll()`, under way 1200 ms); nil: none.
+    var underWayLine: String? { underWay.values.min { $0.since < $1.since }.map { "\($0.what), under way \(ms(since: $0.since)) ms" } }
     private var jumps = 0
     private var leftTried = -Double.infinity // the last try at closing leftSafariWindows
     private(set) var leftTrying = false // the poll's try at them under way (outside the queue)
@@ -1030,7 +1039,8 @@ final class HostEngine {
         releaseActivesNow(why: "Margin quits")
         quitting = true
         if liveOn { dragging(false) }
-        await serial {
+        Diagnostics.note("host: quit: \(hosts.count) host\(hosts.count == 1 ? "" : "s") to give back" + (underWayLine.map { " (\($0): waited for, \(Int(options.quitHeldWait)) s at most)" } ?? ""))
+        await serial(heldAtMost: options.quitHeldWait) {
             let started = self.sys.now()
             self.quitAsked = []
             self.leftWindows = []
@@ -2341,11 +2351,25 @@ final class HostEngine {
 
     // ---- one at a time ----
 
-    private func serial<T: Sendable>(planned: Bool = false, _ body: @escaping () async -> T) async -> T {
+    // `heldAtMost` (Margin's quit only): the operation before it waited for that long at most, then this one goes on
+    // without it, said with what held it; nil: waited for, however long.
+    private func serial<T: Sendable>(planned: Bool = false, heldAtMost: Double? = nil, what: String = #function, _ body: @escaping () async -> T) async -> T {
         let previous = tail
         let task = Task { () -> T in
-            _ = await previous?.value
-            self.busy = true
+            if let previous {
+                if let heldAtMost {
+                    let ahead = TurnOver()
+                    Task { await previous.value; ahead.over = true }
+                    if await !self.wait(heldAtMost, { ahead.over }) {
+                        Diagnostics.warn("host: \(what): the operation before it (\(self.underWayLine ?? "none under way, its turn never came")) not over within \(Int(heldAtMost)) s: gone on without it")
+                    }
+                } else {
+                    _ = await previous.value
+                }
+            }
+            self.turns += 1
+            let turn = self.turns
+            self.underWay[turn] = (what, self.sys.now())
             self.ranSinceLook = true
             // (A person's operation: what it changes is Margin's plan; the guard's counts start again.)
             if planned { self.core.person(now: self.sys.now()) }
@@ -2356,7 +2380,7 @@ final class HostEngine {
             self.activity()
             self.parkWoken() // (a window opened to wake a profile during it: out of sight before anything else is seen)
             self.observer.sync(self.observed()) // (an app hosted or given back: followed, or not, from now)
-            self.busy = false
+            self.underWay[turn] = nil
             return value
         }
         tail = Task { _ = await task.value }
@@ -6508,3 +6532,6 @@ final class HostEngine {
         }
     }
 }
+
+// Whether the operation before one is over (`serial`'s `heldAtMost`: set by a task of its own, read by the wait).
+private final class TurnOver { var over = false }
