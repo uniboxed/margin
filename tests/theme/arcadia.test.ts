@@ -13,6 +13,9 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
 import { pageLoaderChecks, rgba, near, decodePng } from './page-card.ts';
+import { lookOf, appearanceOf } from '../../app/shared/ui/background-look.ts';
+import { backgroundOf } from '../../extension/state/model.ts';
+import type { SpaceBackground } from '../../types/margin';
 import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 import { hitRects } from '../../app/shared/ui/host-app.ts';
@@ -1205,7 +1208,13 @@ for (const [engineName, engine] of ENGINES) {
           const cut = () => { const m = /Z\s*M\s*([\d.]+)/.exec(T.rtBackground().clip as string); return m ? Number(m[1]) : -1; };
           const tick = () => {
             const card = document.querySelector('.card-edge')!.getBoundingClientRect(), panel = document.querySelector('.library')!.getBoundingClientRect();
-            out.push([Math.round(card.left), Math.round(panel.right), Math.round(cut()), Math.round(card.width)]);
+            // (The panel's edge as seen: into Spaces it's its whole width from the first frame, cut back by its
+            // clip-path to where the slide has come (Library 417 + the rest × the slide's progress).)
+            const root = document.querySelector('.arcadia') as HTMLElement;
+            const into = root.getAttribute('m-library-wide-slide') === 'in';
+            const q = Number(root.style.getPropertyValue('--m-library-wide-progress') || 0);
+            const seen = into ? panel.left + 417 + (panel.width - 417) * q : panel.right;
+            out.push([Math.round(card.left), Math.round(seen), Math.round(cut()), Math.round(card.width), into ? Math.round(panel.width) : -1]);
             if (out.length < 50) requestAnimationFrame(tick); else done(out);
           };
           (window as any).__told = T.rtResizing().length;
@@ -1215,10 +1224,19 @@ for (const [engineName, engine] of ENGINES) {
         for (const [section, from, to] of [['spaces', 417, vw - 56], ['archive', vw - 56, 417]] as const) {
           const frames = await slide(section);
           const lefts = frames.map(([l]) => l);
+          // (Its first frame where it was: the section's own first draw comes before any move, so a hosted window never
+          // runs ahead of a panel still drawing the old section.)
+          assert.equal(lefts[0], from, `${section}: the first frame where it was (${lefts.slice(0, 4).join(' ')})`);
           assert.ok(lefts.some((l) => l > Math.min(from, to) + 5 && l < Math.max(from, to) - 5), `${section}: slid through the frames between (${lefts.join(' ')})`);
           assert.ok(lefts.every((l, i) => i === 0 || (to > from ? l >= lefts[i - 1] - 1 : l <= lefts[i - 1] + 1)), `${section}: one way (${lefts.join(' ')})`);
           assert.equal(lefts.at(-1), to, `${section}: lands at ${to}`);
           assert.deepEqual(frames.filter(([l, p]) => Math.abs(l - p) > 1), [], `${section}: the panel's edge where the page's is, every frame`);
+          // (Into Spaces, the panel its whole width all the way, so every card is drawn before it's revealed.)
+          if (section === 'spaces') {
+            const sliding = frames.filter((f) => f[4] !== -1);
+            assert.ok(sliding.length > 2, `into Spaces: frames of the slide (${sliding.length})`);
+            assert.deepEqual([...new Set(sliding.map((f) => f[4]))], [vw - 56], 'into Spaces: the panel its whole width while it slides');
+          }
           assert.deepEqual(frames.filter(([l, , c]) => Math.abs(c - (l + 6)) > 1), [], `${section}: the background cut where the card is, every frame`);
           assert.ok(frames.every(([, , , w]) => w === frames[0][3]), `${section}: the page's width kept`);
           const told = await ev(() => T.rtResizing().slice((window as any).__told).map(([on]) => on));
@@ -1232,10 +1250,60 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(await ev(() => document.querySelector('.arcadia')!.hasAttribute('m-library-wide-slide')), false);
         await ev(() => T.rtDispatch('library.section', 'archive'));
         await page.emulateMedia({ reducedMotion: 'no-preference' });
-        await ev(() => T.rtDispatch('library.close'));
-        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        // Two slides at once (a trackpad swipe back out of the Library begun as the slide out of Spaces starts): the host
+        // told once that the page moves, and once that it's over, as the last of them ends (each told its own before:
+        // the first over turned the live follow off while the other still moved the page).
+        await ev(() => T.rtDispatch('library.section', 'spaces'));
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return r.classList.contains('library-wide') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 2000 });
+        await ev(() => { (window as any).__told = T.rtResizing().length; T.rtDispatch('library.section', 'archive'); });
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.library .lib-main', Array(24).fill(20)));
+        const overlapped = await ev(() => document.querySelector('.arcadia')!.hasAttribute('m-library-swipe'));
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => { const r = document.querySelector('.arcadia')!; return !(window as any).__rt.runtime.vm.library.open && !r.hasAttribute('m-library-swipe') && !r.hasAttribute('m-library-wide-slide'); }, null, { timeout: 3000 });
+        assert.equal(overlapped, true, 'the swipe under way');
+        const both = await ev(() => T.rtResizing().slice((window as any).__told).map(([on]) => on));
+        assert.deepEqual(both, [true, false], `two slides at once: told once, over once as the last ends (${both.join(' ')})`);
         await ev(() => T.rtChange('setBackground', 'personal', null));
         await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
+      });
+
+      await t.test('the Library\'s Spaces as Arc\'s: each card on its own space\'s background (Margin draws it), its text in that space\'s colours, Arc\'s shadow; a space with none the theme\'s colour', async () => {
+        await fresh();
+        const ids = await ev(() => (window as any).__rt.mock.state.spaces.map((sp: any) => sp.id) as string[]);
+        const DARK = { colors: ['#1b2a4a', '#3a2b5c'], intensity: 0.8, texture: 'grain', amount: 0.3, appearance: 'dark' };
+        await ev(([id, b]) => T.rtChange('setBackground', id, b), [ids[1], DARK] as const);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await ev(() => T.rtDispatch('library.section', 'spaces'));
+        await page.waitForFunction(() => document.querySelectorAll('.lib-card').length > 1, null, { timeout: 3000 });
+        await page.waitForTimeout(100);
+        const cards = await ev(() => [...document.querySelectorAll<HTMLElement>('.lib-card')].map((c) => {
+          const r = c.getBoundingClientRect();
+          return { id: c.dataset.spaceId, grounded: c.hasAttribute('m-grounded'), drawn: !!c.querySelector(':scope > margin-background'), color: getComputedStyle(c).color, shadow: getComputedStyle(c).boxShadow, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height * 0.75), w: r.width, h: r.height };
+        }));
+        const dark = cards.find((c) => c.id === ids[1])!, plain = cards.find((c) => c.id === ids[0])!;
+        assert.ok(dark && plain, JSON.stringify(cards.map((c) => c.id)));
+        assert.deepEqual([dark.grounded, dark.drawn], [true, true], 'its space\'s background drawn in it by Margin');
+        assert.deepEqual([plain.grounded, plain.drawn], [false, false], 'a space with none: the theme\'s colour');
+        const bg = backgroundOf(DARK) as SpaceBackground;
+        const want = lookOf(bg, appearanceOf(bg, false), { size: { width: dark.w, height: dark.h } }).vars['--m-fg'];
+        const hex = (rgb: string) => `#${(rgb.match(/\d+/g) ?? []).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+        assert.equal(hex(dark.color), want.toLowerCase(), 'its text in that space\'s own colour (light on a dark space)');
+        const px = decodePng(await page.screenshot({ animations: 'disabled' }));
+        const lum = (x: number, y: number) => { const [r, g, b] = px(x, y); return (r + g + b) / 3; };
+        assert.ok(lum(dark.x, dark.y) < 110, `the dark space's card drawn dark (${lum(dark.x, dark.y)})`);
+        assert.ok(lum(plain.x, plain.y) > 150, `the plain one light (${lum(plain.x, plain.y)})`);
+        // (0.155 as the browser keeps an alpha: in 255ths, 40/255 = 0.157.)
+        assert.ok(cards.every((c) => /^rgba\(0, 0, 0, 0\.15[5-7]\d*\) 0px 0\.5px 16px 0px$/.test(c.shadow)), `Arc's shadow (${cards[0].shadow})`);
+        // Its background gone: the card the theme's again.
+        await ev(([id]) => T.rtChange('setBackground', id, null), [ids[1]] as const);
+        await page.waitForTimeout(100);
+        assert.deepEqual(await ev((id) => { const c = document.querySelector<HTMLElement>(`.lib-card[data-space-id="${id}"]`)!; return [c.hasAttribute('m-grounded'), !!c.querySelector(':scope > margin-background'), c.style.getPropertyValue('--m-fg')]; }, ids[1]), [false, false, ''], 'let go: nothing of Margin\'s left on it');
+        await ev(() => T.rtDispatch('library.section', 'archive'));
+        await ev(() => T.rtDispatch('library.close'));
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
       });
 
       await t.test('a hosted window that can\'t pass the window\'s edge (no m-page-slides): the Library makes room, the page\'s right edge where it was', async () => {

@@ -319,7 +319,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     sheets: [theme.sheet, theme.settingsSheet, background.sheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
     onInput: (name, value) => { for (const b of list) b.onInput?.(name, value); },
-    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); background.place(view.measurePageOuter()); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
+    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); background.place(view.measurePageOuter()); followCards(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
   drawsSettingsNav = view.reads('settingsTab');
@@ -355,6 +355,17 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
   // The theme's panel the sidebar floats in (m-ground="float"), once looked up.
   let groundPanel: HTMLElement | null = null;
+  // Each space's own background in the theme's elements marked `m-ground="space"` with its `data-space-id` (the
+  // Library's Spaces cards, as Arc's): drawn by Margin (ui/background.ts cards), at each draw and each layout (a card's
+  // size); a space with none keeps the theme's own colour.
+  function followCards() {
+    const els = view.marked('m-ground', 'space') as HTMLElement[];
+    const spaces = (host.getState() as { spaces?: { id: string, background?: SpaceBackground | null }[] } | null)?.spaces ?? [];
+    background.cards(els.map((el) => {
+      const bg = spaces.find((sp) => sp.id === el.dataset.spaceId)?.background ?? null;
+      return { el, background: bg, picture: bg?.image ? host.pictureUrl?.(bg.image.id) ?? null : null };
+    }), { systemDark: media('(prefers-color-scheme: dark)'), moreContrast: media('(prefers-contrast: more)') });
+  }
   function followBackground() {
     const space = vm?.space;
     const shownBackground = backgroundShown(space);
@@ -371,6 +382,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const floating = !!appearance && (vm?.window?.sidebar === 'hidden' || vm?.window?.sidebar === 'peek');
     if (floating && !groundPanel?.isConnected) groundPanel = (view.marked('m-ground', 'float')[0] as HTMLElement | undefined) ?? null;
     background.float(floating ? groundPanel : null);
+    followCards();
     if (background.revision() !== before) onGround?.();
     const root = view.rootElement() as HTMLElement | null;
     if (!root) return;

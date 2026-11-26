@@ -11565,3 +11565,45 @@ switch curve (`switchEasing`, as the box button's slide):
 - **Test** (arcadia.test.ts, both engines): into Spaces and back, frames between the ends, one way, the panel's edge at
   the page's every frame, the background cut at the card, the width kept, the host told on then off; less motion at
   once (failed before: 1224 from the first frame).
+
+## The Spaces slide drawn in step with the hosted window (`fix/spaces-slide-start`, 2026-11-26)
+
+Measured on Tirth's screen (dev hooks + screen recording) after feat/page-slides: going into Spaces, (1) one frame had
+the hosted window (Maps) at ~1100 pt while the panel still drew the Archive at 417: Spaces' cards take a frame or more
+to draw, and the slide's clock had started before them, so its first step was far along; (2) two frames of empty panel
+as it widened: the cards past the panel's old width were painted only as they were revealed.
+- **swipe.ts `slideWide`**: its clock starts at its first frame (after the section's own draw), each frame read at
+  the frame's own time (not after whatever else that frame did): its first frame is where it was.
+- **Arcadia**: into Spaces (`m-library-wide-slide="in"`) the panel is its whole width from the first frame, cut back
+  to where the slide has come by `clip-path` (the same edge as before), so every card is laid out and drawn before
+  it's revealed; out of Spaces nothing new is revealed, its width follows.
+- **Real screen, after**: no frame with a gap or an empty panel; the cards drawn up to the hosted window's edge.
+- **Tests** (arcadia.test.ts): the first frame where it was (failed before: 975-1000 already); into Spaces the panel
+  its whole width while sliding, its seen edge at the page's every frame.
+
+## The Library's Spaces cards on their own spaces' backgrounds, as Arc's (`fix/spaces-slide-start`, 2026-11-26)
+
+Tirth's screenshot of Arc's Spaces: each card drawn on its space's own background (its colours, gradient and grain),
+with a soft shadow off the panel; Margin's showed a flat colour mix (`--card-ground`: a gradient of the colours only:
+themes can't draw the grain, a texture tile Margin makes).
+- **Margin** (ui/background.ts `cards`, ui/runtime.ts `followCards` at each draw and layout): an element the theme
+  marks `m-ground="space"` with its `data-space-id` gets that space's whole look drawn in it (underlay, picture, wash,
+  colours, texture), laid out at the element's own size, under its content, clipped to its corners; its space's text
+  colours set on it (`--m-fg` and the rest) and `m-grounded` while drawn; let go (all of it taken off) when its space
+  has no background or the element goes. Sanitizer: `m-ground` takes `space` too.
+- **Arcadia**: `.lib-card` marked so; `[m-grounded]` cards take their space's colours for their text; the shadow
+  measured on Arc's (7% darker by the edge, 4% 5 pt out, 2.5% at 9, gone by 20): `0 0.5px 16px rgba(0,0,0,.155)`.
+- **Test** (arcadia.test.ts, both engines): a dark space's card drawn dark with Margin's layer and its own light text
+  (`lookOf`'s `--m-fg`), a space with none the theme's colour, the shadow, let go when its background goes.
+
+## Two slides at once: the page's move told once (`fix/spaces-slide-start`, 2026-11-26)
+
+Spotted by the other session, checked: Spaces' slide (`slideWide`) and the Library's swipe (`setLibrary`/`finish`)
+each told the host `sidebar.resizing` on and off; Margin's window keeps one (MarginWindowController
+`sidebarResizing`: a second on ignored, the first off taken). A trackpad swipe back out of the Library begun during
+Spaces' ~300 ms slide: the first over turned the live follow off while the other still moved the page, its remaining
+frames placed the hosted window (at most one at a time, a tile's few ms) rather than followed; nothing stuck.
+- **swipe.ts `pageMoving`**: one count for every slide of ours: on as the first starts moving the page, off as the
+  last is over; each slide still says its own once each way (its `resizing`).
+- **Test** (arcadia.test.ts, both engines): a swipe out of the Library begun as the slide out of Spaces starts: told
+  `[on, off]` (was `on on off off`).
