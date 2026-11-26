@@ -11510,3 +11510,22 @@ darker fading out by about 38 pt; the rail and the section the same ground, the 
   edge and the shadow's fall, the rail lighter (failed before: nothing at 112). The half-point hairline is a device
   pixel only at 2×: checked on the real screen (dev hooks + screen capture): 112 pt 7.7% darker, 4-5.5% after, faded
   by about 135 pt, as Arc's.
+
+## No shadow at the Library's Spaces' edge; the tab drag test no longer flaky (`fix/tab-drag-test`, 2026-11-26)
+
+- **Spaces' edge** (Tirth: a vertical shadow at the end of Spaces we shouldn't have). Measured on his screen: the
+  panel's own `box-shadow` falling on the page's sliver (its first points ~12% darker) and the page card's shadow
+  showing through the panel, see-through since fix/spaces-grain (the background ~13% darker by the edge). In Margin's
+  window with the page slid beside the panel: the panel's shadow none, the card's faded with the slide (`1 - lib-p`),
+  so it's back as the page reaches the sidebar again. The overlay (the panel over the page) keeps the panel's shadow.
+  Test: arcadia.test.ts (failed before: the panel's shadow).
+- **tests/e2e/tabs.test.ts "dragging a row reorders the tabs"** failed 3 runs in 4 alone (2026-11-26, on main too): the
+  test before ("the New Tab row opens the palette") ends by closing the palette's blank tab, its closeTab ~240 ms
+  before the drag's press; landing mid-drag it redrew the list and the drag was lost (no moveTab sent, an activateTab
+  of the row under the release instead). The test now waits for every request's answer, the closed tabs' rows gone and
+  the overlay settled (`settled`) before it reads the rows and drags: 8 runs in 8 alone.
+- **A sidebar wider than the Library** (Tirth: at the sidebar's widest the Library moved the page left). Arcadia's
+  sidebar goes to 500 pt, the Library is Arc's 417: the shift went negative, the page slid left at its width, leaving a
+  gap at the window's edge (or it would have to be resized at every frame). `--library-width: max(417px, var(--width))`:
+  the Library as wide as such a sidebar, the page never moved, nothing to follow. Test: arcadia.test.ts at 500 (failed
+  before: the card 500 → 417, its right 1272 → 1189).
