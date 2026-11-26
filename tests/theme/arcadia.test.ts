@@ -1126,6 +1126,27 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(await ev(() => getComputedStyle(document.querySelector('.lib-label')!).display), 'none', 'icons only');
         await page.locator('.lib-back').first().click();
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-sidebar-fixed'));
+        // A hosted window in the page area (Margin.app's m-page-state shown: Safari full screen in it): the page area never
+        // changes while the Library comes in, frame by frame (each width would place the app again: Safari out of full
+        // screen and back, 2026-11-26), the Library the sidebar's width.
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        const before = (await rect('.card-edge'))!.left;
+        await ev(() => T.rtSentClear());
+        await ev(() => T.rtWheelPhase('began'));
+        const lefts: number[] = [];
+        for (let i = 0; i < 6; i++) {
+          await ev(() => T.rtTrackpadRun('.space-title .title', Array(4).fill(-20)));
+          lefts.push((await rect('.card-edge'))!.left);
+        }
+        assert.equal((await ends()).swipe, true, 'the Library coming in');
+        assert.deepEqual([...new Set(lefts)], [before], `the page where it was, every step (${lefts.join(' ')})`);
+        assert.ok((await rect('.library'))!.width <= before + 0.5, 'the sidebar\'s width');
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForTimeout(700);
+        assert.deepEqual((await ev(() => T.rtLayoutsAll())).filter((l: number) => Math.abs(l - before) > 0.5), [], 'no other page area reported');
+        if ((await ends()).library) await page.locator('.lib-back').first().click();
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
       });
 
       await t.test('the Library\'s rail, as Arc\'s: Archived Tabs Margin\'s archive by day (searched, a row restores it); the sections Margin hasn\'t got say so', async () => {

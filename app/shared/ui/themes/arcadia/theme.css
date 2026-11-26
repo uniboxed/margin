@@ -1456,9 +1456,11 @@
    else 1 open, 0 not). Arc's (read from a recording at 75 fps): it slides in from the left, opaque, as the fingers go;
    the space under it fades over the first 55% of the way, shrinks to 90% about its middle and drifts right 27 pt; the
    sidebar is as wide as the Library (417 pt), the page beside it, where the page can make room (while an app is
-   hosted, m-sidebar-fixed, the sidebar's own width, the page where it is). */
+   hosted (Margin's window a tile beside it, m-sidebar-fixed, or a hosted window in its page area, m-page-state
+   shown or loading: each width of the page area would place the app again, Safari out of full screen and back), the
+   sidebar's own width, the page where it is). */
 .arcadia { --library-width: 417px; --lib-p: 0; }
-.arcadia[m-sidebar-fixed] { --library-width: var(--width); }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) { --library-width: var(--width); }
 .arcadia.library-open { --lib-p: 1; }
 .arcadia[m-library-swipe] { --lib-p: var(--m-library-progress, 0); }
 .arcadia:is(.library-open, [m-library-swipe]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .margin-sidebar {
@@ -1467,7 +1469,7 @@
 }
 .arcadia.library-open:not([m-library-swipe]) .margin-sidebar { visibility: hidden; }
 /* (Hosted, the page where it is: no drift, so the space never reaches over the page's edge.) */
-.arcadia[m-sidebar-fixed]:is(.library-open, [m-library-swipe]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .margin-sidebar { transform: scale(calc(1 - 0.1 * var(--lib-p))); }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]):is(.library-open, [m-library-swipe]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .margin-sidebar { transform: scale(calc(1 - 0.1 * var(--lib-p))); }
 .library {
   position: absolute;
   z-index: 0;
@@ -1560,12 +1562,12 @@
 .lib-empty-title { margin-top: 12px; margin-bottom: -4px; font-size: 17px; line-height: 20px; font-weight: 700; color: var(--fg); }
 .lib-empty-text { margin: 8px 0 0; max-width: 270px; font-size: 13px; line-height: 17px; }
 /* While an app is hosted (the sidebar's own width): the rail's icons only, the section beside them, no Filter. */
-.arcadia[m-sidebar-fixed] .lib-rail { width: 44px; top: calc(50% - 159px); gap: 10px; }
-.arcadia[m-sidebar-fixed] .lib-section { width: 44px; height: 44px; padding: 11px 0 0; }
-.arcadia[m-sidebar-fixed] .lib-label { display: none; }
-.arcadia[m-sidebar-fixed] .lib-main { left: 56px; }
-.arcadia[m-sidebar-fixed] .lib-bottom { width: 44px; flex-direction: column; align-items: center; gap: 4px; }
-.arcadia[m-sidebar-fixed] .lib-filter { display: none; }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) .lib-rail { width: 44px; top: calc(50% - 159px); gap: 10px; }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) .lib-section { width: 44px; height: 44px; padding: 11px 0 0; }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) .lib-label { display: none; }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) .lib-main { left: 56px; }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) .lib-bottom { width: 44px; flex-direction: column; align-items: center; gap: 4px; }
+.arcadia:is([m-sidebar-fixed], [m-page-state="shown"], [m-page-state="loading"]) .lib-filter { display: none; }
 
 /* Past the last space: Arc's pull (read from a recording): a light along the sidebar's right edge (an ellipse 83 pt
    wide and the window's height, white at about 20% at the edge's middle), sliding in from the edge as the space goes
