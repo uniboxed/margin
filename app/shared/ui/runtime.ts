@@ -1051,7 +1051,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         host.perform?.(which, { id, action: arg });
         return true;
       }
-      case 'notice.close': setUi({ notice: null }); return true;
+      case 'notice.close': {
+        // (Closed with no button: the host hears it, so a question of Margin.app's it asked is answered Not now.)
+        const id = ui.notice?.id ?? vm?.notice?.id;
+        setUi({ notice: null });
+        if (id != null) host.perform?.('notice', { id, closed: true });
+        return true;
+      }
       case 'prompt.close': setUi({ prompt: null }); return true;
       case 'launcher.more': setUi({ launcher: { ...ui.launcher, allArchived: !ui.launcher?.allArchived } }); return true;
       case 'settings.toggle': setUi({ settingsOpen: !ui.settingsOpen, recording: null }); return true;

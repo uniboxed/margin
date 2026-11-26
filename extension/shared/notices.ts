@@ -10,7 +10,9 @@
 // tests use it.
 
 export type NoticeButton = { id: string, label: string, primary?: boolean };
-export type NoticeWords = { text: string, actions: NoticeButton[], ms: number, tab: boolean, local?: boolean };
+// `expires`: an overlay's own notice whose question must be answered: the action it gives when it goes unanswered (its
+// time out, closed, another notice in its place, the overlay gone), so whoever asked never waits on it.
+export type NoticeWords = { text: string, actions: NoticeButton[], ms: number, tab: boolean, local?: boolean, expires?: string };
 
 export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
   // A page in front whose content-script world is still bound to a copy of
@@ -85,6 +87,18 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
     ms: 12000,
     tab: false,
     local: true,
+  },
+  // Margin.app's question (margin-core session/restart.rs, Tirth 2026-11-26): a Safari the person opened has its own
+  // menu bar in Margin's Space; restarted by Margin it's Margin's Safari (no Dock icon, the windows it restores closed,
+  // quit with Margin), so its own windows close, said plainly. Unanswered (its time out, closed, another notice in its
+  // place): Not now (`expires`). The show waits behind its loader meanwhile.
+  'safari-restart': {
+    text: 'Safari was opened outside Margin, so Safari’s own menu bar shows here. Restart it to use Margin’s? Safari’s own windows close: what’s open only there, typed text and downloads are lost. Your tabs in Margin stay.',
+    actions: [{ id: 'restart', label: 'Restart Safari', primary: true }, { id: 'later', label: 'Not now' }],
+    ms: 30000,
+    tab: false,
+    local: true,
+    expires: 'later',
   },
 });
 
