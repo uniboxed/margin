@@ -172,7 +172,7 @@ export function installSwipe(rt: Rt) {
     const root = view.rootElement() as HTMLElement | null;
     if (!root) return;
     if (p === null) {
-      if (root.hasAttribute('m-library-swipe')) { root.removeAttribute('m-library-swipe'); root.style.removeProperty('--m-library-progress'); }
+      if (root.hasAttribute('m-library-swipe')) { root.removeAttribute('m-library-swipe'); root.style.removeProperty('--m-library-progress'); view.flushLayout(); }
       return;
     }
     // (Its rows drawn while it can be seen: `peek`.)
@@ -183,7 +183,7 @@ export function installSwipe(rt: Rt) {
     if (!root.hasAttribute('m-library-swipe')) root.setAttribute('m-library-swipe', '');
     root.style.setProperty('--m-library-progress', String(Math.round(Math.max(0, Math.min(1, p)) * 1000) / 1000));
     // (The page moved with it (Arcadia's Library slides the page right in Margin's window, as Arc's): the host told
-    // once, as a drag of the sidebar's edge tells it, before the page's place is reported at the next frame, so
+    // once, as a drag of the sidebar's edge tells it, before the page's moved place is reported (just below), so
     // Margin.app's hosted window follows it live, moved, never placed again at every frame; over in `finish`. A theme
     // whose page stays (a tile beside the app) never tells it: nothing to follow, nothing to place again.)
     if (!s.resizing && s.libBase) {
@@ -195,6 +195,11 @@ export function installSwipe(rt: Rt) {
         rt.host.perform?.('sidebar.resizing', { on: true });
       }
     }
+    // (The page's place measured and reported now, in this frame, before it's painted: the slide moves the card without
+    // resizing it, so nothing else tells the view, and what follows the page's place (the space's background cut out of
+    // it, the card's layers, the host) stayed at the old place until the slide's end: 2026-11-26, a band of background
+    // over the page. A frame later (scheduleLayout) it trailed the card by a frame.)
+    view.flushLayout();
   }
   function setPull(s: NonNullable<typeof swiping>, px: number) {
     const el = s.el;
