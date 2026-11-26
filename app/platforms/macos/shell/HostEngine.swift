@@ -649,6 +649,7 @@ final class HostEngine {
             self.placement = placement
             self.marginWindow = marginWindow
             self.marginSpace = marginSpace
+            await self.followDisplay()
             self.openWanted = wanted
             defer { self.openWanted = nil }
             // (Several visible, or it was in another role: a layout of it alone, the others parked.)
@@ -669,6 +670,7 @@ final class HostEngine {
             self.placement = placement
             self.marginWindow = marginWindow
             self.marginSpace = marginSpace
+            await self.followDisplay()
             let r = await self.applyLayout(main: main, mainRect: mainRect, extras: extras, focused: focused)
             self.checkListed("after a layout's change")
             return r
@@ -987,6 +989,7 @@ final class HostEngine {
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool {
         await serial(planned: true) {
             self.placement = placement
+            await self.followDisplay()
             for (id, r) in rects { self.core.layoutMove(id, r) } // (each laid out one's rect, its host's and its place's)
             // (Live resize: the parked ones' tiles then, one at a time, by the reconciler: `sizeTile`.)
             defer { self.sizeTilesSoon() }
@@ -4773,7 +4776,10 @@ final class HostEngine {
     // True: the ones waited for are there.
     @discardableResult private func reapplyTiles(first: Host? = nil, each: () -> Void = {}) async -> Bool {
         guard let mine = marginTile, let home = tileHome, tileRect() != nil else { return false }
-        setTileRectIfNeeded(mine, home)
+        // (Its tile's rect can read as the display's while its window isn't: after a display change the window manager
+        // set the tile's rect for the smaller display and left the window at the bigger one's width, the real Mac,
+        // 2026-11-25. Sent again then, whatever the rect reads.)
+        if marginAtHome(home) { setTileRectIfNeeded(mine, home) } else { _ = sys.setTileRect(mine, home) }
         let lead = first ?? shown.flatMap { hosts[$0] }.flatMap { $0.tile != nil ? $0 : nil }
         var order = hosts.values.filter { $0.tile != nil && $0 !== lead }.sorted { $0.id.raw < $1.id.raw }
         if let lead { order.insert(lead, at: 0) }
@@ -4783,7 +4789,7 @@ final class HostEngine {
         let leadFrame = lead.map { frame($0) }
         let ok = await wait(options.tileWait, every: options.tileEvery) {
             each()
-            let marginBack = self.sys.bounds(window: self.marginWindow).map { $0.width >= area.width - 1 } ?? true
+            let marginBack = self.marginAtHome(home) && self.sys.bounds(window: self.marginWindow).map { $0.width >= area.width - 1 } ?? true
             let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, leadFrame ?? self.pageOf(h), within: self.options.tolerance) } ?? false } ?? true
             return marginBack && leadThere
         }
@@ -4806,6 +4812,51 @@ final class HostEngine {
     private func sized(_ h: Host, _ rects: [CGRect]) {
         observer.sized(pid: h.pid, rects: rects)
         core.noteSized(now: sys.now(), host: h.id.raw)
+    }
+
+    // Margin's own tile is its display's (`tileHome`), read when tiles were first set up in its Space; another display
+    // since (a monitor connected, the lid closed, another resolution: the placement's display the new one's) and every
+    // rect is set again for the new one. Without it the tile watcher put Margin's own tile back to the old display's
+    // size: Margin's window left at the laptop's size on a bigger monitor, the rest of it blank, and the hosted window
+    // sized by macOS past it (Tirth, 2026-11-25). In the engine's queue (the callers' `serial`).
+    private func followDisplay() async {
+        if takeDisplayHome() { await reapplyTiles() }
+    }
+    // The placement's display taken as Margin's own tile's home when it's another one; true: taken (every rect to set
+    // again).
+    private func takeDisplayHome() -> Bool {
+        guard tilesOK, tilesFor == marginSpace, !quitting, marginTile != nil, let was = tileHome,
+              let home = HostLayout.home(placement), !HostLayout.near(was, home, within: 1) else { return false }
+        tileHome = home
+        Diagnostics.note("host: Margin's display changed (\(r(was)) → \(r(home))): its own tile and every hosted one set again")
+        return true
+    }
+
+    // Margin's window is on another display now (its controller's word as it happens: a monitor connected or gone, the
+    // lid closed, another resolution). Taken at once, before the window manager's re-layout of Margin's Space for it is
+    // answered (`marginNarrowed`, the tile watcher), so they put Margin's own tile at the new display's size and not back
+    // at the old one's; every rect then set again in the queue. Until then a page that measured narrower than its
+    // display ("a split's half") never sent the new placement, and the watcher kept Margin's window at the old size
+    // (the real Mac, 2026-11-25: 1512 pt wide on an 1800 pt display, the hosted tile sized past it three times, then
+    // moved off tiles).
+    // (Its queued work returned: a test waits for it.)
+    @discardableResult func displayChanged(_ display: CGRect, marginWindow window: Int) -> Task<Void, Never>? {
+        guard window == marginWindow, display.width >= 1, display.height >= 1, placement.display.size != display.size else { return nil }
+        var p = placement
+        p.display = display
+        placement = p
+        guard takeDisplayHome() else { return nil }
+        // (Margin's own tile at once: it needs only the display. The page area is the old display's until Margin's window
+        // has the new size, and the hosted rects wait for it: a smaller display's page area never came while Margin's
+        // window stayed at the bigger one's width, the real Mac, 2026-11-25. Its page measured again then places the one
+        // shown, `pageRectChanged`.)
+        if let mine = marginTile, let home = tileHome { _ = sys.setTileRect(mine, home) }
+        return Task { _ = await serial(planned: true) { await self.reapplyTiles() } }
+    }
+
+    // Margin's own window as wide as its tile's home, the display's (unread: taken as so).
+    private func marginAtHome(_ home: CGRect) -> Bool {
+        sys.bounds(window: marginWindow).map { abs($0.width - home.width) <= 1 } ?? true
     }
 
     // A tile's rect sent only when it isn't that already (a rect sent again makes its app lay its window out again).
