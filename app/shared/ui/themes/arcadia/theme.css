@@ -1688,6 +1688,11 @@
 /* (At once: Arcadia animates no layout, tests/theme-motion.test.ts.) */
 .library { width: var(--library-panel, var(--library-width)); }
 .arcadia:not([m-sidebar-fixed]) .library { --library-panel: calc(var(--library-width) + (100% - 56px - var(--library-width)) * var(--lib-wide)); }
+/* (Into Spaces: the panel its whole width from the slide's first frame, cut back to where it has come (clip-path: 100%
+   there is the panel's own width), so every card is laid out and drawn at once, never painted a frame or two behind
+   the panel's edge as it's revealed: Tirth's screen, 2026-11-26, two frames of empty panel before the cards. Out of
+   it nothing new is revealed: its width follows.) */
+.arcadia[m-library-wide-slide="in"]:not([m-sidebar-fixed]) .library { --library-panel: calc(100% - 56px); clip-path: inset(0 calc((100% - var(--library-width)) * (1 - var(--lib-wide))) 0 0); }
 /* (In Margin's own window the page slides with it, as for the Library (Tirth, 2026-11-26: "shift the tab content
    similarly"): its left at the panel's edge, its first 56 pt showing, the rest past the window's edge.) */
 .arcadia[m-page-slides]:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) { --card-shift: round(calc((var(--library-width) - var(--width) + (100vw - 56px - var(--library-width)) * var(--lib-wide)) * var(--lib-p)), 1px); }

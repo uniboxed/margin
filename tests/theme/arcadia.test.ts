@@ -1205,7 +1205,13 @@ for (const [engineName, engine] of ENGINES) {
           const cut = () => { const m = /Z\s*M\s*([\d.]+)/.exec(T.rtBackground().clip as string); return m ? Number(m[1]) : -1; };
           const tick = () => {
             const card = document.querySelector('.card-edge')!.getBoundingClientRect(), panel = document.querySelector('.library')!.getBoundingClientRect();
-            out.push([Math.round(card.left), Math.round(panel.right), Math.round(cut()), Math.round(card.width)]);
+            // (The panel's edge as seen: into Spaces it's its whole width from the first frame, cut back by its
+            // clip-path to where the slide has come (Library 417 + the rest × the slide's progress).)
+            const root = document.querySelector('.arcadia') as HTMLElement;
+            const into = root.getAttribute('m-library-wide-slide') === 'in';
+            const q = Number(root.style.getPropertyValue('--m-library-wide-progress') || 0);
+            const seen = into ? panel.left + 417 + (panel.width - 417) * q : panel.right;
+            out.push([Math.round(card.left), Math.round(seen), Math.round(cut()), Math.round(card.width), into ? Math.round(panel.width) : -1]);
             if (out.length < 50) requestAnimationFrame(tick); else done(out);
           };
           (window as any).__told = T.rtResizing().length;
@@ -1215,10 +1221,19 @@ for (const [engineName, engine] of ENGINES) {
         for (const [section, from, to] of [['spaces', 417, vw - 56], ['archive', vw - 56, 417]] as const) {
           const frames = await slide(section);
           const lefts = frames.map(([l]) => l);
+          // (Its first frame where it was: the section's own first draw comes before any move, so a hosted window never
+          // runs ahead of a panel still drawing the old section.)
+          assert.equal(lefts[0], from, `${section}: the first frame where it was (${lefts.slice(0, 4).join(' ')})`);
           assert.ok(lefts.some((l) => l > Math.min(from, to) + 5 && l < Math.max(from, to) - 5), `${section}: slid through the frames between (${lefts.join(' ')})`);
           assert.ok(lefts.every((l, i) => i === 0 || (to > from ? l >= lefts[i - 1] - 1 : l <= lefts[i - 1] + 1)), `${section}: one way (${lefts.join(' ')})`);
           assert.equal(lefts.at(-1), to, `${section}: lands at ${to}`);
           assert.deepEqual(frames.filter(([l, p]) => Math.abs(l - p) > 1), [], `${section}: the panel's edge where the page's is, every frame`);
+          // (Into Spaces, the panel its whole width all the way, so every card is drawn before it's revealed.)
+          if (section === 'spaces') {
+            const sliding = frames.filter((f) => f[4] !== -1);
+            assert.ok(sliding.length > 2, `into Spaces: frames of the slide (${sliding.length})`);
+            assert.deepEqual([...new Set(sliding.map((f) => f[4]))], [vw - 56], 'into Spaces: the panel its whole width while it slides');
+          }
           assert.deepEqual(frames.filter(([l, , c]) => Math.abs(c - (l + 6)) > 1), [], `${section}: the background cut where the card is, every frame`);
           assert.ok(frames.every(([, , , w]) => w === frames[0][3]), `${section}: the page's width kept`);
           const told = await ev(() => T.rtResizing().slice((window as any).__told).map(([on]) => on));

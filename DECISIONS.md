@@ -11565,3 +11565,18 @@ switch curve (`switchEasing`, as the box button's slide):
 - **Test** (arcadia.test.ts, both engines): into Spaces and back, frames between the ends, one way, the panel's edge at
   the page's every frame, the background cut at the card, the width kept, the host told on then off; less motion at
   once (failed before: 1224 from the first frame).
+
+## The Spaces slide drawn in step with the hosted window (`fix/spaces-slide-start`, 2026-11-26)
+
+Measured on Tirth's screen (dev hooks + screen recording) after feat/page-slides: going into Spaces, (1) one frame had
+the hosted window (Maps) at ~1100 pt while the panel still drew the Archive at 417: Spaces' cards take a frame or more
+to draw, and the slide's clock had started before them, so its first step was far along; (2) two frames of empty panel
+as it widened: the cards past the panel's old width were painted only as they were revealed.
+- **swipe.ts `slideWide`**: its clock starts at its first frame (after the section's own draw), each frame read at
+  the frame's own time (not after whatever else that frame did): its first frame is where it was.
+- **Arcadia**: into Spaces (`m-library-wide-slide="in"`) the panel is its whole width from the first frame, cut back
+  to where the slide has come by `clip-path` (the same edge as before), so every card is laid out and drawn before
+  it's revealed; out of Spaces nothing new is revealed, its width follows.
+- **Real screen, after**: no frame with a gap or an empty panel; the cards drawn up to the hosted window's edge.
+- **Tests** (arcadia.test.ts): the first frame where it was (failed before: 975-1000 already); into Spaces the panel
+  its whole width while sliding, its seen edge at the page's every frame.

@@ -695,8 +695,12 @@ export function installSwipe(rt: Rt) {
   // off (the theme's `library-wide` says where it rests). At once with less motion, or while a swipe is under way.
   let wide: { from: number, to: number, at: number, curve: { duration: number, points: number[] }, frame: number, base: [number, number] | null, resizing: boolean } | null = null;
   const placeNow = () => { const g = view.measure(); return g ? [g.insets.left, g.insets.right] as [number, number] : null; };
-  function wideAt(w: NonNullable<typeof wide>) {
-    const t = (performance.now() - w.at) / Math.max(1, w.curve.duration);
+  function wideAt(w: NonNullable<typeof wide>, now = performance.now()) {
+    // (Its clock from its first frame: the section's own first draw (Spaces' cards) can take a frame or more, and a
+    // clock started before it had the hosted window run ahead of the panel still drawing the old section: Tirth's
+    // screen, 2026-11-26, a frame with Maps at ~1100 pt and the Archive still drawn at 417.)
+    if (!w.at) return w.from;
+    const t = (now - w.at) / Math.max(1, w.curve.duration);
     return t >= 1 ? w.to : w.from + (w.to - w.from) * easeAt(w.curve.points, t);
   }
   function drawWide(w: NonNullable<typeof wide>, q: number) {
@@ -731,14 +735,17 @@ export function installSwipe(rt: Rt) {
       if (keep) { wide = { from, to: target, at: 0, curve: { duration: 0, points: [] }, frame: 0, ...keep }; endWide(); }
       return false;
     }
-    const w = { from, to: target, at: performance.now(), curve: switchEasing(), frame: 0, base: keep ? keep.base : placeNow(), resizing: keep?.resizing ?? false };
+    const w = { from, to: target, at: 0, curve: switchEasing(), frame: 0, base: keep ? keep.base : placeNow(), resizing: keep?.resizing ?? false };
     wide = w;
-    root.setAttribute('m-library-wide-slide', '');
+    root.setAttribute('m-library-wide-slide', target ? 'in' : 'out');
     drawWide(w, from);
-    const step = () => {
+    const step = (now: number) => {
       if (wide !== w) return;
       if (!rt.ui.library?.open) return endWide();
-      const q = wideAt(w);
+      // (The first frame after the section is drawn: the clock starts here, the slide from where it is drawn; each frame
+      // read at its own time, not at whatever this frame's other work took.)
+      if (!w.at) w.at = now;
+      const q = wideAt(w, now);
       drawWide(w, q);
       if (q === w.to) return endWide();
       w.frame = requestAnimationFrame(step);
