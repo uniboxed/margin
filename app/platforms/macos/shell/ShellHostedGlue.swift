@@ -278,6 +278,7 @@ extension Shell {
         windows.onSidebarResizing = { [weak session] controller, on, divider in session?.sidebarResizing(controller, on, divider: divider) }
         windows.onCounts = { [weak self] _ in self?.updateHostedKeys() }
         windows.onNarrowed = { [weak self] _ in self?.host?.marginNarrowed() }
+        windows.onDisplay = { [weak self] controller, display in self?.host?.displayChanged(display, marginWindow: controller.window.windowNumber) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
         windows.holdsMenu = { [weak session] in session?.startupShown == true }
     }

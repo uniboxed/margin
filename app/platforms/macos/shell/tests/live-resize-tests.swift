@@ -461,4 +461,74 @@ func liveResizeTests() {
         check("live resize: a window-mode app follows a drag by Accessibility (no tile, nothing in or out of full screen, Margin's Space not told: it has no tile)",
               follows && w.bounds(window: f) == page(310) && count(w, "frame \(f)", since: m) >= 1 && count(w, "liveResizing", since: m) == 0 && count(w, "fullScreen", since: m) == 0, "\(w.calls.dropFirst(m))")
     }
+
+    // ---- another display (a bigger monitor connected, the lid closed, another resolution): Margin's own tile laid out for
+    // it, never put back to the old display's (Tirth, 2026-11-25: Margin's window stayed at the laptop's size on the
+    // monitor, the rest blank) ----
+    do {
+        let (w, e, _) = world()
+        let laptop = FakeHostWorld.tileDisplay
+        _ = hostRun { await e.open(app: textEdit, in: HostPlacement(page: page(276), area: FakeHostWorld.display, display: laptop), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        let mark = w.calls.count
+        _ = hostRun { await e.pageRectChanged(HostPlacement(page: page(276), area: FakeHostWorld.display, display: laptop)) }
+        check("live resize: the same display: Margin's own tile left as it is (no rect sent for it)",
+              count(w, "tileRect \(FakeHostWorld.marginTile) ", since: mark) == 0 && w.tileRects[FakeHostWorld.marginTile].map { $0 == laptop } ?? true, "\(w.calls.dropFirst(mark))")
+        let monitor = CGRect(x: 0, y: 0, width: 1800, height: 1169)
+        let area = CGRect(x: 0, y: 33, width: 1800, height: 1136), bigPage = CGRect(x: 276, y: 41, width: 1800 - 8 - 276, height: 1120)
+        let (lines, done) = listen()
+        let m2 = w.calls.count
+        _ = hostRun { await e.pageRectChanged(HostPlacement(page: bigPage, area: area, display: monitor)) }
+        done()
+        check("live resize: another display: Margin's own tile laid out for it (its whole), not put back to the old display's, said",
+              w.tileRects[FakeHostWorld.marginTile] == monitor && count(w, "tileRect \(FakeHostWorld.marginTile) 0,0 1800×1169", since: m2) >= 1
+              && lines.all.contains { $0.contains("Margin's display changed") }, "\(String(describing: w.tileRects[FakeHostWorld.marginTile])) \(w.calls.dropFirst(m2))")
+        let m3 = w.calls.count
+        _ = hostRun { await e.pageRectChanged(HostPlacement(page: bigPage, area: area, display: monitor)) }
+        check("live resize: …and that display again: nothing more for Margin's own tile",
+              count(w, "tileRect \(FakeHostWorld.marginTile) ", since: m3) == 0 && w.tileRects[FakeHostWorld.marginTile] == monitor, "\(w.calls.dropFirst(m3))")
+    }
+
+    // ---- …as it happens on the Mac: Margin's window says its display changed, then the window manager's re-layout of
+    // Margin's Space for it is answered (`marginNarrowed`): Margin's own tile at the new display's size, never put back
+    // at the old one's (the real Mac, 2026-11-25: the page measured narrower than its display sent no placement, and the
+    // watcher held Margin's window at 1512 pt on an 1800 pt display) ----
+    do {
+        let (w, e, _) = world()
+        let laptop = FakeHostWorld.tileDisplay, monitor = CGRect(x: 0, y: 0, width: 1800, height: 1169)
+        _ = hostRun { await e.open(app: textEdit, in: HostPlacement(page: page(276), area: FakeHostWorld.display, display: laptop), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        e.displayChanged(laptop, marginWindow: FakeHostWorld.marginWindow) // (the same display: nothing)
+        let other = w.calls.count
+        e.displayChanged(monitor, marginWindow: FakeHostWorld.marginWindow + 1) // (another window's: not Margin's hosting one)
+        check("live resize: a display change of a window that isn't the hosting one, or the same display: nothing",
+              count(w, "tileRect \(FakeHostWorld.marginTile) ", since: other) == 0, "\(w.calls.dropFirst(other))")
+        let m = w.calls.count
+        e.displayChanged(monitor, marginWindow: FakeHostWorld.marginWindow)
+        e.marginNarrowed()
+        settle(e, 276) // (the queue's work waited for)
+        check("live resize: Margin's window on another display: its own tile laid out for it at once, the re-layout's answer too, not put back at the old display's",
+              w.tileRects[FakeHostWorld.marginTile] == monitor && !w.calls.dropFirst(m).contains("tileRect \(FakeHostWorld.marginTile) 0,0 1512×982"),
+              "\(String(describing: w.tileRects[FakeHostWorld.marginTile])) \(w.calls.dropFirst(m).filter { $0.hasPrefix("tileRect") })")
+    }
+
+    // ---- back to the smaller display, as the real Mac did it (2026-11-25): the window manager set Margin's own tile's
+    // rect for it but left the window at the bigger display's width: its rect sent again (it reads right, the window
+    // isn't) ----
+    do {
+        let (w, e, _) = world()
+        let laptop = FakeHostWorld.tileDisplay, monitor = CGRect(x: 0, y: 0, width: 1800, height: 1169)
+        let small = HostPlacement(page: page(276), area: FakeHostWorld.display, display: laptop)
+        let big = HostPlacement(page: CGRect(x: 276, y: 41, width: 1800 - 8 - 276, height: 1120), area: CGRect(x: 0, y: 33, width: 1800, height: 1136), display: monitor)
+        _ = hostRun { await e.open(app: textEdit, in: small, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        let grow = e.displayChanged(monitor, marginWindow: FakeHostWorld.marginWindow)
+        _ = hostRun { await grow?.value }
+        for _ in 0..<6 { _ = hostRun { await e.pageRectChanged(big) } }
+        let grown = w.tileRects[FakeHostWorld.marginTile] == monitor
+        w.tileRects[FakeHostWorld.marginTile] = laptop
+        w.lagging[FakeHostWorld.marginWindow] = (CGRect(x: 0, y: 33, width: 1800, height: 1136), .greatestFiniteMagnitude)
+        let m = w.calls.count
+        let queued = e.displayChanged(laptop, marginWindow: FakeHostWorld.marginWindow)
+        _ = hostRun { await queued?.value }
+        check("live resize: back to the smaller display, its tile's rect reading right and its window still the bigger one's width: the rect sent again",
+              grown && w.calls.dropFirst(m).contains("tileRect \(FakeHostWorld.marginTile) 0,0 1512×982"), "grown \(grown) \(w.calls.dropFirst(m).filter { $0.hasPrefix("tileRect") })")
+    }
 }
