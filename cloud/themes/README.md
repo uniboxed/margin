@@ -23,7 +23,7 @@ signs is in `src/store.ts`. The limits are one table, `RATES` in `src/limits.ts`
 Durable Objects (tests/cloud-themes/fakes.ts). `npm test` and `npm run test:quick` run them, and `npm run typecheck`
 checks this code.
 
-## Deploying (Tirth, once)
+## Deploying (once)
 
 From `cloud/themes/`, logged in with `npx wrangler login`:
 

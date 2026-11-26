@@ -92,7 +92,7 @@ async function setup(over = {}) {
   return { env, indexKey, clock, install: async (ip?: string) => { const i = await Install.make(env, clock, ip); assert.equal((await i.register()).status, 201); return i; } };
 }
 
-const ADMIN = (env: FakeEnv) => ({ Authorization: `Basic ${btoa(`tirth:${env.ADMIN_TOKEN}`)}` });
+const ADMIN = (env: FakeEnv) => ({ Authorization: `Basic ${btoa(`admin:${env.ADMIN_TOKEN}`)}` });
 async function adminPost(env: FakeEnv, now: number, fields: Record<string, string>, headers: Record<string, string> = {}) {
   const page = await (await handle(new Request(`${BASE}/admin`, { headers: ADMIN(env) }), env, now)).text();
   const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(page)?.[1] ?? '';
@@ -458,8 +458,8 @@ test('the review page: only with the password; changes only from the page (its o
   await a.upload(themeZip('mine', '1.0.0'), { author: 'Ana "quotes" & co' });
   const get = (headers: Record<string, string> = {}) => handle(new Request(`${BASE}/admin`, { headers }), env, clock.now);
   assert.equal((await get()).status, 401);
-  assert.equal((await get({ Authorization: `Basic ${btoa('tirth:wrong')}` })).status, 401);
-  assert.equal((await get({ Authorization: `Basic ${btoa(`tirth:${env.ADMIN_TOKEN}x`)}` })).status, 401);
+  assert.equal((await get({ Authorization: `Basic ${btoa('admin:wrong')}` })).status, 401);
+  assert.equal((await get({ Authorization: `Basic ${btoa(`admin:${env.ADMIN_TOKEN}x`)}` })).status, 401);
   const ok = await get(ADMIN(env));
   assert.equal(ok.status, 200);
   assert.match(ok.headers.get('Content-Security-Policy') ?? '', /default-src 'none'/);
