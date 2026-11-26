@@ -6,6 +6,7 @@ Tirth's decisions (2026-11-25):
 - People can **write a prompt and get a theme**, paid from the monthly API credit of his Ultra plan ($200 of Claude
   Console API credit a month, linked to one Console organization).
 - **Everyone** can generate, within a **daily limit**, a **quota plan** and **rate limits**.
+- **No accounts** (2026-11-25): nobody signs up. Each Margin install has an anonymous key of its own.
 - A small server of Margin's own is fine.
 - Also wanted: **"load unpacked"**, a theme folder Margin follows as it's edited, like Chrome's unpacked extensions.
 
@@ -56,7 +57,7 @@ Margin.app ──────────────► themes server (Cloudfla
 | Piece | Where |
 |---|---|
 | The store's rules: the index read and its signature checked, versions compared, an update offered, an installed theme's source (`store`, `generated`, `linked`, `file`), a linked folder's reload rule | margin-core (`data::themes` and a new `themes::store`), one copy for the Mac and Windows |
-| HTTP, the keychain (the sign-in token), Sign in with Apple's sheet, watching a linked folder (FSEvents; Windows: ReadDirectoryChangesW) | each platform: mechanism only |
+| HTTP, the Keychain (the install's key), the proof of work's hashing, App Attest if it's used, watching a linked folder (FSEvents; Windows: ReadDirectoryChangesW) | each platform: mechanism only |
 | The checks (`checkImport`, `sanitizeTheme`) | `app/shared/ui` as today, also run by the server |
 | The Themes page, Generate, Share, the quota shown | Margin's own UI parts (HTML/CSS, guarded like Settings: only Margin's words), drawn in every theme |
 | Generation, uploads, moderation, limits | the server |
@@ -71,28 +72,47 @@ Margin.app ──────────────► themes server (Cloudfla
 - **Unlink** goes back to the theme from before. A linked theme is per Mac, like imports.
 - `npm run theme:check <folder>`: the same check from the command line (for people writing themes and for the skill).
 
-## 2. Accounts
+## 2. No accounts: an anonymous key per install
 
-- Uploading and generating need a sign-in, so limits are per person and every upload has an author.
-- **Sign in with Apple** first: native on the Mac, no password, and the person can hide their email. To confirm it's
-  available for a Developer ID build; if not, the web flow. Windows later uses the web flow.
-- The server keeps only a hash of Apple's user id, a display name the person picks, and trust (new, trusted, blocked).
-  The session token is stored in the Keychain.
+Nobody signs up (Tirth, 2026-11-25). The server still has to tell installs apart, for the daily limits and for who may
+update a theme, so each install has a key of its own:
+
+- **The key**: an Ed25519 key pair Margin makes the first time it's needed. The private key stays in the Keychain,
+  synced by iCloud Keychain, so it's the same on the person's Macs; it never leaves their devices. The server knows
+  only the public key, and its id (the first 16 bytes of the public key's SHA-256, in hex).
+- **Registering it costs a proof of work**: the server hands out a challenge (random, signed by the server, valid 10
+  minutes), and the app finds a nonce whose SHA-256 with the challenge and the public key starts with enough zero bits
+  (about 2 seconds on a Mac, once per install). This is invisible to people, and it makes minting thousands of keys
+  slow and costly for a script.
+- **Every request after that is signed** with the key: the method, the path, the time and the body's SHA-256. The server
+  refuses a time more than 5 minutes away and a signature that doesn't verify.
+- **What the key buys**: the daily points (per key), uploads (the key that first uploaded a theme's id owns it; only
+  that key publishes new versions), and reports (one per key per theme).
+- **What it can't stop, and what bounds it**: someone who wipes their data, or a script that pays the proof of work
+  again, gets a fresh key and fresh points. Per-network limits slow that, and the day's budget caps it: the worst case
+  is that day's generation running out early for everyone, never a cost beyond the credit.
+- **App Attest, if it works for Margin**: Apple's proof that a request comes from the real Margin on a real Mac (macOS
+  27 added Macs; whether a Developer ID build gets it is to be tested on Tirth's Mac). If it does, registering a key
+  also needs an attestation, and keys from real Macs could get more points.
+- **Blocking**: Tirth can block a key from the review page; its uploads are hidden and its requests refused.
 
 ## 3. Upload from inside Margin
 
 - **Share Theme…** on an imported, linked or generated theme: name, description, tags, then upload.
 - The app sends the `.margintheme` package. The server, in order:
-  1. checks size and rate (5 uploads a day per person);
+  1. checks the signature, and the key's and the network's rates (5 uploads a day per key, 20 per network);
   2. checks its size, its zip's shape and caps and its `theme.json` (the full check is the app's, before it uploads and
      on every device that installs it: the free plan's 10 ms of CPU is too little for it here);
   3. stores the package in R2 under its sha256;
   4. renders screenshots with Browser Rendering (the theme's own template over a fixed sample state, light and dark:
      never a picture the uploader sent);
   5. records a version, in review.
-- **Review**: a person's first upload is reviewed by Tirth (a small admin page: screenshots, the check's notes,
-  approve or reject). After two approved uploads, an author is trusted: new versions publish at once and can be
-  reported. Reports (`POST /v1/reports`) hide a theme after three, pending review.
+- **Review**: a key's uploads are reviewed by Tirth (a small admin page behind a secret: screenshots, the cheap checks'
+  notes, approve or reject, block the key) until two of them are approved. After that the key is trusted: its new
+  versions publish at once and can still be reported. Reports (`POST /v1/reports`, one per key per theme) hide a theme
+  after three, pending review.
+- **The author's name** is the display name typed when sharing (40 characters at most, controls and bidi characters
+  removed), shown with the key's short id so two authors can't pass as each other.
 - Names: unique slugs; names that impersonate Margin, Apple or another author are refused in review.
 
 ## 4. The Themes page (find and install)
@@ -128,13 +148,14 @@ reads and writes, output) in a ledger, and enforces three limits:
 - **The day's budget**: generation pauses for everyone when the day's spend reaches $6.45 plus whatever wasn't used on
   earlier days of the month, capped at 2× the day's share. It resumes at midnight UTC. The page says so.
 - **Each person's day**, in points:
-  - 10 points a day (5 for an account under a day old);
+  - 10 points a day per key (5 for a key under a day old);
   - a remix or a follow-up costs 1 point, a new layout 5;
   - a fix round costs nothing.
-- **Rates**, counted in a Durable Object per person (exact, no races) plus a per-IP bucket:
-  - one generation at a time per person;
-  - 6 a minute and 30 an hour per person;
-  - 60 an hour per IP.
+- **Rates**, counted in a Durable Object per key (exact, no races) plus one per network:
+  - one generation at a time per key;
+  - 6 a minute and 30 an hour per key;
+  - 60 an hour per network (the address's /64 for IPv6);
+  - 20 new keys a day per network.
 
 Each request also has a ceiling: `max_tokens` 16K for a remix and 64K for a new layout, a 3-minute limit, and the fix
 rounds. The page shows the points left and the reset time.
@@ -171,16 +192,19 @@ Opus for new layouts.
 
 1. Load unpacked, and `theme:check`.
 2. The skill.
-3. The server's skeleton: accounts, uploads, the review page, screenshots, the signed index.
+3. The server's skeleton: keys and the proof of work, signed requests, the limits, uploads with their cheap checks,
+   reports, the review page, the signed index. Screenshots follow with step 4 (they need Margin's renderer in the
+   browser).
 4. Margin's Themes page: install, update, share.
 5. Generation: remix first, then new layout. Eval the model before launch.
 6. The MCP server.
 
-Each step is its own branch with tests: the server's routes and limits with Miniflare, the app's parts with the theme
-suite, core with Rust tests. The quota, review and signing rules each get tests that fail first.
+Each step is its own branch with tests: the server's logic with Node's test runner (its SQL on Node's own SQLite, the
+engine D1 runs), the app's parts with the theme suite, core with Rust tests. The quota, review and signing rules each get tests that fail first.
 
 ## Open
 
-- Tirth: skim the Supplemental Credit Terms; pick the model after the eval; confirm Sign in with Apple for Developer
-  ID; a domain for the server (for example `themes.<margin's domain>`).
+- Tirth: skim the Supplemental Credit Terms; pick the model after the eval; paste the API key into the Worker's secrets
+  (never into code or a message); a domain later (the free `*.workers.dev` address until then).
+- To test: App Attest from a Developer ID build on macOS 27.
 - Pricing later (more points for supporters?) isn't in this plan.
