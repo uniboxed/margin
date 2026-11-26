@@ -11034,6 +11034,40 @@ radius, so they follow. The inset stays 8 pt (not Arc's 10). tests/manifest.test
 read 6 px; the app's end-to-end corner checks already read the radius from the layout (their corner points made for a
 6 pt corner in M2.10).
 
+## Margin on another display (`fix/display-change`, 2026-11-25)
+
+Tirth: with Margin open, connecting the laptop to a bigger monitor left Margin not full screen there, part of the
+monitor blank; and on that monitor the hosted app's top was cut off and the menu bar didn't come down at the top edge.
+Reproduced on this Mac by switching the built-in display to a larger resolution (1512×982 → 1800×1169 points, the same
+screen-size change; switched back after each run):
+- **Margin's window stayed at the old size.** Hosting in tiles, the engine reads Margin's own tile's home (the
+  display's whole) once per Margin Space (`tilesReady`), and its watcher (`marginNarrowed`, `lookAtTiles`) puts Margin's
+  own tile back there whenever it isn't: the window manager's re-layout for the new display was answered with the old
+  display's size. Margin's window stayed 1512 pt wide on the 1800 pt display, its page measured "narrower than its
+  display" sent no new placement, and macOS sized the hosted tile past Margin's window (Notes at 1512×1114 beside a
+  1512×943 Margin); sized three times, the loop guard moved Notes off tiles for its version (`routes.json`; the holds
+  this testing wrote were cleared again, it had none before).
+- **Fixed:** Margin's window says its display changed as it happens (`windowDidChangeScreen`,
+  `didChangeScreenParametersNotification`: `displayChanged`), and the engine takes the new display as its own tile's
+  home at once (`HostEngine.displayChanged`, before the re-layout is answered), sends Margin's own tile's rect (it needs
+  only the display: the page area is the old display's until Margin's window has the new size), then sets every rect
+  again; the page measured at the new size places the one shown (`pageRectChanged`, which now also takes a new
+  display's home: `followDisplay`). `reapplyTiles` sends Margin's own rect again whenever its window isn't as wide as
+  the display (back to the smaller one, the window manager set the tile's rect but left the window 1800 pt wide), and
+  waits for exactly that width. The backdrop follows the window's display too (it was sized only when the panel was
+  attached). The other path (a hosted app in its own full-screen Space) placed it again from the page's change already.
+- **Checked on screen** (both paths, both ways): Margin the display's whole, the hosted window exactly at the page area,
+  no fallback, no hold, the menu bar down at the top edge each time. A monitor itself (no camera housing) isn't
+  checked here (none on this Mac).
+- **Tests:** tests/live-resize-tests.swift (a new display through the page area and through `displayChanged` then the
+  re-layout's answer: Margin's own tile at the new size, not put back; the same display or another window's: nothing;
+  back to the smaller display with the tile's rect right and the window wide: sent again), failing first where the
+  code was there to fail. Swift 2271, the app's end-to-end run 375.
+- **Reviewed** before the merge: Margin's window acts on a display change once per display (its frame compared with the
+  last it acted on: macOS says it five times for one change here, the first still naming the old display, and for
+  changes that leave the display as it was; another display of the same size counts, the backdrop goes there), and the
+  backdrop is set by that, not at every resize of the window (a full-screen entry resizes it too).
+
 ## The ends of the spaces, as Arc's: its Library and its Create a Space (`feat/arc-sidebar-ends`, 2026-11-25)
 
 Tirth (two recordings of Arc): swiping past the first space and past the last should show Arc's own UI there, not

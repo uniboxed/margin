@@ -1577,6 +1577,26 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         "active \(NSApp.isActive), key \(window.isKeyWindow), on the current Space \(window.isOnActiveSpace), visible \(window.isVisible), full screen \(isFullScreen)"
     }
 
+    // Its display changed (a monitor connected or gone, the lid closed, another resolution; or its window moved to another
+    // display): the backdrop at that display's frame, its page measured again, and its page area told to the session even
+    // if its rect reads the same, so the one shown is placed again for the new display: the placement carries the
+    // display, and the engine lays Margin's own tile out for it (HostEngine `followDisplay`). Before (Tirth, 2026-11-25):
+    // on a bigger monitor Margin's window stayed at the laptop's size, the rest of the display blank.
+    // Only when its display's frame changed since it last looked (macOS says it several times for one change, the first
+    // still with the old display, and for changes that leave its display as it was); another display of the same size
+    // counts (the backdrop goes where it is).
+    private var displaySeen: CGRect?
+    func displayChanged(_ why: String) {
+        guard !isClosed, let d = displayFrame, d != displaySeen else { return }
+        displaySeen = d // (its first look acted on too: the engine takes a display it has already as nothing)
+        Diagnostics.note("Margin's window \(id): \(why) (its display \(Int(d.width))×\(Int(d.height)))")
+        syncBackdrop(why)
+        owner?.onDisplay?(self, d) // (the engine first: Margin's own tile for the new display)
+        updatePage()
+        if hosting { owner?.onPageRect?(self, window.pageRect) }
+    }
+    func windowDidChangeScreen(_ notification: Notification) { displayChanged("its window moved to another display") }
+
     func windowDidResize(_ notification: Notification) {
         if panel.frame != window.frame { panel.setFrame(window.frame, display: true) }
         updatePage()
@@ -1928,6 +1948,7 @@ final class MarginWindows {
     var onOpen: ((MarginWindowController) -> Void)? // a window made, before its page loads (the session: the item it showed last)
     var onSidebarResizing: ((MarginWindowController, Bool, Bool) -> Void)? // a change of its sidebar's width (or a split's divider: true) began (a drag), or is over
     var onCounts: ((MarginWindowController) -> Void)? // its sidebar's spaces or numbered rows changed in number (its rowCounts)
+    var onDisplay: ((MarginWindowController, CGRect) -> Void)? // its window on another display now (its frame, top left)
     var onNarrowed: ((MarginWindowController) -> Void)? // in full screen while hosting and narrower than its screen (a tile change in its Space)
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     /// The profiles' names told again to every window's page (they changed: MarginWindows.profiles).
@@ -1954,6 +1975,11 @@ final class MarginWindows {
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive(); c.becameActive() } }
         }
+        // The displays changed (a monitor connected or gone, the lid closed, another resolution): each window laid out for
+        // its display again (`displayChanged`).
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.displayChanged("the displays changed") } }
+        }
         // (Margin's menus open, any of them: the menu bar watch keeps the keys while one is.)
         menuObservers = [
             NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.menusTracking += 1 } },
@@ -1977,6 +2003,7 @@ final class MarginWindows {
     }
 
     private var activeObserver: NSObjectProtocol?
+    private var screenObserver: NSObjectProtocol?
     private var menuObservers: [NSObjectProtocol] = []
     private(set) var menusTracking = 0
     private var frontObservers: [NSObjectProtocol] = []
@@ -1986,6 +2013,7 @@ final class MarginWindows {
         if let wheelPhases { NSEvent.removeMonitor(wheelPhases) }
         if let pointers { NSEvent.removeMonitor(pointers) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
+        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
         paneTap?.stop()
         for o in frontObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
