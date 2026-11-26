@@ -1185,6 +1185,31 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtDispatch('library.close'));
       });
 
+      await t.test('a sidebar wider than the Library (500 pt): the Library as wide as it, the page never moved (no gap at the window\'s edge, nothing resized)', async () => {
+        await fresh({ settings: { themes: { arcadia: { sidebarWidth: 500 } } } });
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        const card0 = (await rect('.card-edge'))!;
+        assert.equal(Math.round(card0.left), 500, 'the sidebar 500 wide');
+        await ev(() => { (window as any).__told = T.rtResizing().length; });
+        const frames = await ev(() => new Promise<number[][]>((done) => {
+          const out: number[][] = [];
+          const tick = () => {
+            const c = document.querySelector('.card-edge')!.getBoundingClientRect();
+            out.push([Math.round(c.left), Math.round(c.right)]);
+            if (out.length < 40) requestAnimationFrame(tick); else done(out);
+          };
+          T.rtDispatch('library.open');
+          requestAnimationFrame(tick);
+        }));
+        assert.ok((await ev(() => (window as any).__rt.runtime.vm.library.open)), 'open');
+        assert.deepEqual([...new Set(frames.map((f) => f.join()))], [`${Math.round(card0.left)},${Math.round(card0.right)}`], `the page where it was, every frame (${JSON.stringify(frames)})`);
+        assert.equal(Math.round((await rect('.library'))!.width), 500, 'the Library the sidebar\'s width');
+        assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__told)), [], 'the host never told: nothing to follow');
+        await ev(() => T.rtDispatch('library.close'));
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+      });
+
       await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
         await fresh();
         const box = (await rect('.bar .archive'))!;

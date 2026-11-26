@@ -1465,7 +1465,10 @@
    every frame (2026-11-26: Safari full screen out and back in at each width). The browsers' overlay (a real page
    under it) makes room instead. Margin's window a tile beside the app (m-sidebar-fixed: its width can't change): the
    sidebar's own width, the page where it is. */
-.arcadia { --library-width: 417px; --lib-p: 0; }
+/* (Never narrower than the sidebar: a sidebar wider than Arc's 417 pt (to 500) would have the page slide left and leave
+   a gap at the window's edge, or be resized at every frame; the Library as wide as the sidebar then, the page where it
+   is, nothing moved. Tirth, 2026-11-26.) */
+.arcadia { --library-width: max(417px, var(--width)); --lib-p: 0; }
 .arcadia[m-sidebar-fixed] { --library-width: var(--width); }
 .arcadia[m-page-state]:not([m-sidebar-fixed]) :is(.page, .card-edge, .launcher-slot, .page-loader) { right: calc(var(--card-inset) - var(--card-shift)); }
 .arcadia.library-open { --lib-p: 1; }

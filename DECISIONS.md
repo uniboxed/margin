@@ -11524,3 +11524,8 @@ darker fading out by about 38 pt; the rail and the section the same ground, the 
   before the drag's press; landing mid-drag it redrew the list and the drag was lost (no moveTab sent, an activateTab
   of the row under the release instead). The test now waits for every request's answer, the closed tabs' rows gone and
   the overlay settled (`settled`) before it reads the rows and drags: 8 runs in 8 alone.
+- **A sidebar wider than the Library** (Tirth: at the sidebar's widest the Library moved the page left). Arcadia's
+  sidebar goes to 500 pt, the Library is Arc's 417: the shift went negative, the page slid left at its width, leaving a
+  gap at the window's edge (or it would have to be resized at every frame). `--library-width: max(417px, var(--width))`:
+  the Library as wide as such a sidebar, the page never moved, nothing to follow. Test: arcadia.test.ts at 500 (failed
+  before: the card 500 → 417, its right 1272 → 1189).
