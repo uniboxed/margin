@@ -188,7 +188,9 @@ export function installSwipe(rt: Rt) {
     // whose page stays (a tile beside the app) never tells it: nothing to follow, nothing to place again.)
     if (!s.resizing && s.libBase) {
       const now = place();
-      if (now && (Math.abs(now[0] - s.libBase[0]) > 0.5 || Math.abs(now[1] - s.libBase[1]) > 0.5)) {
+      // (Any move at all: a first frame's move under half a point reported unbracketed was placed the slow way, Safari
+      // resized at the start of a swipe back, 2026-11-26.)
+      if (now && (now[0] !== s.libBase[0] || now[1] !== s.libBase[1])) {
         s.resizing = true;
         rt.host.perform?.('sidebar.resizing', { on: true });
       }

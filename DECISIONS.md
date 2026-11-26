@@ -11445,3 +11445,20 @@ real-screen check below.
 closing, Safari asking about a download, the copies relinking, the item shown); Margin's menu bar on a top-edge hover
 after it; whether a Margin Safari ever shows its own (empty) menu bar on the Desktop (a link opened from another app
 promotes it to a Dock app: docs/MARGIN-APP.md, external-open research).
+
+## The Library's slide followed from its first frame, at whole points; Spaces slides the page too (`fix/library-follow`, 2026-11-26)
+
+Tirth's video (2026-11-26 12:14): while the Library slid, the page card's border was missing and on the way back "empty
+tab content" moved while Safari stayed until the settle; the Library's Spaces covered the page instead of shifting it.
+The frames: Margin's card (its hole, corners and shadow) ahead of Safari's page, a band of background between them.
+Two causes of ours in the log: a swipe back's first move (under half a point) was reported before `sidebar.resizing`
+(swipe.ts waited for half a point), so the session placed Safari the slow way at 1273 wide as the swipe began
+(12:14:41.860, 12:14:52.122); and the card's fractional left and right, rounded apart, made its width 1273 or 1274
+(the reports' `[265.95, 2.03]`, `[272.08, -4.08]`), each 1273 a real resize of Safari.
+- **Theme**: `--card-shift` rounded to whole points (`round(…, 1px)`), so the card's width never changes in a slide;
+  Spaces (`library-wide`) in Margin's window shifts the page to the panel's edge, 56 pt of it showing, width kept.
+- **swipe.ts**: the host told at any move of the page's measured place, not half a point.
+- **Tests** (arcadia.test.ts, both engines): every reported place at whole points and the same width (failed before:
+  the reports above); Spaces at `innerWidth - 56`, as wide; back out told before the first move away from 417.
+- **Open**: whether Safari's drawn page itself lags its moved tile (its bounds land in ~4 ms by the log); to be
+  measured from a screen recording.
