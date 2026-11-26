@@ -1126,26 +1126,58 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(await ev(() => getComputedStyle(document.querySelector('.lib-label')!).display), 'none', 'icons only');
         await page.locator('.lib-back').first().click();
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-sidebar-fixed'));
-        // A hosted window in the page area (Margin.app's m-page-state shown: Safari full screen in it): the page area never
-        // changes while the Library comes in, frame by frame (each width would place the app again: Safari out of full
-        // screen and back, 2026-11-26), the Library the sidebar's width.
+        // Margin.app's own window (m-page-state; shown: Safari full screen in its page area): the page slides right as
+        // Arc's does, its width kept, the rest past the window's edge, so the hosted window is only moved, followed live
+        // (the host told once, before the first moved place); never resized at every frame (each width placed Safari
+        // again, out of full screen and back: 2026-11-26). The Library Arc's 417 pt, its labels shown.
         await page.emulateMedia({ reducedMotion: 'no-preference' });
         await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
-        const before = (await rect('.card-edge'))!.left;
+        const card0 = (await rect('.card-edge'))!;
+        const vw = await ev(() => innerWidth);
         await ev(() => T.rtSentClear());
+        await ev(() => { (window as any).__resized0 = T.rtResizing().length; });
         await ev(() => T.rtWheelPhase('began'));
-        const lefts: number[] = [];
+        const cards: { left: number, width: number }[] = [];
         for (let i = 0; i < 6; i++) {
           await ev(() => T.rtTrackpadRun('.space-title .title', Array(4).fill(-20)));
-          lefts.push((await rect('.card-edge'))!.left);
+          const c = (await rect('.card-edge'))!;
+          cards.push({ left: c.left, width: c.width });
         }
         assert.equal((await ends()).swipe, true, 'the Library coming in');
-        assert.deepEqual([...new Set(lefts)], [before], `the page where it was, every step (${lefts.join(' ')})`);
-        assert.ok((await rect('.library'))!.width <= before + 0.5, 'the sidebar\'s width');
+        assert.ok(cards.some((c) => c.left > card0.left + 1), `the page slides right (${cards.map((c) => c.left).join(' ')})`);
+        assert.ok(cards.every((c) => Math.abs(c.width - card0.width) < 0.5), `its width kept (${cards.map((c) => c.width).join(' ')})`);
+        const told = await ev(() => T.rtResizing().slice((window as any).__resized0));
+        assert.deepEqual(told.map(([on]) => on), [true], 'the host told once, while it moves');
+        assert.equal(told[0][1], null, 'before the first moved place was reported');
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(12).fill(-20)));
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 2000 });
+        await page.waitForTimeout(50);
+        const open = (await rect('.card-edge'))!;
+        assert.deepEqual([Math.round(open.left), Math.round(open.width)], [417, Math.round(card0.width)], 'open: beside the Library\'s 417 pt, as wide as before');
+        assert.ok(open.right > vw, `past the window's right edge (${open.right} of ${vw})`);
+        assert.equal((await rect('.library'))!.width, 417, 'Arc\'s Library');
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.lib-label')!).display) !== 'none', true, 'its labels');
+        assert.equal(await ev(() => document.scrollingElement!.scrollLeft), 0, 'nothing scrolled');
+        const places = await ev(() => T.rtPlaces());
+        assert.ok(places.length > 1 && places.every(([l, r]: number[]) => Math.abs((l + r) - (places[0][0] + places[0][1])) < 0.5), `each place as wide (${JSON.stringify(places)})`);
+        assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__resized0)), [[true, null], [false, 417]], 'over once open, after its last place (417) was reported');
+        await page.locator('.lib-back').first().click();
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 2000 });
+        await page.waitForTimeout(50);
+        assert.deepEqual([Math.round((await rect('.card-edge'))!.left), Math.round((await rect('.card-edge'))!.width)], [Math.round(card0.left), Math.round(card0.width)], 'back: where it was');
+        // A tile beside the app (m-sidebar-fixed): the page stays, so the host is never told (nothing to follow or place).
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-sidebar-fixed', ''));
+        await ev(() => { (window as any).__resized1 = T.rtResizing().length; });
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(16).fill(-20)));
+        assert.equal((await ends()).swipe, true);
+        assert.equal(Math.round((await rect('.card-edge'))!.left), Math.round(card0.left), 'the page where it is');
         await ev(() => T.rtWheelPhase('ended'));
         await page.waitForTimeout(700);
-        assert.deepEqual((await ev(() => T.rtLayoutsAll())).filter((l: number) => Math.abs(l - before) > 0.5), [], 'no other page area reported');
+        assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__resized1)), [], 'not told');
         if ((await ends()).library) await page.locator('.lib-back').first().click();
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-sidebar-fixed'));
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
       });
 
