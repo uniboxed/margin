@@ -96,9 +96,9 @@ test('Arcadia\'s page card: its corner radius, shadow and frame, in plain CSS', 
   const radius = pkg.match(/\n  --card-radius: ([^;]+);/)![1];
   const shadow = decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow');
   const frame = pkg.match(/\n  --frame: ([^;]+);/)![1];
-  // (The frame's corner, the page card's and the sidebar's out over the page alike: Tirth, 2026-11-25.)
+  // (The frame's corner, the page card's and the sidebar's out over the page alike, Arc's 6 pt: Tirth, 2026-11-25.)
   assert.equal(radius, 'var(--frame-radius)');
-  assert.equal(pkg.match(/\n  --frame-radius: ([^;]+);/)![1], '10px');
+  assert.equal(pkg.match(/\n  --frame-radius: ([^;]+);/)![1], '6px');
   assert.ok(shadow && frame);
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   assert.doesNotMatch(pkg, /border-image|url\(/);

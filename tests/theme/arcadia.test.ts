@@ -59,8 +59,8 @@ for (const [name, engine] of ENGINES) {
         assert.ok(await page.evaluate(() => T.rtCount('.audible-icon')) > 0, 'playing tabs show a speaker');
         assert.ok(await page.evaluate(() => T.rtCount('.tab.asleep')) > 0, 'sleeping tabs are marked');
         assert.equal(await page.evaluate(() => T.rtCount('[m-action], m-for, m-if')), 0, 'no template syntax left');
-        // Keep open: the page's card beside the 260 px sidebar, in the 8 px frame, its corners 10 px.
-        assert.deepEqual(await layout(), { left: 260, top: 8, right: 8, bottom: 8, radius: 10, width: 1280, height: 800, windowId: 1, mode: 'inpage' });
+        // Keep open: the page's card beside the 260 px sidebar, in the 8 px frame, its corners Arc's 6 px.
+        assert.deepEqual(await layout(), { left: 260, top: 8, right: 8, bottom: 8, radius: 6, width: 1280, height: 800, windowId: 1, mode: 'inpage' });
       });
 
       await t.test('the width is the theme\'s setting (160–500, step 10); hidden, the page sits in the frame or fills the window', async () => {
@@ -69,7 +69,7 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 900 } } } }));
         assert.equal((await layout())!.left, 260, 'out of range: the default');
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false } }));
-        assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 10, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
+        assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 6, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
         assert.equal(await page.evaluate(() => T.rtCount('.peek-zone')), 1);
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false, frameWhenHidden: false } }));
         assert.deepEqual(await layout(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'no frame: the whole window');
@@ -516,7 +516,7 @@ for (const [name, engine] of ENGINES) {
 }
 
 // Arcadia as Arc's sidebar (M2.10, docs/ARC-SIDEBAR.md: every number below was measured in Arc 1.174.2), in WebKit
-// and Chromium through the runtime: the page card (10 pt in, a 6 pt corner, Arc's one shadow, no hairline); the
+// and Chromium through the runtime: the page card (8 pt in, Arc's 6 pt corner, its one shadow, no hairline); the
 // sidebar's sizes (32 pt top buttons, the 36 pt address pill and title row, rows 41 pt apart with 36 pt fills, a
 // folder's 22 × 16 glyph and its pins 16 pt in, titles 35 pt into their row, the 50 pt bottom bar under its edge);
 // a row's hover (black at 5%, at once); what shows only under the pointer (the space's chevron and •••, the address
@@ -541,11 +541,11 @@ for (const [engineName, engine] of ENGINES) {
       const rect = (s: string, n = 0) => ev(([sel, i]) => T.rtRect(sel, i), [s, n] as const);
       const away = async () => { await page.mouse.move(900, 400); await page.waitForTimeout(40); };
 
-      // (8 pt in and a 10 pt corner, the sidebar out over the page's too: Tirth, 2026-11-25; Arc's is 10 pt and 6 pt.)
-      await t.test('the page card: 8 pt in, a 10 pt corner, one shadow and no hairline', async () => {
+      // (8 pt in and Arc's 6 pt corner, the sidebar out over the page's too: Tirth, 2026-11-25; Arc's inset is 10 pt.)
+      await t.test('the page card: 8 pt in, Arc\'s 6 pt corner, one shadow and no hairline', async () => {
         const card = (await rect('.card-edge'))!;
         assert.deepEqual([card.top, 1280 - card.right, 800 - card.bottom], [8, 8, 8]);
-        assert.equal(await ev(() => T.rtComputed('.card-edge', 'border-top-left-radius')), '10px');
+        assert.equal(await ev(() => T.rtComputed('.card-edge', 'border-top-left-radius')), '6px');
         const shadow = await ev(() => T.rtComputed('.card-edge', 'box-shadow'));
         assert.match(shadow!, /^rgba\(0, 0, 0, 0\.25\) 0px 1px 7px( 0px)?$/, `Arc's one shadow (${shadow})`);
       });
