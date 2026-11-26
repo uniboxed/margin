@@ -8,8 +8,8 @@
 // from the top of its list), else it goes back. Then `m-settling` for
 // SETTLE_MS, with the offset at its end (a whole width that way, or 0).
 // Not with a mouse wheel (or Shift), over something that scrolls sideways,
-// with one space, while the sidebar is hidden or something is under way
-// (renaming, a menu, a drag).
+// with one space (unless the theme has Arc's ends, below), while the sidebar
+// is hidden or something is under way (renaming, a menu, a drag).
 //
 // A theme may ask for Arc's or Dia's own feel (`--m-swipe-feel: arc | dia` on
 // the swiping part; shared/space-swipe.ts ARC and FEELS, from their code): the
@@ -572,7 +572,9 @@ export function installSwipe(rt: Rt) {
       if (tracker.isSwipe() && e.cancelable) e.preventDefault(); // (its whole momentum: it isn't fed to the tracker)
       return;
     }
-    const usable = !!vm?.ready && vm.spaces.length > 1 && vm.window.sidebar !== 'hidden' && !rt.busy(api) && !!hit && !scrollsSideways(e, el);
+    // (One space: nothing to swipe to, unless the theme has Arc's ends: its Library and Create a Space are still there.)
+    const ends = vm?.spaces.length === 1 && getComputedStyle(el).getPropertyValue('--m-swipe-ends').trim() === 'arc';
+    const usable = !!vm?.ready && (vm.spaces.length > 1 || ends) && vm.window.sidebar !== 'hidden' && !rt.busy(api) && !!hit && !scrollsSideways(e, el);
     // (Phases known: a touch starts a new gesture, fingers still down continue it however long they rested.)
     const fresh = phases.known ? (phases.touched ? true : phases.fingers ? false : undefined) : undefined;
     phases.touched = false;

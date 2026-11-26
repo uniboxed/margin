@@ -1068,6 +1068,21 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual([(await ends()).library, (await ends()).swipe, (await ends()).left], [false, false, width], 'short of half: back');
       });
 
+      await t.test('one space: its ends still there (the Library before it, Create a Space after it), as Arc\'s', async () => {
+        await fresh();
+        await ev(() => { const rt = (window as any).__rt; const one = rt.mock.state.spaces[0]; rt.mock.state = { ...rt.mock.state, spaces: [one], activeSpaceByWindow: { 1: one.id } }; rt.host.setState(rt.mock.state); });
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.spaces.length === 1, null, { timeout: 2000 });
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(8).fill(-20)));
+        assert.equal((await ends()).swipe, true, 'toward the Library');
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(36).fill(20)));
+        const pulled = await ends();
+        assert.deepEqual([pulled.swipe, pulled.pull, pulled.armed], [false, true, true], 'and on past it: the pull, armed');
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => !!(window as any).__rt.runtime.vm.newSpace, null, { timeout: 1000 });
+        await ev(() => T.rtDispatch('newSpace.cancel'));
+      });
+
       await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
         await fresh();
         const box = (await rect('.bar .archive'))!;
