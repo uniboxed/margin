@@ -14,6 +14,11 @@
 //!              let in front or reacted to; the layout ignores it
 //!   transient  menus, tooltips, popovers (above layer 0, or tiny), spares never ordered in, a twin at the main
 //!              window's frame, a hosted window its app replaced: nothing to do with them
+//!   own        the person's own window of an app the person opened, made before the window Margin hosts: never
+//!              Margin's to show; one its app orders into Margin's Space goes back on its Desktop (the reconciler's
+//!              `putAway`). Safari started in the background at 07:42 kept its restored window ordered out until its
+//!              first activation, Margin's (2026-11-26 10:43:12.700): its AppKit ordered it in under the window Margin
+//!              asked for, which put it in Margin's Space, over the page.
 //! ```
 //!
 //! The rules, in order (the first that applies):
@@ -38,7 +43,9 @@
 //!  8b. a candidate there as the first show of the hosted window ended, in an app Margin started, not hosted
 //!      (the same exception as 8)                                                  leftover
 //!  10. the mains: each hosted candidate its app didn't replace; none: the best of the candidates
-//!  11. the other candidates: at a main window's frame (within 4 pt) a twin (transient), else auxiliary.
+//!  11. the other candidates: at a main window's frame (within 4 pt) a twin (transient); made before the window Margin
+//!      hosts, in an app the person opened, not hosted (never one in Margin's Space Accessibility hasn't read: as 8)
+//!      own; else auxiliary.
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -58,10 +65,11 @@ pub enum WindowKind {
     Leftover,
     Helper,
     Transient,
+    Own,
 }
 
 impl WindowKind {
-    pub const ALL: [WindowKind; 7] = [
+    pub const ALL: [WindowKind; 8] = [
         WindowKind::Main,
         WindowKind::Auxiliary,
         WindowKind::Dialog,
@@ -69,6 +77,7 @@ impl WindowKind {
         WindowKind::Leftover,
         WindowKind::Helper,
         WindowKind::Transient,
+        WindowKind::Own,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -79,11 +88,17 @@ impl WindowKind {
             WindowKind::Leftover => "leftover",
             WindowKind::Helper => "helper",
             WindowKind::Transient => "transient",
+            WindowKind::Own => "own",
         }
     }
-    /// Kept behind Margin's window and never acted on as the app's own: nothing of these is shown or reacted to.
+    /// Kept behind Margin's window and never acted on as the app's own: nothing of these is shown or reacted to. (The
+    /// person's own window too: never Margin's to show; the reconciler puts one that's in Margin's Space back on its
+    /// Desktop, `PutAway`.)
     pub fn kept_behind(self) -> bool {
-        matches!(self, WindowKind::Leftover | WindowKind::Strip | WindowKind::Transient | WindowKind::Helper)
+        matches!(
+            self,
+            WindowKind::Leftover | WindowKind::Strip | WindowKind::Transient | WindowKind::Helper | WindowKind::Own
+        )
     }
 }
 
@@ -564,6 +579,18 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
                 w.number,
                 verdict(WindowKind::Transient, format!("a twin of the main window {}, at its frame", twin.number)),
             );
+        } else if let Some(first) = own_before(w, app) {
+            out.insert(
+                w.number,
+                verdict(
+                    WindowKind::Own,
+                    format!(
+                        "the person's own: made before the window Margin hosts ({first}) in an app the person opened ({}, in {})",
+                        size(&w.bounds),
+                        w.place.text()
+                    ),
+                ),
+            );
         } else {
             let whose = if app.launched_by_margin || app.hosted.is_empty() {
                 "another window of its app"
@@ -574,6 +601,15 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
         }
     }
     out
+}
+
+/// Rule 11's `own`: a window of an app the person opened, made before the window Margin hosts (window numbers only
+/// grow: it was there before Margin asked for or took that one), not hosted, read by Accessibility if it's in Margin's
+/// Space (unread there it may be the app's sheet or alert over the window shown, as rule 8 keeps). The first window
+/// Margin hosts, when it is.
+fn own_before(w: &Window, app: &AppFacts) -> Option<i64> {
+    let first = *app.hosted.iter().next()?;
+    (!app.launched_by_margin && !app.hosted.contains(&w.number) && w.number < first && !unread_here(w)).then_some(first)
 }
 
 type Criterion = (&'static str, fn(&Window, &AppFacts) -> f64);

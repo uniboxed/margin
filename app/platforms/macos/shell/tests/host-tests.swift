@@ -3837,6 +3837,36 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         hostRun { await e.quitAll() }
     }
     do {
+        // The real Mac, 2026-11-26 10:43:12.700: the person's own window of their app, made before the one Margin hosts,
+        // ordered into Margin's Space by its app (Safari's activation ordering its restored window under the hosted one):
+        // put back on its Desktop by the reconciler, never closed or parked, its frame untouched; the hosted one stays.
+        let (w, _, marker) = world()
+        // (Accessibility read as on the real Mac, the current Space's windows: a window in Margin's Space Accessibility
+        // hasn't read is never taken for the person's own, as it may be its app's sheet or alert.)
+        let e = HostEngine(system: w, marker: marker, pid: 1, observation: FakeObservation(w))
+        e.options.privateRetire = 0
+        e.observer.schedule = { _, run in run() }
+        let p = w.start("com.apple.TextEdit", policy: .regular, windows: 2)
+        let older = w.apps[p]!.windows[0], newer = w.apps[p]!.windows[1]
+        w.main[p] = newer // (the one the person was using: Margin hosts it)
+        let r = open(e, textEdit)
+        w.axCurrentOnly = true
+        let hosted = e.hosts[textEdit.id]?.window
+        w.clock += e.options.lateWatch
+        func polls(_ n: Int) { for _ in 0..<n { w.clock += 0.25; e.poll(); _ = hostRun { await w.sleep(0.001); return true } } }
+        polls(2)
+        let frame = w.wins[older]?.frame
+        w.wins[older]?.spaces = [FakeHostWorld.marginSpace] // (its app orders it in under the hosted one)
+        w.calls = []
+        polls(8)
+        check("person's app: their own older window its app ordered into Margin's Space: back on its Desktop (never closed, never parked, its frame as it was), the hosted one still shown",
+              r == .shown(textEdit.id, placed: true) && hosted == newer && older < newer && w.spaces(window: older) == [FakeHostWorld.desktop] && w.wins[older]?.priv == nil
+              && w.wins[older]?.frame == frame && w.apps[p]?.windows.contains(older) == true && w.calls.contains("move \(older) \(FakeHostWorld.desktop)")
+              && !w.calls.contains { $0.hasPrefix("close \(older)") } && e.shown == textEdit.id && w.spaces(window: newer) == [FakeHostWorld.marginSpace],
+              "\(String(describing: r)) hosted \(String(describing: hosted)) older \(older) \(String(describing: w.wins[older])) \(w.calls) model: \(e.observer.model.apps[p].map { $0.windows.values.sorted { $0.number < $1.number }.map { "\($0.number) \($0.kind) (\($0.why)) \($0.place)" } } ?? [])")
+        hostRun { await e.quitAll() }
+    }
+    do {
         // The person's window already full screen in a Space of its own: left alone.
         let (w, e, _) = world()
         w.jumpOnFullScreen = false

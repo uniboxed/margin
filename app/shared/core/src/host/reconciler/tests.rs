@@ -36,7 +36,10 @@ fn first_open(edit: impl FnOnce(&mut Situation)) -> Situation {
     s
 }
 fn other(n: i64, place: WindowPlace, on_screen: Option<bool>, closable: bool) -> Other {
-    Other { number: n, place, on_screen, closable }
+    Other { number: n, place, on_screen, closable, home: None }
+}
+fn own(n: i64, place: WindowPlace, on_screen: Option<bool>, home: Option<u64>) -> Other {
+    Other { number: n, place, on_screen, closable: false, home }
 }
 fn tries(list: &[(&str, u32)]) -> BTreeMap<String, u32> {
     list.iter().map(|(k, v)| (k.to_string(), *v)).collect()
@@ -387,6 +390,83 @@ fn every_row() {
             }),
             P,
             vec![C::ParkLeftover { window: 5 }, C::ParkStrip { window: 6 }],
+        ),
+        // The real Mac, 2026-11-26 10:43:12: the person's own Safari window (25059), ordered into Margin's Space by
+        // Safari's activation, sat over the page area until Margin quit. Put back on its Desktop, never closed or parked.
+        (
+            "the person's own window in Margin's Space (its app's activation ordered it in): put away onto the Desktop",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.own_windows = vec![own(25059, Margin, Some(true), None)]
+            }),
+            S,
+            vec![C::PutAway { window: 25059, home: None }],
+        ),
+        (
+            "…its Desktop known: put back there",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.own_windows = vec![own(25059, Margin, Some(true), Some(1))]
+            }),
+            S,
+            vec![C::PutAway { window: 25059, home: Some(1) }],
+        ),
+        (
+            "…while its app's host is parked (another app shown): put away too",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.phase = Phase::Parked;
+                s.place = WindowPlace::Parked;
+                s.own_windows = vec![own(25059, Margin, Some(true), None)]
+            }),
+            P,
+            vec![C::PutAway { window: 25059, home: None }],
+        ),
+        (
+            "…on its Desktop, in a full-screen Space of its own, on several Spaces or in none: left where it is",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.own_windows = vec![
+                    own(1, Desktop, Some(false), Some(1)),
+                    own(2, FullScreen, None, None),
+                    own(3, Several, Some(true), None),
+                    own(4, Nowhere, None, None),
+                ]
+            }),
+            S,
+            vec![],
+        ),
+        (
+            "…its budget used this show (it came back each time): left",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.own_windows = vec![own(25059, Margin, Some(true), None)];
+                s.tries = tries(&[("own 25059", 3)])
+            }),
+            S,
+            vec![],
+        ),
+        (
+            "…macOS's transition still running: waited for first",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.busy = true;
+                s.own_windows = vec![own(25059, Margin, Some(true), None)]
+            }),
+            S,
+            vec![wait("macOS's transition is still running")],
+        ),
+        (
+            "…parked and an operation running: nothing yet",
+            member(|s| {
+                s.launched_by_margin = false;
+                s.phase = Phase::Parked;
+                s.place = WindowPlace::Parked;
+                s.busy = true;
+                s.own_windows = vec![own(25059, Margin, Some(true), None)]
+            }),
+            P,
+            vec![],
         ),
         (
             "parked, its process gone: nothing",

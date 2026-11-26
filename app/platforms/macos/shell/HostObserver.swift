@@ -175,6 +175,7 @@ final class HostObserver {
                 w.spaces = sys.spaces(window: n)
                 w.privateSpace = w.spaces == [] ? t.parked[n] : nil
                 w.place = HostModelWindow.place(spaces: w.spaces, parkedIn: w.privateSpace, marginSpace: marginSpace, type: spaceType)
+                if w.place == .desktop, let s = w.spaces?.first { w.home = s }
                 if w.place.placed || w.onScreen == true { w.everPlaced = true }
                 w.axMain = app.axMain == n
                 w.axFocused = app.axFocused == n
@@ -269,6 +270,7 @@ final class HostObserver {
                 cost.spacesReads += 1
                 w.spaces = sys.spaces(window: n)
                 w.place = HostModelWindow.place(spaces: w.spaces, parkedIn: nil, marginSpace: marginSpace, type: spaceType)
+                if w.place == .desktop, let s = w.spaces?.first { w.home = s }
                 w.everPlaced = w.place.placed
                 app.windows[n] = w
                 created[pid]?.remove(n)

@@ -109,15 +109,61 @@ fn rows() -> Vec<Row> {
             why: vec![(71150, "restored"), (71157, "the window Margin hosts")],
         },
         Row {
-            name: "Safari the person opened: their own windows auxiliary, the one Margin asked for main",
+            name: "Safari the person opened: their own windows (made before the one Margin asked for) own, that one main",
             windows: vec![
                 unread(71150, AREA, FullScreen, None),
                 unread(71152, DESK, Desktop, Some(true)),
                 std(71157, PAGE, Margin, Some(true), Some(true)),
             ],
             app: app(false, &[71157]),
-            want: vec![(71150, Auxiliary), (71152, Auxiliary), (71157, Main)],
+            want: vec![(71150, Own), (71152, Own), (71157, Main)],
             why: vec![(71152, "the person opened")],
+        },
+        // The real Mac, 2026-11-26 10:43:12.700: Safari started in the background at 07:42 kept its restored window
+        // 25059 ordered out (in no Space) until its first activation, Margin's, for the window it asked for (26084);
+        // Safari's AppKit then ordered 25059 in under 26084, which put it in Margin's Space, over the page. It's the
+        // person's own: never auxiliary there. A window its app opened after the one Margin hosts (26092, 454×161,
+        // ordered over it) is still auxiliary: it may be what the person just asked for.
+        Row {
+            name: "Safari the person opened: their window its activation ordered into Margin's Space is their own",
+            windows: vec![
+                std(25059, r(400.0, 60.0, 667.0, 865.0), Margin, Some(true), Some(true)),
+                std(26084, PAGE, Margin, Some(true), Some(true)),
+                std(26092, r(600.0, 300.0, 454.0, 161.0), Margin, Some(true), Some(false)),
+            ],
+            app: app(false, &[26084]),
+            want: vec![(25059, Own), (26084, Main), (26092, Auxiliary)],
+            why: vec![(25059, "made before the window Margin hosts (26084)")],
+        },
+        Row {
+            name: "...one not read by Accessibility yet in Margin's Space: auxiliary until it's read (it may be a sheet)",
+            windows: vec![
+                unread(25059, r(400.0, 60.0, 667.0, 865.0), Margin, Some(true)),
+                std(26084, PAGE, Margin, Some(true), Some(true)),
+            ],
+            app: app(false, &[26084]),
+            want: vec![(25059, Auxiliary), (26084, Main)],
+            why: vec![],
+        },
+        Row {
+            name: "...an app Margin started: its older window restored (a leftover), never the person's own",
+            windows: vec![
+                s(25059, r(400.0, 60.0, 667.0, 865.0), Margin),
+                std(26084, PAGE, Margin, Some(true), Some(true)),
+            ],
+            app: app(true, &[26084]),
+            want: vec![(25059, Leftover), (26084, Main)],
+            why: vec![],
+        },
+        Row {
+            name: "...the person's own window opened after the one Margin hosts: auxiliary (left where it is)",
+            windows: vec![
+                std(26084, PAGE, Margin, Some(true), Some(true)),
+                s(26300, r(400.0, 60.0, 667.0, 865.0), Margin),
+            ],
+            app: app(false, &[26084]),
+            want: vec![(26084, Main), (26300, Auxiliary)],
+            why: vec![],
         },
         Row {
             name: "Maps' window restored in full screen in a Space of its own, hosted: main",
