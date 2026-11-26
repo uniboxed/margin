@@ -73,8 +73,8 @@ export function installSwipe(rt: Rt) {
   // `settledAt`: the settle under way (its curve, when it began, its `token`: a caught one's end never comes).
   let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, response: number, haptics: boolean, shown: number, detent: number,
     anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, asked: Promise<unknown> | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number, blendFrame: number,
-    /** The ends (Arc's): `endsArc` the theme asks for them, `libOpen` swiped from the Library, `creating` from Create a Space; `armed` the pull past PULL_ARM; `libFrame` the Library's settle. */
-    endsArc: boolean, libOpen: boolean, creating: boolean, armed: boolean, peeked: boolean, libFrame: number } | null = null;
+    /** The ends (Arc's): `endsArc` the theme asks for them, `libOpen` swiped from the Library, `creating` from Create a Space; `armed` the pull past PULL_ARM; `libFrame` the Library's settle; `resizing` the host told the sidebar's width is changing (the Library moving the page area: `setLibrary`). */
+    endsArc: boolean, libOpen: boolean, creating: boolean, armed: boolean, peeked: boolean, libFrame: number, resizing: boolean } | null = null;
   // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
   // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
   const phases = { known: false, fingers: false, momentum: false, touched: false };
@@ -177,6 +177,9 @@ export function installSwipe(rt: Rt) {
     }
     // (Its rows drawn while it can be seen: `peek`.)
     if (!s.peeked) { s.peeked = true; rt.behaviors.ends?.peek(true); }
+    // (The sidebar as wide as the Library moves the page area each frame, as a drag of its edge does: the host told it's
+    // under way, once, so Margin.app's hosted window follows it live, not placed again frame by frame; over in `finish`.)
+    if (!s.resizing) { s.resizing = true; rt.host.perform?.('sidebar.resizing', { on: true }); }
     if (!root.hasAttribute('m-library-swipe')) root.setAttribute('m-library-swipe', '');
     root.style.setProperty('--m-library-progress', String(Math.round(Math.max(0, Math.min(1, p)) * 1000) / 1000));
   }
@@ -278,7 +281,7 @@ export function installSwipe(rt: Rt) {
     swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
       panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, response: feel?.response ?? ARC.RESPONSE, haptics: feel?.haptics ?? false, shown: 0, detent: 0,
       anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, asked: null, spring: null, settledAt: 0, token: 0, blendFrame: 0,
-      endsArc, libOpen, creating, armed: false, peeked: false, libFrame: 0 };
+      endsArc, libOpen, creating, armed: false, peeked: false, libFrame: 0, resizing: false };
     // (The ends: from the Library, the space it covers the way back; from Create a Space, the space it was opened from;
     // else before the first space the Library.)
     if (libOpen) swiping.neighbours = { [-1]: undefined, [1]: LIBRARY_BACK };
@@ -309,6 +312,9 @@ export function installSwipe(rt: Rt) {
     s.el.style.overflow = s.overflow;
     s.el.style.position = s.position;
     for (const list of Object.values(s.ghosts)) for (const g of list ?? []) g.remove();
+    // (The Library's change of the sidebar's width over: told after the page's place at its last width is measured and
+    // reported, now, so what the host does then is done once, for that place: behaviors/resize.ts's order.)
+    if (s.resizing) { view.flushLayout?.(); rt.host.perform?.('sidebar.resizing', { on: false }); }
   }
   // `time`: when it was let go (a lift's, from the trackpad's phases or by its momentum's first event: `lifted`), for
   // Arc's speed; `overrun`: the offset momentum added before it was told apart (Arc's feel takes it back out);

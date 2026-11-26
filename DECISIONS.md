@@ -11293,3 +11293,20 @@ known is that nothing bounded the quit.
   never came.
 - **Tests:** host-tests.swift (an open whose copy never answers: the quit gives everything back `quitHeldWait` later,
   the log names it; the open answered afterwards shows nothing).
+
+## The Library's swipe followed live (`fix/library-live-resize`, 2026-11-26)
+
+Tirth: Safari doesn't resize in real time any more, and a swipe from the first space into the Library looks like it
+freezes. His log of it (03:23–03:25, Notes then two Safari pages): the page area went from 280 to 416 pt and back with
+each Library swipe and each box-button slide, about 60 layouts a slide, and every one was "page area changed", one
+placing at a time (Notes 60–150 ms each, Safari 15–28 ms), never "the sidebar's edge dragged … follows it live": the
+hosted window went a step at a time behind Margin's page. The Library (feat/arc-library-ui) moves the page area by its
+progress each frame (Arcadia's `--card-left` with `--lib-p`), as a drag of the sidebar's edge does, but never told
+Margin.app a change of the sidebar's width was under way, so the core's session (session/page_area.rs) took each frame
+for a change of its own. The drag of the edge itself wasn't in his log.
+- **Fixed** in the UI's swipe (behaviors/swipe.ts), where the Library's progress is drawn: the host is told
+  `sidebar.resizing` on as the Library's progress is first drawn, and off when the swipe or slide is over, after the
+  page's place at its last width is measured and reported (behaviors/resize.ts's order). From there it's the drag's
+  path, unchanged: the one shown follows each frame live (a plain member's placing held until it's over, then once).
+- **Tests:** tests/theme/arcadia.test.ts (the Library's swipe in, out, and let go short of half: begun once, over once,
+  after its last place; failing without the fix, both engines).
