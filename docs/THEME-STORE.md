@@ -36,12 +36,20 @@ Margin.app ──────────────► themes server (Cloudfla
     the same import check + preview      Browser Rendering: the screenshots, rendered from the package
 ```
 
-- **Server code in this repo** (`cloud/themes/`, TypeScript, Wrangler), so it uses the same validator files as the
-  app: one copy of the check, run on upload and again by the app on install. Secrets (the API key, the signing key)
+- **Server code in this repo** (`cloud/themes/`, TypeScript, Wrangler), next to the app's code it shares (the zip
+  reader's caps, `theme.json`'s schema). Secrets (the API key, the signing key)
   live only in Worker secrets. The repo is public: no names, addresses or keys in code, logs or issues.
-- **Cloudflare**: Workers (the API), D1 (records), R2 (files), Durable Objects (per-person limits, counted exactly),
-  Browser Rendering (screenshots). Tirth's account is already set up with these. The paid Workers plan ($5 a month)
-  is needed for Durable Objects and Browser Rendering.
+- **Cloudflare, on the free plan** (Tirth, 2026-11-25: no $5 plan): Workers (the API), D1 (records), R2 (files),
+  Durable Objects (per-person limits, counted exactly: SQLite-backed ones are free since April 2025), Browser Rendering
+  (screenshots: 10 minutes of browser time a day, 3 at once), the free `*.workers.dev` address until there's a domain.
+  The free plan's daily allowances: 100,000 requests (Workers and Durable Objects each), D1 5 million rows read and
+  100,000 written, R2 10 GB. Each is a hard stop (an error until 00:00 UTC), never a bill. Upgrade only when they're
+  reached.
+- **The free plan gives a request 10 ms of CPU**, and Margin's full theme check takes about 18–35 ms (measured on an M-series
+  Mac: Arcadia, Pixel, Material). So the server never runs it. The check that matters already runs on every device:
+  Margin checks a theme before it's uploaded and every time it's installed or loaded, and refuses it there. The server
+  checks only what's cheap: the size, the zip's shape and caps, `theme.json`'s fields, the sha256. A theme that
+  slipped past an altered app is refused on every device that installs it, and review hides it.
 
 ## Where each piece goes (docs/HOSTING-CORE.md, "follow the architecture")
 
@@ -76,7 +84,8 @@ Margin.app ──────────────► themes server (Cloudfla
 - **Share Theme…** on an imported, linked or generated theme: name, description, tags, then upload.
 - The app sends the `.margintheme` package. The server, in order:
   1. checks size and rate (5 uploads a day per person);
-  2. runs `checkImport` on it (refused with the reasons if it fails);
+  2. checks its size, its zip's shape and caps and its `theme.json` (the full check is the app's, before it uploads and
+     on every device that installs it: the free plan's 10 ms of CPU is too little for it here);
   3. stores the package in R2 under its sha256;
   4. renders screenshots with Browser Rendering (the theme's own template over a fixed sample state, light and dark:
      never a picture the uploader sent);
@@ -105,8 +114,9 @@ Margin.app ──────────────► themes server (Cloudfla
   - **System prompt**: the theme guide (from the skill, below), cached.
   - **Context**: for a remix, the base theme's files, also cached.
   - **Output**: the files as structured output.
-  - The server runs `checkImport`. If that fails, the reasons go back to Claude for one fix, then at most one more.
-  - The result is returned to the app, which checks it again and shows it in the preview bar.
+  - The result is returned to the app, which checks it with `checkImport` and shows it in the preview bar. If the
+    check fails, the app sends the reasons back for a fix, at most twice. The server counts the fix rounds as part of
+    the same generation, so they cost no points.
 - **Follow-ups** ("darker sidebar", "rounder") continue the same conversation, its prefix cached, and cost a remix.
 - A generated theme can be kept (source `generated`), edited as a linked folder, or shared.
 
