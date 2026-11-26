@@ -13,6 +13,9 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
 import { pageLoaderChecks, rgba, near, decodePng } from './page-card.ts';
+import { lookOf, appearanceOf } from '../../app/shared/ui/background-look.ts';
+import { backgroundOf } from '../../extension/state/model.ts';
+import type { SpaceBackground } from '../../types/margin';
 import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 import { hitRects } from '../../app/shared/ui/host-app.ts';
@@ -1251,6 +1254,44 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
         await ev(() => T.rtChange('setBackground', 'personal', null));
         await ev(() => { const r = document.querySelector('.arcadia')!; r.removeAttribute('m-page-state'); r.removeAttribute('m-page-slides'); });
+      });
+
+      await t.test('the Library\'s Spaces as Arc\'s: each card on its own space\'s background (Margin draws it), its text in that space\'s colours, Arc\'s shadow; a space with none the theme\'s colour', async () => {
+        await fresh();
+        const ids = await ev(() => (window as any).__rt.mock.state.spaces.map((sp: any) => sp.id) as string[]);
+        const DARK = { colors: ['#1b2a4a', '#3a2b5c'], intensity: 0.8, texture: 'grain', amount: 0.3, appearance: 'dark' };
+        await ev(([id, b]) => T.rtChange('setBackground', id, b), [ids[1], DARK] as const);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await ev(() => T.rtDispatch('library.section', 'spaces'));
+        await page.waitForFunction(() => document.querySelectorAll('.lib-card').length > 1, null, { timeout: 3000 });
+        await page.waitForTimeout(100);
+        const cards = await ev(() => [...document.querySelectorAll<HTMLElement>('.lib-card')].map((c) => {
+          const r = c.getBoundingClientRect();
+          return { id: c.dataset.spaceId, grounded: c.hasAttribute('m-grounded'), drawn: !!c.querySelector(':scope > margin-background'), color: getComputedStyle(c).color, shadow: getComputedStyle(c).boxShadow, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height * 0.75), w: r.width, h: r.height };
+        }));
+        const dark = cards.find((c) => c.id === ids[1])!, plain = cards.find((c) => c.id === ids[0])!;
+        assert.ok(dark && plain, JSON.stringify(cards.map((c) => c.id)));
+        assert.deepEqual([dark.grounded, dark.drawn], [true, true], 'its space\'s background drawn in it by Margin');
+        assert.deepEqual([plain.grounded, plain.drawn], [false, false], 'a space with none: the theme\'s colour');
+        const bg = backgroundOf(DARK) as SpaceBackground;
+        const want = lookOf(bg, appearanceOf(bg, false), { size: { width: dark.w, height: dark.h } }).vars['--m-fg'];
+        const hex = (rgb: string) => `#${(rgb.match(/\d+/g) ?? []).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+        assert.equal(hex(dark.color), want.toLowerCase(), 'its text in that space\'s own colour (light on a dark space)');
+        const px = decodePng(await page.screenshot({ animations: 'disabled' }));
+        const lum = (x: number, y: number) => { const [r, g, b] = px(x, y); return (r + g + b) / 3; };
+        assert.ok(lum(dark.x, dark.y) < 110, `the dark space's card drawn dark (${lum(dark.x, dark.y)})`);
+        assert.ok(lum(plain.x, plain.y) > 150, `the plain one light (${lum(plain.x, plain.y)})`);
+        // (0.155 as the browser keeps an alpha: in 255ths, 40/255 = 0.157.)
+        assert.ok(cards.every((c) => /^rgba\(0, 0, 0, 0\.15[5-7]\d*\) 0px 0\.5px 16px 0px$/.test(c.shadow)), `Arc's shadow (${cards[0].shadow})`);
+        // Its background gone: the card the theme's again.
+        await ev(([id]) => T.rtChange('setBackground', id, null), [ids[1]] as const);
+        await page.waitForTimeout(100);
+        assert.deepEqual(await ev((id) => { const c = document.querySelector<HTMLElement>(`.lib-card[data-space-id="${id}"]`)!; return [c.hasAttribute('m-grounded'), !!c.querySelector(':scope > margin-background'), c.style.getPropertyValue('--m-fg')]; }, ids[1]), [false, false, ''], 'let go: nothing of Margin\'s left on it');
+        await ev(() => T.rtDispatch('library.section', 'archive'));
+        await ev(() => T.rtDispatch('library.close'));
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
       });
 
       await t.test('a hosted window that can\'t pass the window\'s edge (no m-page-slides): the Library makes room, the page\'s right edge where it was', async () => {

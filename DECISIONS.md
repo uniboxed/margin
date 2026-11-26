@@ -11580,3 +11580,18 @@ as it widened: the cards past the panel's old width were painted only as they we
 - **Real screen, after**: no frame with a gap or an empty panel; the cards drawn up to the hosted window's edge.
 - **Tests** (arcadia.test.ts): the first frame where it was (failed before: 975-1000 already); into Spaces the panel
   its whole width while sliding, its seen edge at the page's every frame.
+
+## The Library's Spaces cards on their own spaces' backgrounds, as Arc's (`fix/spaces-slide-start`, 2026-11-26)
+
+Tirth's screenshot of Arc's Spaces: each card drawn on its space's own background (its colours, gradient and grain),
+with a soft shadow off the panel; Margin's showed a flat colour mix (`--card-ground`: a gradient of the colours only:
+themes can't draw the grain, a texture tile Margin makes).
+- **Margin** (ui/background.ts `cards`, ui/runtime.ts `followCards` at each draw and layout): an element the theme
+  marks `m-ground="space"` with its `data-space-id` gets that space's whole look drawn in it (underlay, picture, wash,
+  colours, texture), laid out at the element's own size, under its content, clipped to its corners; its space's text
+  colours set on it (`--m-fg` and the rest) and `m-grounded` while drawn; let go (all of it taken off) when its space
+  has no background or the element goes. Sanitizer: `m-ground` takes `space` too.
+- **Arcadia**: `.lib-card` marked so; `[m-grounded]` cards take their space's colours for their text; the shadow
+  measured on Arc's (7% darker by the edge, 4% 5 pt out, 2.5% at 9, gone by 20): `0 0.5px 16px rgba(0,0,0,.155)`.
+- **Test** (arcadia.test.ts, both engines): a dark space's card drawn dark with Margin's layer and its own light text
+  (`lookOf`'s `--m-fg`), a space with none the theme's colour, the shadow, let go when its background goes.

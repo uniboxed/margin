@@ -251,6 +251,15 @@ export function createBackground({ doc, container, onChange }: {
     };
   }
 
+  // Each space's own background in the theme's elements marked `m-ground="space"` (`cards`), by element.
+  const cardGrounds = new Map<HTMLElement, { host: HTMLElement, set: HTMLElement, key: string, isolation: string }>();
+  function letGoCard(el: HTMLElement, card: { host: HTMLElement, isolation: string }) {
+    card.host.remove();
+    el.style.isolation = card.isolation;
+    for (const k of ['--m-bg', '--m-fg', '--m-fg-2', '--m-accent', '--m-hover', '--m-selected']) el.style.removeProperty(k);
+    el.removeAttribute('m-grounded');
+  }
+
   // The space sliding in, drawn over the one shown (`blend`): its set, and what it was drawn from.
   // (One set on each surface: the window's, and the panel's copy while the sidebar floats.)
   let preview: { spaceId: string, sets: Map<object, HTMLElement>, key: string } | null = null;
@@ -485,6 +494,56 @@ export function createBackground({ doc, container, onChange }: {
       placeFloat();
       if (look) drawInto(float, look, pictureBgNow, false);
     },
+    /**
+     * Each space's own background drawn in an element of the theme's (`m-ground="space"`, its `data-space-id`: the
+     * Library's Spaces cards, as Arc's draws each its space's colours and grain): the whole look laid out at the
+     * element's own size (its gradient across the card, not the window), its texture, its picture once loaded, under
+     * the element's content, clipped to its corners, the element isolated. None for a space with no background (the
+     * theme's own colour there). Each drawn again only when its space's background, the appearance or its size
+     * changed; elements no longer listed let go. `picture`: the host's address of its picture (Margin.app's).
+     */
+    cards(list: { el: HTMLElement, background: SpaceBackground | null, picture: string | null }[], opts: { systemDark: boolean, moreContrast: boolean }) {
+      const seen = new Set<HTMLElement>();
+      for (const { el, background: bg, picture: pictureAddress } of list) {
+        if (!bg || !el.isConnected) continue;
+        seen.add(el);
+        let card = cardGrounds.get(el);
+        if (!card) {
+          const host = doc.createElement(TAG);
+          host.setAttribute('aria-hidden', 'true');
+          host.setAttribute('style', FLOAT_PINNED);
+          const inner = host.attachShadow({ mode: 'closed' });
+          const sheetEl = doc.createElement('style');
+          sheetEl.textContent = FLOAT_CSS;
+          const set = makeSet();
+          inner.append(sheetEl, set);
+          card = { host, set, key: '', isolation: el.style.isolation };
+          el.style.isolation = 'isolate';
+          el.append(host);
+          cardGrounds.set(el, card);
+        }
+        const width = el.clientWidth, height = el.clientHeight;
+        if (!(width > 0 && height > 0)) continue;
+        const appearance = appearanceOf(bg, opts.systemDark);
+        const url = bg.image && typeof pictureAddress === 'string' && PICTURE_URL.test(pictureAddress) ? pictureAddress : null;
+        const pic = url ? picture(url) : null;
+        const key = JSON.stringify([bg, appearance, opts.moreContrast, width, height, url, pic?.state ?? null]);
+        if (card.key === key) continue;
+        card.key = key;
+        let samples: PictureSamples | null = null;
+        if (pic?.state === 'ready' && bg.image) samples = pictureSamples(doc, pic.img, bg.image, width, height, rgbToHex(underlayOf(bg, appearance)));
+        const l = lookOf(bg, appearance, { moreContrast: opts.moreContrast, size: { width, height }, picture: samples });
+        paint(card.set, l, url && bg.image ? pictureCss(url, bg.image) : 'none');
+        // (Its space's own text colours on it (light on a dark space), for the theme to read: `m-grounded`.)
+        for (const [k, v] of Object.entries(l.vars)) if (checkCssValue(v)) el.style.setProperty(k, v);
+        el.setAttribute('m-grounded', '');
+      }
+      for (const [el, card] of cardGrounds) {
+        if (seen.has(el)) continue;
+        letGoCard(el, card);
+        cardGrounds.delete(el);
+      }
+    },
     /** The ground's colour at a point of the window (`rgb(r, g, b)`: as Margin.app reads it), null while none shows. */
     colorAt(x: number, y: number): string | null {
       if (!look) return null;
@@ -521,6 +580,8 @@ export function createBackground({ doc, container, onChange }: {
       clearLeaving();
       host.remove();
       if (float) { float.host.remove(); float.el.style.isolation = float.isolation; float = null; }
+      for (const [el, card] of cardGrounds) letGoCard(el, card);
+      cardGrounds.clear();
       look = null;
       sheet.replaceSync('');
     },

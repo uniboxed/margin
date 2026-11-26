@@ -346,7 +346,7 @@
         <m-if test="library.wide">
           <div class="lib-spaces" role="list" aria-label="Spaces">
             <m-for each="library.spaces" as="sp">
-              <section class="lib-card" role="listitem" m-attr:aria-label="{{sp.name}}" m-class:active="{{sp.active}}" m-class:iconless="{{sp.iconless}}" m-style:--card-color="{{sp.color}}" m-style:--card-ground="{{sp.ground}}">
+              <section class="lib-card" role="listitem" m-ground="space" m-attr:data-space-id="{{sp.id}}" m-attr:aria-label="{{sp.name}}" m-class:active="{{sp.active}}" m-class:iconless="{{sp.iconless}}" m-style:--card-color="{{sp.color}}" m-style:--card-ground="{{sp.ground}}">
                 <header class="lc-head">
                   <span class="lc-emoji" aria-hidden="true">{{sp.emoji}}</span>
                   <span class="lc-name">{{sp.name}}</span>
