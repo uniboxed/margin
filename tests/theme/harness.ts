@@ -769,6 +769,8 @@ const withRuntime = Object.assign(T, {
   rtStyle(selector: string, prop: string) { const el = rt.target.querySelector<HTMLElement>(selector); return el ? el.style.getPropertyValue(prop) : null; },
   rtSentClear() { rt.host.sent.length = 0; rt.host.layouts.length = 0; },
   rtLayoutsAll() { return rt.host.layouts.map((l) => l.insets.left); },
+  // Each place reported, its left and right insets.
+  rtPlaces() { return rt.host.layouts.map((l) => [l.insets.left, l.insets.right]); },
   // The host told a change of the sidebar's width began (true) or is over (false), each with the last left inset reported by then.
   rtResizing() { return rt.resizing.slice(); },
   rtDisplay(selector: string) { const el = rt.target.querySelector(selector); return el ? getComputedStyle(el).display : null; },

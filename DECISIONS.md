@@ -11316,3 +11316,25 @@ so a hosted window would follow the page area live) met `fix/library-hosted` on 
 never moving the page area while an app is hosted. With both, the bracket had nothing to follow: over a hosted page
 it only started a live resize and placed the app again once at its end (session/page_area.rs `sidebar_resizing`:
 off queues `place_again`), and with no hosted page the session ignores it. Reverted; `fix/library-hosted` is the fix.
+
+## The Library slides the page, as Arc's (`fix/library-shift`, 2026-11-26)
+
+Tirth didn't want `fix/library-hosted`'s answer (the Library kept the sidebar's width over a hosted app, the page
+still): "keep it exactly like arc, where the window shifts on the right when I open the Library, not resize".
+- **Theme** (Arcadia): `--card-shift` (the Library's width less the sidebar's, times its progress) moves the card's
+  left; in Margin.app's own window (`m-page-state`) its right too, so the card keeps its width and slides past the
+  window's right edge (the root clips it). Full Library again (417 pt, its labels) with a hosted app. The browsers'
+  overlay (no `m-page-state`: a real page under it) makes room as before; Margin's window a tile beside the app
+  (`m-sidebar-fixed`) keeps the sidebar's width and the page still.
+- **The host** (behaviors/swipe.ts `setLibrary`): once the page's measured place moves from where it was before the
+  Library's first progress, `sidebar.resizing` on, once; off in `finish` after a flushed last report (resize.ts's
+  order). The session then follows each frame live (session/page_area.rs): a tile moved past the display's edge,
+  which macOS keeps (layout.rs `tile`, proven 2026-11-22), the same size, so Safari lays nothing out again; one
+  placing at the end, the cheap tile path. A page that never moves (a tile beside the app) never tells it, so no
+  needless placing. Without tiles (`tilesOff`) the session holds the frames and places once at the end, where a
+  reservation can't pass the display: shown at the frame it had (`not fitted`), the Library over its left.
+- **Test** (tests/theme/arcadia.test.ts, both engines): with `m-page-state="shown"` a swipe slides the card right at
+  its width, the host told once before the first moved place, each reported place as wide, open at 417 past the
+  window's edge, over once after its last place; `m-sidebar-fixed`: the page stays, nothing told. Failed before the
+  change (the card at 260 every step).
+- **Still to see on the real screen**: Safari's tile moved live past the display's edge, smooth, and placed once.
