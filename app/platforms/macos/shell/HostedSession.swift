@@ -138,6 +138,23 @@ protocol HostedEngine: AnyObject {
     func focusPages(_ ids: [HostID]) async -> String?
     // A cut pane's arrow (docs/PEEK-SPLIT.md §4b): its window slid to show that side (true: done).
     func slide(_ id: HostID, side: PaneSide) async -> Bool
+    // A Safari the person opened (margin-core session/restart.rs, HostEngine): the one running (nil: none), and it
+    // started again with Margin's hosting arguments.
+    func safariRun() -> HostSafariRun?
+    func restartSafari(pid: pid_t) async -> HostSafariRestart
+}
+
+// The Safari running as the engine reads it: its process, whether it has Margin's hosting arguments, whether Margin
+// hosts any window of it (margin-core session/restart.rs `SafariRun`).
+struct HostSafariRun: Equatable {
+    var pid: pid_t
+    var hosting: Bool
+    var hosted: Bool
+}
+// A restart's end: the new Safari's process, or why it didn't happen.
+enum HostSafariRestart: Equatable {
+    case restarted(pid_t)
+    case notRestarted(String)
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -250,6 +267,9 @@ extension HostedEngine {
     func slide(_ id: HostID, side: PaneSide) async -> Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
+    // (A stand-in hosts no Safari: nothing to ask about, nothing restarted.)
+    func safariRun() -> HostSafariRun? { nil }
+    func restartSafari(pid: pid_t) async -> HostSafariRestart { .notRestarted("no engine to restart it") }
 }
 
 extension HostEngine: HostedEngine {}
@@ -742,6 +762,18 @@ final class HostedSession {
                     let app = await self.engine.start(bundleId: bundle)
                     self.drive(self.core.answer(id, ["started": app != nil]))
                 }
+            case "restartSafari":
+                // (The person chose Restart Safari: margin-core session/restart.rs.)
+                guard let pid = int(args["pid"]) else {
+                    drive(core.answer(id, ["restarted": false, "why": "the core's restart wasn't one"]))
+                    return
+                }
+                startNow {
+                    switch await self.engine.restartSafari(pid: pid_t(pid)) {
+                    case .restarted(let now): self.drive(self.core.answer(id, ["restarted": true, "pid": Int(now)]))
+                    case .notRestarted(let why): self.drive(self.core.answer(id, ["restarted": false, "why": why]))
+                    }
+                }
             case "prepare":
                 // (At that window's launcher's page area, as the core checked it just now.)
                 guard let target = Self.hostTarget(args["target"]), let mw = held(int(args["window"])), let placement = mw.idlePlacement else {
@@ -844,6 +876,8 @@ final class HostedSession {
         case "linkSlow": return links.slow(of: ask["profile"] as? String ?? "").map { ["secs": $0] } ?? [:]
         case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
         case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
+        // (A Safari show's question, margin-core session/restart.rs: the Safari running, as the engine reads it.)
+        case "safariRun": return engine.safariRun().map { ["pid": Int($0.pid), "hosting": $0.hosting, "hosted": $0.hosted] } ?? [:]
         default: return [:]
         }
     }

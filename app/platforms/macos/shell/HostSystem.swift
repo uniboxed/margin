@@ -28,6 +28,9 @@ protocol HostSystem: AnyObject {
     // application" off). Off, macOS's default, a quit discards its windows anyway: closing one first changes nothing
     // about its next launch.
     func keepsWindowsAtQuit(pid: pid_t) -> Bool
+    // Its process's launch arguments, after its executable's own name (the kernel's KERN_PROCARGS2: a process of the same
+    // user); nil: unread. Margin's Safari is told apart by its hosting arguments (margin-core session/restart.rs).
+    func launchArguments(pid: pid_t) -> [String]?
     // Its app's version ("short (build)"; nil: unread): the hosting core's routes remember a step down per version.
     func appVersion(pid: pid_t) -> String?
     // An app Margin just started, its first window waited for: its Accessibility reads wait at most 0.2 s, not 1, for
@@ -190,6 +193,8 @@ protocol HostSystem: AnyObject {
 
 extension HostSystem {
     func batch(_ body: () -> Void) { body() }
+    // (A stand-in that doesn't play it: unread.)
+    func launchArguments(pid: pid_t) -> [String]? { nil }
     func appVersion(pid: pid_t) -> String? { nil }
     func launching(pid: pid_t, for seconds: Double) {}
     // (A stand-in that doesn't play it: not sent.)
@@ -795,6 +800,32 @@ final class RealHostSystem: HostSystem {
         let container = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/\(bundle)/Data/Library/Preferences/\(bundle).plist")
         if let d = NSDictionary(contentsOf: container), let v = d[key] as? NSNumber { return v.boolValue }
         return (CFPreferencesCopyAppValue(key as CFString, bundle as CFString) as? NSNumber)?.boolValue ?? false
+    }
+    func launchArguments(pid: pid_t) -> [String]? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &bytes, &size, nil, 0) == 0 else { return nil }
+        return Self.arguments(procargs: Array(bytes.prefix(size)))
+    }
+    // KERN_PROCARGS2's layout: its argument count (a 32-bit int), the executable's path and its zero padding, then the
+    // arguments, each ended by a zero (the environment after them, never read). Its own name left out. Nil: not that.
+    nonisolated static func arguments(procargs b: [UInt8]) -> [String]? {
+        guard b.count >= 4 else { return nil }
+        let argc = Int(Int32(littleEndian: b.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }))
+        guard argc >= 1, argc < 4096 else { return nil }
+        var i = 4
+        while i < b.count, b[i] != 0 { i += 1 } // (the executable's path)
+        while i < b.count, b[i] == 0 { i += 1 } // (its padding)
+        var args: [String] = []
+        while args.count < argc, i < b.count {
+            var j = i
+            while j < b.count, b[j] != 0 { j += 1 }
+            args.append(String(decoding: b[i..<j], as: UTF8.self))
+            i = j + 1
+        }
+        return args.count == argc ? Array(args.dropFirst()) : nil
     }
 
     func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }
