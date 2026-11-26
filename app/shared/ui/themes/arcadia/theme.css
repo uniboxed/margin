@@ -1642,11 +1642,11 @@
    page, which stays where it was: 417 pt in), a row of 240 pt cards 24 pt apart, 48 pt down and up, each in its space's
    colour (its background's colours where it has one): its name, icon and profile, its pencil, its folders, pins and
    today's tabs as its sidebar has them, Arc's move handle and ••• at its foot. */
-.library { width: var(--library-panel, var(--library-width)); transition: width 250ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* (At once: Arcadia animates no layout, tests/theme-motion.test.ts.) */
+.library { width: var(--library-panel, var(--library-width)); }
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { --library-panel: calc(100% - 56px); }
 /* (Over the page card's edge and shadow too: the page under it, a sliver of it showing at the right, as Arc's.) */
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { z-index: 2; box-shadow: 1px 0 7px rgba(0, 0, 0, 0.18); }
-.arcadia[m-library-swipe] .library { transition: none; }
 .lib-spaces { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 48px 24px; overflow-x: auto; overscroll-behavior: contain; }
 .lib-card {
   position: relative; flex: none; width: 240px; height: 100%; display: flex; flex-direction: column; overflow: hidden;
