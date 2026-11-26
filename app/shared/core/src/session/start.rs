@@ -553,6 +553,11 @@ impl Core {
         if name != "safari" {
             return skip(format!("{name} isn't hosted yet"));
         }
+        // (A Safari the person opened whose question isn't over: nothing made ready in it, which would host it as it
+        // is; it's asked about at the first show the person wants, restart.rs.)
+        if super::restart::step(self.ports.safari_run(), self.restart_ask.get()) != super::restart::Step::Go {
+            return skip("Safari was opened outside Margin (asked about at its first show)".into());
+        }
         if !self.ports.prepares_out_of_sight() {
             return skip("the early full screen isn't available, so it can't be made ready out of sight".into());
         }

@@ -40,6 +40,7 @@ mod navigate;
 mod page_area;
 pub mod push;
 mod requests;
+pub mod restart;
 pub mod route;
 pub mod start;
 pub mod state;
@@ -151,6 +152,9 @@ pub trait Ports {
     /// item for (`unopenable`).
     fn woken_by_menu(&self, profile: &str) -> bool;
     fn unopenable(&self, profile: &str) -> bool;
+    /// The running Safari Margin hosts (HostEngine `safariRun`: its process, whether it has Margin's hosting arguments,
+    /// whether Margin hosts any window of it now); None: none runs. Read once a Safari show (restart.rs).
+    fn safari_run(&self) -> Option<restart::SafariRun>;
     /// A line for the app's log (Diagnostics), said at once.
     fn log(&self, warn: bool, text: &str);
     /// The one Swift step left that the core calls by name, synchronously: `paneCuts` `{ window }` (a split's cut panes
@@ -686,6 +690,8 @@ pub(crate) struct Core {
     hosts_asked: Cell<u64>,
     /// When Margin began to quit (`Input::Quitting`), on the caller's clock.
     quit_at: Cell<Option<f64>>,
+    /// The question about a Safari the person opened (restart.rs): the process it was asked for, how far it went.
+    restart_ask: Cell<Option<(i64, restart::Asked)>>,
 }
 
 /// The session: one per app. Every entry takes `&self` (re-entrant).
@@ -719,6 +725,7 @@ impl Session {
             placing: Cell::new(false),
             hosts_asked: Cell::new(0),
             quit_at: Cell::new(None),
+            restart_ask: Cell::new(None),
         }))
     }
 

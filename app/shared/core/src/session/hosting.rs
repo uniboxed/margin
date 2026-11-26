@@ -144,6 +144,10 @@ impl Core {
     /// The engine's open (the first time) or show, into `w`'s page area, for `item`; Margin's window made ready first.
     /// False: not shown.
     pub(crate) async fn host(&self, target: &HostTarget, w: i64, item: &str) -> bool {
+        // (A Safari the person opened: asked first whether Margin restarts it with its hosting arguments, restart.rs.)
+        if matches!(target, HostTarget::Safari(..)) && !self.safari_restart_gate(w, item).await {
+            return false;
+        }
         self.hosts_asked.set(self.hosts_asked.get() + 1);
         let Some((placement, token, space)) = self.prepare(w, target).await else {
             self.settle_hosting();
