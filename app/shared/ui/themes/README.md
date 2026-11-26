@@ -444,7 +444,18 @@ host. Immutable: rows that didn't change are the same objects.
   `danger`), `launcher` (`pins`, `archive`, `hasPins`, `hasArchive`, `more`,
   `moreLabel`, `settingsOpen`, `settingsPage`, `hasSettings`), `settingsTab`
   (`title`, `categories[]`, `current`: Settings as its own page, above),
-  `settings`, `platform`.
+  `settings`, `platform`, `library` and `newSpace` (Arc's ends, below).
+- `library` (Arc's Library, behind the box button and before the first space): `open`, `shown` (open, or a swipe
+  toward it shows it: its rows only then), `section` and `sections[]` (`id`, `label`, `active`: Media, Downloads,
+  Easels, Spaces, Boosts, Archived Tabs, Arc's order), `search` (whether the section has a search field) with
+  `searchLabel` (its placeholder, "Search Archive…") and `query`, `filter` (Arc's Filter beside it: Downloads and
+  Archived Tabs; not in Margin yet), `archive` (Archived Tabs shown) with `groups[]` (`label`: "Today", "Yesterday",
+  "3 days ago"…, Arc's headings; `rows[]`: an archived tab's face, `id`, `address`: its URL as Arc writes it) and
+  `hasGroups`, and `empty` (`title`, `text`: a section Margin hasn't got yet, or nothing found), else null.
+- `newSpace` (Arc's Create a Space while it's open, else null): `name`, `emoji`, `color` (the colour the space will
+  get; `space.color` is it meanwhile, so the sidebar is drawn in it), `hasProfiles`, `profile` (its name) and
+  `profileId` (Margin.app's profiles of the space's browser, for its Profile menu) and `profileLabel` ("Profile: Work"), `canCreate` (a name typed) and
+  `cannotCreate`.
 - `notice`: Margin's notices come from Margin's code only, never a theme or
   a message's words: a switch that didn't happen ("That tab is no longer
   open."), a page Margin isn't responding on (Reload, Not now), Margin
@@ -509,6 +520,14 @@ else is ignored and logged.
   themes too, so a theme without this row still lets a space have its own).
 - Notices and prompts: `notice.run`, `prompt.run` (one of their buttons),
   `notice.close`, `prompt.close`.
+- Arc's Library: `library.open` (slid in where your swipe has Arc's ends, else at once), `library.close`,
+  `library.section` (one of `library.sections[].id`); its search is `<input m-input="library-search">` (Escape clears it,
+  then closes the Library); a row restores its tab with `archive.restore`.
+- Arc's Create a Space: `newSpace.open`, `newSpace.cancel`, `newSpace.create` (the space made with what's typed: its
+  name, icon, colour and profile, and shown), `newSpace.theme` (made, then Edit Theme Color for it), `menu.open` with
+  `profile` (its profiles' menu); its fields are `<input m-input="new-space-name">` and
+  `<input m-input="new-space-emoji">` (Enter creates, Escape cancels). Nothing is made until `newSpace.create` or
+  `newSpace.theme`.
 - The rest: `sidebar.toggle`, `nav.back`, `nav.forward`, `nav.reload`,
   `archive.open`, `archive.restore` (an archived entry), `settings.open`
   (opens or closes the launcher's Settings; on a web page, Margin's start
@@ -518,7 +537,8 @@ else is ignored and logged.
   `launcher.more`, `window.close`, `window.minimise`, `window.fullscreen`.
 - Only Margin's behaviors and menus run `tab.move`, `tab.pinAt`,
   `tab.moveToSpace`, `pin.move`, `folder.move`, `folder.setName`,
-  `space.setName`, `space.update`, `space.setTheme`, `space.setBackground` and `space.delete`.
+  `space.setName`, `space.update`, `space.setTheme`, `space.setBackground`, `space.delete` and `newSpace.profile`
+  (the Profile menu's items).
 
 ## Behaviors
 
@@ -581,6 +601,16 @@ Classes and variables Margin sets for you to style:
   Margin.app past halfway): under `m-settling` Margin then gives the settle as
   `--m-swipe-transition` (the spring sampled into a `linear()` easing), so use it on the
   moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
+- Arc's ends: set `--m-swipe-ends: arc` on your `m-swipe` element (with Arc's or Dia's feel) and Margin's swipe reaches
+  past the first space to `library` and past the last to Create a Space (docs/ARC-SIDEBAR.md "The ends of the
+  spaces"). Toward the Library nothing moves with the fingers: your root has `m-library-swipe` and
+  `--m-library-progress` (0 to 1, how far it's come, every frame as it settles too; the box button's `library.open`
+  and the back arrow's `library.close` slide it the same way), and you draw it (Arcadia: the Library sliding in, the
+  space shrinking and fading, the page card beside it). Give the Library itself `m-swipe="spaces"` too: a swipe toward
+  the next space over it takes it back. Past the last space the rubber band as before, and the `m-swipe` element has
+  `m-pull`, `--m-pull` (px drawn) and `--m-pull-progress` (0 to 1 of 24 px), `m-pull-armed` past 24 px; let go armed,
+  Create a Space opens at once; `m-pull-leaving` for 160 ms after (let your "+" go). While Create a Space is open, mark
+  its part `data-swipe-pane`: a swipe toward the previous space moves it, the space beside it, and takes it away;
 - `--m-space-blend` and `--m-space-blend-color` (the root, while another space slides in: a swipe, or a click's or
   key's slide with Arc's feel): how far it has come as drawn (0 to 1, every frame, on the slide's own curve) and its
   colour, for a ground that changes with the slide as Arc's does. Mix your space's colour with it, e.g.

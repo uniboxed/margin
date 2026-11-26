@@ -11033,3 +11033,45 @@ corner is 6 pt too, not Arc's 12 pt panel), and Margin.app draws the corners ove
 radius, so they follow. The inset stays 8 pt (not Arc's 10). tests/manifest.test.ts and tests/theme/arcadia.test.ts
 read 6 px; the app's end-to-end corner checks already read the radius from the layout (their corner points made for a
 6 pt corner in M2.10).
+
+## The ends of the spaces, as Arc's: its Library and its Create a Space (`feat/arc-sidebar-ends`, 2026-11-25)
+
+Tirth (two recordings of Arc): swiping past the first space and past the last should show Arc's own UI there, not
+Margin's rubber band. Measured from them and Arc's tree (docs/ARC-SIDEBAR.md "The ends of the spaces").
+- **Tirth's choices**: the Library's Archived Tabs real (Margin's archive), Media, Downloads, Easels, Spaces and Boosts
+  drawn with words saying they aren't in Margin yet; the sidebar's box button opens the Library, as Arc's; the Library
+  417 pt where the page can make room, the sidebar's width while an app is hosted (Margin's window is the sidebar's
+  tile beside it: another width would place the app again, with its pause).
+- **Where it lives**: the swipe (ui/behaviors/swipe.ts) reaches the ends for a theme that asks (`--m-swipe-ends:
+  arc`): the Library a place before the first space (`LIBRARY`), back from it, back from Create a Space, none of them a
+  space (no request, no copy but the space Create a Space was opened from). Toward the Library nothing moves with the
+  fingers; the theme's root gets `--m-library-progress` (and `m-library-swipe`), frame by frame as it settles on the
+  swipe's spring too (or Arc's switch curve for the box button and the back arrow: `slideLibrary`); the theme draws
+  the rest. Past the last space, `m-pull`, `--m-pull`, `--m-pull-progress`, `m-pull-armed` (24 pt, Arc's) and
+  `m-pull-leaving`. What they show is ui/behaviors/ends.ts: the Library open or not, its section and search, its rows
+  only while it can be seen (`peek`); Create a Space's fields, its colour picked as it opens.
+- **Create a Space makes nothing until Create Space**, as Arc's: one `createSpace` with the name, icon, colour and
+  profile (Margin.app's core takes the profile and shows the space in the window); Choose a Theme makes it and opens
+  Edit Theme Color once the state has it (that picker works on a space that exists); Cancel, Escape and a swipe back
+  make nothing. Not Margin's own new-space path (made at once, then edited, kept on cancel): that stays for themes
+  without Arc's ends, and Arcadia's "+" New Space now opens Create a Space.
+- **The view model**: `library` (always, its archive's groups only while shown) and `newSpace` (while open; the space's
+  colour is the new one's meanwhile, every chip out of front: Arcadia draws the one being made in front). Actions
+  `library.*` and `newSpace.*` (local), the menu `profile`, the inputs `library-search`, `new-space-name`,
+  `new-space-emoji`.
+- **Hosted**: the space under the Library doesn't drift right (it would reach over the page's edge, which stays put);
+  found by the swipe's "nothing more takes the pointer over the page" test, which now starts from the second space so
+  its "back" is still a space's list.
+- **Tests** (tests/theme/arcadia.test.ts, both engines): the Library by the fingers (its progress, nothing of the space
+  moved, the page beside it, open at the lift past half, back the same way, short of half back), the box button's
+  slide and the back arrow, hosted (the sidebar's width, the page where it is, icons only), the rail (Arc's order,
+  Archived Tabs by day, searched, a row restoring, a section Margin hasn't got), the pull (short: back; past 24 pt:
+  white, Create a Space at once, nothing made, the dock's chip), Create a Space (its name focused, its colour, its
+  profile from the menu, Create Space's one request with all of it, Cancel, Escape, a swipe back, Choose a Theme
+  making it and opening Edit Theme Color, "+" New Space).
+- **On screen** (Margin.app, Notes hosted in the page area, the first space): the box button slides the Library in and
+  the back arrow out, Archived Tabs (empty here) and the rail as in the harness; the page goes to 417 pt and back, the
+  hosted app following as it follows a drag of the sidebar's edge, about 100 ms behind Margin's own drawing (the
+  frame's colour showing between them meanwhile: the host's placing, as any width change). "+" New Space opens Create a
+  Space (its name focused, the profile Margin.app's "Default"), Cancel makes nothing. A trackpad swipe can't be played
+  here (synthetic scrolls don't reach a swipe), so the swipes are the harness's (both engines).

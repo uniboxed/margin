@@ -95,6 +95,16 @@ export type UiState = {
   pageLoading?: boolean,
   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress?: number, direction?: number } | null,
   theme?: { id: string, name: string, settings: Record<string, any> } | null,
+  /**
+   * Arc's Library (docs/ARC-SIDEBAR.md "The ends of the spaces"): a swipe past the first space or the sidebar's box
+   * button opens it; `section` the rail's one shown (LIBRARY_SECTIONS), `query` its search field's text.
+   * */
+  library?: { open?: boolean, section?: string, query?: string, peek?: boolean } | null,
+  /**
+   * Arc's Create a Space (a pull past the last space): what's typed so far; the space is made only by its Create
+   * Space (or Choose a Theme). `color` the colour it'll get (its page drawn in it), `profile` the browser profile's id.
+   * */
+  newSpace?: { name: string, emoji: string, color: string, profile: string | null } | null,
 };
 export type ViewModelInput = {
   // As read from storage (usable() takes what's there): its settings may be only some of them.
@@ -170,6 +180,33 @@ export type ActiveTab = Face & {
   id: number, loading: boolean, audible: boolean, muted: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
 };
 export type ArchiveRow = Face & { id: string, spaceId: string, closedAt: number, ago: string };
+/** An archived tab as the Library lists it: its address as Arc writes it (no scheme, no www). */
+export type LibraryRow = ArchiveRow & { address: string };
+/** The Library's rail (Arc's, in its order) and the shown section (LibraryView). */
+export const LIBRARY_SECTIONS = Object.freeze(['media', 'downloads', 'easels', 'spaces', 'boosts', 'archive'] as const);
+export type LibraryView = {
+  open: boolean,
+  /** Drawn: open, or a swipe toward it shows it (its rows only then). */
+  shown: boolean,
+  section: string,
+  sections: { id: string, label: string, active: boolean }[],
+  /** Its search field (none for Spaces, as Arc's): the placeholder ("Search Archive…") and the text. */
+  search: boolean, searchLabel: string, query: string,
+  /** Arc's Filter beside the search (Downloads, Archived Tabs): drawn, not in Margin yet. */
+  filter: boolean,
+  /** Archived Tabs: the rows found, by day as Arc heads them ("Today", "Yesterday", "3 days ago"…). */
+  archive: boolean, groups: { label: string, rows: LibraryRow[] }[], hasGroups: boolean,
+  /** Nothing to list: the section's words (one not in Margin yet, or no archived tab found). */
+  empty: { title: string, text: string } | null,
+};
+/** Arc's Create a Space while it's open (NewSpaceView). */
+export type NewSpaceView = {
+  name: string, emoji: string, color: string,
+  /** Margin.app's profiles of the space's browser (their names), the one chosen; none outside it. */
+  hasProfiles: boolean, profile: string, profileId: string, /** "Profile: Work", its chip's label. */ profileLabel: string,
+  /** A name typed: Create Space can make it (`cannotCreate`, its opposite, for aria-disabled). */
+  canCreate: boolean, cannotCreate: boolean,
+};
 export type PaletteRow = {
   id: string, kind: string, title: string, subtitle: string, badge: string, spaceColor: string,
   emoji: string, isSearch: boolean, isOpen: boolean, icon: string | null, letter: string, color: string,
@@ -258,6 +295,8 @@ export type ViewModel = {
   settingsTab: SettingsTabView | null,
   settings: Record<string, string | number | boolean>,
   platform: { browser: string, os: string },
+  library: LibraryView,
+  newSpace: NewSpaceView | null,
 };
 
 // ---------------------------------------------------------------------------
@@ -449,6 +488,7 @@ function fresh(input: ViewModelInput): ViewModel {
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      library: libraryView(ui.library, [], Date.now()), newSpace: null,
     };
   }
 
@@ -613,6 +653,30 @@ function fresh(input: ViewModelInput): ViewModel {
     newTab: { active: !!view.newTab.active },
     background: (chip ? state.spaces[chip.index]?.background : null) ?? null,
   };
+
+  // Arc's Create a Space while it's open: its page drawn in the colour the new space will get (the sidebar's ground is
+  // the space's colour), and the switcher's chips none of them in front (the theme draws the one being made after them,
+  // in front, as Arc's dock does). Its profiles: Margin.app's for the browser the new space opens in (the window's
+  // space's, as the core's createSpace takes it), the one chosen else the space's own else the browser's default.
+  let newSpace: NewSpaceView | null = null;
+  const ns = ui.newSpace;
+  if (ns && typeof ns === 'object' && typeof ns.color === 'string' && HEX_COLOR.test(ns.color)) {
+    const browser = typeof state.spaces[chip?.index ?? -1]?.browser === 'string' && state.spaces[chip!.index].browser ? state.spaces[chip!.index].browser as string : 'safari';
+    const names = known?.names?.[browser];
+    const ids = names && typeof names === 'object' ? Object.keys(names).filter((id) => typeof names[id] === 'string') : [];
+    const own = state.spaces[chip?.index ?? -1]?.profile;
+    const fallback = known?.fallback?.[browser];
+    const profileId = [ns.profile, own, fallback].find((id) => typeof id === 'string' && ids.includes(id)) as string | undefined ?? ids[0] ?? '';
+    const name = String(ns.name ?? '').slice(0, 40);
+    newSpace = {
+      name, emoji: String(ns.emoji ?? '').slice(0, 8), color: ns.color,
+      hasProfiles: ids.length > 0, profile: profileId ? String(names![profileId]).slice(0, 40) : '', profileId,
+      profileLabel: profileId ? `Profile: ${String(names![profileId]).slice(0, 40)}` : 'Profile',
+      canCreate: name.trim() !== '', cannotCreate: name.trim() === '',
+    };
+    space.color = ns.color;
+    for (const sp of spaces) sp.active = false;
+  }
 
   // The tab in front: this page's own (in pages), else the window's active one.
   const current: any = (currentTabId != null ? state.tabs[currentTabId] : null)
@@ -885,6 +949,8 @@ function fresh(input: ViewModelInput): ViewModel {
     settingsTab,
     settings,
     platform,
+    library: libraryView(ui.library, archive, now),
+    newSpace,
   };
 }
 
@@ -910,6 +976,73 @@ function gestureView(g: any): GestureView | null {
   };
 }
 
+const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+// The Library (Arc's, docs/ARC-SIDEBAR.md "The ends of the spaces"): its rail's words, each section's search
+// placeholder (as Arc's), and the words of a section Margin has nothing for yet (Arc's Easels heading kept).
+const LIBRARY_LABELS: Record<string, string> = { media: 'Media', downloads: 'Downloads', easels: 'Easels', spaces: 'Spaces', boosts: 'Boosts', archive: 'Archived Tabs' };
+const LIBRARY_SEARCH: Record<string, string> = { media: 'Search Media…', downloads: 'Search Downloads…', easels: 'Search Easels…', boosts: 'Search Boosts…', archive: 'Search Archive…' };
+const LIBRARY_EMPTY: Record<string, { title: string, text: string }> = {
+  media: { title: 'No media yet', text: 'Margin doesn\'t keep the images and videos you see yet.' },
+  downloads: { title: 'No downloads yet', text: 'Margin doesn\'t list your downloads yet.' },
+  easels: { title: 'Out of ideas!', text: 'Easels aren\'t in Margin yet.' },
+  spaces: { title: 'Your spaces', text: 'They\'re in the sidebar. Margin\'s space manager isn\'t here yet.' },
+  boosts: { title: 'No Boosts yet', text: 'Boosts aren\'t in Margin yet.' },
+};
+
+/** The Library as the theme draws it (LibraryView): its rail, the section shown, its archived tabs by day. */
+export function libraryView(ui: UiState['library'], archive: ArchiveRow[], now: number): LibraryView {
+  const section = typeof ui?.section === 'string' && (LIBRARY_SECTIONS as readonly string[]).includes(ui.section) ? ui.section : 'archive';
+  const query = typeof ui?.query === 'string' ? ui.query.slice(0, 200) : '';
+  const isArchive = section === 'archive';
+  let groups: { label: string, rows: LibraryRow[] }[] = [];
+  if (isArchive && (ui?.open || ui?.peek)) {
+    const q = query.trim().toLowerCase();
+    const found = archive.filter((a) => !q || a.title.toLowerCase().includes(q) || a.url.toLowerCase().includes(q))
+      .slice().sort((a, b) => b.closedAt - a.closedAt);
+    for (const a of found) {
+      const label = dayLabel(a.closedAt, now);
+      const row = { ...a, address: addressOf(a.url) };
+      if (groups.at(-1)?.label === label) groups.at(-1)!.rows.push(row);
+      else groups.push({ label, rows: [row] });
+    }
+  }
+  const empty = isArchive
+    ? (groups.length ? null : query.trim() ? { title: 'Nothing found', text: `No archived tab matches “${query.trim().slice(0, 60)}”.` } : { title: 'Nothing archived yet', text: 'Tabs you close show up here.' })
+    : LIBRARY_EMPTY[section];
+  return {
+    open: !!ui?.open,
+    shown: !!ui?.open || !!ui?.peek,
+    section,
+    sections: LIBRARY_SECTIONS.map((id) => ({ id, label: LIBRARY_LABELS[id], active: id === section })),
+    search: section !== 'spaces', searchLabel: LIBRARY_SEARCH[section] ?? '', query,
+    filter: section === 'downloads' || isArchive,
+    archive: isArchive, groups, hasGroups: groups.length > 0,
+    empty,
+  };
+}
+
+// An address as Arc's Library writes it: no http(s):// and no www. (other schemes, file: and the like, kept).
+function addressOf(url: string) {
+  return String(url ?? '').replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+}
+
+// The day an archived tab is filed under, as Arc's Library heads them: today, yesterday (the calendar's), then the
+// whole days since ("1 day ago" for one two calendar days back but under 48 hours old, as Arc), weeks, months, years.
+export function dayLabel(ts: number, now: number) {
+  if (!Number.isFinite(ts) || ts <= 0) return 'Earlier';
+  const startOf = (t: number) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  const calendar = Math.round((startOf(now) - startOf(ts)) / 86_400_000);
+  if (calendar <= 0) return 'Today';
+  if (calendar === 1) return 'Yesterday';
+  const days = Math.max(1, Math.floor((now - ts) / 86_400_000));
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  if (days < 7) return plural(days, 'day');
+  if (days < 30) return plural(Math.floor(days / 7), 'week');
+  if (days < 365) return plural(Math.floor(days / 30), 'month');
+  return plural(Math.floor(days / 365), 'year');
+}
+
 // How long ago, as the launcher's archive says it (Arcadia's newtab.ts ago).
 function ago(ts: number, now: number) {
   const minutes = Math.round((now - ts) / 60000);
@@ -922,7 +1055,7 @@ function ago(ts: number, now: number) {
 const LAUNCHER_ARCHIVE = 12;
 // The words of Margin's own parts (the menu's and the editor's), which a
 // theme binds rather than writes (ui/sanitize.ts GUARDED_PARTS).
-const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', favorite: 'Favorite', folder: 'Folder', space: 'Space', add: 'New' });
+const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', favorite: 'Favorite', folder: 'Folder', space: 'Space', add: 'New', profile: 'Profile' });
 const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', theme: 'Space theme', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).

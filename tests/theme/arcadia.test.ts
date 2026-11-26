@@ -309,6 +309,9 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
         await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: true }));
         await page.waitForFunction(() => __rt.runtime.vm.window.sidebar === 'open', null, { timeout: 2000 });
+        // (From the second space: back is a space's list too, not Arc's Library before the first.)
+        await page.evaluate(() => { const rt = __rt as any; rt.mock.state = { ...rt.mock.state, activeSpaceByWindow: { 1: rt.mock.state.spaces[1].id } }; rt.host.setState(rt.mock.state); });
+        await page.waitForFunction(() => (__rt.runtime.vm as any).space.id === (__rt as any).mock.state.spaces[1].id, null, { timeout: 2000 });
         const l = (await layout())!;
         assert.ok(l.left > 0, 'the page beside the sidebar');
         const slot = { left: l.left, top: l.top, right: l.width - l.right, bottom: l.height - l.bottom };
@@ -997,6 +1000,239 @@ for (const [engineName, engine] of ENGINES) {
         assert.ok(Math.abs(ui!.y - more.bottom) < 1, `under the button (${ui!.y}, ${more.bottom})`);
         assert.ok((await ev(() => T.rtVmFull())).menu?.includes('Edit Space…'), 'the space\'s own menu');
         await page.keyboard.press('Escape');
+      });
+
+      // The ends of the spaces, as Arc's (docs/ARC-SIDEBAR.md "The ends of the spaces": read from Tirth's recordings and
+      // Arc's own tree): its Library before the first space, its pull and Create a Space after the last.
+      const ends = () => ev(() => {
+        const root = document.querySelector('.arcadia') as HTMLElement;
+        const sb = document.querySelector('.margin-sidebar') as HTMLElement;
+        const vm = (window as any).__rt.runtime.vm;
+        return {
+          space: vm.space.id as string, library: vm.library.open as boolean, newSpace: !!vm.newSpace,
+          swipe: root.hasAttribute('m-library-swipe'), progress: root.style.getPropertyValue('--m-library-progress'), offset: sb.style.getPropertyValue('--m-swipe-offset'),
+          drawn: !!document.querySelector('.library'), pull: sb.hasAttribute('m-pull'), armed: sb.hasAttribute('m-pull-armed'), leaving: sb.hasAttribute('m-pull-leaving'),
+          left: T.rtLayouts().at(-1)?.left as number,
+        };
+      });
+      const fresh = async (opts: Record<string, unknown> = {}) => {
+        await ev((o) => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', replies: { setSpace: { shown: null }, createSpace: { spaceId: 'sp-made' } }, ...o }), opts);
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await away();
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+      };
+
+      await t.test('past the first space, Arc\'s Library: drawn as far as the fingers take it (the space stays, its page beside it to 417 pt), open at the lift past half; back the same way', async () => {
+        await fresh();
+        const ids = await ev(() => (window as any).__rt.mock.state.spaces.map((s: any) => s.id) as string[]);
+        assert.equal((await ends()).space, ids[0], 'the first space in front');
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.margin-sidebar')!).getPropertyValue('--m-swipe-ends').trim()), 'arc', 'Arcadia asks for Arc\'s ends');
+        const width = (await rect('.margin-sidebar'))!.width;
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(8).fill(-20)));
+        const held = await ends();
+        assert.equal(held.swipe, true, 'the Library coming in');
+        assert.ok(held.drawn, 'drawn while it can be seen');
+        assert.ok(Math.abs(parseFloat(held.progress) - 80 / width) < 0.002, `as far as it's drawn: half the fingers' 160 px of ${width} (${held.progress})`);
+        assert.equal(held.offset, '0px', 'nothing of the space moves with the fingers');
+        const cardLeft = (await rect('.card-edge'))!.left;
+        assert.ok(Math.abs(cardLeft - (width + (417 - width) * parseFloat(held.progress))) < 0.6, `the page beside it as far as it's come (${cardLeft})`);
+        const lib = (await rect('.library'))!;
+        assert.ok(Math.abs(lib.right - 417 * parseFloat(held.progress)) < 1, `sliding in from the left (its right edge at ${lib.right})`);
+        assert.equal(held.space, ids[0], 'no space asked for');
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(12).fill(-20)));
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 2000 });
+        const open = await ends();
+        assert.deepEqual([open.swipe, open.progress, open.left], [false, '', 417], 'open: nothing of the swipe left, the page beside its 417 pt');
+        assert.equal((await rect('.library'))!.width, 417);
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.margin-sidebar')!).visibility), 'hidden', 'the space under it out of the way');
+        assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'setSpace'), 'no switch of space');
+        // Back: toward the next space, over the Library.
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.library .lib-main', Array(8).fill(20)));
+        const back = await ends();
+        assert.ok(back.swipe && Math.abs(parseFloat(back.progress) - (1 - 80 / 417)) < 0.003, `going as far as it's drawn (${back.progress})`);
+        await ev(() => T.rtTrackpadRun('.library .lib-main', Array(16).fill(20)));
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open && !document.querySelector('.arcadia')!.hasAttribute('m-library-swipe'), null, { timeout: 2000 });
+        await ev(() => T.rtFrames(2));
+        const closed = await ends();
+        assert.deepEqual([closed.drawn, Math.round((await rect('.card-edge'))!.left), closed.space], [false, width, ids[0]], 'closed: gone, the page back, the same space');
+        // Let go short of half: back where it was, never open.
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(4).fill(-20)));
+        await page.waitForTimeout(200); // (the fingers resting: no flick at the lift)
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForTimeout(700);
+        assert.deepEqual([(await ends()).library, (await ends()).swipe, (await ends()).left], [false, false, width], 'short of half: back');
+      });
+
+      await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
+        await fresh();
+        const box = (await rect('.bar .archive'))!;
+        const tracing = ev(() => new Promise<string[]>((done) => {
+          const out: string[] = [];
+          const tick = () => { const r = document.querySelector('.arcadia') as HTMLElement; out.push(r.style.getPropertyValue('--m-library-progress')); if (!(window as any).__rt.runtime.vm.library.open && out.length < 120) requestAnimationFrame(tick); else done(out); };
+          requestAnimationFrame(tick);
+        }));
+        await page.mouse.click(box.x, box.y);
+        const ps = (await tracing).filter(Boolean).map(Number);
+        assert.ok(ps.length >= 4 && ps.some((p) => p > 0.2 && p < 0.9) && ps.every((p, i) => i === 0 || p >= ps[i - 1] - 0.01), `slid in (${ps.join(' ')})`);
+        assert.equal((await ends()).left, 417);
+        await page.locator('.lib-back').first().click();
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 2000 });
+        await page.waitForTimeout(50);
+        assert.deepEqual([(await ends()).drawn, (await ends()).left], [false, 260], 'the back arrow: gone, the page back');
+        // Hosted (the host marks the root m-sidebar-fixed): the Library the sidebar's width, the page where it is; the
+        // rail's icons only.
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-sidebar-fixed', ''));
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.locator('.bar .archive').first().click();
+        assert.equal((await ends()).library, true, 'at once with reduced motion');
+        await page.waitForTimeout(50);
+        assert.deepEqual([(await rect('.library'))!.width, (await ends()).left], [260, 260], 'the sidebar\'s width, the page where it was');
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.lib-label')!).display), 'none', 'icons only');
+        await page.locator('.lib-back').first().click();
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-sidebar-fixed'));
+      });
+
+      await t.test('the Library\'s rail, as Arc\'s: Archived Tabs Margin\'s archive by day (searched, a row restores it); the sections Margin hasn\'t got say so', async () => {
+        await fresh();
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        const now = Date.now();
+        await ev((t0) => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, archive: [
+          { id: 'a1', title: 'Today\'s page', url: 'https://www.today.example/a', closedAt: t0 - 60_000 },
+          { id: 'a2', title: 'An older page', url: 'https://old.example/b', closedAt: t0 - 10 * 86_400_000 },
+        ] }; rt.host.setState(rt.mock.state); }, now);
+        await ev(() => T.rtDispatch('library.open'));
+        const read = () => ev(() => ({
+          sections: [...document.querySelectorAll('.lib-section')].map((b) => [b.textContent!.trim(), b.classList.contains('active')]),
+          days: [...document.querySelectorAll('.lib-day')].map((d) => d.textContent!.trim()),
+          rows: [...document.querySelectorAll('.lib-row')].map((r) => [r.querySelector('.lib-title')!.textContent!.trim(), r.querySelector('.lib-sub')!.textContent!.trim()]),
+          placeholder: (document.querySelector('.lib-search input') as HTMLInputElement | null)?.placeholder ?? null,
+          filter: !!document.querySelector('.lib-filter'), empty: document.querySelector('.lib-empty-title')?.textContent?.trim() ?? null,
+        }));
+        const a = await read();
+        assert.deepEqual(a.sections.map(([l]) => l), ['Media', 'Downloads', 'Easels', 'Spaces', 'Boosts', 'Archived Tabs'], 'Arc\'s rail, in its order');
+        assert.deepEqual(a.sections.find(([, on]) => on)?.[0], 'Archived Tabs', 'Archived Tabs first');
+        assert.deepEqual([a.placeholder, a.filter], ['Search Archive…', true]);
+        assert.deepEqual(a.days, ['Today', '1 week ago']);
+        assert.deepEqual(a.rows, [['Today\'s page', 'today.example/a'], ['An older page', 'old.example/b']], 'newest first, the address as Arc writes it');
+        // Search.
+        await page.fill('.lib-search input', 'older');
+        assert.deepEqual((await read()).rows.map(([t]) => t), ['An older page'], 'searched');
+        await page.fill('.lib-search input', 'nothing like it');
+        assert.equal((await read()).empty, 'Nothing found');
+        await page.keyboard.press('Escape');
+        assert.equal((await read()).rows.length, 2, 'Escape clears the search first');
+        // A row restores its tab.
+        await page.locator('.lib-row').nth(1).click();
+        assert.deepEqual((await ev(() => T.rtSent())).filter(([k]) => k === 'restoreArchive').map(([, p]) => p.archiveId), ['a2'], 'restored');
+        // A section Margin hasn't got: chosen, its words.
+        await page.locator('.lib-section').nth(2).click();
+        const e = await read();
+        assert.deepEqual([e.empty, e.placeholder, e.filter, e.rows.length], ['Out of ideas!', 'Search Easels…', false, 0]);
+        await page.locator('.lib-section').nth(3).click();
+        assert.equal((await read()).placeholder, null, 'Spaces: no search, as Arc\'s');
+        await ev(() => T.rtDispatch('library.close'));
+      });
+
+      await t.test('past the last space, Arc\'s pull: the rubber band, its "+" white past 24 pt; let go then, Create a Space at once (nothing made yet); short of it, back', async () => {
+        await fresh();
+        const ids = await ev(() => (window as any).__rt.mock.state.spaces.map((s: any) => s.id) as string[]);
+        await ev((id) => T.rtDispatch('space.switch', id), ids.at(-1)!);
+        await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id && !document.querySelector('.margin-sidebar')!.classList.contains('m-swiping'), ids.at(-1)!, { timeout: 2000 });
+        await ev(() => T.rtSentClear());
+        // Short of it.
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(5).fill(20)));
+        const short = await ends();
+        const px = await ev(() => parseFloat((document.querySelector('.margin-sidebar') as HTMLElement).style.getPropertyValue('--m-pull')));
+        assert.deepEqual([short.pull, short.armed], [true, false], 'pulling, not armed');
+        assert.ok(px > 0 && px < 24 && Math.abs(parseFloat(short.offset) + px) < 0.01, `the space drawn past its end (${px} px)`);
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.pull-button')!).display), 'block', 'its "+"');
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForTimeout(60);
+        assert.equal((await ends()).leaving, true, 'its "+" going');
+        await page.waitForTimeout(500);
+        const back = await ends();
+        assert.deepEqual([back.newSpace, back.pull, back.leaving], [false, false, false], 'back: nothing opened, nothing left');
+        // Past it.
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.space-title .title', Array(26).fill(20)));
+        assert.equal((await ends()).armed, true, 'armed');
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.pull-dot')!).transform), 'matrix(0, 0, 0, 0, 0, 0)', 'white: the blue gone');
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => !!(window as any).__rt.runtime.vm.newSpace, null, { timeout: 1000 });
+        const made = await ends();
+        assert.deepEqual([made.newSpace, made.space, made.leaving], [true, ids.at(-1), true], 'Create a Space, the space it was opened from still in front, the "+" going');
+        assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'createSpace' || k === 'setSpace'), 'nothing made, nothing switched');
+        assert.equal(await ev(() => document.querySelectorAll('.spaces .chip.making.active').length), 1, 'the space being made in front in the switcher');
+        assert.equal(await ev(() => document.querySelectorAll('.spaces .chip.active:not(.making)').length), 0);
+        await page.waitForTimeout(250);
+        assert.equal((await ends()).pull, false, 'the "+" gone');
+      });
+
+      await t.test('Create a Space, as Arc\'s: its name focused; Create Space makes it (its name, icon, colour); Cancel and Escape make nothing; a swipe back takes it away; Choose a Theme makes it and opens Edit Theme Color', async () => {
+        await fresh({ platform: { browser: 'safari', os: 'mac', app: true, features: { profileNames: { names: { safari: { 's-default': 'Personal', 's-work': 'Work' } }, fallback: { safari: 's-default' } } } } });
+        await ev(() => T.rtSentClear());
+        await ev(() => T.rtDispatch('newSpace.open'));
+        await ev(() => T.rtFrames(2));
+        assert.equal((await ev(() => T.rtFocus()))?.input, 'new-space-name', 'its name focused');
+        const color = await ev(() => (window as any).__rt.runtime.vm.newSpace.color as string);
+        assert.equal(await ev(() => (document.querySelector('.arcadia') as HTMLElement).style.getPropertyValue('--space-color')), color, 'drawn in the colour it\'ll get');
+        assert.equal(await ev(() => document.querySelector('.ns-create')!.classList.contains('ready')), false, 'no name: Create Space can\'t');
+        assert.equal(await ev(() => document.querySelector('.ns-chip')?.textContent?.trim()), 'Personal', 'its profile: the space\'s (the browser\'s default)');
+        // The profile from its menu.
+        await page.locator('.ns-chip').first().click();
+        assert.deepEqual((await ev(() => T.rtVmFull())).menu, ['Personal', 'Work']);
+        await page.locator('m-menu').getByText('Work', { exact: true }).click();
+        assert.equal(await ev(() => document.querySelector('.ns-chip')?.textContent?.trim()), 'Work', 'Work chosen');
+        await page.fill('.ns-emoji', '🚀');
+        await page.fill('.ns-input', 'Trips');
+        assert.equal(await ev(() => document.querySelector('.ns-create')!.classList.contains('ready')), true);
+        await page.locator('.ns-create').first().click();
+        const sent = (await ev(() => T.rtSent())).filter(([k]) => k === 'createSpace').map(([, p]) => p);
+        assert.equal(sent.length, 1, 'made once');
+        assert.deepEqual({ ...sent[0], windowId: undefined }, { windowId: undefined, name: 'Trips', emoji: '🚀', color, profile: 's-work' }, 'its name, icon, colour and profile');
+        assert.equal((await ends()).newSpace, false, 'closed');
+        // Cancel, Escape: nothing.
+        await ev(() => T.rtSentClear());
+        await ev(() => T.rtDispatch('newSpace.open'));
+        await page.locator('.ns-cancel').first().click();
+        assert.equal((await ends()).newSpace, false, 'Cancel');
+        await ev(() => T.rtDispatch('newSpace.open'));
+        await ev(() => T.rtFrames(2));
+        await page.keyboard.press('Escape');
+        assert.equal((await ends()).newSpace, false, 'Escape');
+        assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'createSpace'), 'nothing made');
+        // A swipe toward the previous space: the space it was opened from coming back, Create a Space gone.
+        await ev(() => T.rtDispatch('newSpace.open'));
+        await ev(() => T.rtWheelPhase('began'));
+        await ev(() => T.rtTrackpadRun('.new-space', Array(10).fill(-20)));
+        const sliding = await ev(() => ({ moved: (document.querySelector('.margin-sidebar') as HTMLElement).style.getPropertyValue('--m-swipe-offset'), ghost: document.querySelectorAll('.m-swipe-ghost').length }));
+        assert.ok(parseFloat(sliding.moved) > 50 && sliding.ghost >= 1, `it moves with the fingers, the space beside it (${JSON.stringify(sliding)})`);
+        await ev(() => T.rtTrackpadRun('.new-space', Array(14).fill(-20)));
+        await ev(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.newSpace, null, { timeout: 2000 });
+        assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'createSpace' || k === 'setSpace'), 'cancelled: nothing made, no switch');
+        // Choose a Theme: made, then Edit Theme Color for it once it's there.
+        await ev(() => T.rtDispatch('newSpace.open'));
+        await page.fill('.ns-input', 'Themed');
+        await page.locator('.ns-theme').first().click();
+        assert.equal((await ev(() => T.rtSent())).filter(([k]) => k === 'createSpace').at(-1)?.[1].name, 'Themed');
+        await ev(() => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, spaces: [...rt.mock.state.spaces, { id: 'sp-made', name: 'Themed', emoji: '✨', color: '#00b894' }] }; rt.host.setState(rt.mock.state); });
+        await page.waitForFunction(() => T.rtPanel().open, null, { timeout: 2000 }).catch(() => {});
+        assert.equal((await ev(() => T.rtPanel())).open, true, 'Edit Theme Color opened for it');
+        assert.equal((await ev(() => T.rtUi())).menu, null);
+        // Arc's "+" New Space opens it too.
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !T.rtPanel().open, null, { timeout: 2000 }).catch(() => {});
+        await ev(() => T.rtDispatch('menu.open', 'add'));
+        await page.locator('m-menu').getByText('New Space').click();
+        assert.equal((await ends()).newSpace, true, '"+" New Space: Create a Space');
+        await ev(() => T.rtDispatch('newSpace.cancel'));
       });
 
       assert.deepEqual(errors, []);

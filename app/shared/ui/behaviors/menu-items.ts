@@ -25,7 +25,7 @@ export type MenuItem = { id: string, label: string, separator: boolean, danger: 
   /** Its key, shown at its right (`⌘T`); its glyph's name, for a theme that draws one (`space`, `folder`, `easel`, `boost`, `split`, `tab`). */
   keys?: string, icon?: string };
 /** `look`: the theme's way of drawing it (`arc`: Arc's "+" menu, the theme's `--m-add-menu`; ui/behaviors/menus.ts). */
-export type MenuTarget = { kind: 'tab' | 'pin' | 'favorite' | 'folder' | 'space' | 'add', id?: string | number | null, look?: string | null };
+export type MenuTarget = { kind: 'tab' | 'pin' | 'favorite' | 'folder' | 'space' | 'add' | 'profile', id?: string | number | null, look?: string | null };
 
 /**
  * The items of the menu for `target`, from the stored state and the space
@@ -194,7 +194,8 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       // glyphs and keys; Easel and Boost drawn, doing nothing (Tirth's choice: Margin has neither yet); New Split where
       // the host can make one (Margin.app's ⌃⇧=), New Tab.
       if (target.look === 'arc') {
-        item('New Space', 'space.new', undefined, { icon: 'space' });
+        // (New Space: Arc's Create a Space, nothing made until its Create Space: ui/behaviors/ends.ts.)
+        item('New Space', 'newSpace.open', undefined, { icon: 'space' });
         item('New Folder', 'folder.new', undefined, { icon: 'folder' });
         separator();
         item('New Easel', '', undefined, { icon: 'easel', inert: true, hint: 'Easels aren’t in Margin yet: coming soon' });
@@ -207,6 +208,17 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       item('New Folder', 'folder.new');
       item('New Space', 'space.new');
       break;
+    case 'profile': {
+      // Create a Space's profiles: Margin.app's for the browser the new space opens in (the space in front's), by name.
+      const sp = state.spaces?.find((s) => s.id === space?.id) as { browser?: string } | undefined;
+      const browser = typeof sp?.browser === 'string' && sp.browser ? sp.browser : 'safari';
+      const names = features?.profileNames?.names?.[browser];
+      if (!names || typeof names !== 'object') return [];
+      for (const [id, name] of Object.entries(names as Record<string, unknown>)) {
+        if (typeof name === 'string' && id.length <= 40) item(name.slice(0, 40), 'newSpace.profile', { profile: id });
+      }
+      break;
+    }
     default:
       return [];
   }

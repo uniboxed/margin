@@ -68,7 +68,8 @@
      read these. */
   --frame-inset: 8px;
   --frame-radius: 6px;
-  --card-left: var(--width);
+  /* The page card's left: beside the sidebar, or beside Arc's Library (417 pt) as far as it's come in (--lib-p). */
+  --card-left: calc(var(--width) + (var(--library-width) - var(--width)) * var(--lib-p));
   --card-inset: var(--frame-inset);
   --card-radius: var(--frame-radius);
   /* Arc's rows coming and going (Margin's row motion, ui/row-motion.ts ARC_ROWS: Arc's measured curves, a folder's
@@ -1444,3 +1445,176 @@
 .arcadia m-divider[m-dragging]::after { background: var(--accent); }
 .arcadia m-pane[m-focused] { border-radius: 6px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px var(--fg); }
 @media (prefers-reduced-motion: reduce) { .arcadia m-divider::after { transition: none; } }
+
+
+/* ---- The ends of the spaces, as Arc's (docs/ARC-SIDEBAR.md "The ends of the spaces") ------------------------------
+   Margin's swipe asks for them (`--m-swipe-ends: arc`): past the first space Arc's Library, past the last its pull
+   and Create a Space. */
+.margin-sidebar, .library { --m-swipe-ends: arc; }
+
+/* The Library: how far it's come in (--lib-p: Margin's --m-library-progress while a swipe or the box button moves it,
+   else 1 open, 0 not). Arc's (read from a recording at 75 fps): it slides in from the left, opaque, as the fingers go;
+   the space under it fades over the first 55% of the way, shrinks to 90% about its middle and drifts right 27 pt; the
+   sidebar is as wide as the Library (417 pt), the page beside it, where the page can make room (while an app is
+   hosted, m-sidebar-fixed, the sidebar's own width, the page where it is). */
+.arcadia { --library-width: 417px; --lib-p: 0; }
+.arcadia[m-sidebar-fixed] { --library-width: var(--width); }
+.arcadia.library-open { --lib-p: 1; }
+.arcadia[m-library-swipe] { --lib-p: var(--m-library-progress, 0); }
+.arcadia:is(.library-open, [m-library-swipe]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .margin-sidebar {
+  opacity: max(0, calc(1 - var(--lib-p) / 0.55));
+  transform: translateX(calc(var(--lib-p) * 27px)) scale(calc(1 - 0.1 * var(--lib-p)));
+}
+.arcadia.library-open:not([m-library-swipe]) .margin-sidebar { visibility: hidden; }
+/* (Hosted, the page where it is: no drift, so the space never reaches over the page's edge.) */
+.arcadia[m-sidebar-fixed]:is(.library-open, [m-library-swipe]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .margin-sidebar { transform: scale(calc(1 - 0.1 * var(--lib-p))); }
+.library {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--library-width);
+  background: var(--frame);
+  color: var(--fg);
+  --m-swipe-feel: dia;
+  --lib-icon: color-mix(in srgb, var(--space-shown) 62%, #000);
+  transform: translateX(calc((var(--lib-p) - 1) * 100%));
+  -webkit-font-smoothing: antialiased;
+  font-size: 13.5px;
+}
+.arcadia:not(.library-open):not([m-library-swipe]) .library { visibility: hidden; }
+.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) .library { display: none; }
+.arcadia[m-background] .library { background: transparent; --fg: var(--m-fg); --muted: var(--m-fg-2); --hover: var(--m-hover); --active: var(--m-selected); --lib-icon: var(--m-fg-2); }
+.arcadia[m-background]:not([m-appearance="dark"]) .library { --hover: rgba(0, 0, 0, 0.05); }
+.arcadia[m-background][m-appearance="dark"] .library { --hover: rgba(255, 255, 255, 0.1); }
+@media (prefers-color-scheme: dark) { .library { --lib-icon: color-mix(in srgb, var(--space-shown) 55%, #fff); } }
+
+/* Its rail (Arc's: six 97 × 80 pt buttons 100 pt apart at 8 pt from the left, centred down the window; the icon's middle
+   31 pt into it, the label's 56, 11 pt semibold; the one shown on a lighter pill). */
+.lib-rail { position: absolute; left: 8px; top: calc(50% - 295px); width: 97px; display: flex; flex-direction: column; gap: 20px; }
+.lib-section { width: 97px; height: 80px; padding: 20px 0 0; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--lib-icon); }
+.lib-section:hover { background: var(--hover); }
+.lib-section.active { background: var(--active); box-shadow: var(--active-shadow); }
+.lib-section .li { flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lib-section.active .li { stroke-width: 1.9; }
+.lib-label { font-size: 11px; line-height: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.lib-section.active .lib-label { color: var(--fg); }
+:is(.lib-section, .lib-empty):not([data-icon="media"]) .li-media,
+:is(.lib-section, .lib-empty):not([data-icon="downloads"]) .li-downloads,
+:is(.lib-section, .lib-empty):not([data-icon="easels"]) .li-easels,
+:is(.lib-section, .lib-empty):not([data-icon="spaces"]) .li-spaces,
+:is(.lib-section, .lib-empty):not([data-icon="boosts"]) .li-boosts,
+:is(.lib-section, .lib-empty):not([data-icon="archive"]) .li-archive { display: none; }
+/* Its back arrow and Arc's gift (not in Margin: drawn, doing nothing), 32 pt, at the rail's bottom corners. */
+.lib-bottom { position: absolute; left: 8px; bottom: 8px; width: 97px; display: flex; justify-content: space-between; }
+.lib-bottom .bar-button { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; color: var(--icon); }
+.lib-bottom .lib-back:hover { background: var(--hover); color: var(--fg); }
+.lib-bottom .line-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The section shown, beside the rail (Arc's: 112 pt in, 305 wide): its search (a 36 pt pill 10 pt down, its glass
+   15 pt in, the text 44 pt in, 14 pt), Arc's Filter beside it (73 pt), then the list: a day's heading (28 pt, 12 pt
+   semibold, 12 pt in) and its rows (56 pt: the icon 22 pt in, the title 52 pt in at 14 pt, the address under it at
+   12 pt). */
+.lib-main { position: absolute; top: 0; bottom: 0; left: 112px; right: 0; display: flex; flex-direction: column; min-width: 0; }
+.lib-top { flex: none; height: 56px; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.lib-search { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 15px; border-radius: 10px; background: var(--hover); color: var(--muted); }
+.lib-search .lib-magnifier { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.lib-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; font-size: 14px; }
+.lib-search input::placeholder { color: var(--muted); }
+.lib-filter { flex: none; width: 73px; height: 36px; display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 10px; background: var(--hover); color: var(--muted); font-size: 13px; font-weight: 500; }
+.lib-filter .line-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+.lib-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px; }
+.lib-day { margin: 0; height: 28px; padding: 0 4px; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+.lib-row { height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 14px; border-radius: 10px; }
+.lib-row:hover { background: var(--hover); }
+.lib-row .fav, .lib-row .avatar { flex: none; width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+.lib-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lib-title, .lib-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lib-title { font-size: 14px; line-height: 17px; color: var(--fg); }
+.lib-sub { font-size: 12px; line-height: 15px; color: var(--muted); }
+/* A section with nothing to list (Arc's Easels' look: its icon, a heading, a line, in the middle of the list's place). */
+.lib-empty { margin: auto; padding: 0 20px 56px; display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--muted); }
+.lib-empty .li { width: 52px; height: 52px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
+.lib-empty-title { margin-top: 12px; font-size: 17px; line-height: 20px; font-weight: 700; color: var(--fg); }
+.lib-empty-text { margin: 8px 0 0; max-width: 270px; font-size: 13px; line-height: 17px; }
+/* While an app is hosted (the sidebar's own width): the rail's icons only, the section beside them, no Filter. */
+.arcadia[m-sidebar-fixed] .lib-rail { width: 44px; top: calc(50% - 159px); gap: 10px; }
+.arcadia[m-sidebar-fixed] .lib-section { width: 44px; height: 44px; padding: 11px 0 0; }
+.arcadia[m-sidebar-fixed] .lib-label { display: none; }
+.arcadia[m-sidebar-fixed] .lib-main { left: 56px; }
+.arcadia[m-sidebar-fixed] .lib-bottom { width: 44px; flex-direction: column; align-items: center; gap: 4px; }
+.arcadia[m-sidebar-fixed] .lib-filter { display: none; }
+
+/* Past the last space: Arc's pull (read from a recording): a light along the sidebar's right edge (an ellipse 83 pt
+   wide and the window's height, white at about 20% at the edge's middle), sliding in from the edge as the space goes
+   past the end (5.2 × the distance drawn), and a 30 pt "+" coming out of the edge to 28 pt in (1.65 × the distance),
+   at the window's middle: blue, its white ring filling as the space nears PULL_ARM, white with a blue "+" once letting
+   go makes a space (the blue shrinking away, the "+" turning in: about 110 ms); both slide out of the edge as it's let
+   go (m-pull-leaving). */
+.margin-sidebar .pull-new { display: none; position: absolute; z-index: 2; inset: 0; overflow: hidden; pointer-events: none; }
+.margin-sidebar:is([m-pull], [m-pull-leaving]) .pull-new { display: block; }
+.pull-glow {
+  position: absolute; top: 0; bottom: 0; right: 0; width: 83px;
+  background: radial-gradient(83px 52% at 100% 50%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0));
+  transform: translateX(calc(83px - min(83px, var(--m-pull, 0px) * 5.2)));
+}
+.pull-button {
+  position: absolute; top: 50%; right: -15px; width: 30px; height: 30px; margin-top: -15px;
+  border-radius: 50%; background: #ececfe;
+  transform: translateX(calc(-1 * min(28px, var(--m-pull, 0px) * 1.65)));
+}
+.pull-button svg { display: block; width: 30px; height: 30px; overflow: visible; }
+.pull-dot { fill: #2124ff; transform-origin: 15px 15px; transition: transform 110ms cubic-bezier(0.4, 0, 0.2, 1); }
+.pull-ring { fill: none; stroke: #fff; stroke-width: 1.75; stroke-dasharray: 100; stroke-dashoffset: calc((1 - var(--m-pull-progress, 0)) * 100); transform: rotate(-90deg); transform-origin: 15px 15px; }
+.pull-plus { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; opacity: calc(1 - var(--m-pull-progress, 0) * var(--m-pull-progress, 0)); }
+.pull-plus-armed { fill: none; stroke: #2124ff; stroke-width: 2.2; stroke-linecap: round; transform-origin: 15px 15px; transform: scale(0.2) rotate(45deg); opacity: 0; transition: transform 110ms cubic-bezier(0.2, 0, 0, 1) 30ms, opacity 60ms linear 30ms; }
+.margin-sidebar[m-pull-armed] .pull-dot { transform: scale(0); }
+.margin-sidebar[m-pull-armed] :is(.pull-ring, .pull-plus) { opacity: 0; }
+.margin-sidebar[m-pull-armed] .pull-plus-armed { transform: none; opacity: 1; }
+.margin-sidebar[m-pull-leaving] .pull-glow { transform: translateX(83px); transition: transform 140ms cubic-bezier(0.4, 0, 1, 1); }
+.margin-sidebar[m-pull-leaving] .pull-button { transform: translateX(30px); transition: transform 140ms cubic-bezier(0.4, 0, 1, 1); }
+@media (prefers-reduced-motion: reduce) { .pull-new * { transition: none !important; } }
+
+/* Arc's Create a Space, in the space's place (its measures Arc's, at its 259 pt sidebar): the space's own parts and the
+   address away; its art 46 pt under the top bar, "Create a Space" (17 pt bold), its line (13 pt, two lines), the fields
+   (36 pt, 6 pt in from the sidebar's padding: the name with its icon box, the profile, the theme), Create Space and
+   Cancel at the bottom, over the bar. */
+.arcadia.creating .margin-sidebar :is(.address-bar, .favorites, .space-pane, .mini-player, .top .nav) { display: none; }
+.margin-sidebar .new-space { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 46px 6px 0; color: var(--fg); }
+.margin-sidebar.m-swiping .new-space { will-change: transform; transform: translateX(var(--m-swipe-offset, 0px)); }
+.margin-sidebar.m-settling .new-space { transform: translateX(var(--m-swipe-offset, 0px)); transition: var(--m-swipe-transition, none); }
+.margin-sidebar .ns-art { flex: none; height: 42px; display: flex; align-items: center; justify-content: center; }
+.margin-sidebar .ns-card { width: 28px; height: 34px; margin: 0 -4px; display: grid; place-items: center; border-radius: 4px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); font-size: 17px; line-height: 1; }
+.margin-sidebar .ns-card:first-child { transform: rotate(-14deg) translateY(3px); }
+.margin-sidebar .ns-card:nth-child(2) { position: relative; z-index: 1; }
+.margin-sidebar .ns-card:last-child { transform: rotate(14deg) translateY(3px); }
+.margin-sidebar .ns-title { margin: 16px 0 0; font-size: 17px; line-height: 20px; font-weight: 700; }
+.margin-sidebar .ns-text { margin: 11px 0 0; max-width: 180px; font-size: 13px; line-height: 17px; text-align: center; }
+.margin-sidebar .ns-field { width: 100%; height: 36px; display: flex; align-items: center; border-radius: 8px; background: var(--field); color: var(--fg); text-align: left; }
+.margin-sidebar .ns-name { margin-top: 32px; padding: 0 8px; gap: 8px; }
+.margin-sidebar .ns-profile { margin-top: 6px; padding: 0 10px; gap: 8px; }
+.margin-sidebar .ns-theme { margin-top: 8px; padding: 0 10px; gap: 8px; }
+.margin-sidebar .ns-theme:hover { background: var(--field-hover); }
+.margin-sidebar .ns-icon-box { position: relative; flex: none; width: 18px; height: 18px; border: 1px dashed var(--muted); border-radius: 4px; display: grid; place-items: center; color: var(--muted); }
+.margin-sidebar .ns-icon-box .ns-plus { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; pointer-events: none; }
+.margin-sidebar .ns-emoji { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; text-align: center; font-size: 13px; color: var(--fg); caret-color: transparent; }
+.margin-sidebar .ns-emoji:not(:placeholder-shown), .ns-emoji:focus { background: var(--field); }
+.margin-sidebar .ns-icon-box:has(.ns-emoji:not(:placeholder-shown)) { border-style: solid; }
+.margin-sidebar .ns-icon-box:has(.ns-emoji:not(:placeholder-shown)) .ns-plus { display: none; }
+.margin-sidebar .ns-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; font-size: 14px; }
+.margin-sidebar .ns-input::placeholder { color: var(--muted); }
+.margin-sidebar .ns-row-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.margin-sidebar .ns-label { font-size: 13px; font-weight: 600; }
+.margin-sidebar .ns-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-left: 2px; padding: 0 7px 0 8px; border-radius: 11px; background: var(--field-hover); font-size: 12px; font-weight: 600; }
+.margin-sidebar .ns-chip .ns-chevron { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.margin-sidebar .ns-info { margin-left: auto; display: grid; place-items: center; color: var(--muted); }
+.margin-sidebar .ns-info .line-icon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.margin-sidebar .ns-actions { margin-top: auto; width: 100%; padding-bottom: 17px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.margin-sidebar .ns-create { width: 100%; height: 36px; border-radius: 8px; background: #2b35f3; color: #fff; font-size: 13px; font-weight: 600; opacity: 0.45; }
+.margin-sidebar .ns-create.ready { opacity: 1; }
+.margin-sidebar .ns-create.ready:hover { background: #3a43f5; }
+.margin-sidebar .ns-cancel { height: 15px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.margin-sidebar .ns-cancel:hover { color: var(--fg); }
+/* The space being made, in front in the switcher (a dot, as Arc's dock draws it). */
+.margin-sidebar .spaces .chip.making { pointer-events: none; }

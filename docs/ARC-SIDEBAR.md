@@ -163,6 +163,50 @@ Measured by dragging the sidebar from 500 to 260 pt with 10 spaces, reading ever
 The pages of a space switch: the outgoing one moves out as the incoming one comes in, both at the same speed; the space's
 colour changes with it (M2.9 draws that).
 
+## The ends of the spaces (measured 2026-11-25, `feat/arc-sidebar-ends`)
+
+Read from Tirth's two recordings (Arc at 1×: 1 px = 1 pt; the first at 75 fps, the second at about 25) and Arc's own
+accessibility tree (its Library and its Create a Space opened through its own buttons, then closed: nothing made).
+
+**Past the first space, the Library** (Arc's `Home` button opens the same one, on its switch spring: 6%, 71% by the
+second frame, done in ≈ 200 ms):
+- **It follows the fingers**, a page of its own: the sidebar widens 259 → 417 pt as the fingers go (the page beside it
+  moving with it), the Library slides in from the left at the same progress (its list exactly at
+  `−(1 − p) × 417`), opaque, on the space's own colour. The space under it fades over the first 55% of the way
+  (`1 − p / 0.55`), shrinks about its middle (`1 − 0.1 p`) and drifts right (`27 p` pt). Let go, it settles on the
+  swipe's spring (back: ≈ 12 frames at 75 fps).
+- **Its layout**: 417 pt wide. A rail of six 97 × 80 pt buttons 100 pt apart, 8 pt from the left, centred down the
+  window (Media, Downloads, Easels, Spaces, Boosts, Archived Tabs; the icon's middle 31 pt into each, its label's 56,
+  11 pt semibold; the one shown on a lighter pill; the icons a dark shade of the space's colour). At the bottom, 32 pt
+  buttons at x 8 and 73: back, and Arc's gift. The section beside it from x 112 (305 wide): a 36 pt search pill 10 pt
+  down (its glass 15 pt in, the text 44 pt in, "Search Downloads…"), Filter (73 pt) beside it for Downloads and
+  Archived Tabs; then the list: a day's heading (28 pt: "Today", "Yesterday", "1 day ago" (two calendar days back,
+  under 48 hours), "2 days ago"…, "1 week ago") and its rows (56 pt: the icon 18–22 pt in, the title at 52 pt in,
+  14 pt, the address under it at 12 pt, no scheme or www). Easels empty: its icon, "Out of ideas!", a line. Spaces is
+  a whole-window manager (a card per space).
+- **In Margin** (Tirth's choices, 2026-11-25): Archived Tabs is Margin's archive; Media, Downloads, Easels, Spaces and
+  Boosts are drawn with words saying they aren't in Margin yet; the box button opens it as Arc's does. 417 pt where
+  the page can make room; while an app is hosted (the sidebar's width fixed: each width would place the app again)
+  it's the sidebar's width, the rail's icons only, the page where it is (and the space doesn't drift over it).
+
+**Past the last space, the pull and Create a Space**:
+- **The pull**: the rubber band as before (the space up to ≈ 40 pt past its end). A light along the sidebar's right
+  edge (an ellipse ≈ 83 pt wide and the window's height, white at ≈ 19% at the edge's middle) slides in from the edge
+  over the first 16 pt (5.2 × the distance drawn) and stays as it is; a 30 pt "+" at the window's middle comes out of
+  the edge to 28 pt in (1.65 × the distance): blue (`#2124ff`) with a white "+", a white ring filling round it as it
+  nears the threshold; at ≈ 24 pt drawn it turns white with a blue "+" (the blue shrinking to nothing, the "+"
+  forming: ≈ 110 ms). Let go there: Create a Space at once, in place, and the "+" and the light slide out of the edge
+  in about three frames. Short of it: back, the "+" going the same way.
+- **Create a Space** (259 pt): three tilted cards (🌴 💻 📚) 82–124 pt down, "Create a Space" (17 pt bold) at 140, two
+  lines of 13 pt ("Separate your tabs for life, work, projects, and more.") at 171, then 36 pt fields 14 pt in from
+  the sidebar's sides: the name (a dashed 18 pt icon box at 22, "Space name…" at 48) at 237, Profile (its chip, an ⓘ)
+  at 279, Choose a Theme at 323; Create Space (36 pt, Arc's blue, faint until there's a name) at 1308 and Cancel at
+  1358. The dock shows it as the space in front. Its ground is the new space's colour (Arc picks one). A swipe toward
+  the previous space takes it away (the space coming back, the "+" flashing out of the edge).
+- **In Margin**: nothing is made until Create Space (the host's `createSpace` with the name, icon, colour and profile:
+  Margin.app's core takes the profile); Choose a Theme makes it and opens Edit Theme Color for it (that picker needs a
+  space); Cancel and Escape make nothing. Arcadia's "+" New Space opens it too, as Arc's.
+
 ## The space's colour in a switch (measured 2026-11-25, `feat/space-color-blend`)
 
 Read from the first session's two recordings of a dock click (Work → Personal and back, 60 fps, lossless; the mean

@@ -21,6 +21,7 @@ import { backgroundOf } from '../../../extension/shared/space-background.ts';
 //   notice-item, prompt-item — a button of the notice or prompt shown;
 //   optional-space — nothing, or an existing space;
 //   menu   — a menu a button opens (MENUS);
+//   library-section — a section of the Library's rail (LIBRARY_SECTION_IDS);
 //   { field: kind, … } — an object with exactly those fields. Only behaviors
 //     and menus make one, never `m-arg`, which carries one value. A field's
 //     kind is one of the above, `kind?` (that or null), `pin-or-folder?` (the
@@ -108,6 +109,18 @@ export const ACTIONS = Object.freeze({
   'archive.open': 'none',
   'archive.restore': 'archive',
   'archive.restoreLast': 'none',
+  // Arc's Library (ui/behaviors/ends.ts): opened (the box button, a swipe past the first space), closed (its back
+  // arrow), a section of its rail shown (LIBRARY_SECTIONS).
+  'library.open': 'none',
+  'library.close': 'none',
+  'library.section': 'library-section',
+  // Arc's Create a Space (a pull past the last space, Arc's "+"): opened, cancelled, its space made (Create Space),
+  // made and its Edit Theme Color opened (Choose a Theme), the profile it opens in (its `profile` menu's items).
+  'newSpace.open': 'none',
+  'newSpace.cancel': 'none',
+  'newSpace.create': 'none',
+  'newSpace.theme': 'none',
+  'newSpace.profile': Object.freeze({ profile: 'name' }),
   'media.toggle': 'none',
   'media.prev': 'none',
   'media.next': 'none',
@@ -171,7 +184,10 @@ export const BEHAVIOR_ONLY = Object.freeze(new Set([
 
 // The menus a button can open (`menu.open`): "add" is New Folder and New Space; "space" is the space in front's own
 // menu (the one its name's right-click opens: Arc's `•••` beside the space's name).
-export const MENUS = Object.freeze(['add', 'space']);
+// "profile": Create a Space's profiles (Margin.app's, for the browser the new space opens in).
+export const MENUS = Object.freeze(['add', 'space', 'profile']);
+// The Library's rail (`library.section`), as ui/view-model.ts LIBRARY_SECTIONS lists them.
+export const LIBRARY_SECTION_IDS: readonly string[] = Object.freeze(['media', 'downloads', 'easels', 'spaces', 'boosts', 'archive']);
 // The Settings page's categories (`settings.category`), as ui/settings-form.ts SETTINGS_CATEGORIES lists them.
 export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'tabs', 'browsing', 'keyboard']);
 
@@ -265,6 +281,8 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
       return MENUS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such menu` };
     case 'settings-category':
       return SETTINGS_CATEGORY_IDS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such category` };
+    case 'library-section':
+      return LIBRARY_SECTION_IDS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such section` };
     default:
       if (!isId(arg)) return { ok: false, reason: `${name}: bad ${kind} id` };
       return has[kind](arg) ? { ok: true } : { ok: false, reason: `${name}: no ${kind} ${JSON.stringify(arg)}` };
@@ -387,7 +405,8 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // |                    |                   |                               | toggleFullscreen; or local:             |
 // |                    |                   |                               | toggleSidebar, navigate, search; or     |
 // |                    |                   |                               | host: app.open { bundleId, name }       |
-// | menu.open          | 'add', 'space'    | local: that menu, at the button (the space's: the one in front) |        |
+// | menu.open          | 'add', 'space',   | local: that menu, at the button (the space's: the one in front; |        |
+// |                    | 'profile'         | the profile: Create a Space's profiles)                         |        |
 // | menu.run           | item id           | the item's own action         | (ui/behaviors/menu-items.ts)            |
 // | menu.close         | none              | local                         |                                         |
 // | picker.run         | picker item id    | local: Edit Theme Color's     | (ui/picker/view.ts runItem)             |
@@ -395,6 +414,12 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // | sidebar.toggle     | none              | updateSettings                | { patch: { sidebarPinnedOpen: !now } }  |
 // | archive.open       | none              | openLauncher                  | { windowId }                            |
 // | archive.restore    | archive id        | restoreArchive                | { archiveId, windowId }                 |
+// | library.open, .close | none            | local: Arc's Library open or not (behaviors/ends.ts)                    |
+// | library.section    | section id        | local: the rail's section shown                                         |
+// | newSpace.open, .cancel | none          | local: Arc's Create a Space shown or not                                |
+// | newSpace.create    | none              | createSpace                   | { windowId, name, emoji?, color, profile? } |
+// | newSpace.theme     | none              | createSpace, then Edit Theme Color for it                               |
+// | newSpace.profile   | { profile } (menu)| local: the profile it'll open in                                        |
 // | window.close       | none              | host (the app's window)       |                                         |
 // | window.minimise    | none              | host (the app's window)       |                                         |
 // | window.fullscreen  | none              | toggleFullscreen where the    | { windowId }; else host                 |
@@ -481,6 +506,14 @@ export const ACTION_MAP = Object.freeze({
   'editor.theme': 'local',
   'sidebar.toggle': 'updateSettings',
   'archive.open': 'openLauncher',
+  'library.open': 'local',
+  'library.close': 'local',
+  'library.section': 'local',
+  'newSpace.open': 'local',
+  'newSpace.cancel': 'local',
+  'newSpace.create': 'local',
+  'newSpace.theme': 'local',
+  'newSpace.profile': 'local',
   'archive.restore': 'restoreArchive',
   'archive.restoreLast': 'restoreLastArchive',
   'media.toggle': 'mediaControl',
@@ -523,7 +556,8 @@ export const ACTION_MAP = Object.freeze({
 });
 
 const LOCAL = new Set(['split.new', 'space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'picker.run', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open',
+  'library.open', 'library.close', 'library.section', 'newSpace.open', 'newSpace.cancel', 'newSpace.create', 'newSpace.theme', 'newSpace.profile']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**

@@ -36,6 +36,7 @@ import { installMenus } from './behaviors/menus.ts';
 import { installSplit } from './behaviors/split.ts';
 import { installRename } from './behaviors/rename.ts';
 import { installEditor } from './behaviors/editor.ts';
+import { installEnds } from './behaviors/ends.ts';
 import { installDrag } from './behaviors/drag.ts';
 import { installScroll } from './behaviors/scroll.ts';
 import { installSwipe } from './behaviors/swipe.ts';
@@ -398,7 +399,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (!state) return null;
     const w = fullUi().windowId;
     state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: id } };
-    const out = buildViewModel({ state, ui: { ...fullUi(), palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
+    const out = buildViewModel({ state, ui: { ...fullUi(), palette: {}, editing: null, notice: null, prompt: null, gesture: null, library: null, newSpace: null }, platform: host.platform, settings });
     return out.space?.id === id ? out : null;
   }
 
@@ -1016,6 +1017,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
           if (!id) return false;
           return behaviors.menus.open({ kind: 'space', id }, box ? { x: box.left, y: box.bottom } : { x: 0, y: 0 }, { above: false });
         }
+        // Create a Space's profiles: under its Profile chip, while it's open.
+        if (arg === 'profile') {
+          if (!ui.newSpace) return false;
+          return behaviors.menus.open({ kind: 'profile', id: null }, box ? { x: box.left, y: box.bottom } : { x: 0, y: 0 }, { above: false });
+        }
         return behaviors.menus.open({ kind: arg, id: null }, box ? { x: box.left, y: box.top } : { x: 0, y: 0 }, { above: true });
       }
       case 'menu.run': return behaviors.menus.run(arg);
@@ -1025,6 +1031,16 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'editor.delete': return behaviors.editor.remove();
       case 'editor.color': return behaviors.editor.color(arg);
       case 'editor.theme': return behaviors.editor.theme(arg);
+      // Arc's Library and Create a Space (behaviors/ends.ts).
+      // (Slid in or out as a swipe's would be, where the theme has Arc's ends; else at once.)
+      case 'library.open': return behaviors.swipe?.slideLibrary?.(true) || behaviors.ends.openLibrary();
+      case 'library.close': return behaviors.swipe?.slideLibrary?.(false) || behaviors.ends.closeLibrary();
+      case 'library.section': return behaviors.ends.section(arg);
+      case 'newSpace.open': return behaviors.ends.openNewSpace();
+      case 'newSpace.cancel': return behaviors.ends.cancelNewSpace();
+      case 'newSpace.create': return behaviors.ends.createNewSpace();
+      case 'newSpace.theme': return behaviors.ends.createNewSpace({ theme: true });
+      case 'newSpace.profile': return behaviors.ends.setProfile(arg.profile);
       // Margin's notices and prompts: a button is the host's to run (what
       // it does stays in Margin, as a menu item's), then it goes.
       case 'notice.run': case 'prompt.run': {
@@ -1181,6 +1197,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     menus: installMenus(rt),
     rename: installRename(rt),
     editor: installEditor(rt),
+    ends: installEnds(rt),
     drag: installDrag(rt),
     scroll: installScroll(rt),
     swipe: installSwipe(rt),

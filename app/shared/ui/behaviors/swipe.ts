@@ -30,6 +30,17 @@
 // keeps to the slide's own curve), the runtime's `blendSpace` (its background over this one's, its colour on the
 // theme's root); gone as it lands, the space's own then. Its copy beside this one is drawn in its own colours (the
 // custom properties its own theme root is drawn with).
+//
+// The ends, as Arc's (docs/ARC-SIDEBAR.md "The ends of the spaces"), for a theme that asks (`--m-swipe-ends: arc` on
+// the swiping part): past the first space its Library comes in (a swipe toward it, or the box button's `slideLibrary`):
+// nothing of the space moves with the fingers; Margin gives the theme's root `--m-library-progress` (0 to 1, how far
+// it's come) and `m-library-swipe`, and the theme draws it (the Library sliding in, the space going, the sidebar as wide
+// as the Library where the page can make room); let go, it settles on the swipe's spring and the Library is open (or
+// not). A swipe toward the next space from the Library takes it back the same way. Past the last space, the rubber band
+// as before, and Margin gives the swiping part `m-pull`, `--m-pull` (px drawn) and `--m-pull-progress` (0 to 1 of
+// PULL_ARM), `m-pull-armed` past it (Arc's lit edge and "+" there, the theme's); let go armed, Create a Space opens
+// (ui/behaviors/ends.ts); `m-pull-leaving` while the "+" goes. From Create a Space, a swipe toward the previous space
+// (the space it was opened from, drawn beside it) cancels it.
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { canScrollX } from '../../../../extension/shared/gestures.ts';
@@ -37,6 +48,15 @@ import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberB
 import { View } from '../render.ts';
 
 export const SETTLE_MS = 220;
+// Past the last space, how far the space is drawn (px, its rubber band) before letting go makes a space: Arc's, read
+// from a recording (docs/ARC-SIDEBAR.md "The ends of the spaces": its "+" turns white 24–25 pt in).
+export const PULL_ARM = 24;
+// How long the "+" takes to go once let go (Arc: three frames out of the sidebar's edge).
+const PULL_LEAVE_MS = 160;
+// The ends' places among the neighbours: the Library (before the first space), back from it (the space it covers),
+// back from Create a Space (the space it was opened from).
+const LIBRARY = '\u0000library', LIBRARY_BACK = '\u0000library-back', BACK = '\u0000back';
+const ends = (id: string | null | undefined) => id === LIBRARY || id === LIBRARY_BACK || id === BACK;
 // The trackpad's phases known: a swipe whose fingers are down is let go anyway after this long with no event (its
 // lift lost: never held for good).
 const HELD_MAX_MS = 2000;
@@ -52,7 +72,9 @@ export function installSwipe(rt: Rt) {
   // (its own switch as it lands takes it, never asking again: ui/runtime.ts switchSpace); `spring` and
   // `settledAt`: the settle under way (its curve, when it began, its `token`: a caught one's end never comes).
   let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, response: number, haptics: boolean, shown: number, detent: number,
-    anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, asked: Promise<unknown> | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number, blendFrame: number } | null = null;
+    anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, asked: Promise<unknown> | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number, blendFrame: number,
+    /** The ends (Arc's): `endsArc` the theme asks for them, `libOpen` swiped from the Library, `creating` from Create a Space; `armed` the pull past PULL_ARM; `libFrame` the Library's settle. */
+    endsArc: boolean, libOpen: boolean, creating: boolean, armed: boolean, peeked: boolean, libFrame: number } | null = null;
   // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
   // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
   const phases = { known: false, fingers: false, momentum: false, touched: false };
@@ -66,8 +88,9 @@ export function installSwipe(rt: Rt) {
   function ghost(s: NonNullable<typeof swiping>, dir: string) {
     if (s.ghosts[dir] !== undefined) return;
     s.ghosts[dir] = null;
-    const id = s.neighbours[dir];
-    if (!id || !s.panes.length) return;
+    // (The Library is the theme's own, never a copy; back from Create a Space, the space it was opened from.)
+    const id = s.neighbours[dir] === BACK ? s.anchor : s.neighbours[dir];
+    if (!id || ends(id) || !s.panes.length) return;
     const model = rt.spaceView?.(id);
     if (!model) return;
     let sources: HTMLElement[] = [];
@@ -128,16 +151,73 @@ export function installSwipe(rt: Rt) {
   // `blend`: the colour follows it now (false for a settle's end, which the colour reaches with the slide: followBlend).
   function draw(s: NonNullable<typeof swiping>, shown: number, blend = true) {
     s.shown = shown;
-    s.el.style.setProperty('--m-swipe-offset', `${Math.round(shown * 10) / 10}px`);
+    // The Library coming in (or going): the theme draws it from its progress; nothing of the space moves with it.
+    const lib = libraryProgress(s, shown);
+    s.el.style.setProperty('--m-swipe-offset', `${lib === null ? Math.round(shown * 10) / 10 : 0}px`);
     // How far toward the neighbour (0 to 1).
     s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
-    if (blend) blendAt(s, shown);
+    setLibrary(s, lib);
+    // Past the last space (none that way, nor from the Library or Create a Space): the pull, armed past PULL_ARM.
+    setPull(s, s.endsArc && !s.libOpen && !s.creating && !s.neighbours[1] && shown < 0 ? -shown : 0);
+    if (blend && lib === null) blendAt(s, shown);
+  }
+  // The Library's progress drawn at `shown` (null: it isn't involved): 0 to 1 toward it before the first space, 1 to 0
+  // back from it.
+  function libraryProgress(s: NonNullable<typeof swiping>, shown: number) {
+    if (s.libOpen) return 1 - Math.min(1, Math.max(0, -shown) / s.width);
+    if (s.neighbours[-1] === LIBRARY && shown > 0) return Math.min(1, shown / s.width);
+    return null;
+  }
+  function setLibrary(s: NonNullable<typeof swiping>, p: number | null) {
+    const root = view.rootElement() as HTMLElement | null;
+    if (!root) return;
+    if (p === null) {
+      if (root.hasAttribute('m-library-swipe')) { root.removeAttribute('m-library-swipe'); root.style.removeProperty('--m-library-progress'); }
+      return;
+    }
+    // (Its rows drawn while it can be seen: `peek`.)
+    if (!s.peeked) { s.peeked = true; rt.behaviors.ends?.peek(true); }
+    if (!root.hasAttribute('m-library-swipe')) root.setAttribute('m-library-swipe', '');
+    root.style.setProperty('--m-library-progress', String(Math.round(Math.max(0, Math.min(1, p)) * 1000) / 1000));
+  }
+  function setPull(s: NonNullable<typeof swiping>, px: number) {
+    const el = s.el;
+    if (el.hasAttribute('m-pull-leaving')) return;
+    if (px <= 0) {
+      s.armed = false;
+      if (el.hasAttribute('m-pull')) { el.removeAttribute('m-pull'); el.removeAttribute('m-pull-armed'); el.style.removeProperty('--m-pull'); el.style.removeProperty('--m-pull-progress'); }
+      return;
+    }
+    s.armed = px >= PULL_ARM;
+    if (!el.hasAttribute('m-pull')) el.setAttribute('m-pull', '');
+    el.toggleAttribute('m-pull-armed', s.armed);
+    el.style.setProperty('--m-pull', `${Math.round(px * 10) / 10}px`);
+    el.style.setProperty('--m-pull-progress', String(Math.round(Math.min(1, px / PULL_ARM) * 1000) / 1000));
+  }
+  // The "+" going out of the sidebar's edge (Arc's, once let go, armed or not; and back from Create a Space, Arc's flash
+  // of it): `m-pull-leaving` for PULL_LEAVE_MS, then nothing of the pull left. `full`: drawn all the way in first.
+  function pullLeave(el: HTMLElement, full = false) {
+    if (full) {
+      el.setAttribute('m-pull', '');
+      el.setAttribute('m-pull-armed', '');
+      el.style.setProperty('--m-pull', `${PULL_ARM}px`);
+      el.style.setProperty('--m-pull-progress', '1');
+    }
+    if (!el.hasAttribute('m-pull')) return;
+    el.setAttribute('m-pull-leaving', '');
+    rt.later(() => {
+      el.removeAttribute('m-pull-leaving');
+      if (swiping?.el === el) return; // (a new pull already: its own)
+      el.removeAttribute('m-pull'); el.removeAttribute('m-pull-armed'); el.style.removeProperty('--m-pull'); el.style.removeProperty('--m-pull-progress');
+    }, PULL_LEAVE_MS);
   }
   // The space that way coming in, as far as it's drawn at `x` (none past the first or last space).
   function blendAt(s: NonNullable<typeof swiping>, x: number) {
     if (!rt.blendsSpaces?.()) return;
     const toward = x > 0 ? -1 : x < 0 ? 1 : 0;
-    const to = toward ? s.neighbours[toward] : undefined;
+    // (Back from Create a Space: toward the space it was opened from; the Library: no space's colour.)
+    const next = toward ? s.neighbours[toward] : undefined;
+    const to = next === BACK ? s.anchor : ends(next) ? undefined : next;
     rt.blendSpace(to ?? null, to ? Math.abs(x) / s.width : 0);
   }
   // As it settles: the colour where the moving part is drawn, each frame, till it lands or is caught.
@@ -192,9 +272,18 @@ export function installSwipe(rt: Rt) {
     });
     const feel = FEELS[getComputedStyle(el).getPropertyValue('--m-swipe-feel').trim()] ?? null;
     const arc = !!feel;
+    const endsArc = arc && getComputedStyle(el).getPropertyValue('--m-swipe-ends').trim() === 'arc';
+    const libOpen = endsArc && !!rt.ui.library?.open;
+    const creating = endsArc && !libOpen && !!rt.ui.newSpace;
     swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
       panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, response: feel?.response ?? ARC.RESPONSE, haptics: feel?.haptics ?? false, shown: 0, detent: 0,
-      anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, asked: null, spring: null, settledAt: 0, token: 0, blendFrame: 0 };
+      anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, asked: null, spring: null, settledAt: 0, token: 0, blendFrame: 0,
+      endsArc, libOpen, creating, armed: false, peeked: false, libFrame: 0 };
+    // (The ends: from the Library, the space it covers the way back; from Create a Space, the space it was opened from;
+    // else before the first space the Library.)
+    if (libOpen) swiping.neighbours = { [-1]: undefined, [1]: LIBRARY_BACK };
+    else if (creating) swiping.neighbours = { [-1]: BACK, [1]: undefined };
+    else if (endsArc && !swiping.neighbours[-1]) swiping.neighbours[-1] = LIBRARY;
     el.style.overflow = 'clip'; // the neighbours sit outside it until they slide in
     el.classList.add('m-swiping');
   }
@@ -208,7 +297,11 @@ export function installSwipe(rt: Rt) {
     if (s.dispatched) holdUntil = Date.now() + SETTLE_MS;
     cancelAnimationFrame(s.frame);
     cancelAnimationFrame(s.blendFrame);
+    cancelAnimationFrame(s.libFrame);
     rt.blendSpace?.(null, 0);
+    setLibrary(s, null);
+    if (s.peeked && !rt.ui.library?.open) rt.behaviors.ends?.peek(false);
+    if (!s.el.hasAttribute('m-pull-leaving')) setPull(s, 0);
     s.el.classList.remove('m-swiping', 'm-settling');
     s.el.style.removeProperty('--m-swipe-offset');
     s.el.style.removeProperty('--m-swipe-progress');
@@ -239,6 +332,14 @@ export function installSwipe(rt: Rt) {
   function settleTo(s: NonNullable<typeof swiping>, dir: -1 | 0 | 1, velocity: number, curve: { duration: number, points: number[] } | null = null) {
     let duration = SETTLE_MS;
     s.caught = false;
+    // The Library (toward it, or back from it): its own settle.
+    if (s.arc && (s.libOpen || (s.neighbours[-1] === LIBRARY && (dir === -1 || s.shown > 0)))) return settleLibrary(s, dir, velocity, curve);
+    // Past the last space, let go armed: Create a Space, at once, as Arc's; the "+" goes either way.
+    if (s.endsArc && !s.libOpen && !s.creating && !s.neighbours[1] && s.shown < 0 && dir === 0) {
+      const armed = s.armed;
+      pullLeave(s.el);
+      if (armed) { s.token++; finish(); rt.behaviors.ends?.openNewSpace(); return; }
+    }
     s.token++;
     const token = s.token;
     if (s.arc && curve) {
@@ -280,7 +381,7 @@ export function installSwipe(rt: Rt) {
     // in the frame the slide ends (the space left kept shown till then, holdSpace), so nothing jumps. One asked for
     // already (a settle caught, then on to the same one): not asked again. Back to the space swiped from after another
     // was asked for: that one asked back at once.
-    if (s.target && s.anchor) {
+    if (s.target && s.anchor && !ends(s.target)) {
       rt.holdSpace(s.anchor, duration + 100);
       if (s.requested !== s.target) {
         s.requested = s.target;
@@ -297,6 +398,8 @@ export function installSwipe(rt: Rt) {
     rt.later(() => {
       if (swiping !== s || s.token !== token) return;
       if (!s.target) return finish();
+      // Back from Create a Space: cancelled, nothing made (and Arc's "+" going out of the edge).
+      if (s.target === BACK) { const el = s.el; finish(); rt.behaviors.ends?.cancelNewSpace(); pullLeave(el, true); return; }
       s.dispatched = true;
       switchOwn(s.target);
       if (swiping === s && rt.vm?.space?.id === s.target) finish();
@@ -304,9 +407,57 @@ export function installSwipe(rt: Rt) {
     }, duration);
   }
 
+  // The Library's settle: toward it (open), back from it (closed), or back where it was, on the swipe's spring from
+  // where it's drawn (`curve`: a fixed easing instead, the box button's and the back arrow's: Arc's switch); its
+  // progress each frame (the theme draws it), then the Library open or closed (ui/behaviors/ends.ts) and the swipe done.
+  function settleLibrary(s: NonNullable<typeof swiping>, dir: -1 | 0 | 1, velocity: number, curve: { duration: number, points: number[] } | null) {
+    s.token++;
+    const token = s.token;
+    const target = dir ? s.neighbours[dir] ?? null : null;
+    const open = s.libOpen ? target !== LIBRARY_BACK : target === LIBRARY;
+    const to = s.libOpen ? (open ? 0 : -s.width) : (open ? s.width : 0);
+    const from = s.shown;
+    const reduced = !!doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const v0 = Math.sign(velocity) === Math.sign(to - from) ? velocity : 0;
+    const spring = curve || reduced ? null : springArc(from, v0, to, s.response);
+    const duration = reduced ? 0 : curve ? curve.duration : Math.round(spring!.duration * 1000);
+    s.spring = null;
+    s.target = null;
+    s.settling = true;
+    s.settledAt = performance.now();
+    s.el.classList.add('m-settling');
+    const done = () => {
+      if (swiping !== s || s.token !== token) return;
+      draw(s, to, false);
+      if (open && !s.libOpen) rt.behaviors.ends?.openLibrary();
+      else if (!open && s.libOpen) rt.behaviors.ends?.closeLibrary();
+      finish();
+    };
+    if (!duration) return done();
+    const step = () => {
+      s.libFrame = 0;
+      if (swiping !== s || s.token !== token) return;
+      const t = performance.now() - s.settledAt;
+      if (t >= duration) return done();
+      const x = curve ? from + (to - from) * easeAt(curve.points, t / duration) : spring!.at(t / 1000).x;
+      draw(s, x, false);
+      s.libFrame = requestAnimationFrame(step);
+    };
+    step();
+  }
+  // A `linear()` easing's value at `t` (0 to 1): its points evenly spaced in time.
+  function easeAt(points: number[], t: number) {
+    if (!points.length) return t;
+    const at = Math.max(0, Math.min(1, t)) * (points.length - 1);
+    const i = Math.floor(at), f = at - i;
+    return i >= points.length - 1 ? points[points.length - 1] : points[i] + (points[i + 1] - points[i]) * f;
+  }
+
   // Where the moving part is drawn now, mid-settle: its transform as the browser has it this instant; unread, the
   // spring's own position at this time.
   function drawnNow(s: NonNullable<typeof swiping>) {
+    // (The Library's settle: where it's drawn is the swipe's own, each frame.)
+    if (s.libFrame || libraryProgress(s, s.shown) !== null) return s.shown;
     const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(s.panes[0] ?? s.el).transform);
     const x = m ? parseFloat(m[1].split(',')[4]) : NaN;
     if (Number.isFinite(x)) return x;
@@ -334,7 +485,8 @@ export function installSwipe(rt: Rt) {
     const near = Math.round(-x / s.width);
     const dir = near > 0 ? 1 : near < 0 ? -1 : 0;
     const to = dir ? s.neighbours[dir] : undefined;
-    if (to) {
+    // (An end's place, the Library's or back from it or from Create a Space: on from where it's held.)
+    if (to && !ends(to)) {
       const asked = s.requested === to ? s.asked : null;
       switchOwn(to);
       if (rt.vm?.space?.id === to) {
@@ -483,8 +635,27 @@ export function installSwipe(rt: Rt) {
     return true;
   }
 
+  // The Library opened or closed by a click (the sidebar's box button, its back arrow), slid as a swipe's would be on
+  // Arc's switch spring, from any space; for a theme with Arc's ends, the sidebar docked, nothing under way, motion
+  // allowed. False: nothing slid (the caller opens or closes it at once).
+  function slideLibrary(open: boolean) {
+    const vm = rt.vm;
+    if (swiping || !vm?.ready || vm.window.sidebar !== 'open' || rt.busy(api) || !!rt.ui.library?.open === open) return false;
+    const el = view.marked('m-swipe', 'spaces')[0] as HTMLElement | undefined;
+    if (!el) return false;
+    const cs = getComputedStyle(el);
+    if (!FEELS[cs.getPropertyValue('--m-swipe-feel').trim()] || cs.getPropertyValue('--m-swipe-ends').trim() !== 'arc') return false;
+    if (doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
+    begin(el);
+    const s = swiping!;
+    if (open) { s.creating = false; s.neighbours[-1] = LIBRARY; }
+    settleLibrary(s, open ? -1 : 1, 0, switchEasing());
+    return true;
+  }
+
   const api = {
     slideTo,
+    slideLibrary,
     /** The request its own switch (`switchOwn`) to `spaceId` is: the one its settle already sent (that space asked of
      *  the copy as it slid in, Margin.app showing its item), which the switch takes rather than asking again (each ask
      *  shows the item again: a second Safari show of the same tab a slide later). Null for any other switch. */
