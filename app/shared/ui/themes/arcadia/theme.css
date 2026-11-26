@@ -70,7 +70,9 @@
   --frame-radius: 6px;
   /* The page card's left: beside the sidebar, or beside Arc's Library (417 pt) as far as it's come in (--lib-p): moved
      by --card-shift (in Margin's own window the card keeps its width and slides past the window's right edge, Arc's). */
-  --card-shift: calc((var(--library-width) - var(--width)) * var(--lib-p));
+  /* (Whole points: the card's left and right move together, so its width never changes by a rounding point, and a
+     window hosted in it is only moved, never resized: 2026-11-26, a 1273 among 1274s placed Safari again.) */
+  --card-shift: round(calc((var(--library-width) - var(--width)) * var(--lib-p)), 1px);
   --card-left: calc(var(--width) + var(--card-shift));
   --card-inset: var(--frame-inset);
   --card-radius: var(--frame-radius);
@@ -1654,6 +1656,9 @@
 /* (At once: Arcadia animates no layout, tests/theme-motion.test.ts.) */
 .library { width: var(--library-panel, var(--library-width)); }
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { --library-panel: calc(100% - 56px); }
+/* (In Margin's own window the page slides with it, as for the Library (Tirth, 2026-11-26: "shift the tab content
+   similarly"): its left at the panel's edge, its first 56 pt showing, the rest past the window's edge.) */
+.arcadia[m-page-state].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) { --card-shift: round(calc((100vw - 56px - var(--width)) * var(--lib-p)), 1px); }
 /* (Over the page card's edge and shadow too: the page under it, a sliver of it showing at the right, as Arc's.) */
 .arcadia.library-wide:not([m-sidebar-fixed]) .library { z-index: 2; box-shadow: 1px 0 7px rgba(0, 0, 0, 0.18); }
 /* (On a space's background, Margin's layer is cut out of the page's place: over it, the background's one colour.) */

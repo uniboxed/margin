@@ -1160,12 +1160,27 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(await ev(() => getComputedStyle(document.querySelector('.lib-label')!).display) !== 'none', true, 'its labels');
         assert.equal(await ev(() => document.scrollingElement!.scrollLeft), 0, 'nothing scrolled');
         const places = await ev(() => T.rtPlaces());
-        assert.ok(places.length > 1 && places.every(([l, r]: number[]) => Math.abs((l + r) - (places[0][0] + places[0][1])) < 0.5), `each place as wide (${JSON.stringify(places)})`);
+        assert.ok(places.length > 1 && places.every(([l, r]: number[]) => l + r === places[0][0] + places[0][1] && Number.isInteger(l) && Number.isInteger(r)), `each place as wide, at whole points (${JSON.stringify(places)})`);
         assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__resized0)), [[true, null], [false, 417]], 'over once open, after its last place (417) was reported');
+        // The Library's Spaces (Arc's whole-window manager): the page slides on to the panel's edge, its first 56 pt showing,
+        // its width kept (at once: Arcadia animates no layout).
+        await page.locator('.lib-section[data-icon="spaces"]').first().click();
+        await page.waitForFunction(() => document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
+        await page.waitForTimeout(50);
+        const wide = (await rect('.card-edge'))!;
+        assert.deepEqual([Math.round(wide.left), Math.round(wide.width)], [vw - 56, Math.round(card0.width)], 'Spaces: the page past the panel, 56 pt of it showing, as wide');
+        await page.locator('.lib-section[data-icon="archive"]').first().click();
+        await page.waitForFunction(() => !document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
+        await page.waitForTimeout(50);
+        assert.equal(Math.round((await rect('.card-edge'))!.left), 417, 'back beside the Library');
+        // Back out (the box's back arrow slides it): the host told before the page's first move away from 417, over at
+        // its old place.
+        await ev(() => { (window as any).__resized2 = T.rtResizing().length; });
         await page.locator('.lib-back').first().click();
         await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 2000 });
         await page.waitForTimeout(50);
         assert.deepEqual([Math.round((await rect('.card-edge'))!.left), Math.round((await rect('.card-edge'))!.width)], [Math.round(card0.left), Math.round(card0.width)], 'back: where it was');
+        assert.deepEqual(await ev(() => T.rtResizing().slice((window as any).__resized2)), [[true, 417], [false, Math.round(card0.left)]], 'told before its first move back, over at its old place');
         // A tile beside the app (m-sidebar-fixed): the page stays, so the host is never told (nothing to follow or place).
         await ev(() => document.querySelector('.arcadia')!.setAttribute('m-sidebar-fixed', ''));
         await ev(() => { (window as any).__resized1 = T.rtResizing().length; });
