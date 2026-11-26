@@ -1083,6 +1083,22 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtDispatch('newSpace.cancel'));
       });
 
+      await t.test('a key\'s switch of space while the Library or Create a Space is open: they go, and that space is shown', async () => {
+        await fresh();
+        const ids = await ev(() => (window as any).__rt.mock.state.spaces.map((s: any) => s.id) as string[]);
+        // (Motion allowed: a switch could slide, as the bug did: taken for the Library's settle and lost.)
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open && !document.querySelector('.arcadia')!.hasAttribute('m-library-swipe'), null, { timeout: 2000 });
+        await ev((id) => T.rtDispatch('space.switch', id), ids[1]);
+        await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, ids[1], { timeout: 2000 });
+        assert.equal((await ends()).library, false, 'the Library gone');
+        await ev(() => T.rtDispatch('newSpace.open'));
+        await ev((id) => T.rtDispatch('space.switch', id), ids[0]);
+        await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, ids[0], { timeout: 2000 });
+        assert.equal((await ends()).newSpace, false, 'Create a Space gone, nothing made');
+        assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'createSpace'));
+      });
+
       await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
         await fresh();
         const box = (await rect('.bar .archive'))!;

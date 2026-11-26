@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { sidebar, palette, chip, startPageInFront } from './harness/ui.ts';
+import { sidebar, palette, chip } from './harness/ui.ts';
 import type { Page } from 'playwright';
 import type { ArchiveEntry, Settings } from '../../types/margin.d.ts';
 
@@ -71,28 +71,24 @@ test('stale tabs are closed and archived; a pinned one and the one in front stay
   await m.shoot(t, 'after');
 });
 
-// Found by this suite (2026-11-06): the archive button opens Margin's start page (openLauncher:
-// newtab.html#launcher), which the overlay doesn't take for a new-tab page (see newtab.test.ts):
-// no launcher, no archive list, and the page says "Margin.app isn't running" while linked.
-test('the archive button opens Margin\'s start page with the archived tabs; one restored comes back in place', async (t) => {
+// The sidebar's box button is Arc's Library now (M2.10, docs/ARC-SIDEBAR.md "The ends of the spaces"; it opened
+// Margin's start page with the archive before, found by this suite 2026-11-06): its Archived Tabs is the archive,
+// newest first by day, and a row restores its tab.
+test('the box button opens Arc\'s Library, its Archived Tabs the archive; one restored comes back in place', async (t) => {
   await ui.click('.bar-button.archive');
-  const page = await m.until(async () => { const f = await m.front(); return f?.url.startsWith(m.newTabUrl()) && f; }, { what: 'Margin\'s start page in front' });
-  await m.shoot(t, 'start-page');
+  await m.until(async () => ui.evaluate(() => !!document.querySelector('.arcadia.library-open .library')), { what: 'the Library open' });
+  await m.shoot(t, 'library');
   try {
-    // Looked for once the overlay has the page in front, not waited on (as in newtab.test.ts).
-    await m.until(async () => startPageInFront(await sidebar(ui), page.id), { what: 'the start page in front in the overlay' });
-    assert.ok((await sidebar(ui)).launcher, 'the launcher drawn over the start page');
-    const rows = await m.until(async () => { const r = await ui.$$eval('.archive-row .title', (els) => els.map((e) => e.textContent)); return r.length >= 3 && r; }, { what: 'the archive list' });
-    assert.ok(rows.some((r) => r.startsWith('Sign in')), `the newest first: ${rows.join(' | ')}`);
+    const rows = await m.until(async () => { const r = await ui.$$eval('.lib-row .lib-title', (els) => els.map((e) => e.textContent)); return r.length >= 3 && r; }, { what: 'the archived tabs' });
+    assert.ok(rows.some((r) => r!.startsWith('Sign in')), `the newest first: ${rows.join(' | ')}`);
     assert.equal(rows.at(-1), 'The sound of low tide · Radio Field', 'the oldest last');
-    await m.shoot(t, 'archive-list');
-    await ui.locator('.archive-row', { hasText: 'The sound of low tide' }).click();
+    await ui.locator('.lib-row', { hasText: 'The sound of low tide' }).click();
     await m.until(async () => (await m.front())?.url === m.url('radio.test', '/'), { what: 'the podcast back' });
-    assert.ok(!(await m.tabs()).some((x) => x.id === page.id && x.url.startsWith(m.newTabUrl())), 'the start page made way');
     await m.until(async () => !(await archive()).some((a) => a.id === 'ar-podcast'), { what: 'out of the archive' });
   } finally {
-    // Not left open for the next test (the palette's restore).
-    if ((await m.tabs()).some((x) => x.id === page.id)) await m.bg((id) => chrome.tabs.remove(id), page.id);
+    // (The Library closed for the next test.)
+    await ui.locator('.lib-back').click().catch(() => {});
+    await m.until(async () => ui.evaluate(() => !document.querySelector('.arcadia.library-open')), { what: 'the Library closed' }).catch(() => {});
   }
 });
 

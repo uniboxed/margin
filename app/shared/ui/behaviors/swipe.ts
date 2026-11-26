@@ -618,6 +618,13 @@ export function installSwipe(rt: Rt) {
   // space with a feel (`--m-swipe-feel`: Arcadia), the sidebar docked, nothing under way, motion allowed. False:
   // nothing slid (the caller switches at once, as before).
   function slideTo(target: string) {
+    // A switch while the Library or Create a Space is open (a key's: their chips can't be clicked then): they go, and
+    // the space is drawn at once (false: the caller switches as without a slide), never taken for one of their settles.
+    if (rt.ui.library?.open || rt.ui.newSpace) {
+      rt.behaviors.ends?.closeLibrary();
+      rt.behaviors.ends?.cancelNewSpace();
+      return false;
+    }
     const vm = rt.vm;
     const from = vm?.space?.id;
     if (swiping || !vm?.ready || !from || target === from || vm.window.sidebar !== 'open' || rt.busy(api)) return false;
