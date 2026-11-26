@@ -11486,3 +11486,13 @@ were tried first and measured: no change; not the cause.)
 - **Real screen, after** (dev hooks + recording): the close's drawn edge 417 → 336 → 263 → 255 → 242 → … → 230 frame
   by frame (was 417 throughout, then 230); the card's corners and frame drawn mid-slide; Spaces slides the page to 1456
   (56 pt showing); an edge drag followed both ways with no gap (Safari redraws a resize in ~25 ms: every other frame).
+
+## The Library's Spaces shows the space's background, grain and all (`fix/spaces-grain`, 2026-11-26)
+
+Tirth: Spaces showed a flat colour, not the granular background the Library's other sections show. The panel's
+`background: var(--m-bg)` was there because the wide panel lay over the page, where the background is cut out. In
+Margin.app's own window with the sidebar docked the page now slides out from under it (fix/library-follow), so the
+panel is over the background itself: see-through there. The one colour stays where the panel still lies over the page
+(the browsers' overlay, no `m-page-state`; the sidebar hidden or out, the page not slid). Test (arcadia.test.ts, both
+engines): Spaces see-through in Margin's window, the background cut out only at the page's 56 pt; the overlay keeps the
+colour (failed before: the colour in both).

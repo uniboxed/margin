@@ -1126,6 +1126,25 @@ for (const [engineName, engine] of ENGINES) {
           assert.deepEqual(off, [], `${action}: the background cut out where the card is, every frame (${JSON.stringify(frames)})`);
           if (to) assert.equal(frames.at(-1)![0], to);
         }
+        // The Library's Spaces in Margin's window: the page slid out from under the panel, so the panel is see-through over
+        // the background itself (its grain, as the other sections), the background cut out only at the page's sliver;
+        // in the browsers' overlay (no m-page-state: the page stays under the panel) the background's one colour there.
+        const panel = () => ev(() => getComputedStyle(document.querySelector('.library')!).backgroundColor);
+        const cutAt = () => ev(() => { const m = /Z\s*M\s*([\d.]+)/.exec(T.rtBackground().clip as string); return m ? Math.round(Number(m[1])) : -1; });
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await page.locator('.lib-section[data-icon="spaces"]').first().click();
+        await page.waitForFunction(() => document.querySelector('.arcadia')!.classList.contains('library-wide'), null, { timeout: 2000 });
+        await page.waitForTimeout(100);
+        assert.equal(await panel(), 'rgba(0, 0, 0, 0)', 'Spaces see-through in Margin\'s window');
+        assert.equal(await cutAt(), 1280 - 56 + 6, 'the background cut out only where the page\'s sliver is');
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+        await page.waitForTimeout(50);
+        assert.notEqual(await panel(), 'rgba(0, 0, 0, 0)', 'the overlay: the background\'s one colour over the page');
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        await page.locator('.lib-section[data-icon="archive"]').first().click();
+        await ev(() => T.rtDispatch('library.close'));
+        await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
         await ev(() => T.rtChange('setBackground', 'personal', null));
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
       });
