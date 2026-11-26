@@ -85,24 +85,30 @@ test('a tab moved to another space with its menu', async (t) => {
   await m.until(async () => (await view()).space === 'Home', { what: 'Home again' });
 });
 
-test('a space made from +, renamed in place, coloured in the editor, and deleted with two presses', async (t) => {
+test('a space made from + (Arc\'s Create a Space), coloured in the editor, renamed in place, and deleted with two presses', async (t) => {
   await ui.click('.bar-button.add');
   await m.until(async () => (await view()).menu.includes('New Space'), { what: 'the + menu' });
   await menuItem(ui, 'New Space');
-  // A new space opens its editor.
-  await m.until(async () => (await view()).editor, { what: 'the space editor' });
+  // Arcadia's "+" is Arc's: New Space opens its Create a Space (M2.10), nothing made until Create Space.
+  await m.until(async () => ui.evaluate(() => !!document.querySelector('.new-space')), { what: 'Create a Space' });
+  assert.ok(!(await m.state()).spaces.some((s: Space) => !SPACES.some((x) => x.id === s.id)), 'nothing made yet');
+  await ui.locator('.new-space .ns-input').fill('Reading list');
+  await m.shoot(t, 'create');
+  await ui.click('.new-space .ns-create');
   const made = await m.until(async () => (await m.state()).spaces.find((s: Space) => !SPACES.some((x) => x.id === s.id)) as Space | undefined, { what: 'the new space stored' });
-  const name = ui.locator('.editor input.name');
-  await name.fill('Reading list');
+  assert.equal(made.name, 'Reading list');
+  await m.until(async () => (await view()).space === 'Reading list', { what: 'the new space shown' });
+
+  // Coloured in the editor (a double-click on its chip).
+  await ui.dblclick(`.spaces .chip[data-space-id="${made.id}"]`);
+  await m.until(async () => (await view()).editor, { what: 'the space editor' });
   await ui.locator('.editor .swatch').nth(3).click();
   const color = await ui.locator('.editor .swatch').nth(3).getAttribute('title');
   await m.shoot(t, 'editor');
   await ui.click('.editor .primary');
-  await m.until(async () => (await m.state()).spaces.find((s: Space) => s.id === made.id)?.name === 'Reading list', { what: 'the name saved' });
-  assert.equal((await m.state()).spaces.find((s: Space) => s.id === made.id)!.color, color);
+  await m.until(async () => (await m.state()).spaces.find((s: Space) => s.id === made.id)?.color === color, { what: 'the colour saved' });
 
   // Renamed in place: a double-click on the space's name.
-  await m.until(async () => (await view()).space === 'Reading list', { what: 'the new space shown' });
   await ui.dblclick('.space-title .title');
   await ui.keyboard.press('Meta+A');
   await ui.keyboard.type('Weekend reads');
