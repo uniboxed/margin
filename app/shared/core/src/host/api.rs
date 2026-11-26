@@ -496,6 +496,7 @@ impl HostCore {
                     C::ParkAgain,
                     C::ParkLeftover { window: 0 },
                     C::ParkStrip { window: 0 },
+                    C::PutAway { window: 0, home: None },
                     C::BringForward { rung: Forward::Activate },
                     C::CloseItem,
                     C::PlaceAgain,

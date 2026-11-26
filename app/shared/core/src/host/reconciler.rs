@@ -6,7 +6,7 @@
 //! The menu (each idempotent: asked again, it does nothing more than once):
 //!   launch, reopen, unhide, wait, placeFromOwnSpace, outThenAsk, askFullScreen, frameWindow, putBack,
 //!   bringForward (activate, then reopen), closeItem, placeAgain, sizeTile, adopt, closeLeftover, parkLeftover,
-//!   parkStrip, parkAgain, fallback. See HostReconciler.swift's header for each one's meaning.
+//!   parkStrip, putAway, parkAgain, fallback. See HostReconciler.swift's header for each one's meaning.
 
 use std::collections::BTreeMap;
 
@@ -66,6 +66,9 @@ pub enum Correction {
     CloseLeftover { window: i64 },
     ParkLeftover { window: i64 },
     ParkStrip { window: i64 },
+    // The person's own window (kinds' `own`) out of Margin's Space, back on its Desktop: `home`, the Desktop it was
+    // last read in, or (none known, or gone) the Desktop of Margin's display. Never closed, never parked.
+    PutAway { window: i64, home: Option<u64> },
     ParkAgain,
     CloseItem,
     PlaceAgain,
@@ -91,6 +94,7 @@ impl Correction {
             Correction::CloseLeftover { .. } => "close leftover".into(),
             Correction::ParkLeftover { .. } => "park leftover".into(),
             Correction::ParkStrip { .. } => "park strip".into(),
+            Correction::PutAway { .. } => "put away".into(),
             Correction::ParkAgain => "park again".into(),
             Correction::CloseItem => "close its item".into(),
             Correction::PlaceAgain => "place again".into(),
@@ -106,6 +110,10 @@ impl Correction {
             Correction::CloseLeftover { window } => format!("close leftover {window}"),
             Correction::ParkLeftover { window } => format!("park leftover {window}"),
             Correction::ParkStrip { window } => format!("park strip {window}"),
+            Correction::PutAway { window, home } => match home {
+                Some(h) => format!("put away {window} (back on its Desktop {h})"),
+                None => format!("put away {window} (onto the Desktop of Margin's display)"),
+            },
             Correction::Fallback { why } => format!("fallback ({why})"),
             other => other.name(),
         }
@@ -115,6 +123,7 @@ impl Correction {
         match self {
             Correction::CloseLeftover { window } | Correction::ParkLeftover { window } => format!("leftover {window}"),
             Correction::ParkStrip { window } => format!("strip {window}"),
+            Correction::PutAway { window, .. } => format!("own {window}"),
             Correction::Adopt { window } => format!("adopt {window}"),
             other => other.name(),
         }
@@ -131,6 +140,7 @@ impl Correction {
             Correction::ParkAgain => 3,
             Correction::CloseLeftover { .. } | Correction::ParkLeftover { .. } => 2,
             Correction::ParkStrip { .. } => 3,
+            Correction::PutAway { .. } => 3,
             Correction::BringForward { .. } => 1,
             Correction::CloseItem => 1,
             Correction::PlaceAgain => 1,
@@ -149,6 +159,7 @@ impl Correction {
                 | Correction::CloseLeftover { .. }
                 | Correction::ParkLeftover { .. }
                 | Correction::ParkStrip { .. }
+                | Correction::PutAway { .. }
                 | Correction::ParkAgain
                 | Correction::FrameWindow
                 | Correction::CloseItem
@@ -170,6 +181,9 @@ pub struct Other {
     /// A leftover only: whether Margin may close it.
     #[serde(default)]
     pub closable: bool,
+    /// The person's own window only: the Desktop it was last read in (none: never read on one).
+    #[serde(default)]
+    pub home: Option<u64>,
 }
 
 impl Other {
@@ -229,6 +243,9 @@ pub struct Situation {
     pub replacement: Option<i64>,
     pub leftovers: Vec<Other>,
     pub strips: Vec<Other>,
+    /// The person's own windows of its app (kinds' `own`: in an app the person opened, made before the window Margin
+    /// hosts): one in Margin's Space is put back on its Desktop.
+    pub own_windows: Vec<Other>,
     /// Corrections tried this show, by key.
     pub tries: BTreeMap<String, u32>,
 }
@@ -262,6 +279,7 @@ impl Default for Situation {
             replacement: None,
             leftovers: Vec::new(),
             strips: Vec::new(),
+            own_windows: Vec::new(),
             tries: BTreeMap::new(),
         }
     }
@@ -340,6 +358,15 @@ impl Situation {
             let list: Vec<String> = st.iter().map(|o| o.number.to_string()).collect();
             parts.push(format!("strip{} {}", if st.len() == 1 { "" } else { "s" }, list.join(", ")));
         }
+        let own: Vec<&Other> = self.own_windows.iter().filter(|o| o.place == WindowPlace::Margin).collect();
+        if !own.is_empty() {
+            let list: Vec<String> = own.iter().map(|o| o.number.to_string()).collect();
+            parts.push(format!(
+                "the person's own window{} {} in Margin's Space",
+                if own.len() == 1 { "" } else { "s" },
+                list.join(", ")
+            ));
+        }
         if !self.margin_current {
             parts.push("Margin's Space not current".into());
         }
@@ -388,6 +415,13 @@ pub fn step(s: &Situation, d: Desired) -> Vec<Correction> {
             }
             for st in s.strips.iter().filter(|st| st.in_user_space()) {
                 add(&mut out, Correction::ParkStrip { window: st.number });
+            }
+            // (The person's own window its app ordered into Margin's Space, while another app is shown: put away too,
+            // never while an operation runs.)
+            if !s.busy {
+                for o in s.own_windows.iter().filter(|o| o.place == WindowPlace::Margin) {
+                    add(&mut out, Correction::PutAway { window: o.number, home: o.home });
+                }
             }
             return out;
         }
@@ -478,6 +512,12 @@ pub fn step(s: &Situation, d: Desired) -> Vec<Correction> {
     }
     for st in s.strips.iter().filter(|st| st.in_user_space() || st.on_screen == Some(true)) {
         add(&mut out, Correction::ParkStrip { window: st.number });
+    }
+    // 5. The person's own windows out of Margin's Space: one its app ordered in (its activation ordering its windows
+    // under the one shown, the real Mac 2026-11-26) back on its Desktop. Only one in Margin's Space alone: on several
+    // Spaces it may be on every Space by the person's choice, elsewhere it's where the person keeps it.
+    for o in s.own_windows.iter().filter(|o| o.place == WindowPlace::Margin) {
+        add(&mut out, Correction::PutAway { window: o.number, home: o.home });
     }
     out
 }

@@ -11338,3 +11338,34 @@ still): "keep it exactly like arc, where the window shifts on the right when I o
   window's edge, over once after its last place; `m-sidebar-fixed`: the page stays, nothing told. Failed before the
   change (the card at 260 every step).
 - **Still to see on the real screen**: Safari's tile moved live past the display's edge, smooth, and placed once.
+
+## The person's own window out of Margin's Space (`fix/person-window-space`, 2026-11-26)
+
+Tirth: opening Margin's window put "a Safari window on top of my tab content" (a normal browser window of his).
+Margin's log: Safari's 25059 (667×865) "auxiliary (another window of an app the person opened)", in Margin's Space,
+on screen, from the first model read on, until Margin quit. The mechanism, from macOS's own log (WindowServer,
+SkyLight packages; window ids in hex there, 25059 = 0x61e3):
+- Safari was started in the background at 07:42:18 (CoreServicesUIAgent, `LaunchRoleBackground`, "starting stopped
+  process"); its restored window 25059 was created at 07:42:19.98 "hidden" and joined no Space for three hours (no
+  activation of Safari's since).
+- 10:43:12.643: Margin's activation of Safari for the window it hosts (`SETFRONT pid=30314`, Margin the old front).
+- 10:43:12.700: Safari's AppKit, made active, gave the hosted window (0x65e4) key and main appearance and ordered its
+  window group: `478f53[OrderWindowGroup]: window 61e3 joined space 3969`, `order window: 61e3 op: -1 relative: 65e4`
+  (ordered under the hosted one, relative ordering putting it in that window's Space: Margin's). Margin moved nothing
+  (no move of 25059 in its log or in the window server's); at 10:48:59, Margin's Space gone, macOS put it on Space 1.
+- **Fix** (margin-core, the rules; the Mac's Swift the mechanism): a new kind, `own` (host/kinds.rs rule 11): a window
+  of an app the person opened, made before the window Margin hosts (window numbers only grow), not hosted, read by
+  Accessibility if it's in Margin's Space (unread there it may be the app's sheet or alert, as rule 8 keeps). Kept
+  behind Margin's window. The reconciler's new `putAway { window, home }` (host/reconciler.rs, shown and parked alike,
+  never while an operation runs, budget 3 a show): one in Margin's Space alone goes back on its Desktop, `home` (the
+  Desktop the observer last read it in, HostModelWindow.home) or the Desktop of Margin's display; never closed, never
+  parked, its frame untouched. One on several Spaces (perhaps on every Space by the person's choice), on a Desktop or
+  in a full-screen Space of its own is left. A window of its app made after the one Margin hosts stays auxiliary (it may
+  be what the person just opened there). An app Margin started is unchanged (its older windows are restored leftovers).
+- **Tests:** kinds rows (25059/26084/26092 as the real Mac had them, unread, Margin-started, newer), reconciler rows
+  (shown, home known, parked, left where it is, budget, busy), the Swift mirrors (host-model-tests, host-reconciler-
+  tests: the JSON both ways), and host-tests.swift: a person's TextEdit, its older window ordered into Margin's Space
+  by its app, back on its Desktop at the same frame, the hosted one still shown. Each fails with the rule off.
+- **Not covered:** the moment between the activation and the next poll (a quarter second or so: the window shows over
+  the page until it's read and put away), and whether Safari orders it in again at every activation once it's on its
+  Desktop (then put away again, within the budget). Not checked on the real Mac (no screen tests run).

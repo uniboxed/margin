@@ -1464,6 +1464,9 @@ final class HostEngine {
                 // (Any of its app's hosts' own: a card's or a pane's toolbar is its own, as main's is.)
                 guard !sameApp.contains(where: { $0 === host ? ownToolbar(w, of: host, mine: mine) : ownToolbar(w, of: $0, mine: app.windows[$0.window]) }) else { continue }
                 s.strips.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen))
+            case .own:
+                // (The person's own window: the core puts one in Margin's Space back on its Desktop, `putAway`.)
+                s.ownWindows.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen, home: w.home))
             default: break
             }
         }
@@ -1701,6 +1704,8 @@ final class HostEngine {
             await parkOther(n, of: host)
         case .closeLeftover(let n):
             if await !closeOther(n, of: host) { await parkOther(n, of: host) }
+        case .putAway(let n, let home):
+            await putAway(n, home: home, of: host)
         case .parkAgain:
             await parkAgain(host)
         case .unhide:
@@ -1759,6 +1764,18 @@ final class HostEngine {
             if await !destroyOwn(space) { leftSpaces.insert(space) }
         }
         saveMarker()
+    }
+
+    // The person's own window (the core's `putAway`) out of Margin's Space, back on its Desktop: `home`, the Desktop it was
+    // last read in, while that's still a Desktop; else the Desktop of Margin's display. Never closed, never parked: it's
+    // theirs, as they left it (its frame untouched).
+    private func putAway(_ n: Int, home: UInt64?, of host: Host) async {
+        let dest = home.flatMap { sys.spaceExists($0) == true && sys.spaceType($0) == ManagedSpace.desktopType ? $0 : nil } ?? sys.desktop(onDisplayOf: marginSpace)
+        guard let dest else { return Diagnostics.note("host: \(host.id): the person's own window \(n) not put away: no Desktop found") }
+        guard sys.move(window: n, to: dest), await wait(options.parkWait, every: options.memberEvery, { self.sys.spaces(window: n) == [dest] }) else {
+            return Diagnostics.note("host: \(host.id): the person's own window \(n) didn't go back on its Desktop \(dest)")
+        }
+        Diagnostics.note("host: \(host.id): the person's own window \(n) put back on its Desktop \(dest)\(dest == home ? "" : " (Margin's display's)")")
     }
 
     // A leftover Margin may close (`HostOther.closable`): its own close button (Accessibility, on the current Space). True:

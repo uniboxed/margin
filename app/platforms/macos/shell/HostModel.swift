@@ -38,6 +38,7 @@ nonisolated struct HostModelWindow: Equatable, Sendable {
     var privateSpace: UInt64? = nil // the private Space Margin parked it in, by Margin's own record (mask 7 lists none)
     var place = WindowPlace.unread
     var everPlaced = false
+    var home: UInt64? = nil // the Desktop it was last read in (the person's own window goes back there: `putAway`)
     var ax: HostAXWindow? = nil // nil: Accessibility hasn't read it (on another Space, or not asked yet)
     var axMain = false
     var axFocused = false

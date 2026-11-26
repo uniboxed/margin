@@ -82,6 +82,11 @@ func hostReconcilerTests() {
         ("a strip on screen in Margin's Space (strip linger, Mail 14:06): parked", member { $0.strips = [leftover(72279, .margin, onScreen: true)] }, shown, [.parkStrip(72279)]),
         ("a strip parked: nothing", member { $0.strips = [leftover(72279, .parked, onScreen: false)] }, shown, []),
         ("put back before its leftovers", member { $0.place = .nowhere; $0.leftovers = [leftover(7, .margin)] }, shown, [.putBack, .parkLeftover(7)]),
+        // ---- the person's own windows (the real Mac, 2026-11-26 10:43:12: Safari's activation ordered one into Margin's Space) ----
+        ("the person's own window in Margin's Space: put away onto the Desktop of Margin's display", member { $0.launchedByMargin = false; $0.ownWindows = [HostOther(number: 25059, place: .margin, onScreen: true)] }, shown, [.putAway(25059, nil)]),
+        ("…its Desktop known: back there", member { $0.launchedByMargin = false; $0.ownWindows = [HostOther(number: 25059, place: .margin, onScreen: true, home: 1)] }, shown, [.putAway(25059, 1)]),
+        ("…its app's host parked: put away too", member { $0.launchedByMargin = false; $0.phase = .parked; $0.place = .parked; $0.ownWindows = [HostOther(number: 25059, place: .margin, onScreen: true)] }, .parked, [.putAway(25059, nil)]),
+        ("…on its Desktop: left where it is", member { $0.launchedByMargin = false; $0.ownWindows = [HostOther(number: 25059, place: .desktop, onScreen: false, home: 1)] }, shown, []),
         // ---- parked ----
         ("parked as it should be: nothing", member { $0.phase = .parked; $0.place = .parked }, .parked, []),
         ("parked, found on a Desktop at one read: nothing yet", member { $0.phase = .parked; $0.place = .desktop; $0.strayReads = 1 }, .parked, []),
