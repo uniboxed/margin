@@ -11100,3 +11100,23 @@ The theme store plan's first step: a theme folder Margin follows as it's edited,
   whole shell with Margin's real window and page): Load Unpacked previewed then linked, followed and chosen; a save
   stored and drawn again; saves that fail (another id, no Settings part) not stored, why said, the last good one
   drawn; refusals; Unlink; Import through the same route; Remove back to Arcadia.
+
+## The margin-theme skill (`feat/theme-skill`, 2026-11-25; docs/THEME-STORE.md §6)
+
+Step 2 of the theme store plan: a Claude skill anyone can use with their own Claude to make Margin themes, at no cost to
+Margin; its text is also what the generator will use.
+- **Assembled from the one copy of each part** (`npm run skill:build` → `dist/skills/margin-theme`, scripts/build-skill.ts):
+  `skills/margin-theme/SKILL.md` (written once: how to work, the rules that trip people up: a stylesheet writes no
+  text, Margin's own words in its parts, reserved ids, the ways back out), `reference/README.md` (the theme guide as
+  the repo has it), `template/` (Neubrutalism under the id `my-theme`, author "Your Name": an empty author is refused),
+  and `scripts/check-theme.mjs` (scripts/check-theme.ts bundled with esbuild: Margin's own `checkImport`, Node's
+  built-ins only).
+- **Found by its test, fixed**: (1) bundling the checker pulled in `pack-theme.ts`'s command, which ran inside it and
+  refused every theme ("not packed"): the folder reader moved to scripts/theme-folder.ts, a module with no command,
+  imported by both. (2) The scripts knew they were the command by comparing `import.meta.url` with the path they were
+  run by, and macOS's temporary folders are behind a link (`/var` → `/private/var`): run from there, the checker
+  printed nothing and exited 0, a silent pass. Now the real paths are compared (`isCommand`, in check-theme, pack-theme
+  and build-skill).
+- **Tests**: tests/theme-skill.test.ts (SKILL.md's name and description, the guide as the repo has it, the template's
+  id, the checker's imports Node's only and the packer's command not in it, the template passing and a broken copy
+  refused with why, run from another folder as someone would).

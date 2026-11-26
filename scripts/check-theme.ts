@@ -3,9 +3,11 @@
 // built-in's, and the parts that let someone switch away from it (ui/theme-import.ts checkImport, the app's own code).
 // What Margin would remove when it loads it is listed (not fatal, as for any load), and motion that may not be
 // smooth. Exits 1 when Margin wouldn't use it.
+import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { packageFromFiles, checkImport } from '../app/shared/ui/theme-import.ts';
-import { folderFiles } from './pack-theme.ts';
+import { folderFiles } from './theme-folder.ts';
 import { motionAdvice, motionNotes } from './theme-motion.ts';
 
 export type ThemeCheck = {
@@ -29,7 +31,12 @@ export function checkTheme(dir: string): ThemeCheck {
   return { ok: checked.ok, errors: checked.errors, removed: checked.removed, left: read.left, motion: motionNotes(pkg.pkg.css), manifest: checked.manifest };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/** Whether this module is the command Node was given (its real path: macOS's temporary folders are behind a link). */
+function isCommand(url: string) {
+  try { return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url)); } catch { return false; }
+}
+
+if (isCommand(import.meta.url)) {
   const [dirArg] = process.argv.slice(2);
   if (!dirArg) { console.error('npm run theme:check <theme folder>'); process.exit(2); }
   const result = checkTheme(resolve(dirArg));

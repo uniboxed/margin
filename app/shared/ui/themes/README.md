@@ -76,6 +76,10 @@ my-theme/
    doesn't, Settings says why on Load Unpacked's line and the last version
    that passed stays drawn. Keep the same `id` while it's linked. Unlink it
    from the same place (it stays as it was last drawn).
+   **With Claude:** `npm run skill:build` makes the margin-theme skill in
+   `dist/skills/margin-theme` (this guide, a template theme, and Margin's
+   checker for Node alone). Put that folder in `~/.claude/skills/` and ask
+   Claude Code for a Margin theme; it checks each change as Margin will.
 8. **Share it** as one file: zip the folder and name it
    `my-theme.margintheme`. Finder's Compress works (rename the `.zip`), and
    so does `npm run theme:pack ~/my-theme` (it also checks it, and says what

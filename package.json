@@ -35,6 +35,7 @@
     "build": "node scripts/build.ts",
     "theme:pack": "node scripts/pack-theme.ts",
     "theme:check": "node scripts/check-theme.ts",
+    "skill:build": "node scripts/build-skill.ts",
     "typecheck": "tsc -p . && tsc -p tsconfig.tests.json",
     "test:webkit": "node scripts/build.ts && tools/webkit-host/run.sh all",
     "test:screen": "tools/screen-tests/run.sh",
