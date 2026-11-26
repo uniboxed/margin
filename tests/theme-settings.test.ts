@@ -33,10 +33,14 @@ test('Import Theme… and each imported theme with Remove: in Margin.app only', 
   assert.equal(byId(settingsFields({}, { userThemes: LIST })).themeImport, undefined, 'not in a page');
   const f = byId(settingsFields({}, { importThemes: true, userThemes: LIST }));
   assert.equal(f.themeImport.isButton, true);
-  assert.match(f.themeImport.status, /folder, or a \.margintheme file/);
-  assert.equal(f['userTheme:mine'].label, '“Mine” 1.2.0 · by Me');
+  // What each does, on a line of its own under its button: a copy, or a folder followed.
+  assert.match(f.themeImportAbout.label, /copy of a theme, from a \.margintheme file or a folder.*import it again to update it/);
+  assert.match(f.themeLinkAbout.label, /making or editing a theme: links its folder instead of copying it/);
+  assert.equal(f.themeImportAbout.isInfo, true);
+  assert.equal(f.themeImport.status, '', 'the button\'s status is for what happened');
+  assert.equal(f['userTheme:mine'].label, '“Mine” 1.2.0 · by Me · a copy');
   assert.equal(f['removeTheme:mine'].label, 'Remove “Mine”');
-  assert.equal(f['userTheme:rtl'].label, '“Safetxt.exe” 1.0.0 · by AB');
+  assert.equal(f['userTheme:rtl'].label, '“Safetxt.exe” 1.0.0 · by AB · a copy');
   assert.equal(f['removeTheme:arcadia'], undefined, 'a built-in can\'t be removed');
   const status = byId(settingsFields({}, { importThemes: true }, { status: { themeImport: { text: 'Margin can’t use that theme: …', error: true }, theme: { text: 'Margin couldn’t draw…', error: true } } }));
   assert.equal(status.themeImport.error, true);

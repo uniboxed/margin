@@ -269,10 +269,14 @@ export const UNLINK_PREFIX = 'unlinkTheme:';
 function importFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; linked?: boolean; }[]) {
   const out: SettingsField[] = [];
   if (!f.importThemes) return out;
-  out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
-  out.push(field({ id: 'themeLink', kind: 'button', label: 'Load Unpacked…', status: status.themeLink?.text ?? 'A theme’s folder, followed as you edit it: each save is drawn once it passes Margin’s checks.', error: !!status.themeLink?.error }));
+  // What each one does, under its button as a line of its own (every theme draws an info line; a button's status is
+  // replaced by what happened): a copy taken once, or a folder followed while a theme is made.
+  out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? '', error: !!status.themeImport?.error }));
+  out.push(field({ id: 'themeImportAbout', kind: 'info', label: 'Adds a copy of a theme, from a .margintheme file or a folder, to use as it is. Later changes to the original don’t reach the copy: import it again to update it.' }));
+  out.push(field({ id: 'themeLink', kind: 'button', label: 'Load Unpacked…', status: status.themeLink?.text ?? '', error: !!status.themeLink?.error }));
+  out.push(field({ id: 'themeLinkAbout', kind: 'info', label: 'For making or editing a theme: links its folder instead of copying it. Each time you save a file in it, Margin checks the theme and draws it again. Unlink stops following the folder.' }));
   for (const t of imported) {
-    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}${t.linked ? ' · its folder followed' : ''}` }));
+    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}${t.linked ? ' · linked to its folder' : ' · a copy'}` }));
     if (t.linked) out.push(field({ id: `${UNLINK_PREFIX}${t.id}`, kind: 'button', label: `Unlink “${t.name || t.id}”` }));
     out.push(field({ id: `${REMOVE_PREFIX}${t.id}`, kind: 'button', label: `Remove “${t.name || t.id}”` }));
   }

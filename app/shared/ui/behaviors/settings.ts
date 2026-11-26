@@ -156,7 +156,7 @@ export function installSettings(rt: Rt) {
       if (id.startsWith(UNLINK_PREFIX) && f) {
         const themeId = id.slice(UNLINK_PREFIX.length);
         const done = rt.host.perform?.('theme.unlink', { id: themeId }) === true;
-        if (done) status('themeLink', 'Unlinked: the theme stays as it was last drawn, its folder followed no more.');
+        if (done) status('themeLink', 'Unlinked: the theme stays as it was last drawn, now a copy; its folder isn’t followed any more.');
         return done;
       }
       const prompt = f ? removePrompt(id, rt.host.userThemes ?? []) : null;

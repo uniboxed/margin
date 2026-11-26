@@ -48,7 +48,9 @@ final class UserThemes {
         picking = true
         let panel = NSOpenPanel()
         panel.title = folder ? "Load Unpacked Theme" : "Import Theme"
-        panel.message = folder ? "Choose a theme’s folder. Margin follows it as you edit it." : "Choose a theme’s folder or a .margintheme file."
+        panel.message = folder
+            ? "Choose the folder of a theme you’re making. Margin links it, not a copy: each time you save, the theme is drawn again."
+            : "Choose a .margintheme file or a theme’s folder. Margin adds a copy: later changes to the original don’t reach it."
         panel.prompt = folder ? "Load" : "Import"
         panel.canChooseFiles = !folder
         panel.canChooseDirectories = true

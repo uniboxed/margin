@@ -11091,7 +11091,7 @@ The theme store plan's first step: a theme folder Margin follows as it's edited,
   passes and still names that id asks for it to be stored again (`theme.save` `link`), and every window drawing it
   draws it again (`themeStored`). Else Settings says why on Load Unpacked's own line (`themeLink`) and the last good
   one stays drawn. A preview up: the save ignored (the next comes after it).
-- **Settings**: Load Unpacked… under Import Theme…, a linked theme said so ("its folder followed") with Unlink before
+- **Settings**: Load Unpacked… under Import Theme…, a linked theme said so ("linked to its folder") with Unlink before
   Remove; Load Unpacked's preview and save report on its line.
 - **`npm run theme:check <folder>`** (scripts/check-theme.ts): the folder read as `theme:pack` reads it and checked
   with the app's own `checkImport`; exits 1 when Margin wouldn't use it.
@@ -11157,3 +11157,11 @@ Step 3 of the theme store plan: `cloud/themes/`, a Cloudflare Worker for the fre
   admin origin and token) and a test failed for each.
 - **Not in this step**: screenshots (step 4, with Margin's renderer), generation and its day's budget (step 5), App
   Attest (to test on macOS 27). A WAF rate rule for the public reads (the free plan has one) is a deploy step.
+
+## Import Theme and Load Unpacked, told apart (`feat/theme-sources-clear`, 2026-11-25)
+
+Tirth: the difference between the two wasn't clear. Each button now has a line of its own under it, an info line every
+theme draws (a button's status is replaced by what happened, so it can't hold the explanation): Import Theme "adds a
+copy … later changes to the original don't reach the copy: import it again to update it"; Load Unpacked is "for making
+or editing a theme: links its folder instead of copying it … Unlink stops following the folder". Each added theme says
+"· a copy" or "· linked to its folder", and the macOS pickers say the same.
