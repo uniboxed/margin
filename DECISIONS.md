@@ -11496,3 +11496,17 @@ panel is over the background itself: see-through there. The one colour stays whe
 (the browsers' overlay, no `m-page-state`; the sidebar hidden or out, the page not slid). Test (arcadia.test.ts, both
 engines): Spaces see-through in Margin's window, the background cut out only at the page's 56 pt; the overlay keeps the
 colour (failed before: the colour in both).
+
+## The Library's rail and section apart, as Arc's (`fix/spaces-grain`, 2026-11-26)
+
+Tirth's screenshot of Arc's Library: the rail and the section are parted by a hairline and a shadow. Measured on it at
+its own scale (777 px for Arc's 417 pt: its pills 7.5-105 pt, 78 tall, its search 120 pt in, 35.5 tall: Arcadia's
+layout already the same), across quiet rows: the section's edge at 112 pt a hairline 7% darker, then a shadow 4.8%
+darker fading out by about 38 pt; the rail and the section the same ground, the rail 2% lighter, 4.6% by the edge.
+- **Theme**: `.library::before` under the rail and the section, one gradient of black and white at those stops from
+  `--lib-split` (112 pt; 56 while Margin's window is a tile beside the app): the same on the theme's ground and on a
+  space's background, light or dark.
+- **Test** (arcadia.test.ts, both engines, the page's pixels across a quiet row): the section's ground past 40 pt, the
+  edge and the shadow's fall, the rail lighter (failed before: nothing at 112). The half-point hairline is a device
+  pixel only at 2×: checked on the real screen (dev hooks + screen capture): 112 pt 7.7% darker, 4-5.5% after, faded
+  by about 135 pt, as Arc's.

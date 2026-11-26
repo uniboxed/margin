@@ -1539,6 +1539,27 @@
    semibold, 12 pt in) and its rows (56 pt: the icon 22 pt in, the title 52 pt in at 14 pt, the address under it at
    12 pt). */
 .lib-main { position: absolute; top: 0; bottom: 0; left: 112px; right: 0; display: flex; flex-direction: column; min-width: 0; }
+/* The rail and the section apart, as Arc's (measured on Tirth's screenshot of Arc's Library, 2026-11-26, at its own
+   scale, 777 px for 417 pt): the section's edge at 112 pt a hairline 7% darker, then a shadow into the section from
+   4.8% darker, fading out by 38 pt; the rail 2% lighter than the section, 4.6% by the edge. Black and white over the
+   panel (the theme's ground or a space's background alike), under the rail and the section. */
+.library { --lib-split: 112px; }
+.library::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to right,
+    rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) calc(var(--lib-split) - 50px),
+    rgba(255, 255, 255, 0.025) calc(var(--lib-split) - 30px), rgba(255, 255, 255, 0.035) calc(var(--lib-split) - 16px),
+    rgba(255, 255, 255, 0.042) calc(var(--lib-split) - 6px), rgba(255, 255, 255, 0.046) var(--lib-split),
+    rgba(0, 0, 0, 0.07) var(--lib-split), rgba(0, 0, 0, 0.07) calc(var(--lib-split) + 0.5px),
+    rgba(0, 0, 0, 0.048) calc(var(--lib-split) + 0.5px), rgba(0, 0, 0, 0.044) calc(var(--lib-split) + 5px),
+    rgba(0, 0, 0, 0.033) calc(var(--lib-split) + 10px), rgba(0, 0, 0, 0.026) calc(var(--lib-split) + 15px),
+    rgba(0, 0, 0, 0.019) calc(var(--lib-split) + 20px), rgba(0, 0, 0, 0.012) calc(var(--lib-split) + 25px),
+    rgba(0, 0, 0, 0.006) calc(var(--lib-split) + 30px), rgba(0, 0, 0, 0.002) calc(var(--lib-split) + 35px),
+    rgba(0, 0, 0, 0) calc(var(--lib-split) + 38px));
+}
 .lib-top { flex: none; height: 56px; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
 .lib-search { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 15px; border-radius: 10px; background: var(--hover); color: var(--muted); }
 .lib-search .lib-magnifier { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
@@ -1573,6 +1594,7 @@
 .arcadia[m-sidebar-fixed] .lib-section { width: 44px; height: 44px; padding: 11px 0 0; }
 .arcadia[m-sidebar-fixed] .lib-label { display: none; }
 .arcadia[m-sidebar-fixed] .lib-main { left: 56px; }
+.arcadia[m-sidebar-fixed] .library { --lib-split: 56px; }
 .arcadia[m-sidebar-fixed] .lib-bottom { width: 44px; flex-direction: column; align-items: center; gap: 4px; }
 .arcadia[m-sidebar-fixed] .lib-filter { display: none; }
 

@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
-import { pageLoaderChecks, rgba, near } from './page-card.ts';
+import { pageLoaderChecks, rgba, near, decodePng } from './page-card.ts';
 import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 import { hitRects } from '../../app/shared/ui/host-app.ts';
@@ -1147,6 +1147,36 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForFunction(() => !(window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
         await ev(() => T.rtChange('setBackground', 'personal', null));
         await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+      });
+
+      await t.test('the Library\'s rail and section apart as Arc\'s: a hairline and a shadow into the section from 112 pt, the rail lighter by the edge (measured on Arc)', async () => {
+        await fresh();
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await ev(() => T.rtDispatch('library.open'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open, null, { timeout: 3000 });
+        await page.waitForTimeout(100);
+        // (A row clear of the rail's sections and the section's rows: below the lowest of them, above the rail's foot.)
+        const y = await ev(() => {
+          const lowest = Math.max(...[...document.querySelectorAll('.lib-main *, .lib-rail *')].map((e) => e.getBoundingClientRect().bottom).filter((b) => b < innerHeight - 50));
+          return Math.round(Math.min(innerHeight - 56, Math.max(lowest + 12, innerHeight / 2)));
+        });
+        const px = decodePng(await page.screenshot({ animations: 'disabled' }));
+        const lum = (x: number) => { const [r, g, b] = px(x, y); return (r + g + b) / 3; };
+        // (The section's ground well past the shadow, inside the Library's 417 pt.)
+        const base = lum(380);
+        assert.ok(Math.abs(lum(300) - base) <= 1 && Math.abs(lum(200) - base) <= 1, `the section's ground past the shadow (${lum(200)} ${lum(300)} ${base})`);
+        const dark = (x: number) => 1 - lum(x) / base;
+        const light = (x: number) => (lum(x) - base) / (255 - base);
+        // (Its half-point hairline is a device pixel on a Retina screen; at this page's 1x it's dropped to the shadow's.)
+        assert.ok(dark(112) > 0.042 && dark(112) < 0.075, `the edge at 112 (${dark(112).toFixed(3)})`);
+        assert.ok(dark(111) < 0, `the rail's side of the edge lighter (${dark(111).toFixed(3)})`);
+        assert.ok(dark(114) > 0.035 && dark(114) < 0.055, `the shadow just inside (${dark(114).toFixed(3)})`);
+        assert.ok(dark(130) > 0.015 && dark(130) < 0.032, `fading by 18 pt (${dark(130).toFixed(3)})`);
+        assert.ok(Math.abs(dark(152)) < 0.006, `gone by 40 pt (${dark(152).toFixed(3)})`);
+        assert.ok(light(110) > 0.03 && light(110) < 0.06, `the rail lighter by the edge (${light(110).toFixed(3)})`);
+        assert.ok(light(40) > 0.008 && light(40) < 0.03, `the rail a little lighter than the section (${light(40).toFixed(3)})`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await ev(() => T.rtDispatch('library.close'));
       });
 
       await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
