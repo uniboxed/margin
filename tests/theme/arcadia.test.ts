@@ -1099,6 +1099,37 @@ for (const [engineName, engine] of ENGINES) {
         assert.ok(!(await ev(() => T.rtSent())).some(([k]) => k === 'createSpace'));
       });
 
+      await t.test('a space\'s background cut out where the page card is at every frame of the Library\'s slide, both ways (the card never shown over the background\'s old cut-out)', async () => {
+        // (2026-11-26, Tirth's recordings: the slide moved the card without resizing it, so the view never reported its
+        // place until the slide's end, and the background stayed cut out at the old place: a band of background over
+        // the page, its border missing, the page "stuck" until the jump.)
+        await fresh();
+        await ev(() => document.querySelector('.arcadia')!.setAttribute('m-page-state', 'shown'));
+        await ev((b) => T.rtChange('setBackground', 'personal', b), { colors: ['#f7c7d3', '#cfe8f7'], intensity: 0.6, texture: 'grain', amount: 0, appearance: 'light' });
+        await page.waitForTimeout(450);
+        const slide = (action: string) => ev((a) => new Promise<number[][]>((done) => {
+          const out: number[][] = [];
+          const cut = () => { const m = /Z\s*M\s*([\d.]+)/.exec(T.rtBackground().clip as string); return m ? Number(m[1]) : -1; };
+          const tick = () => {
+            const card = document.querySelector('.card-edge')!.getBoundingClientRect().left;
+            out.push([Math.round(card), Math.round(cut())]);
+            if (out.length < 45) requestAnimationFrame(tick); else done(out);
+          };
+          T.rtDispatch(a);
+          requestAnimationFrame(tick);
+        }), action);
+        for (const [action, to] of [['library.open', 417], ['library.close', null]] as const) {
+          const frames = await slide(action);
+          assert.ok(frames.some(([c]) => c !== frames[0][0]) || to === null, `${action}: the card moved (${JSON.stringify(frames)})`);
+          // (The cut's first point is the card's left plus its top-left radius: 6 pt.)
+          const off = frames.filter(([c, x]) => Math.abs(x - (c + 6)) > 1);
+          assert.deepEqual(off, [], `${action}: the background cut out where the card is, every frame (${JSON.stringify(frames)})`);
+          if (to) assert.equal(frames.at(-1)![0], to);
+        }
+        await ev(() => T.rtChange('setBackground', 'personal', null));
+        await ev(() => document.querySelector('.arcadia')!.removeAttribute('m-page-state'));
+      });
+
       await t.test('the box button slides the Library in (Arc\'s switch spring), its back arrow out; while an app is hosted it\'s the sidebar\'s width and the page stays', async () => {
         await fresh();
         const box = (await rect('.bar .archive'))!;

@@ -11462,3 +11462,27 @@ Two causes of ours in the log: a swipe back's first move (under half a point) wa
   the reports above); Spaces at `innerWidth - 56`, as wide; back out told before the first move away from 417.
 - **Open**: whether Safari's drawn page itself lags its moved tile (its bounds land in ~4 ms by the log); to be
   measured from a screen recording.
+
+## The space's background followed the Library's slide frame by frame (`fix/library-background-cut`, 2026-11-26)
+
+Still after `fix/library-follow` (Tirth: "doesn't seem like you fixed the issue"): mid-slide the page card's border was
+missing, a band over the page, and on the way back the page "stuck" until a jump at the end. Measured on his screen
+(his OK: dev hooks drove the slide, `screencapture -v` recorded it, each frame's drawn edge read): Safari's window and
+Margin's hole moved every frame (the engine's log, a temporary hole log), yet the screen showed the page cut off at
+the old place until the slide ended; a picture of Margin's own panel window mid-slide showed why: the space's
+background (ui/background.ts, its `clip-path` cut out where the page card is) still cut out at the old place while the
+card had moved. The cut is placed from the view's `onLayout`, which runs only when the view reports a layout, and the
+view reports one on a render or when the page's size changes (its ResizeObserver): a slide moves the card without
+resizing it (since the whole-point shift, never), and Margin.app's overlay.ts measures and reports to the host itself
+(its MutationObserver), so the host followed while the background didn't. (`LiveResizing` off and a slower live pace
+were tried first and measured: no change; not the cause.)
+- **Fix** (behaviors/swipe.ts `setLibrary`): after each progress, the host told first (when the page moved), then the
+  page's place measured and reported in that frame (`view.flushLayout`, also when the slide's progress is taken
+  off): the background's cut, the card's layers and the host follow the card in the same frame. (A frame later,
+  `scheduleLayout`, it trailed by one frame: measured, dropped.)
+- **Test** (arcadia.test.ts, both engines): with a space's background and `m-page-state="shown"`, every frame of the
+  Library's slide in and out has the background cut out at the card's place (failed before: the cut at the old place
+  until the last frame; then a frame behind with scheduleLayout).
+- **Real screen, after** (dev hooks + recording): the close's drawn edge 417 → 336 → 263 → 255 → 242 → … → 230 frame
+  by frame (was 417 throughout, then 230); the card's corners and frame drawn mid-slide; Spaces slides the page to 1456
+  (56 pt showing); an edge drag followed both ways with no gap (Safari redraws a resize in ~25 ms: every other frame).
