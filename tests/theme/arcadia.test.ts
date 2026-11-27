@@ -876,11 +876,13 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal((await ev(() => T.rtComputed('.arcadia', '--m-rows-feel')))?.trim(), 'arc');
         const folderId = await ev(() => document.querySelector('.folder')!.getAttribute('data-folder-id')!);
         const setOpen = (open: boolean) => ev(([id, o]) => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f: any) => (f.id === id ? { ...f, open: o } : f)) }; rt.host.setState(rt.mock.state); }, [folderId, open] as const);
-        const anims = () => ev(() => document.getAnimations().filter((a) => (a.effect as KeyframeEffect)?.target instanceof Element && ((a.effect as KeyframeEffect).target as Element).closest('.margin-sidebar')).map((a) => {
+        // (The rows' motion: an icon's poses held still between its moves, a paused animation, and what moves them, a
+        // custom property's transition (Arcadia's folder glyph, its --fold), aren't the rows'.)
+        const anims = () => ev(() => document.getAnimations().filter((a) => a.playState !== 'paused' && !String((a as Animation & { transitionProperty?: string }).transitionProperty ?? '').startsWith('--') && (a.effect as KeyframeEffect)?.target instanceof Element && ((a.effect as KeyframeEffect).target as Element).closest('.margin-sidebar')).map((a) => {
           const e = a.effect as KeyframeEffect;
           const t = e.getTiming();
           const k = e.getKeyframes();
-          return { cls: (e.target as Element).className.split(' ')[0], duration: t.duration, easing: t.easing, first: { transform: k[0].transform ?? null, clip: (k[0] as any).clipPath ?? null, opacity: k[0].opacity ?? null }, frames: k.length };
+          return { cls: ((e.target as Element).getAttribute('class') ?? '').split(' ')[0], duration: t.duration, easing: t.easing, first: { transform: k[0].transform ?? null, clip: (k[0] as any).clipPath ?? null, opacity: k[0].opacity ?? null }, frames: k.length };
         }));
         await setOpen(false);
         const closing = await anims();

@@ -43,10 +43,12 @@ export const startPageInFront = (v: Awaited<ReturnType<typeof sidebar>>, tabId: 
 /**
  * Waits for the overlay's transitions and animations that end (a sidebar
  * sliding out, an edge moving) to finish, for a picture of where they land.
+ * (An animation held still, a paused one: a theme's icon set to a pose between
+ * its moves, Arcadia's folders and Library button, never ends: not waited for.)
  * */
 export function settled(ui: Page) {
   return ui.evaluate(() => Promise.all(document.getAnimations()
-    .filter((a) => Number.isFinite(Number(a.effect?.getComputedTiming().endTime)))
+    .filter((a) => a.playState !== 'paused' && Number.isFinite(Number(a.effect?.getComputedTiming().endTime)))
     .map((a) => a.finished.catch(() => {}))).then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))));
 }
 

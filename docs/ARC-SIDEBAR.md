@@ -235,6 +235,98 @@ Tirth: the same icons, spaces and UI as Arc's, even where the feature isn't buil
   it has one): its icon, name, profile chip and pencil (Edit Space), its folders and pins and today's tabs as its
   sidebar has them (a row opens it), Arc's move handle and ••• at its foot (drawn).
 
+## The Library's icons (2026-11-27, `feat/arcadia-icons`)
+
+Tirth: the same icons and icon animations as Arc's. Arc's six (Media, Downloads, Easels, Spaces, Boosts, Archived Tabs)
+are Lottie animations in its app (ARC_HomeButton.bundle: 128 pt designs, 60 fps; markers `hover-start` 1, `hover-end`
+11, `selection-end` 35, Boosts 45; two colours, `primaryColor` the outline and `secondaryColor` the inside). Nothing of
+them goes into Margin: they were played only to measure.
+- **Their shapes**: four of Arc's are built on Apple's SF Symbols at 96 pt, split into parts (Arc's layers are named
+  after them): `archivebox` (its box, lid, slot), `arrow.down.circle` (ring, shaft, head), `photo.on.rectangle.angled`
+  (the front photo, its sun and hills), and for Boosts `paintbrush` and `sparkle`; Easels' squiggle is `scribble`.
+  Margin doesn't draw Apple's symbols (their license allows them only in apps on Apple's platforms, never
+  redistributed; Margin's repository is public and Arcadia ships in the Chrome and Edge build, on Windows too): each
+  of those parts is **Margin's own drawing** (2026-11-27, `feat/arcadia-own-icons`), built from simple shapes and
+  fitted on the part's size, place and weight, so the motion below plays on it unchanged:
+  - Archive: the lid a stroked rounded rect (86.2 × 18.6, corners 4.5, a 7.2 line); the box's walls a U of two
+    straight walls and a floor, its corners rounded (outer 13.2, 7.5 thick), drawn twice as before (the second mirrored
+    for Arc's mask layer); the slot as it was (a stroke).
+  - Downloads: the ring a stroked circle (r 43.9, a 7.9 line); the head a two-segment stroke (16.1 out and 15.6 up from
+    its tip, 6.4), round caps and join; the shaft as it was.
+  - Media: the front photo a stroked rounded rect (85.2 × 65.3, corners 9.6, a 7.5 line); its sun a circle (r 9.95);
+    its hills a polygon of two peaks and a valley, each corner rounded (3.75), its foot following the frame's inside
+    corners.
+  - Boosts: the brush in a frame along its axis (−45.6°): the ferrule a stroked rounded rect across it (14.8 × 50.4,
+    corners 3.1, a 7 line); the handle an outline from the ferrule to a round end (r 11.9) with a ring for its hole; the
+    bristles a closed outline (one straight side, a straight far edge, a curve swept back to the ferrule, its corners
+    rounded); the paint a sickle of two quadratic curves; their insides the same outlines filled. Each sparkle a
+    four-pointed star of quadratic sides, its points rounded by a round-joined edge.
+  The overlap with the symbols' render they replace (soft ink overlap at 2x, 32 pt, rest and 4 frames of the motion):
+  WebKit Media 99%, Downloads 99%, Boosts 94–95%, Archive 96–98% (insides 95–100%); Chromium, the icons held still,
+  99 / 97 / 94 / 97%; Chromium with its paused animation (each part rasterized as an animated layer, which blurs some
+  parts by a pixel: the old drawings too) 97–99 / 90–97 / 93–94 / 89–97%. Arc's Lottie art and Apple's glyphs were
+  only references: no outline of either is copied. The rest are plain shapes drawn to Arc's measures: Easels' window (93.4 × 86.3, corners
+  12.2, a 7.5 frame, its bar to 21.4), Spaces' cards (73.3 × 93.5, corners 11.2, a 7.5 frame), Boosts' rounded square
+  (88 × 88, corners 20.5, a 7.7 frame), Media's back photo (the front photo's frame), and every inside. Where Arc cuts
+  a part behind another (Spaces' back card behind the front one, Boosts' square round the brush, Media's back photo
+  behind the front one), ours is cut the same way, once, as a static shape.
+- **Their motion**: each part moves as Arc's layer does, frame by frame: its whole transform (position, rotation,
+  scale, its parents') every half frame, relative to rest, as CSS keyframes (frames on a straight line between their
+  neighbours dropped). Arc's few changes of shape done with transforms of our parts: the Downloads shaft shortening
+  (from its top, its head narrowing), the Archive slot bowing into a smile, the Boosts brush head swinging on its
+  joint (its peak −14.5° at frame 27), and the Archive box's masks (its walls hidden as the lid comes down, its top
+  shown as it lifts) as insets of the part's own box.
+- **Checked** against Arc's own animation, played locally, frame by frame (512 pt silhouettes, the outline and the
+  inside apart): 93–98% the same at every frame tested for every icon, the insides clear or filled; in WebKit
+  (WKWebView) as in Chromium.
+- **When they play** (measured on Arc's screen, 2026-11-27): **never on hover** (the pointer over a section changes
+  nothing); **choosing one** plays its icon from rest through Arc's hover and selection frames (1 → 35, Boosts 45:
+  ≈ 567 ms, Boosts ≈ 733: Arc's took 33 and 41 frames); the one it leaves goes back to rest at once; **opening the
+  Library** shows the chosen one's last pose, nothing playing. Arc's Easels aren't in Margin (Tirth, 2026-11-27). None
+  with less motion (the icons at rest).
+
+## The sidebar's icons (2026-11-27, `feat/arcadia-icons`)
+
+Tirth: the sidebar's icons and their animations as Arc's. Measured on the real Mac (Arc 2x, its window full screen
+from 34 pt), each icon's ink fitted on Arc's (coverage between the sidebar and the darkest ink, the sidebar's grain
+dropped); Arc's catalogue images played only as references. Nothing of Arc's goes into Margin.
+- **Where Arc's are Apple's symbols**, Margin's own drawings at their size and weight (2026-11-27,
+  `feat/arcadia-own-icons`; Apple's symbols may not be redistributed or used off Apple's platforms, and Arcadia ships
+  in the Chrome and Edge build): the sidebar toggle (Arc's `sidebar.left`: a stroked rounded rect 18.5 × 14.6, a 1.54
+  line, a divider and three short round-capped lines), Back and Forward (`arrow.left` / `arrow.right`: a shaft and a
+  two-segment head, 1.69), Reload (`arrow.clockwise`: a stroked arc of 284° and a two-segment head, 1.5), all 16 pt
+  medium; Copy URL (`link`, 14 pt: two stadiums, each drawn with two gaps where the other passes, 1.34); the title
+  row's chevron (`chevron.down`: a two-segment stroke, 1.92, 11.1 × 6.6 pt) and `•••` (three dots r 1.34, 12.2 ×
+  2.7 pt); every stroke round-capped and round-joined, in the same viewBox and place as before. Each top-bar icon
+  sits where Arc's does in its 32 pt button: up to 0.45 pt below the centre (as an SF symbol sits on its baseline).
+  Their overlap with Apple's symbols' render (2x): toggle 99 / 98% (WebKit / Chromium), Back 98 / 98, Forward 98 /
+  98, Reload 99 / 96, link 94 / 93, chevron 99 / 98, ••• 99 / 97. Apple's glyphs were only a reference for size,
+  weight and place: no outline of theirs is copied.
+- **Plain strokes** (round caps) fitted to Arc's: New Tab's `+` 11.8 pt, 1.56 pt lines; the bottom bar's `+` 13.9 pt,
+  1.97; a tab's `×` 10.5 pt, 2.02; Clear's arrow 7.7 × 9.4 pt, 1.36. Site controls (inert in Margin): a rounded
+  square 14.6 pt (corners 3.9, 1.25 lines), two lines each broken by a ring (1.04). 95–98% of Arc's ink.
+- **Folders**: Arc's closed folder is 19 × 19 pt, centred on the favicon's 18 pt box; open, 22.5 × 16.5 on the same
+  bottom line, its back tilted (its left edge leaning in) and its front a parallelogram, shaded from its top left
+  (black 0 → 16.5% at its bottom right; closed, flat). The outline 1.18 pt, ≈ half the back's colour (Arcadia's
+  `--space-color` mixed half with black). **Opening and closing** morph the two panels: closing 233 ms, opening 217 ms,
+  each fast at first; the back's top first (done in ≈ 70 ms), its foot and the front after (≈ 180 ms), along curves
+  (a turn in depth, not straight lines). Drawn as five layers each clipped to its shape (`clip-path: path()`, which
+  WebKit interpolates), keyframed every 1/60 s from Arc's recording (each frame's polygons fitted by colour: 2.4–5% of
+  pixels differ, Arc's own screenshot and recording of the same folder 1.2–1.9%).
+- **The Library button** (bottom left): Arc's sidebar draws a box (ARCUI's `box`, 12.2 × 9.1 pt, corners 1.3 and 2.9,
+  a 4.2 × 2 pt slot) with a star (rounded, cut flat 0.9 pt over the box), a dot and a triangle over it: not its
+  catalogue's `library-icon`, whose parts sit elsewhere (67% the same). Its parts are posed separately: **hovering the
+  icon** (not the button: the pointer on the button's edge plays nothing) the star turns 110° and rises 1.8 pt, the
+  triangle shrinks away and comes back turned, the dot vanishes and reappears higher (550 ms); **leaving**, back (567
+  ms, the triangle and the dot again shrinking away and back); each starts ≈ 50 ms after the pointer. Each part's
+  move, turn and scale fitted every 1/60 s from two recordings (86–93% of Arc's ink per frame; frames a popup crossed
+  filled in between their neighbours).
+- **Not moving on load**: both animations are held still (paused) and set by a number (`--fold`, `--lib`) that a
+  transition carries over Arc's time when the state changes, so a folder drawn open or closed, a space switched to, a
+  button drawn under the pointer, shows its pose at once. Less motion: the pose at once.
+- **Not done**: Arc's speaker (a tab playing sound: none on the real Mac at the time), the `+` menu's pictures, the
+  pinned tab's "back to its URL" icon, Tidy.
+
 ## The space's colour in a switch (measured 2026-11-25, `feat/space-color-blend`)
 
 Read from the first session's two recordings of a dock click (Work → Personal and back, 60 fps, lossless; the mean

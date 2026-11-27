@@ -11608,6 +11608,42 @@ frames placed the hosted window (at most one at a time, a tile's few ms) rather 
 - **Test** (arcadia.test.ts, both engines): a swipe out of the Library begun as the slide out of Spaces starts: told
   `[on, off]` (was `on on off off`).
 
+## The Library's icons as Arc's, moving as Arc's (`feat/arcadia-icons`, 2026-11-27)
+
+Tirth: not Arc's exact icons and icon animations. Arc's are Lottie files of its own (its art: never copied). Margin's
+are drawn anew to them (docs/ARC-SIDEBAR.md "The Library's icons"): Apple's SF Symbols where Arc's are built on them
+(read from macOS's CoreGlyphs catalogue with CoreUI, the same symbol, size and weight), plain shapes elsewhere, each
+part fitted on Arc's measured part; and Arc's measured motion per part as CSS keyframes (Arcadia's theme.css), with its
+three shape changes and the box's masks as transforms and insets.
+- **Checked**: against Arc's animation played locally (lottie-web, reference only), 93–98% of the silhouette the same at
+  every frame tested, outline and inside apart, with the insides clear and filled; WKWebView renders it (the transforms,
+  insets and non-scaling strokes).
+- **Not yet checked on Arc's screen** (it was in use): the icons' size in the rail (32 pt here: a 128 pt design at Arc's
+  usual 4×), what plays as the pointer leaves (here: back to rest at once) or over the section shown, and that an
+  unselected icon's inside is clear (here, as Arc's cut parts imply).
+- **Cost**: Arcadia's CSS +95 KB (the keyframes), nothing at rest; an animation only on a pointer over the rail or a
+  choice; none with less motion.
+- **Tests**: the theme's own (Arcadia: the one shown filled white); the generator and its frame-by-frame check are
+  local tools (they play Arc's files to measure: not in the repository).
+
+## The sidebar's icons as Arc's, the folders and the Library button moving as Arc's (`feat/arcadia-icons`, 2026-11-27)
+
+Tirth: the sidebar's icons too, a precise match. Measured on the real Mac (docs/ARC-SIDEBAR.md "The sidebar's icons"):
+Apple's symbols where Arc's are them (the top bar's, Copy URL, the title row's chevron and •••), plain strokes and
+shapes fitted to Arc's elsewhere (`+`, `×`, Clear, site controls), Arc's folders and Library button redrawn and their
+motion keyframed every 1/60 s from Arc's recordings.
+- **Folders** morph between closed and open as Arc's (233 / 217 ms) in layers clipped to `path()`s; the **Library
+  button** (box, star, dot, triangle) plays Arc's hover and leave (550 / 567 ms) with the pointer on the icon.
+- **Nothing plays on load**: each is a paused animation set by `--fold` / `--lib`, which only a transition moves (a
+  new row, a space switched to, show their pose at once). The tests' "is anything moving" helpers (the e2e
+  `settled()`, the folder test's) now leave out paused animations and a custom property's transition: neither is
+  motion, and a paused animation never ends.
+- **Checked**: each icon against Arc's ink on its screen (91–98% for the static ones; per frame 2.4–5% of pixels
+  different for the folders, 86–93% the same for the Library button), drawn by WKWebView; Arcadia's tests.
+- **Cost**: Arcadia's CSS +44 KB (250 KB of the 256 KB a theme may have); nothing runs at rest; a transition and a
+  style change a frame while a folder turns or the Library button plays.
+- **Not done**: the speaker, the `+` menu's pictures, the pinned tab's back-to-URL icon (not on Arc's screen then).
+
 ## A short flick between spaces, as Arc's (`fix/space-swipe-sensitivity`, 2026-11-26)
 
 Tirth: the space swipe's sensitivity on the trackpad isn't Arc's. Measured on the real Mac with the same posted
@@ -11718,3 +11754,47 @@ Boosts, Archived Tabs), its words for an empty Easels (and its note icon), the "
 and Arcadia's glyphs and rules for them; the view model's `library.sections[]`, the `library.section` action's ids and
 the themes README with them. A Library last left on Easels opens on Archived Tabs (the view model's fallback for a
 section it doesn't know). docs/ARC-SIDEBAR.md still describes Arc's Easels as measured: that's Arc, not Margin.
+
+## The Library's icons play when a section is chosen, not on hover (`feat/arcadia-icons`, 2026-11-27)
+
+Tirth: Arc doesn't move them on hover, only on a click. Measured on its screen: the pointer over a section changes
+nothing; a click plays the icon from rest to its end (Arc's frames 1 → 35, Boosts 45; 33 and 41 frames on screen); the
+section left snaps back to rest; opening the Library shows the chosen icon at its end, nothing playing. So each part's
+hover and selection keyframes are now one (`-c`), held paused and set by `--sel`, which goes 0 → 1 over the icon's
+time only as its section becomes the chosen one (a transition: drawn already chosen, it's at 1 at once) and back to 0
+at once. The sidebar's Library button is another thing: Arc's does move on hover (measured), and still does.
+
+## Arcadia's icons drawn as Margin's own, none of Apple's symbols copied (`feat/arcadia-own-icons`, 2026-11-27)
+
+`feat/arcadia-icons` drew several icons with the path data of Apple's SF Symbols, read from macOS's CoreGlyphs
+catalogue. Apple's SF Symbols license allows the symbols only in apps on Apple's platforms and forbids redistributing
+them; Margin's repository is public (GPL-3.0) and Arcadia ships in the Chrome and Edge build, on Windows too. Tirth:
+redraw every one as Margin's own drawing, then merge. Arc's Lottie art and Apple's glyphs are references only (size,
+weight, place): no outline of either is copied, and no coordinate is taken from their path data.
+- **Redrawn** (docs/ARC-SIDEBAR.md "The Library's icons" and "The sidebar's icons"), each from simple shapes whose few
+  numbers (a rect's size and corners, a circle's radius, a stroke's ends and width) were fitted on the old render's ink:
+  the sidebar toggle (a stroked rounded rect, a divider, three short lines), Back and Forward (a shaft and a
+  two-segment head), Reload (an arc and a two-segment head), Copy URL (two stadium outlines, each with two gaps), the
+  title row's chevron (a two-segment stroke) and ••• (three dots), all round-capped and round-joined in the same
+  viewBox and place, now `line-icon`s (••• stays a `fill-icon`); the Library's Archive lid (a stroked rounded rect)
+  and walls (a filled U with rounded corners, and its mirror), Downloads' ring (a stroked circle) and head (a
+  two-segment stroke), Media's front photo (a stroked rounded rect), sun (a circle) and hills (a filleted polygon),
+  Boosts' brush (a ferrule, a handle with a ring, the bristles' outline and a sickle of paint, in a frame along its
+  axis, their insides the same outlines filled) and sparkles (four-pointed stars). Every part keeps its element, class
+  and frame (the brush's parts still in its scaled group, so its head swings on the same joint), so Arc's keyframes,
+  masks and transform origins play on them unchanged.
+- **Strokes in the design's units**: a new `.li .pk` (stroked, round caps and joins, its width an attribute) for the
+  Library's stroked outlines, scaling with each part's frame as the filled outlines did; the unused `.ps` / `.pf` (the
+  easels') removed. `.pl` (the shaft and the slot, widths on screen) is unchanged.
+- **Overlap with the render they replace** (soft ink overlap, 2x, headless Chromium and WebKit; the Library icons at
+  rest and at 4 points of their motion): sidebar toggle 99 / 98% (WebKit / Chromium), Back 98 / 98, Forward 98 / 98,
+  Reload 99 / 96, link 94 / 93, chevron 99 / 98, ••• 99 / 97; Media 99 / 97–99, Downloads 99 / 90–97, Boosts 94–95 /
+  93–94, Archive 96–98 / 89–97, their insides 95–100%. Chromium's lower numbers come from its paused animations: each
+  animated part is rasterized as a layer, which blurs some parts by about a pixel, in the old drawings as in the new
+  (held still, Chromium is 97 / 97 / 94 / 97%).
+- **Cost**: Arcadia's HTML 90.8 → 77.0 KB, CSS 241.8 → 241.8 KB (the class swap), well under the 256 KB limit.
+- **Not Apple's, left as they were**: the Library button, `+`, `×`, Clear, site controls, the folders, Spaces' cards,
+  Boosts' square, Media's back photo (Margin's own shapes drawn to Arc's measures). The Mac app still draws a Safari
+  profile's own SF Symbol at run time with `NSImage(systemSymbolName:)` (on macOS, in an Apple-platform app, nothing
+  redistributed): not affected.
+
