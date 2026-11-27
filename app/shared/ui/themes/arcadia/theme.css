@@ -876,6 +876,7 @@
 .menu-separator { height: 1px; margin: 5px 10px; background: var(--panel-line); }
 /* In at once and faded out, as Arc's (macOS's own menus: about 117 ms out, measured on screen; docs/ARC-MOTION.md).
    (Margin keeps the menu while it fades: m-menu[m-closing], inert.) */
+m-menu[m-closing] { --m-exit: 1; } /* (Margin waits for the way out: themes README) */
 m-menu[m-closing] .tab-menu:not(.arc) { animation: arcadia-menu-out 120ms linear both; }
 @keyframes arcadia-menu-out { to { opacity: 0; } }
 

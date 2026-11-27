@@ -624,8 +624,10 @@ class IfBinding {
 // A slot (<m-menu>, <m-editor>, ...): the theme's part for it, made once and
 // kept, inside it while the view model's test holds. When the test stops
 // holding, the slot is marked `m-closing` (and inert: no focus, no presses)
-// and the part leaves once the animations that mark starts have run (a
-// theme's way out, `m-menu[m-closing] …`; none: at once), SLOT_EXIT_MS at most.
+// and, when the theme gives that slot a way out (`--m-exit` set on it while
+// closing: `m-menu[m-closing] { --m-exit: 1 }`, and the animations it starts),
+// the part leaves once they've ended (followed by their events), SLOT_EXIT_MS
+// at most; none: at once, as before.
 const SLOT_EXIT_MS = 400;
 class SlotBinding {
   // Its fields (set in its constructor and methods; declared only: nothing at run time).
@@ -661,23 +663,40 @@ class SlotBinding {
   }
   leave() {
     const el = this.el as HTMLElement;
-    const all = () => (typeof el.getAnimations === 'function' ? el.getAnimations({ subtree: true }) : []);
-    const before = new Set(all());
+    const win = el.ownerDocument.defaultView!;
     el.setAttribute('m-closing', '');
     el.inert = true;
     this.leaving = true;
     const turn = ++this.turn;
+    // (The animations the mark starts, followed by their events, never by getAnimations: WebKit's matchingAnimations
+    // crashed its web process from it, Element's too goes through it: DECISIONS.md "A slot's way out followed by events".)
+    const running = new Map<EventTarget, number>();
+    let started = false;
+    const onStart = (e: Event) => { started = true; running.set(e.target!, (running.get(e.target!) ?? 0) + 1); };
+    const onEnd = (e: Event) => {
+      const n = running.get(e.target!) ?? 0;
+      if (!n) return; // (one running before the mark)
+      if (n === 1) running.delete(e.target!); else running.set(e.target!, n - 1);
+      if (!running.size) done();
+    };
     const done = () => {
+      el.removeEventListener('animationstart', onStart);
+      el.removeEventListener('animationend', onEnd);
+      el.removeEventListener('animationcancel', onEnd);
       if (!this.leaving || this.turn !== turn) return;
       this.stay();
       this.block!.remove();
       this.shown = false;
     };
-    // (getAnimations brings the style up to date, so what the mark starts is in it. Endless ones aren't waited for.)
-    const exits = all().filter((a) => !before.has(a) && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Infinity));
-    if (!exits.length) { done(); return; }
-    el.ownerDocument.defaultView!.setTimeout(done, SLOT_EXIT_MS);
-    Promise.all(exits.map((a) => a.finished)).then(done, done);
+    // (A theme's way out says itself on the closing slot, `--m-exit` (themes README); none: at once, as before.)
+    if (!win.getComputedStyle(el).getPropertyValue('--m-exit').trim()) { done(); return; }
+    el.addEventListener('animationstart', onStart);
+    el.addEventListener('animationend', onEnd);
+    el.addEventListener('animationcancel', onEnd);
+    // (None started by the second frame, Reduce Motion's say: at once. Never past SLOT_EXIT_MS, a hidden window's
+    // frames paused or an endless one among them.)
+    win.requestAnimationFrame(() => win.requestAnimationFrame(() => { if (!started) done(); }));
+    win.setTimeout(done, SLOT_EXIT_MS);
   }
   stay() {
     const el = this.el as HTMLElement;

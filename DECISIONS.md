@@ -11980,3 +11980,18 @@ From the Arc motion study (docs/ARC-MOTION.md, `docs/arc-motion-study`). Only wh
   not by symbol): the dock's swap (code 130 ms easeOutCubic; screen ≈ 230 ms in and out), the tooltip (code a 50 ms
   fade; screen at once), "↓ Clear" (code 175 ms; screen at once). To measure again side by side before changing.
 - **Reduced motion**: the menus in and out at once, the peek as before (no transition).
+
+## A slot's way out followed by events, not `getAnimations` (review of `fix/arcadia-arc-motion`, 2026-11-27)
+
+`fix/arcadia-arc-motion` kept a closing slot on screen until "the animations the mark starts" finished, found with
+`el.getAnimations({ subtree: true })` before and after the mark. WebKit's `getAnimations` crashed Safari's web process
+(EXC_BAD_ACCESS in `compareStyleOriginatedAnimationOwningElementPositionsInDocumentTreeOrder` ← `matchingAnimations`,
+2026-11-02, from box.js's `document.getAnimations`; Element's goes through the same code), and Margin's own window is a
+WebKit view too. So, before merging: a theme that gives a slot a way out says so on it, `--m-exit` while it's
+`m-closing` (read with one computed style, at once: no slot without it waits, the palette and the rest go as before),
+and the animations the mark starts are followed by their own events (`animationstart`, then `animationend` or
+`animationcancel` for each); none started by the second frame (Reduce Motion): at once; never past 400 ms (a hidden
+window's frames paused). Arcadia's menus: `m-menu[m-closing] { --m-exit: 1 }`. The themes README says it. Also merged
+with it: `fix/engine-clock-deadlines`' `deadline` and today's main-actor `capped` together (its deadline set as the
+wait begins, both tasks on the main actor), and the live-resize check's wait now the stand-in's `pass`.
+
