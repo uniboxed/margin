@@ -190,7 +190,7 @@
    measured on a white page, a Gaussian of black at 25%, 1 pt down, σ 3 pt; WebKit's blur is a little tighter, so
    7 px here: rendered at 2×, its darkening outside the card's left, top and bottom edges is within 0.5% of Arc's at
    every pixel). */
-.card-edge { pointer-events: none; box-shadow: 0 1px 7px rgba(0, 0, 0, 0.25); }
+.card-edge { pointer-events: none; box-shadow: 0 1px 7px rgba(0, 0, 0, calc(0.25 * var(--card-edge-a, 1))); }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .card-edge { box-shadow: none; }
 
 /* The page card while an item opens (Margin.app: the root's m-page-state):
@@ -1447,8 +1447,14 @@
 /* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
    each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
    divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
-   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
-.arcadia { --m-split-gap: 8px; }
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out.
+   Each pane is a card of its own, as the page card is alone (Arc's split view): the card's corners (its inner ones
+   masked in the frame over its window: Margin's, --m-pane-ground) and the card's shadow on every side, the gap's
+   too. The whole card's shadow (.card-edge) stands down meanwhile, so the outer sides aren't shadowed twice. */
+.arcadia { --m-split-gap: 8px; --pane-shadow: 0 1px 7px rgba(0, 0, 0, 0.25); }
+.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --pane-shadow: 0 0 #0000; }
+.arcadia:has(.page[m-split]) { --card-edge-a: 0; }
+.arcadia m-pane { border-radius: var(--card-radius); box-shadow: var(--pane-shadow); --m-pane-ground: var(--frame); }
 .arcadia m-divider { background: var(--frame); }
 .arcadia m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 36px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 22%, transparent); transition: background-color .12s, transform .12s; }
 .arcadia m-page[m-split="column"] > m-divider::after { width: 36px; height: 4px; }
@@ -1456,7 +1462,7 @@
 .arcadia m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.55); }
 .arcadia m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.55); }
 .arcadia m-divider[m-dragging]::after { background: var(--accent); }
-.arcadia m-pane[m-focused] { border-radius: 6px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px var(--fg); }
+.arcadia m-pane[m-focused] { box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px var(--fg), var(--pane-shadow); }
 @media (prefers-reduced-motion: reduce) { .arcadia m-divider::after { transition: none; } }
 
 
@@ -1862,7 +1868,7 @@
    panel's nor the card's, which would show through the see-through panel; the card's fades with the slide, so it's
    back by the time the page is beside the sidebar again (Tirth, 2026-11-26).) */
 .arcadia[m-page-slides].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .library { box-shadow: none; }
-.arcadia[m-page-slides].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .card-edge { box-shadow: 0 1px 7px rgba(0, 0, 0, calc(0.25 * (1 - var(--lib-p)))); }
+.arcadia[m-page-slides].library-wide:not([m-sidebar-fixed]):not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .card-edge { box-shadow: 0 1px 7px rgba(0, 0, 0, calc(0.25 * (1 - var(--lib-p)) * var(--card-edge-a, 1))); }
 /* (On a space's background, Margin's layer is cut out of the page's place: where the panel lies over the page (the
    browsers' overlay, a real page under it; the sidebar hidden or out, the page not slid), the background's one colour
    there. In Margin's own window with the sidebar docked the page slides out from under it, so the panel is over the

@@ -871,8 +871,15 @@ const withRuntime = Object.assign(T, {
     return {
       axis: page?.getAttribute('m-split') ?? null,
       split: page?.getAttribute('m-split-id') ?? null,
-      panes: [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => ({ id: p.getAttribute('m-pane-id'), focused: p.hasAttribute('m-focused'), ...box(p), ring: getComputedStyle(p).boxShadow })),
-      dividers: [...(page?.querySelectorAll(':scope > m-divider') ?? [])].map((d) => ({ ...box(d), background: getComputedStyle(d).backgroundColor, cursor: getComputedStyle(d).cursor, grip: `${getComputedStyle(d, '::after').backgroundColor}|${getComputedStyle(d, '::after').backgroundImage}`, role: d.getAttribute('role'),
+      panes: [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => {
+        const st = getComputedStyle(p), mask = getComputedStyle(p, '::before');
+        return { id: p.getAttribute('m-pane-id'), focused: p.hasAttribute('m-focused'), ...box(p), ring: st.boxShadow, z: st.zIndex,
+          radii: [st.borderTopLeftRadius, st.borderTopRightRadius, st.borderBottomRightRadius, st.borderBottomLeftRadius].map((v) => parseFloat(v) || 0),
+          mask: { clip: mask.clipPath, shadow: mask.boxShadow, radius: parseFloat(mask.borderTopLeftRadius) || 0 } };
+      }),
+      // (The page card's corner inside its border: what a pane's corners match.)
+      pageRadius: page ? Math.max(0, (parseFloat(getComputedStyle(page).borderTopLeftRadius) || 0) - (parseFloat(getComputedStyle(page).borderTopWidth) || 0)) : 0,
+      dividers: [...(page?.querySelectorAll(':scope > m-divider') ?? [])].map((d) => ({ ...box(d), background: getComputedStyle(d).backgroundColor, gripZ: getComputedStyle(d, '::after').zIndex, cursor: getComputedStyle(d).cursor, grip: `${getComputedStyle(d, '::after').backgroundColor}|${getComputedStyle(d, '::after').backgroundImage}`, role: d.getAttribute('role'),
         band: d.hasAttribute('m-band'), label: d.querySelector('m-band-title')?.textContent ?? null, labelBox: (() => { const l = d.querySelector('m-band-title'); return l ? box(l) : null; })(), labelColor: (() => { const l = d.querySelector('m-band-title'); return l ? getComputedStyle(l).color : null; })() })),
       layout: (rt.host.layouts.at(-1) as { split?: string, panes?: { id: string, rect: number[] }[] } | undefined)?.panes ?? null,
       layoutSplit: (rt.host.layouts.at(-1) as { split?: string } | undefined)?.split ?? null,

@@ -11909,3 +11909,56 @@ new-tab page layout at all (Arc's palette over the page). So nothing of a new-ta
 - Tests: `newtab-page.test.ts` (rewritten), `own-new-tab.test.ts`, `no-new-tab-page.test.ts`, Arcadia's "the palette's
   Archive opens the Library", the e2e new-tab and link tests (the page blank, never loaded again; Start's test gone).
 
+## The engine's timers set on its clock when they're set; a test's wait in frames (`fix/engine-clock-deadlines`, 2026-11-27)
+
+Two Swift checks failed on `main` after `fix/safari-live-reflow`, both from the stand-in's virtual clock
+(`FakeHostWorld.sleep`: the clock moves to a sleeper's wake once it's been the earliest for three turns in a row):
+- **"…a page that never answers"** (live-resize-tests.swift, every run on this Mac, 3 of 3): its asks at 0.48, 5.48,
+  6.48 s, the first cap looking like 5 s, not 1. The engine's `capped` started its timer in a Task of its own, whose
+  sleep wasn't registered yet when the test's one `sleep(5)` after the drag became the earliest: the clock went
+  straight past the cap. **Fixed at the cause**: `HostSystem.deadline(_:)`, a deadline on the engine's clock set when
+  it's called (the protocol's default, for every real clock (RealHostSystem, the e2e glue world): its time taken then;
+  the stand-in's own: its sleeper registered then), awaited in the Task.
+  `capped` and `sizeTilesWhenHeldEnds` (the hold's end) use it, the only two timers the engine starts in a Task of
+  their own. The check passes with its `sleep(5)` unchanged.
+- **"screen: a re-entry held by the loop guard's hold"** (screen-engine-tests.swift, 3 in 40 runs four at a time, 1 in
+  7 alone): the hold's end fired on time (7.53 s, instrumented), but the work it starts (`sizeTilesSoon`, a Task into
+  `serial`, the re-entry) takes several Task turns, and when the test's `sleep(3)` had started before it (6.53 s: when
+  depends on the turns' order, so on load) that sleeper counted its calm turns while they went on and moved the clock
+  to 9.53 s. **Fixed**: the stand-in's `pass(_:)`, time passing for a test a 10 ms frame at a time as a real clock's
+  does, so that work runs in the frame its timer fired in; the check's wait uses it. Not made the stand-in's every
+  sleep (stepping them all would call `advance()` and `onClock` each frame, which several checks count:
+  split-real-use's frames, the behaviour world's ticks). The engine's `busy` (turns under way) can't stand in for "work
+  in flight": a turn asleep is under way too.
+- **Checked**: all 2315 pass, alone and 40 runs of 40 four at a time (before: 3 of 40 failed). "panes active: keeper: a
+  step at rest… costs a few µs" fails only with eight runs at once (its time budget on a loaded Mac), not otherwise.
+
+
+## Each pane of a split a card of its own (`fix/split-view-cards`, 2026-11-27)
+
+Asked: a split showed its panes inside one page card ("2 tabs in 1 parent section"); the left pane's right side had no
+edge. Two causes, in all five themes:
+- **One card.** The card's look (Arcadia's and Material's frame round its corners and Arcadia's shadow, Liquid Glass's
+  hairline, Neubrutalism's border and hard shadow, Pixel's border) was the page card's alone; the panes inside it had
+  none, the gap between them a flat strip of the frame's colour. So the inner sides had no edge and square corners.
+- **The gap over the first pane.** `m-pane` and `m-divider` are both `position: relative`, so they paint in the
+  document's order: the divider over the pane before it, under the one after. The focused left pane's ring lost its
+  right side under the divider.
+
+**Fixed (Margin's, render.ts):** `<m-page>` isolated while split, each pane painted above the gap (`z-index: 1`), the
+grip and band title above it (`z-index: 2`); a mask for a pane's inner corners (`m-pane::before`: the theme's
+`--m-pane-ground` outside its rounded corners, clipped to the half of the pane that meets another pane), so a pane's
+rounded corners show over a hosted window (Margin's window is in front of it on the Mac; on Windows each hole's corner
+squares stay Margin's, hole.rs). Its outer corners are the page card's, as before (the native ground's holes still
+round only those, docs/PEEK-SPLIT.md §1): the mask never paints a colour over a space's background there.
+**Fixed (each theme, "Split View"):** each pane gets its card's corners and edge on every side, the gap's too; the page
+card's own edge stands down while split so none runs across the gap (Arcadia's `.card-edge` shadow faded by
+`--card-edge-a`; Liquid Glass's hairline and Neubrutalism's border in the gap's colour, their width kept so no pane
+moves; Neubrutalism's hard shadow on each pane, its gap 12 → 16 pt to fit border, shadow and some ground; Material's
+card has no edge, so its panes only their corners). Focus stays distinct from the new edge: Neubrutalism's focused pane
+has its focus outline 2 pt out (as `.btn:focus-visible`), the others keep their rings. The themes README's contract
+says it (`m-pane`, `--m-pane-ground`, a card edge standing down while split).
+**Checked:** the split view and card-over-split theme tests in WebKit and Chromium (new: panes above the gap and the
+grip above them, an unfocused pane's own edge where the card has one, the card's corners on each pane, the inner ones
+masked, the outer ones not), and each theme rendered side by side and stacked over a striped backdrop standing in for
+the hosted window. Not native: nothing in Margin.app or the core changed.

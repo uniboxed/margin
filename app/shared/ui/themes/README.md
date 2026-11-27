@@ -319,7 +319,7 @@ style them.
 | What | Yours to style | Margin's |
 |---|---|---|
 | `m-page[m-split]` | nothing new | `display: flex` (row or column) |
-| `m-pane` | the focused pane's ring (`m-pane[m-focused]`: a `box-shadow` outside the box, in the gap; never a background or anything inside it: the pane's window shows there) | its size: `flex-grow` by the split's ratios, `min-width` / `min-height` 220 (Arc's least; a window that needs more is shown cut, its arrows below) |
+| `m-pane` | each pane as a card of its own (2026-11-27): its edge and shadow as your page card's (a `box-shadow` outside the box, on every side, the gap's too: panes paint above the gap), its corners (`border-radius`: your card's inside its border), the colour its inner corners are masked in over its window (`--m-pane-ground`: your gap's colour); the focused pane's ring (`m-pane[m-focused]`, the same way). Never a background, border or anything else inside it: the pane's window shows there | its size: `flex-grow` by the split's ratios, `min-width` / `min-height` 220 (Arc's least; a window that needs more is shown cut, its arrows below); painting above the gap (`z-index: 1`, `<m-page>` isolated), the grip and band title above it (`z-index: 2`); the inner corners' mask (`m-pane::before`: `--m-pane-ground` outside its corners, only where it meets another pane; its outer corners are your page card's) |
 | `m-pane-arrow` | a cut pane's arrows (`[m-side="left\|right\|up\|down"]`, `[m-mode="slide"]`): their look (Margin's default is a small round chip in the system's colours with a chevron) | when they're shown (`m-pane[m-cut-hover]`: the pointer over that pane), their sides, their press, the pointer |
 | `m-divider` | the gap's colour (paint it as your frame around the page card: the ground Margin draws under the gap is that), a grip (`::after`), its hover, `:focus-visible` and drag (`[m-dragging]`; the root has `m-split-resizing` meanwhile) | the gap's size: `--m-split-gap` (8 px if you set none: set it on your root), the cursor, the pointer, the drag |
 | `m-divider[m-band]` | stacked, above a pane hosted in a Safari window: the band its full-screen toolbar window rests in (Arc's pane header); style it as the gap, and its `<m-band-title>` (the pane's name and host, Margin's text: colour, font, opacity) | its height (52 pt at least, your gap if that's more), its title's text and place |
@@ -330,7 +330,10 @@ each stopping at its window's minimum; the hosted windows follow live where
 they can), a double-click makes the panes equal, and ←/→ (↑/↓ stacked) move it
 when it has the keys. Margin measures each `m-pane` with the page and places
 each pane's window there: a border, padding or margin on `m-pane` moves the
-window with it, so leave the box alone. Keep any transition on the grip (≤
+window with it, so leave the box alone. While a split shows, a card edge drawn
+on the page card (its border, a shadow around it) would run across the gaps:
+let it stand down (a border in the gap's colour, its width kept so nothing
+moves; a shadow off) and draw it on each pane instead. Keep any transition on the grip (≤
 150 ms, none with `prefers-reduced-motion`): nothing about the boxes animates.
 All five built-in themes show how (each theme.css, "Split View").
 

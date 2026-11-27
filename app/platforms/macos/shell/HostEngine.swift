@@ -1614,9 +1614,10 @@ final class HostEngine {
     private func sizeTilesWhenHeldEnds(_ until: Double) {
         guard !sizeRetryWaiting else { return }
         sizeRetryWaiting = true
+        let ends = sys.deadline(max(0, until - sys.now())) // (set now: no other wait on the clock passes it first)
         Task { [weak self] in
+            await ends()
             guard let self else { return }
-            await self.sys.sleep(max(0, until - self.sys.now()))
             self.sizeRetryWaiting = false
             self.sizeTilesSoon()
         }
@@ -5329,8 +5330,8 @@ final class HostEngine {
 
     // `body`'s answer, or nil once `seconds` passed on the engine's clock (a cap, for a wait the screen is held still
     // through; `body` left to end on its own).
-    // (Both on the main actor, the engine's: `once` is only ever read and set there, and the limit's sleep is asked for
-    // before the body starts, so a clock that moves on sleepers (the tests' world) always sees it.)
+    // (Both on the main actor, the engine's: `once` is only ever read and set there. The limit's deadline is set as the
+    // wait begins, before either task runs, so a clock that moves on sleepers (the tests' world) always sees it.)
     private func capped<T>(_ seconds: Double, _ body: @escaping @MainActor () async -> T?) async -> T? {
         let once = HostOnce()
         return await withCheckedContinuation { (k: CheckedContinuation<T?, Never>) in
@@ -5339,7 +5340,8 @@ final class HostEngine {
                 once.done = true
                 k.resume(returning: v)
             }
-            Task { @MainActor in await self.sys.sleep(seconds); finish(nil) }
+            let ends = sys.deadline(seconds) // (set now: no other wait on the clock passes it first)
+            Task { @MainActor in await ends(); finish(nil) }
             Task { @MainActor in finish(await body()) }
         }
     }

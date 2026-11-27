@@ -221,7 +221,7 @@ private func screenLeftFullScreenTests() {
             if line.contains("\(textEdit.id): its window left full screen by itself") { backAt.append(w.clock) }
         }
         _ = hostRun { await e.pageRectChanged(moved) }
-        _ = hostRun { await w.sleep(3); return true }
+        _ = hostRun { await w.pass(3); return true } // (in frames: the retry's work at the hold's end runs then, not 2 s on)
         Diagnostics.echo = echo
         let end = heldAt.first.map { $0 + 1 } ?? -1 // (the hold starts at its refusal: a second from it)
         check("screen: set up: two tiled hosts, the parked one's tile sized after a page change, the one shown out of full screen then, the guard's second full",

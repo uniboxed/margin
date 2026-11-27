@@ -11,6 +11,10 @@ protocol HostSystem: AnyObject {
     // ---- time ----
     func now() -> Double // seconds, monotonic
     func sleep(_ seconds: Double) async
+    // A deadline `seconds` from now on this clock, set now: awaiting what it returns ends at it. For a timer the engine
+    // starts in a Task of its own (a cap, a hold's end), its time kept from when it's set, not from when that Task first
+    // runs. Awaited once, always.
+    func deadline(_ seconds: Double) -> () async -> Void
 
     // ---- apps ----
     func running(bundleId: String) -> [HostApp]
@@ -192,6 +196,12 @@ protocol HostSystem: AnyObject {
 }
 
 extension HostSystem {
+    // On a real clock: the deadline's time taken now, slept out when awaited (the stand-in's virtual clock registers it
+    // as a sleeper now instead).
+    func deadline(_ seconds: Double) -> () async -> Void {
+        let at = now() + max(0, seconds)
+        return { [self] in await sleep(at - now()) }
+    }
     func batch(_ body: () -> Void) { body() }
     // (A stand-in that doesn't play it: unread.)
     func launchArguments(pid: pid_t) -> [String]? { nil }

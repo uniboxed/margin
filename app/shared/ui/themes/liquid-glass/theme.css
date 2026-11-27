@@ -882,8 +882,14 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 /* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
    each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
    divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
-   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out.
+   Each pane is a card of its own, as the page card is alone: the card's hairline round every side, the gap's too
+   (its outer sides lie where the card's was), its corners the card's inside its hairline, the inner ones masked in
+   the ground over its window (Margin's, --m-pane-ground). The card's own hairline stands down meanwhile (in the gap's
+   colour, its width kept so nothing moves), so none runs across the gap. */
 .lg { --m-split-gap: 10px; }
+.lg .page[m-split] { border-color: var(--ground); }
+.lg m-pane { border-radius: max(0px, calc(var(--page-radius) - var(--edge))); box-shadow: 0 0 0 var(--edge) var(--page-edge); --m-pane-ground: var(--ground); }
 .lg m-divider { background: var(--ground); }
 .lg m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 40px; border-radius: 3px; transform: translate(-50%, -50%); background: light-dark(rgba(0, 0, 0, .18), rgba(255, 255, 255, .22)); box-shadow: inset 0 0 0 .5px light-dark(rgba(255, 255, 255, .6), rgba(255, 255, 255, .12)); transition: background-color .15s, transform .15s; }
 .lg m-page[m-split="column"] > m-divider::after { width: 40px; height: 5px; }
@@ -891,5 +897,5 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 .lg m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.6); }
 .lg m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.6); }
 .lg m-divider[m-dragging]::after { background: var(--accent); }
-.lg m-pane[m-focused] { border-radius: 10px; box-shadow: 0 0 0 2.5px var(--accent); }
+.lg m-pane[m-focused] { box-shadow: 0 0 0 2.5px var(--accent); }
 @media (prefers-reduced-motion: reduce) { .lg m-divider::after { transition: none; } }
