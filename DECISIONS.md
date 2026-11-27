@@ -11881,4 +11881,12 @@ the toolbar down over the page.
   tab isn't fresh. A tab already showing Margin's page when the app quits, Back to it, `#launcher`, `#settings`: the
   notice as before.
 - Safari's `search` capability renamed `learn` → `app` (Margin.app's engine, never learned).
+- **On Tirth's Safari (27.2), on screen, 2026-11-27**: Margin.app not running, ⌘T in Safari → Safari's start page
+  (Favorites, Recently Viewed), nothing of Margin's. Safari started with Margin.app started by margin-helper as it
+  links: the first window's tab, Margin's page, handed to the start page too (after the fix below; before it, the
+  link's change reloaded the page, not fresh then, and it showed "Margin.app hasn't placed this window yet").
+  **The page loaded again only when the app starts or stops drawing over its window** (`app` ↔ not), never between
+  not linked and linked-not-drawn. Seen once: Safari started right after Margin's extension was installed failed to
+  load Margin's page itself (NSURLErrorDomain -1102, "You don't have permission", before any of its code ran): Safari's,
+  not the hand-back's; not seen when started again.
 
