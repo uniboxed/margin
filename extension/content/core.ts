@@ -15,6 +15,7 @@ import { watchEdits } from './edits.ts';
 import { startTrackpad } from './trackpad.ts';
 import { SWITCH_GRACE_MS } from '../shared/switching.ts';
 import { startLoads } from './loads.ts';
+import { startPageScale } from './page-scale.ts';
 import { startMedia } from './media.ts';
 import { PEEK_ANSWER_MS, startCardKeys, startPeek } from './peek.ts';
 import { startKeepFullscreen } from './keep-fullscreen.ts';
@@ -207,6 +208,9 @@ export function startCore() {
   // The page being left, or a site's own same-page navigation under way:
   // told for Margin.app's sidebar to show it loading (content/loads.ts).
   startLoads({ on: () => appUi() && active(), send: (type, payload) => send(type, payload, false) });
+  // Safari drawing the page shrunk to fit its window, for Margin.app's log (content/page-scale.ts): looked at again once
+  // the link is known (a page that starts shrunk, a reload of one).
+  const pageScale = startPageScale({ on: () => appUi() && active(), send: (type, payload) => send(type, payload, false) });
 
   // ---- data ---------------------------------------------------------------
 
@@ -412,6 +416,7 @@ export function startCore() {
       setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, drawn } : { state: 'off', drawn: {} });
     }
     sayApp();
+    pageScale.check();
     render(); // its window is known now
   });
 

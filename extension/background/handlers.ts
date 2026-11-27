@@ -931,6 +931,14 @@ export const handlers = {
     if (sender?.tab?.id == null) return;
     pageLoads.pageSaid(sender.tab.id, sender.tab.windowId ?? null, !!on, why);
   },
+  // Safari drawing the page shrunk to fit its window, or whole again (content/page-scale.ts): a line in Margin.app's
+  // log, beside its own (a diagnostic: a tab left laid out wider than its window after a drag of the sidebar's edge).
+  async pageScale({ scale, inner, outer, dpr, shown }: { scale: number, inner: number, outer: number, dpr: number, shown: boolean }, sender: BrowserMessageSender) {
+    if (sender?.tab?.id == null) return;
+    const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '?');
+    const shrunk = typeof scale === 'number' && scale < 1;
+    appLink.note(`page scale: tab ${sender.tab.id} (window ${n(sender.tab.windowId)}, ${shown === true ? 'shown' : 'not shown'}): ${shrunk ? 'SHRUNK to fit' : 'whole again'}: scale ${n(scale)}, laid out ${n(inner)} wide (outer ${n(outer)}), pixel ratio ${n(dpr)}`);
+  },
   // A trackpad gesture Margin runs in the page (content/trackpad.ts), as it
   // goes: its feedback, drawn by Margin.app's overlay of the window.
   async gesture({ kind, state, progress = 0, direction = 0 }: { kind: 'pull' | 'swipe', state: string, progress?: number, direction?: number }, sender: BrowserMessageSender) {
