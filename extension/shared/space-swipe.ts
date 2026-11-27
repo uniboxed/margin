@@ -65,7 +65,8 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
   // A swipe under way: its axis once it's known, how far each way, its offset and events, whether it's let go,
   // its last delta, and its recent deltas with their times.
   // `samples`: the offset after each counted event, with its time (the velocity's, ARC.VELOCITY_MS).
-  type Gesture = { axis: 'x' | 'y' | null, dx: number, dy: number, offset: number, events: number, released: boolean, last: number, recent: { d: number, t: number }[], samples: { o: number, t: number }[] };
+  // `precise`: a trackpad's gesture, its touch told (Margin.app's phases): decided as Arc decides it, below.
+  type Gesture = { axis: 'x' | 'y' | null, dx: number, dy: number, offset: number, events: number, released: boolean, last: number, recent: { d: number, t: number }[], samples: { o: number, t: number }[], precise: boolean };
   let gesture: Gesture | null = null;
   let lastTime = -Infinity;
 
@@ -98,7 +99,7 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
     const tail = run ? g.recent.slice(-(o.MOMENTUM_RUN - 1)) : [];
     const overrun = tail.reduce((sum, r) => sum + r.d, 0);
     const lifted = run ? g.recent.at(-o.MOMENTUM_RUN)?.t ?? time : time;
-    return { phase: 'release', offset: g.offset, speed: speed(g), events: g.events, counted: false, time, overrun, lifted };
+    return { phase: 'release', offset: g.offset, speed: speed(g), events: g.events, counted: false, time, overrun, lifted, precise: g.precise };
   };
 
   // One event of gesture `g`; `ok`: this input, here, may swipe.
@@ -111,8 +112,11 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
       }
       g.dx += Math.abs(deltaX);
       g.dy += Math.abs(deltaY);
-      if (Math.max(g.dx, g.dy) < o.AXIS_PX) return idle();
-      g.axis = g.dx > g.dy * 1.2 ? 'x' : 'y';
+      // A trackpad's touch told (`precise`): as Arc, its first move decides, sideways when it's at least as sideways as
+      // it's vertical, and it counts (the page's events come merged while it's busy: a short flick's 5 or 6 arrive as 2
+      // or 3, and the first AXIS_PX of them were lost, 2026-11-26). Untold: the first AXIS_PX, clearly sideways.
+      if (g.precise ? g.dx === 0 && g.dy === 0 : Math.max(g.dx, g.dy) < o.AXIS_PX) return idle();
+      g.axis = g.precise ? (g.dx >= g.dy ? 'x' : 'y') : (g.dx > g.dy * 1.2 ? 'x' : 'y');
       if (g.axis === 'y') return idle();
     }
     if (Math.abs(deltaX) > o.MAX_STEP) return { phase: 'tracking', offset: g.offset, speed: 0, events: g.events, counted: false };
@@ -134,8 +138,10 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
     // Checked until the gesture's axis is decided.
     // `fresh` (the trackpad's phases known, Margin.app): true, a new gesture whatever the gap (the fingers touched
     // again); false, the same one (they're still down, however long they rested). Unsaid, the gap decides. `decay`:
-    // false, never let go by momentum (the phases say when the fingers lift).
-    wheel({ deltaX = 0, deltaY = 0, deltaMode = 0, ctrlKey = false, shiftKey = false, mouse = false, time, usable = true, fresh: told, decay = true }: { deltaX?: number, deltaY?: number, deltaMode?: number, ctrlKey?: boolean, shiftKey?: boolean, mouse?: boolean, time: number, usable?: boolean, fresh?: boolean, decay?: boolean }) {
+    // false, never let go by momentum (the phases say when the fingers lift). `precise`: the fingers are down on a
+    // trackpad (its touch told): the gesture is decided as Arc's (its first move, at least as sideways as vertical) and
+    // its release says so (`precise`: no notch rule, MIN_EVENTS, for it: a short flick's merged events are few).
+    wheel({ deltaX = 0, deltaY = 0, deltaMode = 0, ctrlKey = false, shiftKey = false, mouse = false, time, usable = true, fresh: told, decay = true, precise = false }: { deltaX?: number, deltaY?: number, deltaMode?: number, ctrlKey?: boolean, shiftKey?: boolean, mouse?: boolean, time: number, usable?: boolean, fresh?: boolean, decay?: boolean, precise?: boolean }) {
       let fresh = told ?? time - lastTime > o.GAP_MS;
       lastTime = time;
       // After a release, only momentum continues the gesture: steady or
@@ -148,7 +154,9 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
       }
       // A drag still being tracked when a new gesture starts: let it go now.
       const unreleased = fresh && gesture?.axis === 'x' && !gesture.released ? release(gesture, time) : null;
-      if (fresh) gesture = { axis: null, dx: 0, dy: 0, offset: 0, events: 0, released: false, last: 0, recent: [], samples: [] };
+      if (fresh) gesture = { axis: null, dx: 0, dy: 0, offset: 0, events: 0, released: false, last: 0, recent: [], samples: [], precise };
+      // (Told on a later move of the same gesture: its first came before the touch was told. Decided the same way then.)
+      if (precise && gesture && !gesture.released) gesture.precise = true;
       const result = track(gesture, { deltaX, deltaY, time, ok: usable && !ctrlKey && !shiftKey && !mouse && deltaMode === 0, decay });
       return unreleased ?? result;
     },
