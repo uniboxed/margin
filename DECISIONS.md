@@ -11995,3 +11995,12 @@ window's frames paused). Arcadia's menus: `m-menu[m-closing] { --m-exit: 1 }`. T
 with it: `fix/engine-clock-deadlines`' `deadline` and today's main-actor `capped` together (its deadline set as the
 wait begins, both tasks on the main actor), and the live-resize check's wait now the stand-in's `pass`.
 
+
+## A space's colours bound as a gradient: `linear-gradient` in bound values (`fix/library-card-gradient`, 2026-11-27)
+
+The Library's Spaces cards bind `--card-ground` to the space's colours as one `linear-gradient(180deg, …)` (view
+model's `ground`, a space of two colours or more). `checkCssValue` allowed only colour and maths functions, so every
+such card's ground was refused (Margin.app's log: "m-style:--card-ground: value refused", 30 times in one Library
+visit) and the card showed the theme's plain colour under Margin's drawing of its background. `linear-gradient` is now
+allowed in bound values: it loads nothing, and what's inside it is held to the same list (no `url()`, no strings, no
+other image function: `radial-gradient`, `repeating-linear-gradient`, `image-set`, `cross-fade` still refused).

@@ -1317,8 +1317,10 @@ export function sanitizeDeclarations(text: unknown, options: CssOptions = {}): {
 // A value Margin's runtime puts in a CSS variable for `m-style:--x`. It
 // comes from the view model (tab titles, colors, theme settings), so it may
 // hold nothing that loads or escapes: no url(), no strings, no escapes, no
-// functions but colors and math, no blocks or semicolons, no !important.
-const VALUE_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'calc', 'min', 'max', 'clamp', 'var']);
+// functions but colors, math and linear-gradient (a space's colours as one
+// ground: the view model's library cards; what's inside it held to the same
+// list), no blocks or semicolons, no !important.
+const VALUE_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'calc', 'min', 'max', 'clamp', 'var', 'linear-gradient']);
 export function checkCssValue(value: unknown) {
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'string' || value.length > LIMITS.boundCssValue) return false;
