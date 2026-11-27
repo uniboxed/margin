@@ -9,11 +9,13 @@
 // Below this the page counts as shrunk (a rounding of 1 isn't).
 export const SHRUNK_BELOW = 0.995;
 
-export type PageScaleReport = { scale: number, inner: number, outer: number, dpr: number, shown: boolean };
+// `n`: its count in this page (Margin.app's log keeps one of the same line a minute: each one told is its own).
+export type PageScaleReport = { n: number, scale: number, inner: number, outer: number, dpr: number, shown: boolean };
 
 export function startPageScale({ on, send, win = globalThis }: { on: () => boolean, send: (type: 'pageScale', payload: PageScaleReport) => unknown, win?: any }) {
   // (What was last told: none yet, a page that starts shrunk is told at once.)
   let told = false;
+  let n = 0;
   const check = () => {
     const vv = win.visualViewport;
     if (!vv || !Number.isFinite(vv.scale)) return;
@@ -21,7 +23,7 @@ export function startPageScale({ on, send, win = globalThis }: { on: () => boole
     if (shrunk === told || !on()) return;
     told = shrunk;
     const round = (v: number) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : -1);
-    send('pageScale', { scale: round(vv.scale), inner: round(win.innerWidth), outer: round(win.outerWidth), dpr: round(win.devicePixelRatio), shown: win.document?.visibilityState === 'visible' });
+    send('pageScale', { n: ++n, scale: round(vv.scale), inner: round(win.innerWidth), outer: round(win.outerWidth), dpr: round(win.devicePixelRatio), shown: win.document?.visibilityState === 'visible' });
   };
   win.visualViewport?.addEventListener('resize', check);
   win.addEventListener('resize', check);

@@ -32,13 +32,13 @@ test('page scale: shrunk to fit told once as it starts and once as it ends, with
   layout(1392);
   fire('vv:resize');
   fire('resize');
-  assert.deepEqual(said, [['pageScale', { scale: 0.871, inner: 1392, outer: 1392, dpr: 1.741, shown: true }]], 'shrunk: told once, the real Mac\'s numbers');
+  assert.deepEqual(said, [['pageScale', { n: 1, scale: 0.871, inner: 1392, outer: 1392, dpr: 1.741, shown: true }]], 'shrunk: told once, the real Mac\'s numbers');
   layout(1392);
   fire('resize');
   assert.equal(said.length, 1, 'still shrunk: not told again');
   layout(1212);
   fire('resize');
-  assert.deepEqual(said.at(-1), ['pageScale', { scale: 1, inner: 1212, outer: 1212, dpr: 2, shown: true }], 'whole again: told');
+  assert.deepEqual(said.at(-1), ['pageScale', { n: 2, scale: 1, inner: 1212, outer: 1212, dpr: 2, shown: true }], 'whole again: told');
   win.visualViewport.scale = 2.5;
   fire('vv:resize');
   assert.equal(said.length, 2, 'a pinch magnifies: never told');

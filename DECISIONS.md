@@ -11624,11 +11624,24 @@ page's zoom or scale), not Safari's per-site zoom (a new tab of the site is whol
   narrows: public WebKit has it for iPad's window scenes only; macOS's isn't in its sources).
 - **Diagnostic** (content/page-scale.ts, handlers.ts `pageScale`): each page tells Margin.app's log when Safari draws it
   shrunk to fit (`visualViewport.scale` below 1: a pinch only magnifies on the Mac) and when it's whole again, with its
-  layout width, pixel ratio and whether it's shown: "page scale: tab N (window W, shown): SHRUNK to fit …".
+  layout width, pixel ratio and whether it's shown: "page scale #k: tab N (window W, shown): SHRUNK to fit …", numbered (the log keeps one of the same line a minute).
 - **Fixed on the way** (HostEngine `dragging`): Margin's Space is told a drag is over whenever it was told it began; it
   was told only while the tiles were on, so a drag during which they went off left the Space in its live resize. Both
   are in the log ("live resize: began …", "… its Space told it's over"). Test: live-resize-tests.swift (the tiles off
   during a drag; failed before).
-- **Open:** keeping a tab from locking (the tile moved, its width kept, while a drag narrows it, and sized once at the
-  end, as the Library's slide moves it; or a zoom change to unlock a tab that says it's locked, which writes Safari's
-  per-site zoom): the person's choice.
+- **Fixed** (HostEngine `relayNarrowed`; Tirth asked for better than holding the tile's width while a drag narrows it, which
+  would cut the page off at the right until it's let go): a lock is cleared by the window as wide as the tab's lock
+  again and then narrower in one step (the real Mac: lock at 1396, the tile at 1398 for 40 ms and back at 1202, whole;
+  widened by 2 pt, or to a narrower width than the lock, still locked). So each drag over, every Safari tile it left
+  narrower than its widest width in it (its width as the drag began, or any frame sent) is set at that width again,
+  wider to the left with its right edge kept, a frame (`relayFrame`, 33 ms) and back at its own rect in one step, under
+  the freeze, held `relaySettle` (120 ms) after: Safari draws the page laid out again a few frames after its window's
+  size (unheld, the recording showed the wider layout cut off at the right for about 50 ms). A lock is cleared at the
+  end of the drag that made it, so none carries to the next. The drag looks as it did (Safari's page shrinks while the
+  drag narrows it, its own); let go, the screen holds still about 0.2 s and then shows the page laid out at its width
+  once (a screen recording, frame by frame: one change after the drag's last frame). Safari's tiles only: no other app
+  was seen to do it, and a drag that only widens a tile or leaves it as wide changes nothing.
+- **Verified on the real Mac** (posted drags, the page's own reports, screenshots and a recording): a drag that locked a
+  fresh tab every time before now ends "whole again" every time (five tabs, two drags each), the page at its width.
+- **Tests:** live-resize-tests.swift (a Safari tile narrowed: at its widest and back, under the freeze, said once; a
+  widening drag and another app's narrowed tile untouched), page-scale.test.ts (the page's reports).

@@ -251,6 +251,11 @@ final class HostEngine {
         var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
+        // A Safari tile a drag narrowed: how long it's held at its widest width in the drag before its own (`relayNarrowed`).
+        var relayFrame = 1.0 / 30
+        // …and how long the freeze holds after its own width is back: Safari draws the page laid out again a few frames
+        // after its window's size (the real Mac: the wider layout cut off at the right for about 50 ms, unfrozen).
+        var relaySettle = 0.12
         // All panes active (PanesActive.swift): each change applied once per main-queue turn (off: at once, the tests').
         var activesCoalesced = true
     }
@@ -5213,10 +5218,15 @@ final class HostEngine {
             liveRects = [:]
             // (Its minimum read once more as the drag begins (one read, none per frame): the page's edge stops there.)
             liveSpace = nil
+            liveWidest = [:]
             if host.tile != nil { learnMinimum(host); liveBegin() }
             for o in others.compactMap({ byHandle[$0] }) where o.tile != nil {
                 learnMinimum(o)
                 liveBegin()
+            }
+            // (Safari's tiles' widths as the drag begins: `relayNarrowed` at its end.)
+            for h in [host] + others.compactMap({ byHandle[$0] }) where h.safariWindow != nil {
+                if let tile = h.tile, let r = sys.tileRect(tile) { liveWidest[h.id] = r.width }
             }
             Diagnostics.note("host: live resize: began, \(host.id) at \(Int(sys.bounds(window: host.window)?.width ?? 0)) pt: " + (liveSpace.map { "Margin's Space \($0.space) told\($0.taken ? "" : " (NOT taken)")" } ?? "no tile follows, Margin's Space not told"))
             return true
@@ -5230,7 +5240,42 @@ final class HostEngine {
         let over = told.map { sys.setLiveResizing($0.space, false) }
         Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)" + (over.map { $0 ? "; its Space told it's over" : "; its Space told it's over (NOT taken)" } ?? ""))
         lastLive = liveStats
+        // (A Safari tile the drag left narrower than it was in it: laid out again at its width, `relayNarrowed`.)
+        let widest = liveWidest
+        liveWidest = [:]
+        if !widest.isEmpty { Task { await self.serial(what: "relayNarrowed") { await self.relayNarrowed(widest) } } }
         return true
+    }
+
+    // Safari's tiles followed in this drag: each one's widest tile width in it (as it began, or any frame sent).
+    private var liveWidest: [HostID: CGFloat] = [:]
+
+    // A drag that narrows a Safari tile over many frames leaves the tab shown in it laid out at the width it had as the
+    // narrowing began, the page shrunk to fit any narrower, through later drags, a switch and a reload, until its window is
+    // as wide again or the page's zoom changes (Safari's own, the real Mac 2026-11-26: DECISIONS.md "A Safari tab locked
+    // laid out wider than its window after a drag"; one step narrower never locks it). So, the drag over: each Safari tile
+    // it left narrower than its widest in it is set at that width again for a frame and back at its own rect in one step,
+    // under the freeze (nothing of it seen): Safari lays its page out again at the width it ends at.
+    private func relayNarrowed(_ widest: [HostID: CGFloat]) async {
+        var list: [(host: Host, tile: UInt64, own: CGRect, wide: CGRect)] = []
+        for (id, width) in widest.sorted(by: { $0.key.raw < $1.key.raw }) {
+            guard let h = hosts[id], let tile = h.tile, h.phase == .shown, let own = sys.tileRect(tile), width - own.width >= 1 else { continue }
+            // (Wider to the left, its right edge kept: as a drag of the sidebar's edge widens it.)
+            list.append((h, tile, own, CGRect(x: own.maxX - width, y: own.minY, width: width, height: own.height)))
+        }
+        guard !list.isEmpty else { return }
+        let t0 = sys.now()
+        let mine = holdFreeze()
+        defer { releaseFreeze(mine) }
+        for e in list { observer.sized(pid: e.host.pid, rects: [e.wide]); _ = sys.setTileRect(e.tile, e.wide) }
+        let wide = await wait(options.liveWait * 4, every: options.tileEvery) { list.allSatisfy { abs((self.sys.bounds(window: $0.host.window)?.width ?? 0) - $0.wide.width) < 1 } }
+        // (A frame for the page to be laid out at it.)
+        await sys.sleep(options.relayFrame)
+        for e in list { observer.sized(pid: e.host.pid, rects: [e.own]); _ = sys.setTileRect(e.tile, e.own) }
+        let back = await wait(options.liveWait * 4, every: options.tileEvery) { list.allSatisfy { abs((self.sys.bounds(window: $0.host.window)?.width ?? 0) - $0.own.width) < 1 } }
+        await sys.sleep(options.relaySettle)
+        Diagnostics.note("host: " + list.map { "\($0.host.id): laid out again at \(Int($0.own.width)) pt after a drag that narrowed it from \(Int($0.wide.width))" }.joined(separator: "; ")
+                         + " (at that width for a frame and back, \(mine ? "under the freeze" : "NOT frozen"))\(wide ? "" : ", its wider width NOT read")\(back ? "" : ", its own width NOT read back") in \(ms(since: t0)) ms")
     }
 
     // Margin's Space told a live resize began, once a drag (`dragging`): the Space, and whether the window server took it.
@@ -5279,6 +5324,7 @@ final class HostEngine {
             guard let tile = host.tile else { return nil }
             observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
             guard sys.setTileRect(tile, rect) else { return nil }
+            if let w = liveWidest[host.id], rect.width > w { liveWidest[host.id] = rect.width }
             return page
         case .frame(let page, let centred):
             let want = centred ? HostLayout.inside(page, sys.bounds(window: host.window)?.size ?? page.size) : page

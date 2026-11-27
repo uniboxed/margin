@@ -342,9 +342,8 @@ func liveResizeTests() {
               "\(String(describing: r)) \(String(describing: e.tilesOff))")
     }
     do {
-        // The tiles off during a drag (another app's tile rect didn't take): Margin's Space still told the drag is over.
-        // Left in its live resize, a Space keeps its windows' own: a Safari tab lays out at the width the drag began at and
-        // shrinks to fit any narrower, through a reload (the real Mac, 2026-11-26).
+        // The tiles off during a drag (another app's tile rect didn't take): Margin's Space still told the drag is over
+        // (never left in a live resize its windows would keep).
         let (w, e, _) = world()
         _ = open(e, textEdit)
         let follows = e.dragging(true)
@@ -356,6 +355,57 @@ func liveResizeTests() {
         check("live resize: the tiles off during a drag: Margin's Space still told it's over",
               follows && begun && off && w.liveResizing[FakeHostWorld.marginSpace] == false && w.calls.last == "liveResizing \(FakeHostWorld.marginSpace) false",
               "\(follows) \(begun) \(off) \(w.calls.suffix(4))")
+    }
+    do {
+        // A drag that narrows a Safari tile over many frames leaves its tab laid out at the width it began at, shrunk to
+        // fit (Safari's own, the real Mac 2026-11-26): the drag over, the tile set at its widest width in the drag and back
+        // at its own in one step, under the freeze, so Safari lays the page out again at the width it ends at. A drag that
+        // only widens it, and another app's tile, aren't touched.
+        let (w, e, _) = world()
+        w.start("com.apple.Safari", policy: .regular, windows: 0)
+        let copy = FakeSafariCopy(w) { w.running(bundleId: "com.apple.Safari").first?.pid }
+        copy.wire(e)
+        let r = open(e, .safariWindow("Work"))
+        let n = copy.windowOf[7914] ?? 0
+        let tile = w.tileOf(n) ?? 0
+        settle(e, 276)
+        func drag(_ from: CGFloat, _ to: CGFloat) {
+            _ = e.dragging(true)
+            for left in Array(stride(from: from, to: to, by: from < to ? 6 : -6)) + [to] {
+                e.follow(placed(left))
+                _ = hostRun { await w.sleep(0.009); return true }
+            }
+            _ = e.dragging(false)
+            _ = hostRun { await w.sleep(0.3); return true } // (the queue's work after it)
+        }
+        func rect(_ left: CGFloat) -> String { let t = tileFor(left); return "tileRect \(tile) \(Int(t.minX)),\(Int(t.minY)) \(Int(t.width))×\(Int(t.height))" }
+        let (l, restore) = listen()
+        let m = w.calls.count
+        let freezes = w.freezes
+        drag(276, 400)
+        let after = Array(w.calls.dropFirst(m))
+        let lastLive = after.lastIndex(of: "liveResizing \(FakeHostWorld.marginSpace) false") ?? -1
+        let relay = after.dropFirst(lastLive + 1).filter { $0.hasPrefix("tileRect \(tile) ") }
+        check("live resize: a drag narrowing a Safari tile: over, its tile at its widest width in the drag (as it began) and back at its own in one step, under the freeze",
+              tile != 0 && lastLive >= 0 && relay == [rect(276), rect(400)] && w.freezes == freezes + 1 && w.reveals == w.freezes && !w.frozen
+              && w.bounds(window: n)?.width == page(400).width && l.all.contains { $0.contains("laid out again at \(Int(tileFor(400).width)) pt after a drag that narrowed it from \(Int(tileFor(276).width))") && $0.contains("under the freeze") },
+              "\(String(describing: r)) \(relay) \(after.suffix(6)) \(l.all.filter { $0.contains("laid out again") })")
+        let m2 = w.calls.count
+        let freezes2 = w.freezes
+        drag(400, 300)
+        check("live resize: …a drag that only widens it: nothing more after it",
+              w.calls.dropFirst(m2).drop { $0 != "liveResizing \(FakeHostWorld.marginSpace) false" }.filter { $0.hasPrefix("tileRect \(tile) ") }.isEmpty && w.freezes == freezes2 && w.bounds(window: n)?.width == page(300).width)
+        restore()
+        let (w2, e2, _) = world()
+        _ = open(e2, textEdit)
+        let edit = window(w2, "com.apple.TextEdit")
+        settle(e2, 276)
+        let freezes3 = w2.freezes
+        _ = e2.dragging(true)
+        for left in Array(stride(from: 276.0, to: 400.0, by: 6)) + [400] { e2.follow(placed(CGFloat(left))); _ = hostRun { await w2.sleep(0.009); return true } }
+        _ = e2.dragging(false)
+        _ = hostRun { await w2.sleep(0.3); return true }
+        check("live resize: …another app's tile narrowed: not touched (Safari's alone)", w2.freezes == freezes3 && w2.bounds(window: edit)?.width == page(400).width && w2.calls.last == "liveResizing \(FakeHostWorld.marginSpace) false", "\(w2.calls.suffix(4))")
     }
     do {
         let (w, e, _) = world()
