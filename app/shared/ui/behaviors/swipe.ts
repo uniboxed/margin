@@ -346,7 +346,8 @@ export function installSwipe(rt: Rt) {
   // `time`: when it was let go (a lift's, from the trackpad's phases or by its momentum's first event: `lifted`), for
   // Arc's speed; `overrun`: the offset momentum added before it was told apart (Arc's feel takes it back out);
   // `cancelled`: the trackpad cancelled the gesture.
-  function release({ offset, speed, events, time, lifted, overrun = 0, cancelled = false }: { offset: number, speed: number, events: number, time?: number, lifted?: number, overrun?: number, cancelled?: boolean }) {
+  // `precise`: a trackpad's gesture, its touch told: no notch rule (MIN_EVENTS), as Arc has none.
+  function release({ offset, speed, events, time, lifted, overrun = 0, cancelled = false, precise = false }: { offset: number, speed: number, events: number, time?: number, lifted?: number, overrun?: number, cancelled?: boolean, precise?: boolean }) {
     const s = swiping;
     if (!s || s.settling) return;
     cancelAnimationFrame(s.frame);
@@ -355,9 +356,9 @@ export function installSwipe(rt: Rt) {
       const raw = s.origin + (offset - overrun - s.base.offset) * s.scale;
       const velocity = tracker.velocity(at, ARC.VELOCITY_MS) * 1000 * s.scale; // px/s of the sidebar
       // (A caught settle's gesture: no notch rule, it was a swipe already.)
-      return settleTo(s, settleArc({ offset: raw, velocity, width: s.width, events: s.caught ? Infinity : events - s.base.events, cancelled, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1, velocity);
+      return settleTo(s, settleArc({ offset: raw, velocity, width: s.width, events: s.caught || precise ? Infinity : events - s.base.events, cancelled, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1, velocity);
     }
-    settleTo(s, settle({ offset: offset - s.base.offset, speed, events: events - s.base.events, width: s.width, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1, 0);
+    settleTo(s, settle({ offset: offset - s.base.offset, speed, events: precise ? Infinity : events - s.base.events, width: s.width, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1, 0);
   }
 
   // The settle toward the space `dir` that way (0: back), at `velocity` (px/s) for Arc's and Dia's spring; `curve`, a
@@ -611,7 +612,8 @@ export function installSwipe(rt: Rt) {
     // (Phases known: a touch starts a new gesture, fingers still down continue it however long they rested.)
     const fresh = phases.known ? (phases.touched ? true : phases.fingers ? false : undefined) : undefined;
     phases.touched = false;
-    const result = tracker.wheel({ deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, mouse: mouseWheel(e), time: e.timeStamp, usable, fresh, decay: !phases.known });
+    // (The fingers down on a trackpad, told: decided as Arc's, its first move, and no notch rule at its release.)
+    const result = tracker.wheel({ deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, mouse: mouseWheel(e), time: e.timeStamp, usable, fresh, decay: !phases.known, precise: phases.known && phases.fingers });
     if (tracker.swiping(e.timeStamp) && e.cancelable) e.preventDefault(); // not the list, not the browser's back/forward
     if (swiping?.settling) return; // its momentum is still that gesture
     if (result.phase === 'tracking') {

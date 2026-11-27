@@ -11607,3 +11607,26 @@ frames placed the hosted window (at most one at a time, a tile's few ms) rather 
   last is over; each slide still says its own once each way (its `resizing`).
 - **Test** (arcadia.test.ts, both engines): a swipe out of the Library begun as the slide out of Spaces starts: told
   `[on, off]` (was `on on off off`).
+
+## A short flick between spaces, as Arc's (`fix/space-swipe-sensitivity`, 2026-11-26)
+
+Tirth: the space swipe's sensitivity on the trackpad isn't Arc's. Measured on the real Mac with the same posted
+trackpad gestures (phases, precise deltas) over each sidebar:
+- **Following the fingers:** the same. A held swipe of 105 pt moved Arc's sidebar 50 pt and Margin's about 48.5 (Arc's
+  half the distance, `ARC.SCALE`).
+- **A short flick:** not the same. Flicks of 7, 14, 26, 43 and 74 pt (about 120 events a second, a momentum tail after
+  the lift): Arc switched on every one; Margin only on the 74 pt one.
+- **Why** (the page's own record of a gesture, a test build): WebKit merges a busy page's wheel events, so the 26 pt
+  flick's 5 trackpad events reached the page as 3 (3, 6, 14) and the 43 pt one's 6 as 4. The first AXIS_PX (6) decided
+  the axis and weren't counted, which left 2 and 3 events, under the notch rule's MIN_EVENTS (4). Back, though moving at
+  350 and 419 px/s. Arc has neither: a gesture whose `began` is at least as sideways as vertical counts from its first
+  move, and no minimum.
+- **Fixed** (shared/space-swipe.ts `precise`, ui/behaviors/swipe.ts): when Margin.app has told the page the fingers are
+  down on a trackpad (its phases), the gesture is decided as Arc's (its first move, sideways when at least as sideways as
+  vertical, counted) and its release has no notch rule. Told on a later move of the same gesture (its first came before
+  the touch was told): decided then, the same way. Untold (Safari's pages, mouse wheels, no phases): as before, the first
+  AXIS_PX clearly sideways and MIN_EVENTS, which keep a wheel's notch or two from switching.
+- **Verified on the real Mac:** the same five flicks now switch in Margin as in Arc; a mostly vertical flick, and a
+  diagonal one more vertical than sideways, don't.
+- **Tests:** space-swipe.test.ts (the real Mac's merged flick switches told, and stays back untold; the first move
+  decides; told late, the same), failing without the fix.

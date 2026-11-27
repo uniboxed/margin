@@ -276,3 +276,36 @@ test('Arc\'s switch spring: about 251 ms, rising only, within 3 pt of Arc\'s fra
   const rms = Math.sqrt(arc.reduce((sum, [frame, offset]) => sum + (259 * (1 - at(((frame - 67.8) * 1000) / 60)) - offset) ** 2, 0) / arc.length);
   assert.ok(rms <= 3, `RMS ${rms.toFixed(2)} pt`);
 });
+
+test('arc tracking, a trackpad\'s touch told (precise): a short flick\'s merged events switch, as Arc; untold, the notch rule keeps them back', () => {
+  // The real Mac, 2026-11-26: a flick of 5 trackpad events (3 6 8 6 3 pt) reached Margin's page as 3 (WebKit merges a
+  // busy page's wheel events), the lift told 64 ms after its touch; Arc switches on it.
+  const run = (precise: boolean) => {
+    const swipe = createSpaceSwipe();
+    [[3, 0], [6, 10], [14, 30]].forEach(([dx, t], i) => swipe.wheel({ deltaX: dx, time: 1000 + t, fresh: i === 0, decay: false, precise }));
+    const r = swipe.lift(1064);
+    const velocity = swipe.velocity(1064, ARC.VELOCITY_MS) * 1000 * ARC.SCALE;
+    return { r, dir: settleArc({ offset: r.offset * ARC.SCALE, velocity, width: 290, events: (r as { precise?: boolean }).precise ? Infinity : r.events, has: both }) };
+  };
+  const told = run(true);
+  assert.equal(told.r.phase, 'release');
+  assert.equal(told.r.events, 3, 'its first move counted');
+  assert.equal(told.r.offset, -23, 'every point of it');
+  assert.equal((told.r as { precise?: boolean }).precise, true);
+  assert.equal(told.dir, 1, 'the next space');
+  const untold = run(false);
+  assert.equal(untold.r.events, 2, 'untold: the first AXIS_PX lost');
+  assert.equal(untold.dir, 0, 'and the notch rule keeps it back');
+});
+
+test('arc tracking, precise: the first move decides, sideways when at least as sideways as vertical; told on a later move, the same', () => {
+  const first = (dx: number, dy: number) => { const s = createSpaceSwipe(); return s.wheel({ deltaX: dx, deltaY: dy, time: 1000, fresh: true, decay: false, precise: true }).phase; };
+  assert.equal(first(3, 3), 'tracking', 'as sideways as vertical: a swipe');
+  assert.equal(first(2, 3), 'idle', 'more vertical: the list scrolls');
+  assert.equal(first(1, 0), 'tracking', 'a point sideways is enough, as Arc');
+  const late = createSpaceSwipe();
+  late.wheel({ deltaX: 2, time: 1000, fresh: true, decay: false });
+  const second = late.wheel({ deltaX: 2, time: 1010, fresh: false, decay: false, precise: true });
+  assert.equal(second.phase, 'tracking', 'told on its second move: decided then, as Arc');
+  assert.equal((late.lift(1020) as { precise?: boolean }).precise, true);
+});
