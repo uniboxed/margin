@@ -597,6 +597,37 @@ fn a_cards_or_panes_own_toolbar_is_a_strip_of_its_own_rect() {
     assert!(is_strip_of_any(&r(260.0, 0.0, 1244.0, 52.0), &placement(), &[]), "main's, as before");
 }
 
+// Safari's link status bubble (2026-11-27 14:07): a window of its own at the page's foot, 20 pt tall, as wide as the
+// page for a long link (1394 pt there). Taken for a strip (against a split pane's rect still held for the split's
+// other host, ~700 pt wide), it was parked, the window Margin hosts pulled out of Margin's Space with it, three times
+// in 5 s: the host stepped down to members (no live drags, full screen left and entered at each). Now never a strip:
+// under 100 pt tall, transient. A toolbar at the top still is, of the page area or of a pane's rect.
+#[test]
+fn safaris_link_status_bubble_is_never_a_strip() {
+    let page = r(290.0, 42.0, 1412.0, 1057.0);
+    let p = Placement { page, area: r(0.0, 34.0, 1710.0, 1073.0), display: r(0.0, 0.0, 1710.0, 1107.0) };
+    let pane = r(1003.0, 42.0, 699.0, 1057.0);
+    let lower = r(290.0, 574.0, 1412.0, 525.0); // a column split's lower pane
+    let facts = AppFacts { host_rects: vec![pane, lower], ..app(true, &[1]) };
+    let windows = vec![
+        s(1, page, Margin),
+        unread(2, r(290.0, page.max_y() - 20.0, 1394.0, 20.0), Margin, Some(true)), // the bubble, a long link
+        unread(3, r(290.0, page.max_y() - 20.0, 1412.0, 20.0), Margin, Some(true)), // as wide as the page
+        unread(4, r(290.0, -10.0, 1412.0, 52.0), Margin, Some(true)),               // its toolbar, resting above
+        unread(5, r(290.0, 522.0, 1412.0, 52.0), Margin, Some(true)),               // the lower pane's toolbar
+    ];
+    let got = classify(&windows, &facts, &p);
+    assert_eq!([got[&2].kind, got[&3].kind], [Transient, Transient], "the bubble: {got:?}");
+    assert_eq!([got[&4].kind, got[&5].kind], [Strip, Strip], "the toolbars: {got:?}");
+    // Against each rect alone: the bubble at a pane's foot never, a toolbar at its top always.
+    for rect in [page, pane, lower] {
+        let q = Placement { page: rect, ..p };
+        assert!(!is_strip(&r(rect.x, rect.max_y() - 20.0, rect.width, 20.0), &q), "{rect:?}");
+        assert!(is_strip(&r(rect.x, rect.y - 52.0, rect.width, 52.0), &q), "{rect:?}");
+    }
+    assert!(!is_strip_of_any(&r(290.0, page.max_y() - 20.0, 1394.0, 20.0), &p, &[pane, lower]));
+}
+
 // The strip's edges, exactly (the Mac's engine asked its own copy of this rule until 2026-11-22: the same answers for
 // every placement it has, the page area and the area both known).
 #[test]
@@ -607,6 +638,12 @@ fn a_strips_edges() {
     assert!(!is_strip(&r(260.0, 0.0, 1241.99, 52.0), &p), "a hair narrower");
     assert!(is_strip(&r(260.0, 0.0, 1244.0, 150.0), &p), "at the height's edge");
     assert!(!is_strip(&r(260.0, 0.0, 1244.0, 150.01), &p), "a hair taller");
+    // At the top: its top edge at most 152 pt below the page area's (41 here: 193), as a toolbar's resting above its
+    // window or out over it; lower, never (Safari's link status bubble at the page's foot, 2026-11-27).
+    assert!(is_strip(&r(260.0, 193.0, 1244.0, 20.0), &p), "at the band's edge");
+    assert!(!is_strip(&r(260.0, 193.01, 1244.0, 20.0), &p), "a hair lower");
+    assert!(is_strip(&r(260.0, -11.0, 1244.0, 52.0), &p), "resting above its window, as Safari's");
+    assert!(is_strip(&r(260.0, 41.0, 1244.0, 52.0), &p), "out over it");
     // The area's 90% when that's the narrower: a page area wider than the area's 90% plus 2.
     let wide = Placement { page: r(0.0, 33.0, 1512.0, 949.0), ..p };
     assert!(is_strip(&r(0.0, 0.0, 1360.8, 52.0), &wide) && !is_strip(&r(0.0, 0.0, 1360.79, 52.0), &wide));
@@ -620,6 +657,8 @@ fn a_strips_edges() {
     // One side known: measured against that one alone.
     let no_page = Placement { page: Rect::ZERO, ..p };
     assert!(is_strip(&r(0.0, 0.0, 1360.8, 52.0), &no_page) && !is_strip(&r(0.0, 0.0, 1300.0, 52.0), &no_page));
+    // (Its top measured against the area's then: 33 here, the band to 185.)
+    assert!(is_strip(&r(0.0, 185.0, 1360.8, 20.0), &no_page) && !is_strip(&r(0.0, 185.01, 1360.8, 20.0), &no_page));
     let no_area = Placement { area: Rect::ZERO, ..p };
     assert!(is_strip(&r(260.0, 0.0, 1242.0, 52.0), &no_area) && !is_strip(&r(260.0, 0.0, 1000.0, 52.0), &no_area));
 }
