@@ -64,6 +64,10 @@ const body = (js: string) => (/\breturn\b/.test(js) ? js : `return ${js}`);
 const check = (tab: string, label: string, js: string, timeout?: number) => ({ op: 'check', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
 const checkPage = (tab: string, label: string, js: string, timeout?: number) => ({ op: 'checkPage', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
 const wait = (ms: number) => ({ op: 'wait', ms });
+// A fresh new tab Margin.app doesn't take, handed to Safari's own start page by Margin's new-tab page (2026-11-27):
+// this host can't open `favorites://` ("unsupported URL", it logs `load <tab> favorites://`), so the tab ends at
+// about:blank here, off Margin's page; on Safari itself, its start page.
+const HANDED = `location.href === 'about:blank'`;
 // Margin's core runs in this page and has the state. It draws nothing there,
 // linked to Margin.app or not (Margin 2 Phase 2 step 5: the app draws Margin's UI).
 const ready = (tab: string) => check(tab, `${tab}: Margin runs here, with the state`, `!!Margin.content?.getState?.().state?.spaces?.length`, 5000);
@@ -575,14 +579,14 @@ Object.assign(SCENARIOS, {
     check('A', 'B: closed by Margin, kept as its Margin tab (put to sleep), not archived', `${KEPT('B')} const { tabs, archive } = await ${STATE}(['tabs', 'archive']); return k?.why === 'sleep' && k.id === __midB && !Object.values(tabs).some((t) => t.url.endsWith('/p/B')) && !archive.some((a) => a.url.endsWith('/p/B'))`, 3000),
     { op: 'pidGone', name: 'B', label: "B: its page's process has exited", timeout: 4000 },
   ],
-  // The same reload with Margin's new-tab page open: that page is the old copy's, at its address,
-  // and nothing in it answers. It's loaded again at this copy's address (marked as not a new tab:
-  // ⌘T's hand-off would close it), then shown with its notice (not linked).
+  // The same reload with Margin's start page open (#launcher: not a fresh new tab, so it stays): that page is the old
+  // copy's, at its address, and nothing in it answers. It's loaded again at this copy's address (marked as not a new
+  // tab: ⌘T's hand-off would close it), then shown, drawing nothing.
   'reloaded-newtab': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
     wait(800), { op: 'install', sameId: true }, ready('A'), wait(800),
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html' }, wait(1500),
-    checkPage('N', "N: Margin's new-tab page says Margin.app isn't running (not linked)", "!document.getElementById('notice').hidden", 4000),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher' }, wait(1500),
+    checkPage('N', "N: Margin's start page, drawing nothing (not linked)", "location.hash === '#launcher' && document.title === 'Margin' && document.body.innerText.trim() === ''", 4000),
     { op: 'page', in: 'N', js: 'window.__before = true; return location.href' },
     { op: 'page', in: 'A', js: 'window.__before = true; return "marked"' },
     { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
@@ -591,7 +595,7 @@ Object.assign(SCENARIOS, {
     wait(1500),
     checkPage('A', 'A (in front): not loaded again in front', 'window.__before === true'),
     { op: 'show', name: 'N' },
-    checkPage('N', 'N shown: still open, with its notice', "!document.hidden && !document.getElementById('notice').hidden", 4000),
+    checkPage('N', 'N shown: still open, drawing nothing', "!document.hidden && document.body.innerText.trim() === ''", 4000),
     checkPage('A', 'A, left: loaded again, behind', '!window.__before && document.hidden', 4000),
     check('A', 'no hand-off closed N', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).some((t) => /newtab\\.html\\?again/.test(t.url))`, 3000),
   ],
@@ -599,7 +603,7 @@ Object.assign(SCENARIOS, {
   // linked to Margin.app: no element of Margin's, no frame, none of
   // Margin's page scripts, on a page open at install and on one loaded
   // since; ⌘T in a page opens
-  // Margin's new-tab page, which says the app isn't running.
+  // Margin's new-tab page, which hands the tab to Safari's own (2026-11-27).
   'no-ui': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
     nothingDrawn('A'), bare('A'),
@@ -608,7 +612,7 @@ Object.assign(SCENARIOS, {
     { op: 'open', name: 'B', url: '/p/B', active: true }, ready('B'), nothingDrawn('B'), bare('B'),
     checkPage('B', 'B (loaded since): none of Margin\'s page scripts either', `!window[Symbol.for('margin.page')]`),
     { op: 'key', in: 'B', keyCode: 17, chars: 't', mods: ['command'] },
-    checkPage('new1', 'new1: ⌘T in the page: Margin\'s new-tab page, saying Margin.app isn\'t running, with an address field', `location.pathname === '/newtab/newtab.html' && !document.getElementById('notice').hidden && !!document.getElementById('address')`, 4000),
+    checkPage('new1', 'new1: ⌘T in the page: handed to the browser\'s own new tab, off Margin\'s page', HANDED, 4000),
     check('B', 'B: one new tab for the press', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).filter((t) => t.url.includes('/newtab/newtab.html')).length === 1`, 2000),
   ],
   // Linked: still nothing of Margin's in a page, on one open and one loaded
@@ -631,36 +635,19 @@ Object.assign(SCENARIOS, {
     appWith(), reload('C'),
     linked('C'), bare('C'),
   ],
-  // Margin's new-tab page, not linked: a short notice that Margin.app isn't
-  // running, its button to start it, and an address field, which opens an
-  // address in that tab; nothing else of Margin's.
+  // Margin's new-tab page, not linked (2026-11-27: it never draws anything of Margin's): a fresh new tab is handed to
+  // the browser's own new tab (Safari's start page, `favorites://`, which this host can't open: "unsupported URL",
+  // checked on Safari itself), and the page draws nothing, titled as any new tab.
   'newtab-off': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
-    checkPage('N', 'N: the notice, its start button, the address field (focused)', `!document.getElementById('notice').hidden && !document.getElementById('start').hidden && document.activeElement === document.getElementById('address')`, 5000),
-    checkPage('N', 'N: nothing else of Margin\'s (no sidebar, no launcher)', `document.body.children.length === 1 && !document.querySelector('.margin-sidebar, .launcher, .arcadia')`),
-    { op: 'page', in: 'N', js: `document.getElementById('address').value = '${SERVER}/p/G'; document.getElementById('go').requestSubmit(); return 'submitted'` },
-    checkPage('N', 'N: the address opened in this tab', `location.pathname === '/p/G' && document.title === 'G'`, 4000),
-  ],
-  // Not linked, the new-tab page's button starts Margin.app (the extension
-  // handler starts it on demand: the host's appOnDemand), and from then on
-  // the page is drawn by the app: it shows nothing of its own; the page
-  // behind is linked too.
-  'newtab-start': [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
-    checkPage('N', 'N: the start button', `!document.getElementById('start').hidden`, 5000),
-    { op: 'appOnDemand' },
-    { op: 'page', in: 'N', js: `document.getElementById('start').click(); return document.getElementById('status').textContent` },
-    checkPage('N', 'N: linked: loaded again, the app draws it (the page shows nothing of its own)', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 12000),
-    check('A', 'A (behind): linked', `Margin.content.appDraws() === true`, 3000),
-    bare('A'),
+    checkPage('N', 'N: handed to the browser\'s own new tab, off Margin\'s page', HANDED, 5000),
   ],
 
   // The socket guard (Margin 2: Safari reliability): a background that finds the note of a socket
   // being opened left behind (one before it never got past `new WebSocket`, or Safari quit just then)
-  // makes no socket for the rest of the Safari session. The new-tab page says Margin turned its link
-  // off and when, with Try again and no Start; Try again links at once, and the page is the app's.
+  // makes no socket for the rest of the Safari session (the guard's own end: its time, or Safari's next start). The
+  // new-tab page draws nothing of it (2026-11-27: no Try again).
   'link-guard': [
     appWith(),
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install', sameId: true }, linked('A'),
@@ -669,26 +656,23 @@ Object.assign(SCENARIOS, {
     // (A's content world is the old copy's now: read in Margin's own page.)
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
     checkPage('N', 'pages: off, why sockets-off, since when', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'off' && appLink?.why === 'sockets-off' && appLink.offAt > 0 && appLink.offUntil === undefined`, 9000),
-    checkPage('N', 'N: Margin turned its link off, when, Try again, no Start', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin turned its link off' && /^Margin turned its link off at .+ after a socket never opened\. It tries again when Safari next starts\.$/.test(document.getElementById('why').textContent) && !document.getElementById('retry').hidden && document.getElementById('start').hidden`, 5000),
-    { op: 'page', in: 'N', js: `document.getElementById('retry').click(); return 'clicked'` },
-    checkPage('N', 'N: Try again links: loaded again, drawn by the app', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 9000),
-    checkPage('N', 'the guard\'s notes gone', `const got = await browser.storage.local.get(['appLinkOff', 'appLinkHung', 'appLinkOpening']); return Object.keys(got).length === 0`, 3000),
+    // (Reinstalled over the old copy's world, the page may not find its own tab to hand on: then it stays, blank.)
+    checkPage('N', 'N: nothing of Margin\'s: handed on, or blank (no Try again: the guard ends at its time or Safari\'s next start)', `${HANDED} || (document.body.innerText.trim() === '' && !document.getElementById('notice'))`, 5000),
   ],
 
   // Margin.app running but every link it dispatches refused (one an update
   // left running, before scripts/safari.sh quit it: SFErrorDomain 1): the
-  // new-tab page says it isn't answering, with no start button (it's
-  // running); asked again 5 s later, and linked once the app's dispatches go
-  // through: the page is the app's from then on.
+  // new-tab page draws nothing of it (2026-11-27); asked again 5 s later, and
+  // linked once the app's dispatches go through.
   'newtab-no-link': [
     appWith(), { op: 'appRefuse' },
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
-    checkPage('N', 'N: Margin.app isn\'t answering, no start button, the address field', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin.app isn’t answering' && document.getElementById('start').hidden && !!document.getElementById('address')`, 8000),
-    check('A', 'pages: off, why no-link', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'off' && appLink?.why === 'no-link'`, 2000),
+    checkPage('N', 'N: handed to the browser\'s own new tab, off Margin\'s page', HANDED, 8000),
+    check('A', 'pages: off, why no-link', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'off' && appLink?.why === 'no-link'`, 9000),
     { op: 'appHeard', label: 'the app\'s link refused, never delivered', has: ['"ev":"dispatch refused"', '"name":"link"'] },
     { op: 'appRefuse', refuse: false },
-    checkPage('N', 'N: asked again 5 s later and linked: loaded again, drawn by the app', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 9000),
+    check('A', 'asked again 5 s later and linked', `(await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 9000),
     check('A', 'pages: linked, no why left', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'linked' && appLink.why === undefined`, 2000),
     linked('A'), bare('A'),
   ],
@@ -783,8 +767,8 @@ Object.assign(SCENARIOS, {
   ],
   // A window Margin.app draws nothing over (Margin 2: Safari reliability): the shell tells the copy
   // `drawn` false for a window it hasn't bound, or one not in full screen (here `appDrawn`). ⌘T in
-  // that window opens Margin's new-tab page, which stays, and says Margin.app hasn't placed the window
-  // (its address field, no Start).
+  // that window opens Margin's new-tab page, which hands the tab to Safari's own start page and draws
+  // nothing (2026-11-27); the copy keeps the tab (no palette to hand it to).
   'undrawn': [
     appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), bare('A'),
     { op: 'appDrawn', on: false },
@@ -794,10 +778,9 @@ Object.assign(SCENARIOS, {
     // new-tab page, and it stays (no palette to hand it to).
     { op: 'show', name: 'A' }, shown('A'),
     { op: 'key', in: 'A', keyCode: 17, chars: 't', mods: ['command'] },
-    checkPage('new1', 'new1: ⌘T in the page of the undrawn window: Margin\'s new-tab page', `location.pathname === '/newtab/newtab.html'`, 4000),
-    checkPage('new1', 'new1: it says Margin.app hasn\'t placed this window, with the address field, no Start, nothing about the app not running', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin.app hasn’t placed this window yet' && document.getElementById('start').hidden && !!document.getElementById('address') && !document.body.textContent.includes('isn’t running')`, 4000),
+    checkPage('new1', 'new1: handed to the browser\'s own new tab, off Margin\'s page', HANDED, 4000),
     wait(1000),
-    check('A', 'A: one new tab for the press, kept (not closed for a palette that isn\'t drawn)', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).filter((t) => t.url.includes('/newtab/newtab.html')).length === 1`, 2000),
+    check('A', 'A: the new tab for the press kept (not closed for a palette that isn\'t drawn)', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).length === 2`, 2000),
   ],
 });
 
