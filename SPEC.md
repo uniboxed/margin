@@ -127,7 +127,7 @@ The first prototype's milestones, kept as history. Margin 2's phases are in `PLA
 
 ### M3 — New-tab page
 - `newtab.html` shows the sidebar permanently open, plus a centered launcher: a search/URL field, the active space's pins as large tiles, and recently archived tabs.
-- Entering a URL navigates; anything else becomes a web search with **the browser's own search engine** (decided 2026-10-25; replaces DuckDuckGo and an engine setting). Chrome: `chrome.search.query`. Safari has no search API, so Margin follows the engine Safari searches with, learned from Safari's address-bar searches (Google until it has seen one).
+- Entering a URL navigates; anything else becomes a web search with **the browser's own search engine** (decided 2026-10-25; replaces DuckDuckGo and an engine setting). Chrome: `chrome.search.query`. Safari has no search API, so Margin.app follows the engine chosen in Safari's Settings, read from macOS's record of it (Google, Safari's default, when none is named; never guessed: 2026-11-27, DECISIONS.md "The palette's search"); the palette also shows that engine's search suggestions.
 - Note in the README: Safari focuses the address bar first on a new tab, so the launcher field may not get focus — that's expected.
 
 ### M4 — Spaces and pins

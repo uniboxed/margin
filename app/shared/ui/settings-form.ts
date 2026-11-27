@@ -69,12 +69,12 @@ export function currentShortcuts(settings: any) {
 
 /**
  * Which engine searches use: in Margin.app's window (`appSearch`), the one chosen in Safari's Settings, as macOS keeps it
- * (core/session/suggest.rs); in Chrome, Chrome's; else the one the copy has (shared/search.ts safariEngine).
+ * (core/session/suggest.rs); in Chrome, Chrome's; else Safari's default (the extension alone knows no other).
  */
 function engineText(settings: any, features: any) {
   if (features?.search === 'browser') return 'Searches use Chrome’s search engine (Chrome Settings → Search engine).';
   if (features?.appSearch) return 'Searches use the search engine chosen in Safari (Safari › Settings › Search). Margin follows it when you change it there.';
-  return `Searches use ${S.safariEngine(settings).name}.`;
+  return `Searches use ${S.SAFARI_DEFAULT.name}.`;
 }
 
 function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['kind'], label: string }): SettingsField {

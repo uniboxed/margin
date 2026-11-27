@@ -329,8 +329,7 @@ export const handlers = {
       if (from) return openBehind({ windowId, from, deadline, label: text, then: (tab) => api.search!.query({ text, tabId: tab.id }) }); // (checked above)
       return void (await api.search.query({ text, disposition: 'NEW_TAB' }));
     }
-    const { settings } = await load();
-    const url = S.searchUrl(text, settings);
+    const url = S.searchUrl(text);
     // Its row says the search at once, not the page it leaves (state/model.ts goingTo).
     const going = (id: number) => mutate((s) => M.goingTo(s, id, { url, title: text }, now())).catch(() => {});
     if (tabId != null) {

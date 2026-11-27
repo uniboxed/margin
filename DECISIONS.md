@@ -11813,10 +11813,12 @@ keeping (guessy: only after a first address-bar search, Safari's URL tags, speci
   `com.apple.CFPreferences.WebServices._didChange`. Margin.app reads it at launch and at each notice
   (`SearchEngineRecord.swift`); the core maps it to one of Safari's five engines (`suggest.rs engine_of_record`: a
   label of the identifier, else the name), and the palette's searches and the card's go there (`search_address`).
-  An engine not Safari's, or none: no suggestions (never another engine's), the search to the address an older Margin
-  learned, else Google's.
-- **The learning from Safari's search addresses is gone** (`background/search-engine.ts`, its calls on every address
-  change, `own-search.test.ts`). The stored `safariSearch` stays as it was, read only when macOS names no engine.
+  An engine not Safari's, or none: no suggestions (never another engine's), the search to Google's.
+- **All guessing from search addresses is gone**: the learning (`background/search-engine.ts`, its calls on every
+  address change, `own-search.test.ts`, its e2e test), Safari's URL tags it read (`detectSafariSearch`, each engine's
+  `fromSafari`), and every read of what it stored: `safariSearch` is dropped from saved settings (`REMOVED_SETTINGS`),
+  the core and the Swift never read it. With no engine named by macOS the search goes to Google's (Safari's default);
+  the extension's own pages (Margin.app not linked) search Google's in Safari, Chrome's engine in Chrome.
 - **Chrome and Edge, tested** (headless, a throwaway profile, a test extension loaded over the DevTools pipe, a test
   native host): Chrome 156 and Edge both start a native host as its own responsible process (`responsibility_get_pid_
   responsible_for_pid` = itself), so Margin's connector can't read their profile folders (Local State, Preferences,

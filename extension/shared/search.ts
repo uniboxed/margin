@@ -6,70 +6,48 @@ import type { InstalledApp } from './apps.ts';
 
 
 // ---- the browser's search engine ------------------------------------------
-// Margin searches with the browser's engine, never its own choice:
+// Margin searches with the browser's engine, never its own choice, and never
+// guesses it:
 //  - Chrome: the `search` API (chrome.search.query) uses Chrome's default.
-//  - Safari has no such API and no way to read its settings, so Margin
-//    learns the engine from searches Safari makes from its address bar:
-//    Safari tags those URLs (Google `client=safari`, Bing `form=AP…`,
-//    DuckDuckGo `t=osx`, Ecosia `tts=st_asaf_…`, Yahoo `fr=aapl…`; see
-//    DECISIONS.md), so a search made on an engine's own site doesn't count.
-//    Until it has seen one, Safari's default (Google). Margin's searches use
-//    the same URLs Safari makes on macOS, on the same (regional) host.
+//  - Safari: no such API. Margin.app reads the engine chosen in Safari's
+//    Settings from macOS's record of it and searches there
+//    (core/session/suggest.rs); the extension alone uses Safari's default.
+// Safari's engines: their search addresses as Safari makes them on macOS (the
+// core's the same: tests/fixtures/search-engines.json) and their results
+// pages' hosts and paths (`searchEngineOf`: a page of search results).
 const SAFARI_ENGINES = {
   google: {
     name: 'Google',
     host: /^www\.google(\.[a-z]{2,3}){1,2}$/,
     path: /^\/search$/,
-    fromSafari: (p: URLSearchParams) => p.get('client') === 'safari',
     template: (host: string) => `https://${host}/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8`,
   },
   bing: {
     name: 'Bing',
     host: /^www\.bing\.com$/,
     path: /^\/search$/,
-    fromSafari: (p: URLSearchParams) => /^AP/.test(p.get('form') ?? ''),
     template: (host: string) => `https://${host}/search?q=%s&form=APMCS1&PC=APMC`,
   },
   duckduckgo: {
     name: 'DuckDuckGo',
     host: /^duckduckgo\.com$/,
     path: /^\/$/,
-    fromSafari: (p: URLSearchParams) => ['osx', 'iphone', 'ipad'].includes(p.get('t') ?? ''),
     template: (host: string) => `https://${host}/?q=%s&t=osx&ia=web`,
   },
   ecosia: {
     name: 'Ecosia',
     host: /^www\.ecosia\.org$/,
     path: /^\/search$/,
-    fromSafari: (p: URLSearchParams) => (p.get('tts') ?? '').startsWith('st_asaf_'),
     template: (host: string) => `https://${host}/search?q=%s&tts=st_asaf_macos`,
   },
   yahoo: {
     name: 'Yahoo',
     host: /^([a-z]{2,10}\.)?search\.yahoo(\.[a-z]{2,3}){1,2}$/,
     path: /^\/search(;[^/]*)?$/, // Yahoo adds ;_ylt=…;_ylc=… to the path
-    fromSafari: (p: URLSearchParams) => /^(aapl|iphone$|ipad$)/.test(p.get('fr') ?? '') || p.get('.tsrc') === 'apple',
     template: (host: string) => `https://${host}/search?ei=utf-8&fr=aaplw&p=%s`,
   },
 };
 const SAFARI_DEFAULT = Object.freeze({ id: 'google', name: 'Google', template: SAFARI_ENGINES.google.template('www.google.com') });
-
-// A search Safari made from its address bar → { id, name, template }, else null.
-function detectSafariSearch(url: string) {
-  let u;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== 'https:') return null;
-  for (const [id, e] of Object.entries(SAFARI_ENGINES)) {
-    if (e.host.test(u.hostname) && e.path.test(u.pathname) && e.fromSafari(u.searchParams)) {
-      return { id, name: e.name, template: e.template(u.hostname) };
-    }
-  }
-  return null;
-}
 
 // Which engine's site a URL is on (any search there), for diagnostics.
 function searchEngineOf(url: string) {
@@ -81,13 +59,12 @@ function searchEngineOf(url: string) {
   }
 }
 
-// The engine Margin's searches use in Safari: learned, else the default.
-// (`settings`: the stored settings.)
-const safariEngine = (settings: any) => (settings?.safariSearch?.template?.includes('%s') ? settings.safariSearch : SAFARI_DEFAULT);
-const searchUrl = (query: string, settings: any) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
+// A search the extension makes itself in Safari (its own pages, Margin.app not linked: no engine is known there):
+// Safari's default's address. Margin.app's searches go to the engine macOS names (core/session/suggest.rs).
+const searchUrl = (query: string) => SAFARI_DEFAULT.template.replace('%s', encodeURIComponent(query));
 // For display: which engine a search goes to.
-const engineLabel = (settings: any, browserCan: Pick<P.Capabilities, 'search'> = P.capabilities) =>
-  (browserCan?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
+const engineLabel = (browserCan: Pick<P.Capabilities, 'search'> = P.capabilities) =>
+  (browserCan?.search === 'browser' ? 'Chrome’s search engine' : SAFARI_DEFAULT.name);
 
 const WITH_SCHEME = /^(https?|file|ftp):\/\//i;
 const OPAQUE_SCHEME = /^(about|data|mailto|view-source):/i;
@@ -351,7 +328,7 @@ function suggestionsFor(state: State, q: string): string[] {
 // The engine a search goes to, for its row: the one Margin.app named, else the copy's own.
 function engineName(state: State) {
   const named = (state as { search?: SearchSuggestions | null }).search?.engine?.name;
-  return typeof named === 'string' && named ? named : engineLabel(state.settings);
+  return typeof named === 'string' && named ? named : engineLabel();
 }
 
 // Ranked palette results for `query`: with nothing typed, Margin's own rows; typed, the order above, its "Open URL"
@@ -397,6 +374,6 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
 }
 
 export {
-  SAFARI_ENGINES, SAFARI_DEFAULT, detectSafariSearch, searchEngineOf, safariEngine, searchUrl, engineLabel,
+  SAFARI_ENGINES, SAFARI_DEFAULT, searchEngineOf, searchUrl, engineLabel,
   resolveInput, fuzzyScore, paletteItems, rankPalette, isSearchPage,
 };

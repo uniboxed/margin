@@ -36,11 +36,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   // with its subdomains: shared/sleep.ts neverSleeps).
   sleepAfterHours: 4,
   neverSleepSites: Object.freeze([]),
-  // Searches use the browser's engine (shared/search.ts). Safari: the one an
-  // older Margin learned from Safari's address-bar searches, { id, name,
-  // template, at }, kept as it was (no longer learned: Margin.app follows the
-  // engine macOS names, core/session/suggest.rs).
-  safariSearch: null,
   blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.ts)
   pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.ts)
   swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.ts)
@@ -531,13 +526,15 @@ function placeBeside(state: State, moving: any, nextTo: number | string, side: '
 // Settings that no longer exist: `searchEngine` (Margin's own engine
 // choice, replaced by the browser's); `sidebarWidth` (now Arcadia's own,
 // settings.themes.arcadia; normalizeThemes moves a saved one there);
-// `paletteShortcut` (⌥K: ⌘T opens the same palette).
+// `paletteShortcut` (⌥K: ⌘T opens the same palette); `safariSearch` (the
+// engine an older Margin guessed from Safari's search addresses: Margin.app
+// reads the one chosen in Safari's Settings from macOS, core/session/suggest.rs).
 // Not `keepTabsReadyMinutes`, `keepLeftTabReadyMinutes` or `warmUpTabs`
 // (keep-ready and the warm-up, gone in Margin 2 Phase 2 step 8): unread here,
 // but kept as saved, so a build from before (main, a branch being checked)
 // still finds the 0 set there, and doesn't turn the old keep-ready back
 // on with its default of 30.
-const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
+const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut', 'safariSearch'];
 const withoutKeys = (obj: Record<string, unknown> | null | undefined, keys: string[]) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
 // Each theme's settings, filled in by the theme (which also takes over what

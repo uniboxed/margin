@@ -1860,11 +1860,10 @@ final class LibraryWindowSource: MarginWindowSource {
         out.ok ? ["ok": true, "result": out.result ?? NSNull()] : ["ok": false, "error": out.error ?? "refused"]
     }
 
-    // The search's address: the engine Safari searches with as the copy learned it (shared/search.ts safariEngine),
-    // else Google's, as Safari's default (the core's session/ui.rs `search_url`).
-    static func searchUrl(_ query: String, settings: JSONObject?) -> String {
-        let learned = (settings?["safariSearch"] as? JSONObject)?["template"] as? String
-        return SessionRules.call(["rule": "searchUrl", "query": query, "template": learned ?? NSNull()])["url"] as? String ?? ""
+    // A search's address with an engine's (`template`: https, `%s` the query), else Google's, as Safari's default: the
+    // core's session/ui.rs `search_url`, as its own searches make it with the engine macOS names (core/session/suggest.rs).
+    static func searchUrl(_ query: String, template: String?) -> String {
+        SessionRules.call(["rule": "searchUrl", "query": query, "template": template ?? NSNull()])["url"] as? String ?? ""
     }
 }
 

@@ -6,7 +6,7 @@
 //! `NSWebServicesProviderWebSearch`: `NSProviderIdentifier`, `NSDefaultDisplayName`), again each time it starts, and
 //! macOS posts a notice when it changes; the shell reads it then and says it here (`engine_of_record`). An engine
 //! that isn't one of Safari's five (or none said): no suggestions, never another engine's, and the search goes to
-//! the address the copy learned before, else Google's (ui.rs `search_url`).
+//! Google's, Safari's default (ui.rs `search_url`). Nothing is guessed from search addresses (DECISIONS.md).
 //!
 //! Suggestions: the engine's own (each answers the OpenSearch suggestions format, `["typed", ["s1", "s2", …]]`),
 //! asked only for what's typed (never an address), only while the person's setting has them on

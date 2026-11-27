@@ -89,7 +89,7 @@ Stand-ins:
 ### Rules
 
 - Local only. Chromium starts with `--host-resolver-rules="MAP *.test 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"`: any other host fails to resolve, so nothing leaves the Mac, the extension's own fetches included.
-- Search engines (the learned engine, Safari's default Google) are caught with `context.route` and answered with a plain local results page (no engine's name or look). Nothing goes out.
+- Search engines (Safari's default Google) are caught with `context.route` and answered with a plain local results page (no engine's name or look). Nothing goes out.
 - A guard records every request to a host that isn't `.test` or `127.0.0.1`. A test with one fails.
 - Pictures are drawn, not downloaded: SVG scenes and product renders, CSS, canvas. Raster files (PNG, ICO, the audio and the video) are made by `tests/e2e/site/make-media.mts`, from code, the same bytes every time.
 - Fonts: system fonts (`-apple-system`, `ui-serif`, `ui-monospace`, `system-ui`). The portfolio uses Space Grotesk and Archivo Black, served from `app/shared/ui/themes/neubrutalism/fonts/` (OFL, already in the repo, no copy).
@@ -155,7 +155,7 @@ Each test saves pictures for a person to look at, under `$MARGIN_E2E_SHOTS/<file
 | navigation | fast presses all count | Port | Same chain, through `navigate`, with `switching`/`switch-done` pushes |
 | navigation | one press through both paths moves once | Rewrite | Linked, the extension's command and the page's key do nothing visible and say `keyHeard`; the app's key moves once |
 | navigation | switching by hand restarts the chain | Port | Same |
-| palette | "Search for" opens a new tab with Chrome's engine | Rewrite | The Safari profile's learned engine, caught locally; Chrome's engine part dropped (no app for Chrome until Phase 5) |
+| palette | "Search for" opens a new tab with Chrome's engine | Rewrite | Safari's default engine, caught locally; Chrome's engine part dropped (no app for Chrome until Phase 5) |
 | newtab | a host:port entry navigates this tab | Rewrite | The launcher in the overlay, `openHere` |
 | newtab | other text searches with Chrome's engine | Rewrite | As palette |
 | newtab-palette | ⌘N: a new window in the same space, palette open | Rewrite | `newWindow`, a second overlay, the `palette` push |
@@ -192,7 +192,7 @@ Each file starts its own browser pair and seeds its state (§4). Names are the f
 - **`tabs.test.ts`**: a click in the overlay shows the tab, and a switch in the browser moves the highlight; one highlight only, also right after a click; × closes and archives; New Tab row opens the palette; drag a row to reorder (`moveTab`); a tab closed meanwhile shows the "no longer open" notice.
 - **`spaces.test.ts`**: chips switch spaces; new tabs join the active space; create, rename (inline), colour and delete (two clicks) through the menu and editor; move a tab to another space; per window with two windows; a chip of another profile asks the app (`across`).
 - **`pins-folders.test.ts`**: pin from the menu; a pin opens its tab or shows it; unpin; folders: create, rename, open and close, move a pin in and out; closed pins keep their icon.
-- **`palette.test.ts`**: the app's key opens it focused; typing ranks real titles ("quiet city" finds the article); arrows and Enter; an address opens; a search goes to the learned engine (caught); archived tabs and pins in results; New window.
+- **`palette.test.ts`**: the app's key opens it focused; typing ranks real titles ("quiet city" finds the article); arrows and Enter; an address opens; a search goes to Safari's default engine (caught); archived tabs and pins in results; New window.
 - **`newtab.test.ts`**: linked, Margin's new-tab page draws nothing and the overlay draws the launcher in the slot; an address there opens in that tab (`openHere`); an archived tab restored in its place; Settings from the launcher; not linked, the notice and Start; a window the app doesn't draw (`drawn` false): the "hasn't placed this window" notice.
 - **`archive.test.ts`**: the alarm; auto-archive (`archiveNow` with a short `archiveAfterHours`) keeps pinned, active and playing tabs; closing archives; restore from the launcher and from the palette into the right space; the overlay's archive list.
 - **`icons-titles.test.ts`**: SVG, PNG, ICO, `/favicon.ico` fallback, data: URL, none (letter), a bad icon refused; each drawn in the overlay row; titles that change (the shop bag, the feed's count, the timer) reach the overlay, hidden tabs' changes gathered; long titles cut in the row and the palette.

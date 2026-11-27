@@ -55,12 +55,12 @@ pub(crate) fn encode(query: &str) -> String {
     out
 }
 
-/// The search's address: the engine Safari searches with as the copy learned it (`settings.safariSearch.template`,
-/// shared/search.ts safariEngine: an https address with `%s` in it), else Google's, as Safari's default; every `%s`
+/// A search's address: an engine's (`template`: an https address with `%s` in it: suggest.rs ENGINES's, the engine
+/// macOS names), else Google's, as Safari's default; every `%s`
 /// is the query, encoded.
-pub fn search_url(query: &str, learned: Option<&str>) -> String {
+pub fn search_url(query: &str, template: Option<&str>) -> String {
     let template =
-        learned.filter(|t| contains_characters(t, "%s") && has_prefix_characters(t, "https://")).unwrap_or(GOOGLE);
+        template.filter(|t| contains_characters(t, "%s") && has_prefix_characters(t, "https://")).unwrap_or(GOOGLE);
     replace_composed(template, "%s", &encode(query))
 }
 
@@ -289,14 +289,10 @@ impl Core {
         perform(kind, payload)
     }
 
-    /// A search's address: the engine macOS's record names (suggest.rs), else the one the copy learned before
-    /// (`settings.safariSearch.template`), else Google's (`search_url`).
+    /// A search's address: the engine macOS's record names (suggest.rs), else Google's, as Safari's default
+    /// (`search_url`). Never guessed.
     pub(crate) fn search_address(&self, query: &str) -> String {
-        if let Some(engine) = self.suggest.borrow().engine() {
-            return search_url(query, Some(engine.search));
-        }
-        let settings = self.ports.settings();
-        search_url(query, settings.get("safariSearch").and_then(|s| s.get("template")).and_then(Value::as_str))
+        search_url(query, self.suggest.borrow().engine().map(|e| e.search))
     }
 
     /// The palette's engine as the page takes it (`{ id, name }`; null: none known).
@@ -310,7 +306,7 @@ impl Core {
         if self.suggest.borrow_mut().set_engine(engine) {
             self.note(match engine {
                 Some(e) => format!("search: the engine macOS names is {} (its suggestions shown as the palette is typed in)", e.name),
-                None => "search: macOS names no engine of Safari's (no suggestions; searches go to the learned engine, else Google)".to_string(),
+                None => "search: macOS names no engine of Safari's (no suggestions; searches go to Google's, Safari's default)".to_string(),
             });
         }
         json!({ "engine": self.engine_json() })
@@ -424,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn a_learned_template() {
+    fn an_engines_template() {
         assert_eq!(
             search_url("a b", Some("https://e.example/?q=%s&again=%s")),
             "https://e.example/?q=a%20b&again=a%20b"

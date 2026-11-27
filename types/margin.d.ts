@@ -162,7 +162,6 @@ export interface Settings {
   neverSleepSites: string[];
   sidebarShortcut: string;
   newTabHint: boolean;
-  safariSearch: { id: string; name: string; template: string; at: number } | null;
   blockGestures: boolean;
   pullToRefresh: boolean;
   swipeNavigation: boolean;

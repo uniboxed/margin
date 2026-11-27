@@ -237,12 +237,13 @@ fn the_uis_requests_routed() {
         ui(&s, "app.open", json!({ "bundleId": "not one" }))["value"],
         json!({ "ok": false, "error": "not a bundle id" })
     );
+    // (An engine an older Margin stored: never read; none named by macOS: Google's.)
     *world.settings.borrow_mut() =
         json!({ "favoritesScope": "profile", "safariSearch": { "template": "https://d.example/?q=%s" } });
     let r = ui(&s, "search", json!({ "windowId": 1, "query": " \u{3000}a b\n" }));
     assert_eq!(
         r,
-        json!({ "route": "perform", "action": "newTab", "payload": { "windowId": 1, "url": "https://d.example/?q=a%20b", "title": "a b" } })
+        json!({ "route": "perform", "action": "newTab", "payload": { "windowId": 1, "url": "https://www.google.com/search?client=safari&rls=en&q=a%20b&ie=UTF-8&oe=UTF-8", "title": "a b" } })
     );
     assert_eq!(ui(&s, "search", json!({ "query": " " })), json!({ "route": "none" }));
     let r = ui(&s, "addFavorite", json!({ "windowId": 1, "tabId": n, "scope": "profile:evil", "favoritesScope": "x" }));
@@ -361,7 +362,7 @@ fn the_palettes_engine_and_suggestions() {
     let engine = |id: Value, name: Value| {
         s.input(&json!({ "type": "searchEngine", "identifier": id, "name": name })).reply.unwrap_or_default()
     };
-    // No engine named yet: no suggestions, the search to the learned engine's address.
+    // No engine named yet: no suggestions, the search to Google's (an engine an older Margin stored: never read).
     *world.settings.borrow_mut() = json!({ "safariSearch": { "template": "https://d.example/?q=%s" } });
     assert_eq!(
         ui(&s, "search.suggest", json!({ "windowId": 1, "query": "we" })),
@@ -369,9 +370,9 @@ fn the_palettes_engine_and_suggestions() {
     );
     assert_eq!(
         ui(&s, "search", json!({ "windowId": 1, "query": "a" }))["payload"]["url"],
-        json!("https://d.example/?q=a")
+        json!("https://www.google.com/search?client=safari&rls=en&q=a&ie=UTF-8&oe=UTF-8")
     );
-    // macOS names DuckDuckGo: the search and the suggestions its, over what was learned.
+    // macOS names DuckDuckGo: the search and the suggestions its.
     assert_eq!(
         engine(json!("com.duckduckgo"), json!("DuckDuckGo")),
         json!({ "engine": { "id": "duckduckgo", "name": "DuckDuckGo" } })
@@ -412,7 +413,7 @@ fn the_palettes_engine_and_suggestions() {
     *world.settings.borrow_mut() = json!({ "searchSuggestions": false });
     let r = ui(&s, "search.suggest", json!({ "windowId": 1, "query": "other" }));
     assert_eq!((r["value"]["result"]["on"].clone(), r.get("fetch")), (json!(false), None));
-    // An engine not Safari's: none, and the search back to the learned (here: none, Google's).
+    // An engine not Safari's: none, and the search back to Google's.
     assert_eq!(engine(json!("com.baidu.www"), json!("Baidu")), json!({ "engine": null }));
     *world.settings.borrow_mut() = Value::Null;
     assert!(

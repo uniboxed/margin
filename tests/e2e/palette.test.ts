@@ -29,7 +29,6 @@ const SEED = (url: (host: string, path: string) => string) => ({
 
 // (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
 const frontId = async (): Promise<number> => (await m.front())?.id!;
-const settings = async () => (await m.stored('settings')).settings;
 async function openPalette() {
   m.shell.key('palette');
   return m.until(async () => { const p = await palette(ui); return p.open && p.focused && p; }, { what: 'the palette open, its field focused' });
@@ -121,8 +120,7 @@ test('an address opens in a new tab: a local address with a port, and a site typ
   await m.until(async () => (await m.front())?.url === m.url('harbor.test', '/'), { what: 'the travel site in front' });
 });
 
-test('before Safari has searched, a search goes to Google with Safari\'s parameters (answered locally)', async (t) => {
-  assert.equal((await settings()).safariSearch, null);
+test('a search from the extension\'s own palette goes to Google with Safari\'s parameters (answered locally)', async (t) => {
   await openPalette();
   const p = await type('tide tables');
   const go = p.rows.find((r) => r.id === 'go');
@@ -134,32 +132,6 @@ test('before Safari has searched, a search goes to Google with Safari\'s paramet
   await page.waitForLoadState('load');
   assert.match(await page.title(), /tide tables/);
   await m.shoot(t, 'results');
-  assert.deepEqual(m.leaks, []);
-});
-
-test('a search on an engine\'s own site isn\'t learned; Safari\'s own search is, and the palette follows it', async () => {
-  const site = await m.context.newPage();
-  await site.goto('https://duckduckgo.com/?q=typed+on+the+site');
-  await new Promise((r) => setTimeout(r, 400));
-  assert.equal((await settings()).safariSearch, null, 'a search typed on the site itself');
-  await site.goto('https://duckduckgo.com/?q=from+the+address+bar&t=osx&ia=web'); // what Safari opens
-  const learned = await m.until(async () => (await settings()).safariSearch, { what: 'the engine learned' });
-  assert.equal(learned.name, 'DuckDuckGo');
-
-  await openPalette();
-  const p = await type('two words');
-  assert.equal(p.rows.find((r) => r.id === 'go')?.title, 'Search for “two words”');
-  await ui.click('.palette .result[data-id="go"]');
-  await m.until(async () => (await m.front())?.url === 'https://duckduckgo.com/?q=two%20words&t=osx&ia=web', { what: 'the search on DuckDuckGo' });
-
-  // Switching engines in Safari right after a Margin search, in the same tab: still learned.
-  const page = (await m.pageOf(await frontId()))!;
-  await page.goto('https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=second');
-  await m.until(async () => (await settings()).safariSearch?.name === 'Yahoo', { what: 'Yahoo learned' });
-  await openPalette();
-  await type('third');
-  await ui.click('.palette .result[data-id="go"]');
-  await m.until(async () => (await m.front())?.url === 'https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=third', { what: 'the search on Yahoo' });
   assert.deepEqual(m.leaks, []);
 });
 
