@@ -11822,3 +11822,33 @@ Two Swift checks failed on `main` after `fix/safari-live-reflow`, both from the 
   in flight": a turn asleep is under way too.
 - **Checked**: all 2315 pass, alone and 40 runs of 40 four at a time (before: 3 of 40 failed). "panes active: keeper: a
   step at rest… costs a few µs" fails only with eight runs at once (its time budget on a loaded Mac), not otherwise.
+
+
+## Each pane of a split a card of its own (`fix/split-view-cards`, 2026-11-27)
+
+Asked: a split showed its panes inside one page card ("2 tabs in 1 parent section"); the left pane's right side had no
+edge. Two causes, in all five themes:
+- **One card.** The card's look (Arcadia's and Material's frame round its corners and Arcadia's shadow, Liquid Glass's
+  hairline, Neubrutalism's border and hard shadow, Pixel's border) was the page card's alone; the panes inside it had
+  none, the gap between them a flat strip of the frame's colour. So the inner sides had no edge and square corners.
+- **The gap over the first pane.** `m-pane` and `m-divider` are both `position: relative`, so they paint in the
+  document's order: the divider over the pane before it, under the one after. The focused left pane's ring lost its
+  right side under the divider.
+
+**Fixed (Margin's, render.ts):** `<m-page>` isolated while split, each pane painted above the gap (`z-index: 1`), the
+grip and band title above it (`z-index: 2`); a mask for a pane's inner corners (`m-pane::before`: the theme's
+`--m-pane-ground` outside its rounded corners, clipped to the half of the pane that meets another pane), so a pane's
+rounded corners show over a hosted window (Margin's window is in front of it on the Mac; on Windows each hole's corner
+squares stay Margin's, hole.rs). Its outer corners are the page card's, as before (the native ground's holes still
+round only those, docs/PEEK-SPLIT.md §1): the mask never paints a colour over a space's background there.
+**Fixed (each theme, "Split View"):** each pane gets its card's corners and edge on every side, the gap's too; the page
+card's own edge stands down while split so none runs across the gap (Arcadia's `.card-edge` shadow faded by
+`--card-edge-a`; Liquid Glass's hairline and Neubrutalism's border in the gap's colour, their width kept so no pane
+moves; Neubrutalism's hard shadow on each pane, its gap 12 → 16 pt to fit border, shadow and some ground; Material's
+card has no edge, so its panes only their corners). Focus stays distinct from the new edge: Neubrutalism's focused pane
+has its focus outline 2 pt out (as `.btn:focus-visible`), the others keep their rings. The themes README's contract
+says it (`m-pane`, `--m-pane-ground`, a card edge standing down while split).
+**Checked:** the split view and card-over-split theme tests in WebKit and Chromium (new: panes above the gap and the
+grip above them, an unfocused pane's own edge where the card has one, the card's corners on each pane, the inner ones
+masked, the outer ones not), and each theme rendered side by side and stacked over a striped backdrop standing in for
+the hosted window. Not native: nothing in Margin.app or the core changed.

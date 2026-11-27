@@ -82,7 +82,8 @@ for (const [name, engine] of ENGINES) {
             };
           });
           assert.ok(look.rings.length && look.gap, `${scheme}: a ring and a gap: ${JSON.stringify(look)}`);
-          assert.ok(look.others.every((s) => s === 'none'), `${scheme}: the ring on the focused pane only: ${look.others}`);
+          // (An unfocused pane has its own card's edge since 2026-11-27, never the focused one's ring.)
+          assert.ok(look.others.every((s) => s !== look.shadow), `${scheme}: the ring on the focused pane only: ${look.others}`);
           assert.ok(Math.max(...look.rings.map((r) => r.spread)) >= 2, `${scheme}: the ring at least 2 px wide: ${look.shadow}`);
           const gap = look.gap!;
           assert.equal(gap[3], 255, `${scheme}: the gap is opaque (the ring is measured over it): ${gap}`);

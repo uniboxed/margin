@@ -711,11 +711,22 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 /* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
    each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
    divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
-   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
-.nb { --m-split-gap: 12px; }
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out.
+   Each pane is a card of its own, as the page card is alone: the card's ink border round every side, the gap's too
+   (its outer sides lie where the card's was), its corners the card's inside its border, the inner ones masked in the
+   gap's colour over its window (Margin's, --m-pane-ground), and its own hard shadow (the gap wide enough for it and
+   some of the ground beside the next pane's border). The card's own border and shadow stand down meanwhile (the
+   border in the gap's colour, its width kept so nothing moves), so none runs across the gap. The focused one has the theme's focus outline beside its
+   border (an ink ring 2 px out, as .btn:focus-visible's). */
+.nb { --m-split-gap: 16px; --pane-drop: 6px 6px 0 var(--edge) var(--ink); }
+.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --pane-drop: 0 0 #0000; }
+.nb .page[m-split] { border-color: var(--space); box-shadow: 0 0 #0000, 0 0 0 100vmax var(--space); }
+.nb[m-background] .page[m-split] { border-color: var(--m-bg); box-shadow: 0 0 #0000; }
+.nb m-pane { border-radius: max(0px, calc(var(--radius) - var(--edge))); box-shadow: 0 0 0 var(--edge) var(--ink), var(--pane-drop); --m-pane-ground: var(--space); }
+.nb[m-background] m-pane { --m-pane-ground: var(--m-bg); }
 .nb m-divider { background: var(--space); }
 .nb m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; box-sizing: border-box; width: 8px; height: 44px; border: 2px solid var(--ink); border-radius: 4px; transform: translate(-50%, -50%); background: var(--paper); }
 .nb m-page[m-split="column"] > m-divider::after { width: 44px; height: 8px; }
 .nb m-divider:is(:hover, :focus-visible)::after { background: var(--yellow); }
 .nb m-divider[m-dragging]::after { background: var(--ink); }
-.nb m-pane[m-focused] { border-radius: 8px; box-shadow: 0 0 0 3px var(--ink); }
+.nb m-pane[m-focused] { box-shadow: 0 0 0 var(--edge) var(--ink), 0 0 0 calc(var(--edge) + 2px) var(--m-pane-ground), 0 0 0 calc(var(--edge) + 4px) var(--ink), var(--pane-drop); }

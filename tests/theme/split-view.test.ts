@@ -15,6 +15,8 @@ declare const T: Harness;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const THEMES = [['arcadia', ARCADIA], ['liquid-glass', GLASS], ['material', MATERIAL], ['neubrutalism', NEO], ['pixel', PIXEL]] as const;
+// (Themes whose page card has no edge of its own: their panes none either.)
+const EDGELESS = new Set(['material']);
 const script = harnessScript();
 const near = (a: number, b: number, e = 2) => Math.abs(a - b) <= e;
 
@@ -57,10 +59,20 @@ for (const [name, engine] of ENGINES) {
         const [a, b] = p.panes;
         assert.ok(near(a.width, b.width), `equal ratios, equal widths: ${a.width} ${b.width}`);
         assert.ok(near(a.left + a.width + p.dividers[0].width, b.left, 1), 'the divider is the gap between them');
-        assert.ok(p.dividers[0].width >= 6 && p.dividers[0].width <= 14, `the theme's gap: ${p.dividers[0].width}`);
+        assert.ok(p.dividers[0].width >= 6 && p.dividers[0].width <= 16, `the theme's gap: ${p.dividers[0].width}`);
         assert.equal(p.dividers[0].band, false, 'side by side: no toolbar band (Safari\'s toolbars rest under Margin\'s top frame)');
         assert.equal(p.dividers[0].cursor, 'col-resize');
-        assert.ok(p.panes[0].ring !== 'none' && p.panes[1].ring === 'none', `the focused pane's ring only: ${p.panes[0].ring} / ${p.panes[1].ring}`);
+        assert.ok(p.panes[0].ring !== 'none' && p.panes[0].ring !== p.panes[1].ring, `the focused pane's ring: ${p.panes[0].ring} / ${p.panes[1].ring}`);
+        // Each pane a card of its own (2026-11-27): its edge on every side (the card's, where the card has one), the
+        // gap's too, painted above the gap with the grip above it; the card's corners, the inner ones masked over its
+        // window in the theme's ground, the outer ones left to the page card's.
+        assert.ok(p.panes.every((x) => x.z === '1') && p.dividers[0].gripZ === '2', `panes above the gap, the grip above them: ${p.panes.map((x) => x.z)} ${p.dividers[0].gripZ}`);
+        if (!EDGELESS.has(id)) assert.ok(p.panes[1].ring !== 'none', `an unfocused pane's own edge: ${p.panes[1].ring}`);
+        if (p.pageRadius > 0) {
+          assert.ok(p.panes.every((x) => x.radii.every((r) => near(r, p.pageRadius, 0.5))), `the card's corners on each pane: ${JSON.stringify(p.panes.map((x) => x.radii))}, the card's ${p.pageRadius}`);
+          assert.ok(p.panes.every((x) => near(x.mask.radius, p.pageRadius, 0.5) && x.mask.shadow !== 'none' && !/rgba\(0, 0, 0, 0\)/.test(x.mask.shadow)), `its corners masked in the theme's ground: ${JSON.stringify(p.panes.map((x) => x.mask))}`);
+        }
+        assert.deepEqual(p.panes.map((x) => x.mask.clip), ['inset(0px 0px 0px 50%)', 'inset(0px 50% 0px 0px)'], 'only the inner corners masked (the outer ones are the page card\'s)');
         assert.ok(p.dividers[0].grip && !/^rgba\(0, 0, 0, 0\)\|none$/.test(p.dividers[0].grip), `a grip drawn: ${p.dividers[0].grip}`);
         assert.equal(p.layoutSplit, 'spv-1', 'the layout sent says the split');
         assert.deepEqual(p.layout?.map((x) => x.id), tabs.slice(0, 2).map(String), 'and each pane by its item');
