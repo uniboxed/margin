@@ -469,7 +469,9 @@ func liveResizeTests() {
             for left in Array(stride(from: 276.0, to: 400.0, by: 6)) + [400] { e.follow(placed(CGFloat(left))); _ = hostRun { await w.sleep(0.009); return true } }
             _ = e.dragging(false)
             let dragEnd = w.clock
-            _ = hostRun { await w.sleep(5); return true }
+            // (In small steps: one long sleep of the test's own lets the clock leap past a cap a busy run starts a turn
+            // late, so a wait capped at 1 s seemed to take 4.)
+            _ = hostRun { for _ in 0..<100 { await w.sleep(0.05) }; return true }
             let after = Array(w.calls.dropFirst(m))
             let lastLive = after.lastIndex(of: "liveResizing \(FakeHostWorld.marginSpace) false") ?? after.count
             let relayed = after.dropFirst(lastLive + 1).contains { $0.hasPrefix("tileRect \(tile) ") }

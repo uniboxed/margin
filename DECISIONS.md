@@ -11853,3 +11853,14 @@ keeping (guessy: only after a first address-bar search, Safari's URL tags, speci
   hits, the caps), `tests/palette-suggest.test.ts` (the page's asks and pushes, the switch),
   `tests/fixtures/search-engines.json` (the engines' search addresses the same in the extension and the core).
 
+## The relay's capped waits on the main actor, its test stepped (`fix/relay-cap-main`, 2026-11-27)
+
+The live-resize check "a page that never answers" failed about half the runs under load (the gate, three runs at
+once): a capped wait seemed to take 4–5 s, not 1. Two causes. `HostEngine.capped` started its two tasks (the body, the
+limit's sleep) with no actor named, so they could run off the main actor, its `once` flag set from two threads: both
+now run on the main actor, the limit's sleep asked for first. And the check waited out the relay with one 5 s sleep of
+its own: the test world's clock (a sleeper goes on once it's the earliest for 3 turns) could leap past a cap a busy run
+started a turn late; the check now sleeps in 50 ms steps, so a late cap is late by one step at most. (Widening the test
+world's 3 turns to 12 broke the start screen's Try again check: not done.) Six runs, three at once, twice: all 2315
+checks pass.
+
