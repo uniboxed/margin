@@ -408,6 +408,39 @@ func liveResizeTests() {
         check("live resize: …another app's tile narrowed: not touched (Safari's alone)", w2.freezes == freezes3 && w2.bounds(window: edit)?.width == page(400).width && w2.calls.last == "liveResizing \(FakeHostWorld.marginSpace) false", "\(w2.calls.suffix(4))")
     }
     do {
+        // Safari's own scaling of its full-screen pages turned off (SafariScaling.swift): a Safari started since lays its
+        // page out as the drag narrows it, so nothing after the drag; one started before it was turned off still scales,
+        // and its tile is laid out again as before.
+        func run(offSince: (Double) -> Double) -> (relayed: Bool, freezes: Int, width: CGFloat?, tile: UInt64) {
+            let (w, e, _) = world()
+            w.start("com.apple.Safari", policy: .regular, windows: 0)
+            let pid = w.running(bundleId: "com.apple.Safari").first?.pid ?? 0
+            e.options.safariScalingOffSince = offSince(w.apps[pid]?.launchedAt ?? 0)
+            let copy = FakeSafariCopy(w) { w.running(bundleId: "com.apple.Safari").first?.pid }
+            copy.wire(e)
+            _ = open(e, .safariWindow("Work"))
+            let n = copy.windowOf[7914] ?? 0
+            let tile = w.tileOf(n) ?? 0
+            settle(e, 276)
+            let m = w.calls.count
+            let freezes = w.freezes
+            _ = e.dragging(true)
+            for left in Array(stride(from: 276.0, to: 400.0, by: 6)) + [400] { e.follow(placed(CGFloat(left))); _ = hostRun { await w.sleep(0.009); return true } }
+            _ = e.dragging(false)
+            _ = hostRun { await w.sleep(0.3); return true }
+            let after = Array(w.calls.dropFirst(m))
+            let lastLive = after.lastIndex(of: "liveResizing \(FakeHostWorld.marginSpace) false") ?? after.count
+            let relayed = after.dropFirst(lastLive + 1).contains { $0.hasPrefix("tileRect \(tile) ") }
+            return (relayed, w.freezes - freezes, w.bounds(window: n)?.width, tile)
+        }
+        let since = run { $0 - 1 }
+        check("live resize: Safari's scaling off before this Safari started: a narrowing drag over, nothing more (no freeze, no tile set)",
+              since.tile != 0 && !since.relayed && since.freezes == 0 && since.width == page(400).width, "\(since)")
+        let before = run { $0 + 1 }
+        check("live resize: …turned off after this Safari started: its tile laid out again after the drag, as before",
+              before.tile != 0 && before.relayed && before.freezes == 1 && before.width == page(400).width, "\(before)")
+    }
+    do {
         let (w, e, _) = world()
         w.tileWindow[FakeHostWorld.marginTile] = 999 // (Margin's own tile not found by its window)
         _ = open(e, textEdit)

@@ -11679,3 +11679,25 @@ page's zoom or scale), not Safari's per-site zoom (a new tab of the site is whol
   (its tile and the hosted one side by side) would get it; Tirth turned it down: it wouldn't look right and would
   restrict the layout. So the page shrinks while a drag narrows Safari (Safari's own) and is laid out at its width
   once it's let go (`relayNarrowed`).
+
+## Safari laid out live while a drag narrows it (`fix/safari-live-reflow`, 2026-11-27)
+
+The page Safari left drawn small after a drag of the sidebar's edge (above, "A Safari tab locked laid out wider than its
+window") is Safari's own choice for a window in full screen, as Margin hosts it, read in Safari 27.2's code (pulled from
+the dyld shared cache): `-[BrowserViewController _updateWKViewLayoutModeForWindow:]` puts the window's web view in
+WebKit's layout mode 4 (`_WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize`: `shouldScaleViewToFitDocument`, so
+WebKit's `DrawingArea::scaleViewToFitDocumentIfNeeded` lays the page out at the document's width when it's wider than
+the view and scales the view down to fit, and keeps scaling until the view is that wide again: the lock, 1392 in 1212,
+scale 0.87), and a window not in full screen in mode 0 (laid out at its size, as a plain window's drag shows). Unless
+`[NSUserDefaults boolForKey:@"DebugDisableTiledFullScreenScalingMode"]`: then it sets no mode, and the web view keeps 0.
+- **Fixed** (SafariScaling.swift, AppDelegate `applicationWillFinishLaunching`, before Margin starts any browser): Margin
+  sets that default in the global domain (the one a sandboxed Safari reads with its own; its container's would need the
+  person's permission), once, read back, and keeps when (`MarginSafariScalingOffSince`). A Safari started since lays its
+  page out at each width as a drag narrows it.
+- **Kept for a Safari started before** (HostEngine `safariMayScale`, from its launch time): a web view already in mode 4
+  stays so until Safari restarts, so its tiles still get `relayNarrowed` after a drag; a Safari started since gets
+  nothing after the drag (no freeze, no tile set). The write not taken: every Safari as before.
+- **Tests:** live-resize-tests.swift (a Safari started after the default was set: nothing after a narrowing drag, failed
+  before; one started before: laid out again, as before).
+- **Real Safari:** to check once Safari is restarted under the new Margin (the page's own `pageScale` lines in
+  Margin.app's log say if a page is still shrunk).

@@ -256,6 +256,9 @@ final class HostEngine {
         // …and how long the freeze holds after its own width is back: Safari draws the page laid out again a few frames
         // after its window's size (the real Mac: the wider layout cut off at the right for about 50 ms, unfrozen).
         var relaySettle = 0.12
+        // Since when Safari's own scaling of its full-screen pages is off (SafariScaling.swift, seconds since 1970): a
+        // Safari started at or after it lays its page out as a drag narrows it, and needs no `relayNarrowed`. nil: not off.
+        var safariScalingOffSince: Double? = nil
         // All panes active (PanesActive.swift): each change applied once per main-queue turn (off: at once, the tests').
         var activesCoalesced = true
     }
@@ -5224,8 +5227,9 @@ final class HostEngine {
                 learnMinimum(o)
                 liveBegin()
             }
-            // (Safari's tiles' widths as the drag begins: `relayNarrowed` at its end.)
-            for h in [host] + others.compactMap({ byHandle[$0] }) where h.safariWindow != nil {
+            // (Safari's tiles' widths as the drag begins, those of a Safari that may still scale its pages: `relayNarrowed`
+            // at its end.)
+            for h in [host] + others.compactMap({ byHandle[$0] }) where h.safariWindow != nil && safariMayScale(h.pid) {
                 if let tile = h.tile, let r = sys.tileRect(tile) { liveWidest[h.id] = r.width }
             }
             Diagnostics.note("host: live resize: began, \(host.id) at \(Int(sys.bounds(window: host.window)?.width ?? 0)) pt: " + (liveSpace.map { "Margin's Space \($0.space) told\($0.taken ? "" : " (NOT taken)")" } ?? "no tile follows, Margin's Space not told"))
@@ -5248,6 +5252,13 @@ final class HostEngine {
     }
 
     // Safari's tiles followed in this drag: each one's widest tile width in it (as it began, or any frame sent).
+    // Whether that Safari may still scale its full-screen pages: started before its scaling was turned off
+    // (SafariScaling.swift), or its start unread, or not turned off.
+    private func safariMayScale(_ pid: pid_t) -> Bool {
+        guard let since = options.safariScalingOffSince, let started = sys.app(pid: pid)?.launchedAt else { return true }
+        return started < since
+    }
+
     private var liveWidest: [HostID: CGFloat] = [:]
 
     // A drag that narrows a Safari tile over many frames leaves the tab shown in it laid out at the width it had as the
