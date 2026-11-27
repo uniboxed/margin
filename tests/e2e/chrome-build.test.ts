@@ -69,14 +69,12 @@ test('the background starts, as Chrome\'s profile', async () => {
   assert.equal(await bg(() => globalThis.Margin.capabilities!.nativeApp), false, 'no app for Chrome yet');
 });
 
-test('a new tab is Margin\'s new-tab page, with its own address field', async (t) => {
-  const page = await context.newPage();
-  await page.goto('chrome://newtab');
-  const id = new URL(worker.url()).host;
-  assert.equal(page.url(), `chrome-extension://${id}/newtab/newtab.html`);
-  await page.waitForSelector('#address');
-  await shoot(world, t, 'newtab', { page });
-  await page.close();
+test('a new tab, Margin.app not running, is Chrome\'s own new tab: Margin\'s page draws nothing and hands it on', async () => {
+  // (A fresh new tab, as Chrome's ⌘T makes it: its first page the override, Margin's page, which hands it to Chrome's.)
+  const id = await bg(async () => (await chrome.tabs.create({})).id!);
+  const url = await until(() => bg((tabId: number) => chrome.tabs.get(tabId).then((t) => (/^chrome:\/\/new-tab-page\/?$/.test(t.url || t.pendingUrl || '') ? t.url || t.pendingUrl : null)), id), { what: 'Chrome\'s own new tab' });
+  assert.match(url!, /^chrome:\/\/new-tab-page/);
+  await bg((tabId: number) => chrome.tabs.remove(tabId), id);
 });
 
 test('Chrome\'s shortcuts', async () => {
@@ -111,22 +109,3 @@ test('pages get nothing of Margin\'s: no gesture blocking, the bounce left alone
   await page.close();
 });
 
-test('the new-tab page: an address goes there, words go to Chrome\'s search (answered locally)', async () => {
-  const page = await context.newPage();
-  await page.goto('chrome://newtab');
-  await page.waitForSelector('#address');
-  // Typed with its scheme: a bare host goes to https:, which the test server doesn't speak.
-  await page.fill('#address', site.url('docs.test', '/guide/getting-started'));
-  await page.press('#address', 'Enter');
-  await page.waitForURL(site.url('docs.test', '/guide/getting-started'));
-
-  await page.goto('chrome://newtab');
-  await page.waitForSelector('#address');
-  await page.fill('#address', 'quiet ferries');
-  await page.press('#address', 'Enter');
-  await page.waitForURL(ENGINES);
-  assert.equal(new URL(page.url()).searchParams.get('q'), 'quiet ferries');
-  assert.match((await page.textContent('body'))!, /quiet ferries/);
-  await page.close();
-  assert.deepEqual(leaks, [], 'nothing left the Mac');
-});
