@@ -333,7 +333,7 @@ for (const [name, engine] of ENGINES) {
         await page.emulateMedia({ colorScheme: null, contrast: null, reducedMotion: null });
       });
 
-      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, solid; its Settings tab with the theme\'s own settings', async () => {
+      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher\'s card, solid and empty; its Settings tab with the theme\'s own settings', async () => {
         await ev(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', appWindow: true }));
         const e = await ev(() => T.rtEmptyPage());
         assert.ok(e.page && e.launcher, 'a launcher drawn in the page card');
@@ -344,7 +344,8 @@ for (const [name, engine] of ENGINES) {
         const controls = await rect('.window-controls');
         assert.deepEqual([controls.width, controls.height], [60, 14]);
         assert.ok((await rect('.drag-region')).width > 100);
-        assert.ok(await count('.launcher .tile') > 0 && await count('.launcher .archive-row') > 0);
+        // (No new-tab page of Margin's, 2026-11-27: the card with nothing in it, Arc's palette over it.)
+        assert.deepEqual([await count('.launcher .tile'), await count('.launcher .archive-row'), await count('.launcher-query')], [0, 0, 0], 'nothing in the card');
         assert.equal(await count('.launcher [aria-expanded]'), 0, 'no Settings under the search field: its own tab');
         // Its Settings tab (margin://settings): the theme's own settings under its name in Appearance, its switches in Browsing.
         await ev(() => T.rtSetUi({ settingsPage: true }));

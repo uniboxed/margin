@@ -9,7 +9,7 @@ import type { Harness } from './harness.ts';
 
 declare const T: Harness;
 
-const PLATFORM = { browser: 'safari', os: 'mac', features: { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'learn' } };
+const PLATFORM = { browser: 'safari', os: 'mac', features: { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'app' } };
 
 export async function settingsPageChecks(page: Page) {
   const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);

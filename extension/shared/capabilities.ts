@@ -16,7 +16,7 @@ export type Capabilities = {
   zoomedWheel: boolean,
   nativeApp: boolean,
   blockGestures: boolean,
-  search: 'learn' | 'browser',
+  search: 'app' | 'browser',
   marginFullscreen: boolean,
   // The link's socket (background/link.ts): opened from a worker too, and its guard.
   socketInWorker: boolean,

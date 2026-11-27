@@ -1084,6 +1084,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       // The palette's own rows (shared/search.ts `local` actions). "Toggle
       // sidebar" is the theme's sidebar.toggle: Keep open on or off.
       case 'palette.toggleSidebar': return dispatch('sidebar.toggle', undefined, 'behavior');
+      // Archive (Margin.app's own window): the Library open at its Archive.
+      case 'palette.archive': behaviors.ends.section('archive'); return dispatch('library.open', undefined, 'behavior');
       case 'palette.navigate':
         if (host.perform?.('navigate', { url: arg.url })) return true;
         void send('newTab', { windowId: windowId() ?? undefined, url: arg.url });

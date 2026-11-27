@@ -301,7 +301,7 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('the new-tab page: a title screen, the > field focused, pinned tiles, the archive; Settings in Pixel\'s inputs', async () => {
-        await mount({ inNewTab: true, mode: 'inpage', platform: { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } }, replies: { wakeSleeping: 0 } });
+        await mount({ inNewTab: true, mode: 'inpage', platform: { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'app' } }, replies: { wakeSleeping: 0 } });
         assert.equal(await count('.launcher'), 1);
         assert.deepEqual(await text('.title-screen .world, .title-screen .stage'), ['WORLD 1-1', 'Personal']);
         assert.equal(await ev(() => T.rtActive()), 'launcher');

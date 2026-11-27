@@ -799,22 +799,25 @@ function fresh(input: ViewModelInput): ViewModel {
   }
 
   // The new-tab page's launcher (Arcadia's newtab.ts renderLauncher): the
-  // space's pins, folders' too, and the latest archived tabs.
+  // space's pins, folders' too, and the latest archived tabs. In Margin.app's own window it's the page area's card
+  // with nothing in it (2026-11-27, Tirth: no new-tab page, Arc's palette over the page): no field, pins or archive,
+  // only its Settings page.
   let launcher: ViewModel['launcher'] = null;
+  const bare = !!ui.appWindow && !ui.settingsPage;
   if (ui.inNewTab || ui.launcherPage) {
     const tiles = pinned.flatMap((p) => (p.isFolder ? p.pins : [p as PinRow]));
     const all = ui.launcher?.allArchived;
     const shown = all ? archive : archive.slice(0, LAUNCHER_ARCHIVE);
     launcher = {
-      pins: tiles,
-      hasPins: !ui.settingsPage && tiles.length > 0,
-      archive: shown,
-      hasArchive: !ui.settingsPage && archive.length > 0,
+      pins: bare ? [] : tiles,
+      hasPins: !bare && !ui.settingsPage && tiles.length > 0,
+      archive: bare ? [] : shown,
+      hasArchive: !bare && !ui.settingsPage && archive.length > 0,
       emptyArchive: archive.length === 0,
       more: archive.length > LAUNCHER_ARCHIVE,
       moreLabel: all ? 'Show fewer' : `Show all ${archive.length}`,
       settingsOpen: !!ui.settingsOpen || !!ui.settingsPage,
-      settingsPage: !!ui.settingsPage, canSearch: !ui.settingsPage,
+      settingsPage: !!ui.settingsPage, canSearch: !bare && !ui.settingsPage,
       hasSettings: !ui.appWindow,
     };
   }
@@ -1113,7 +1116,7 @@ const GOES = new Set(['tab', 'pin', 'archive', 'go', 'app']);
  * What shared/search.ts ranks the palette for: this window and tab.
  * */
 export function paletteContext(ui: UiState, platform: ViewModelInput['platform']) {
-  return { windowId: ui.windowId ?? null, tabId: ui.tabId ?? null, inNewTab: !!ui.inNewTab, canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen };
+  return { windowId: ui.windowId ?? null, tabId: ui.tabId ?? null, inNewTab: !!ui.inNewTab, canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, appWindow: !!ui.appWindow };
 }
 
 /**

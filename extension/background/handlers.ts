@@ -973,18 +973,6 @@ export const handlers = {
   async newTabKey(_: object, sender: BrowserMessageSender) {
     await newTabKey(sender?.tab ?? null);
   },
-  // The new-tab page's "Start Margin.app" (not linked): the link asked for
-  // now, which has Margin's extension handler start the app if it isn't
-  // running (background/link.ts). False where there's no link (Chrome, a
-  // copy that doesn't own the state).
-  async startApp() {
-    return appLink.askNow();
-  },
-  // The new-tab page's "Try again" while Margin turned its link off (its socket guard,
-  // background/link.ts): sockets on again and the link asked for now. A person's choice only.
-  async retryLink() {
-    return appLink.retrySockets();
-  },
   // Escape in the palette of a fresh new tab (⌘T; newtab/newtab.ts):
   // back to the tab the user was on, and this one closes, as if no tab had
   // been opened. The window's only tab (⌘N) stays, with the start page.

@@ -69,22 +69,34 @@ test('the overlay follows the state: a tab opened, retitled and closed', async (
   await m.until(async () => !(await sidebar(ui)).tabs.some((r) => r.id === tab.id), { what: 'the row gone' });
 });
 
-test('the app starting after Safari: unlinked, the new-tab notice; then appUp links', async (t) => {
+test('the app not running: a fresh new tab draws nothing of Margin\'s, handed to the browser\'s own new tab', async () => {
+  const late = await startMargin({ name: 'link-own-new-tab', running: false, seed: SEED });
+  try {
+    // (A fresh new tab, as ⌘T makes it: its first page the new-tab override, Margin's page. This build is Safari's, so it
+    // asks for Safari's start page, which Chromium can't open: the page stays, blank, titled as any new tab.)
+    await late.bg(async () => { await chrome.tabs.create({}); });
+    const page = await late.until(() => late.context.pages().find((p) => p.url().endsWith('/newtab/newtab.html')), { what: 'the new tab' });
+    await page.waitForFunction(() => document.title === 'New Tab', null, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => document.body.innerText.trim()), '', 'nothing drawn');
+  } finally {
+    await late.close();
+  }
+});
+
+test('the app starting after Safari: unlinked, Margin\'s page draws nothing; then appUp links', async (t) => {
   const late = await startMargin({ name: 'link', running: false, seed: SEED });
   try {
     const page = await late.context.newPage();
     await page.goto(late.newTabUrl());
-    await page.waitForSelector('#notice:not([hidden])');
-    assert.equal((await page.textContent('#title'))!.trim(), 'Margin.app isn’t running');
-    assert.equal(await page.isVisible('#start'), true);
+    await page.waitForFunction((() => document.title === 'New Tab' && document.body.innerText.trim() === '' && !document.getElementById('notice')), null, { timeout: 8000 });
     await late.shoot(t, 'not-running', { page });
     assert.equal(late.shell.hello, null);
     late.shell.setRunning(true);
     late.relay.dispatch('appUp', { v: 2, at: Date.now() });
     await late.linked();
     await late.fullscreen();
-    // Linked: the new-tab page says nothing of its own (it loads again) and the overlay draws the launcher over it.
-    await page.waitForFunction(() => document.getElementById('notice')?.hidden === true, null, { timeout: 10_000 });
+    // Linked: the new-tab page still draws nothing of its own and the overlay draws the launcher over it.
+    await page.waitForFunction((() => document.title === 'New Tab' && document.body.innerText.trim() === '' && !document.getElementById('notice')), null, { timeout: 10_000 });
     const ui = await late.ui();
     await late.until(async () => (await sidebar(ui)).launcher, { what: 'the launcher in the overlay' });
     await late.shoot(t, 'linked-launcher', { page });
@@ -93,25 +105,3 @@ test('the app starting after Safari: unlinked, the new-tab notice; then appUp li
   }
 });
 
-test('Start on Margin\'s new-tab page: the handler starts the app, and the copy links once it\'s up', async (t) => {
-  const late = await startMargin({ name: 'link', running: false, seed: SEED });
-  try {
-    const page = await late.context.newPage();
-    await page.goto(late.newTabUrl());
-    await page.waitForSelector('#start:not([hidden])');
-    // The copy's link started (it owns the state): a press before that says it can't reach the app.
-    await late.until(() => late.relay.logs.some((l) => /^background started/.test(l.line)), { timeout: 10_000, what: 'the copy\'s link started' });
-    late.shell.setRunning(false, { starting: true });
-    const asked = late.relay.asks.length;
-    await page.click('#start');
-    assert.equal((await page.textContent('#status'))!.trim(), 'Starting Margin.app…');
-    // Told it's starting, the copy asks again every half second (PROTOCOL.md Transport, step 1).
-    await late.until(() => late.relay.asks.length >= asked + 2, { what: 'the copy asking again while the app starts' });
-    late.shell.setRunning(true);
-    await late.linked();
-    assert.equal(late.shell.hello!.browser, 'safari');
-    await late.shoot(t, 'started', { page });
-  } finally {
-    await late.close();
-  }
-});

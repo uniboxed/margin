@@ -1,138 +1,104 @@
-// Margin's new-tab page (newtab/newtab.ts) against a fake page and browser API: what it shows
-// follows the link to Margin.app even when it misses a storage event (a write before its listener
-// reaches Safari, a suspended or hidden page), its Start button never starts an app that's already
-// linked, and linked with nothing drawn over its window it shows its address field and says why,
-// with no Start button and nothing about the app not running.
+// Margin's new-tab page (newtab/newtab.ts) against a fake page and browser API: it never draws anything of Margin's
+// (2026-11-27). A fresh new tab Margin.app doesn't take (not linked, or a window it doesn't draw) goes to the browser's
+// own new tab (shared/own-new-tab.ts), once; one it takes is the background's to hand to Margin's palette; anything
+// else (Back, a reload, `#launcher`, `?again`, `?mark=`) stays blank and is never sent anywhere; the link changing
+// later never loads it again.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeBrowser } from './fake-browser.ts';
+import { capabilities } from '../extension/shared/capabilities.ts';
+import { ownNewTabUrl } from '../extension/shared/own-new-tab.ts';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-// The fake page: its elements (what newtab.ts sets and listens to), its listeners, what it read and sent.
-type Listener = (event?: unknown) => unknown;
-type FakeEl = { hidden: boolean, textContent: string, disabled: boolean, value: string, listeners: Record<string, Listener>, addEventListener(type: string, fn: Listener): void, focus(): void };
-type Page = {
-  reads: Record<string, unknown>[], changed: ((changes: Record<string, BrowserStorageChange>, area: string) => void)[],
-  doc: Record<string, Listener[]>, win: Record<string, Listener[]>, reloads: number, sent: string[],
-  els: Record<string, FakeEl>, visibility: string, focused?: boolean,
-};
-const page = {} as Page; // filled in by reset
-function reset({ reads }: { reads: Record<string, unknown>[] }) {
-  // `reads`: what each storage read of appLink gives, in turn (the last one from then on).
-  Object.assign(page, { reads: [...reads], changed: [], doc: {}, win: {}, reloads: 0, sent: [] });
-  const el = (extra: Partial<FakeEl> = {}): FakeEl => ({ hidden: true, textContent: '', disabled: false, value: '', listeners: {}, addEventListener(type: string, fn: Listener) { this.listeners[type] = fn; }, focus() { page.focused = true; }, ...extra });
-  page.els = { notice: el(), title: el({ textContent: 'Margin.app isn’t running' }), why: el(), start: el(), retry: el(), status: el(), go: el(), address: el() };
-  page.visibility = 'visible';
-}
-const on = (store: Record<string, Listener[]>) => (type: string, fn: Listener) => { (store[type] ??= []).push(fn); };
-// Stand-ins for the page's document, window, location and history: what newtab.ts uses of them.
-globalThis.document = ({
-  getElementById: (id: string) => page.els[id] ?? null,
-  addEventListener: (type: string, fn: Listener) => on(page.doc)(type, fn),
-  get visibilityState() { return page.visibility; },
-} as unknown as Document);
-globalThis.addEventListener = ((type: string, fn: Listener) => on(page.win)(type, fn)) as typeof globalThis.addEventListener;
-globalThis.location = ({ hash: '', search: '', reload: () => { page.reloads++; } } as unknown as Location);
-globalThis.history = ({ length: 2 } as History); // not a fresh new tab: no hand-off asked
+type Page = { link: unknown, sent: string[], updates: [number, { url?: string }][], refuse: boolean, reloads: number, storageListeners: number };
+const page: Page = { link: null, sent: [], updates: [], refuse: false, reloads: 0, storageListeners: 0 };
+const doc = { title: 'New Tab', getElementById: () => null, addEventListener() {} };
+globalThis.document = (doc as unknown as Document);
+globalThis.addEventListener = (() => {}) as typeof globalThis.addEventListener;
+const loc = { hash: '', search: '', reload: () => { page.reloads++; } };
+globalThis.location = (loc as unknown as Location);
+const hist = { length: 1 };
+globalThis.history = (hist as History);
 globalThis.browser = fakeBrowser({
   runtime: {
     getURL: (p) => `safari-web-extension://test/${p}`,
-    sendMessage: async (m) => { page.sent.push(m.type); return { ok: true, result: m.type === 'startApp' ? true : undefined }; },
+    sendMessage: async (m) => { page.sent.push(m.type); return { ok: true, result: undefined }; },
     onMessage: { addListener() {} },
   },
   storage: {
-    local: { get: async () => ({ appLink: page.reads.length > 1 ? page.reads.shift() : page.reads[0] }) },
-    onChanged: { addListener: (fn) => page.changed.push(fn) },
+    local: { get: async (key) => (key === 'appLink' ? { appLink: page.link } : { settings: null }) },
+    onChanged: { addListener: () => { page.storageListeners++; } },
   },
-  tabs: { getCurrent: async () => ({ id: 5, windowId: 7 }) },
+  tabs: {
+    getCurrent: async () => ({ id: 5, windowId: 7 }),
+    update: async (id, props) => {
+      page.updates.push([id, props]);
+      if (page.refuse) throw new Error('refused');
+      return { id };
+    },
+  },
 });
+const OWN = ownNewTabUrl(capabilities?.name, navigator.userAgent);
 let n = 0;
-const load = async () => { await import(`../extension/newtab/newtab.ts?${++n}`); await sleep(20); };
-const fire = (store: Record<string, Listener[]>, type: string, event = {}) => { for (const fn of store[type] ?? []) fn(event); };
-
-test('the new-tab page: "linked" written before its listener was handed over is caught by the read right after it', async () => {
-  reset({ reads: [{ state: 'off' }, { state: 'linked' }] });
-  await load();
-  assert.equal(page.changed.length >= 1, true, 'listening');
-  assert.equal(page.reloads, 1, 'loaded again for the app');
-});
-
-test('the new-tab page: hidden, it misses the storage event; shown again, it reads the link and is loaded again', async () => {
-  reset({ reads: [{ state: 'off' }, { state: 'off' }] });
-  await load();
-  assert.equal(page.reloads, 0);
-  assert.equal(page.els.notice.hidden, false, 'the notice');
-  page.visibility = 'hidden';
-  page.reads = [{ state: 'linked' }]; // (no onChanged: the page was suspended)
-  fire(page.doc, 'visibilitychange');
+async function load({ link = null as unknown, fresh = true, hash = '', search = '', refuse = false } = {}) {
+  Object.assign(page, { link, sent: [], updates: [], refuse, reloads: 0, storageListeners: 0 });
+  doc.title = 'New Tab';
+  hist.length = fresh ? 1 : 2;
+  loc.hash = hash;
+  loc.search = search;
+  await import(`../extension/newtab/newtab.ts?${++n}`);
   await sleep(20);
-  assert.equal(page.reloads, 0, 'hidden: nothing read');
-  page.visibility = 'visible';
-  fire(page.doc, 'visibilitychange');
-  await sleep(20);
-  assert.equal(page.reloads, 1, 'shown: loaded again');
-  fire(page.win, 'pageshow', { persisted: true });
-  fire(page.win, 'focus');
-  await sleep(20);
-  assert.equal(page.reloads, 3, 'back from the back/forward cache, or focused: read again too');
+}
+
+test('the browser\'s own new tab for this build: Safari\'s start page or Chrome\'s new tab', () => {
+  assert.ok(OWN === 'favorites://' || OWN === 'chrome://new-tab-page/', String(OWN));
 });
 
-test('the new-tab page: Start never starts an app that\'s linked by now: loaded again instead', async () => {
-  reset({ reads: [{ state: 'off' }, { state: 'off' }] });
-  await load();
-  assert.equal(page.els.start.hidden, false, 'the start button');
-  page.reads = [{ state: 'linked' }];
-  await page.els.start.listeners.click();
-  assert.equal(page.reloads, 1);
-  assert.ok(!page.sent.includes('startApp'), 'not asked to start');
+test('not linked: a fresh new tab goes to the browser\'s own, once, titled as any new tab; the background asked first', async () => {
+  await load({ link: { state: 'off' } });
+  assert.deepEqual(page.updates, [[5, { url: OWN }]]);
+  assert.deepEqual(page.sent.filter((t) => t === 'newTabPage'), ['newTabPage']);
+  assert.equal(doc.title, 'New Tab');
+  await load({ link: undefined });
+  assert.deepEqual(page.updates, [[5, { url: OWN }]], 'no link written yet: the same');
 });
 
-test('the new-tab page: linked, with nothing drawn over its window: the address field, why, no Start, nothing about the app not running; drawn later: loaded again', async () => {
-  const undrawn = { state: 'linked', layouts: {}, drawn: { 7: false } };
-  reset({ reads: [undrawn] });
-  await load();
+test('linked, a window Margin.app draws: the new tab is the background\'s (Margin\'s palette), never sent elsewhere', async () => {
+  await load({ link: { state: 'linked', drawn: { 7: true } } });
+  assert.deepEqual(page.updates, []);
+  assert.deepEqual(page.sent.filter((t) => t === 'newTabPage'), ['newTabPage']);
+  await load({ link: { state: 'reconnecting' } });
+  assert.deepEqual(page.updates, [], 'reconnecting, its window not said: as drawn');
+});
+
+test('linked, a window Margin.app doesn\'t draw (the person\'s own): the browser\'s own new tab', async () => {
+  await load({ link: { state: 'linked', drawn: { 7: false } } });
+  assert.deepEqual(page.updates, [[5, { url: OWN }]]);
+});
+
+test('refused by the browser: left blank, titled as any new tab', async () => {
+  await load({ link: { state: 'off' }, refuse: true });
+  assert.equal(page.updates.length, 1);
+  assert.equal(doc.title, 'New Tab');
+});
+
+test('not a fresh new tab (Back, a reload, its start page, a gone copy\'s): blank, never sent anywhere', async () => {
+  for (const [o, title] of [[{ fresh: false }, 'New Tab'], [{ hash: '#launcher' }, 'Margin'], [{ hash: '#settings' }, 'Settings'], [{ search: '?again' }, 'New Tab']] as const) {
+    await load({ link: { state: 'off' }, ...o });
+    assert.deepEqual(page.updates, [], JSON.stringify(o));
+    assert.equal(page.sent.includes('newTabPage'), false, JSON.stringify(o));
+    assert.equal(doc.title, title, JSON.stringify(o));
+  }
+});
+
+test('a window Margin.app asked for (?mark=): its title carries the mark, never handed anywhere', async () => {
+  await load({ link: { state: 'off' }, search: '?mark=abcdEFGH1234' });
+  assert.equal(doc.title, 'Margin abcdEFGH1234');
+  assert.deepEqual(page.updates, []);
+});
+
+test('the link changing later never loads the page again (it draws nothing either way)', async () => {
+  await load({ link: { state: 'off' }, fresh: false });
   assert.equal(page.reloads, 0);
-  assert.equal(page.els.notice.hidden, false, 'the notice, with the address field');
-  assert.equal(page.focused, true, 'the address field focused');
-  assert.equal(page.els.title.textContent, 'Margin.app hasn’t placed this window yet');
-  assert.ok(!/isn’t running/.test(page.els.title.textContent + page.els.why.textContent));
-  assert.equal(page.els.start.hidden, true, 'no Start button');
-  for (const fn of page.changed) fn({ appLink: { newValue: { ...undrawn, drawn: { 7: false, 8: true } } } }, 'local');
-  assert.equal(page.reloads, 0, 'another window\'s word: nothing');
-  for (const fn of page.changed) fn({ appLink: { newValue: { ...undrawn, drawn: { 7: true } } } }, 'local');
-  assert.equal(page.reloads, 1, 'drawn now: loaded again, for the app');
-});
-
-test('the new-tab page: linked and drawn (or not said): nothing of its own', async () => {
-  reset({ reads: [{ state: 'linked', layouts: {}, drawn: {} }] });
-  await load();
-  assert.equal(page.els.notice.hidden, true);
-  assert.equal(page.reloads, 0);
-});
-
-test('the new-tab page: Margin turned its link off (the socket guard): when, and until when; Try again, no Start; the words change in place', async () => {
-  const offAt = new Date(2026, 10, 6, 9, 41).getTime();
-  const sameDay = new Date(offAt).toDateString() === new Date().toDateString();
-  reset({ reads: [{ state: 'off', why: 'sockets-off', offAt }] });
-  await load();
-  assert.equal(page.els.title.textContent, 'Margin turned its link off');
-  assert.match(page.els.why.textContent, /^Margin turned its link off at 0?9[:.]41.* after a socket never opened\. It tries again when Safari next starts\.$/);
-  if (!sameDay) assert.match(page.els.why.textContent, / on .*6.* after/, 'another day: the day too');
-  assert.equal(page.els.start.hidden, true, 'no Start');
-  assert.equal(page.els.retry.hidden, false, 'Try again');
-  await page.els.retry.listeners.click();
-  assert.ok(page.sent.includes('retryLink'), 'asked to try again');
-  assert.ok(!page.sent.includes('startApp'));
-  for (const fn of page.changed) fn({ appLink: { newValue: { state: 'off', why: 'sockets-off', offAt, offUntil: offAt + 24 * 3600_000 } } }, 'local');
-  assert.match(page.els.why.textContent, /It tries again at 0?9[:.]41/, 'the 24 h off: until when');
-  for (const fn of page.changed) fn({ appLink: { newValue: { state: 'off' } } }, 'local');
-  assert.equal(page.els.retry.hidden, true, 'on again, not linked yet: no Try again');
-  assert.equal(page.els.start.hidden, false, 'Start instead');
-  assert.equal(page.els.title.textContent, 'Margin.app isn’t running');
-});
-
-test('the new-tab page: an element with `hidden` is never laid out, whatever display its rule gives', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const html = await readFile(new URL('../extension/newtab/newtab.html', import.meta.url), 'utf8');
-  assert.match(html, /\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/, '[hidden] wins over main { display: grid }');
+  assert.equal(page.storageListeners, 1, 'only the settings\' (the navigation keys)');
 });
