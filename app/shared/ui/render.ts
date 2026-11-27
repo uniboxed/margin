@@ -98,6 +98,7 @@ m-preview[m-default]:is([m-loading],[m-closing]) m-preview-page{background:Canva
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
 m-picker{position:fixed;left:var(--m-picker-x,0px);top:var(--m-picker-y,0px);z-index:2147483600;outline:none}
 m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty,m-preview:empty,m-picker:empty{display:none}
+:is(m-menu,m-editor,m-palette,m-notice,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview:not([m-default]),m-picker)[m-closing]{pointer-events:none}
 m-picker-field,m-picker-slider,m-picker-dial{display:block;position:relative;box-sizing:border-box;touch-action:none;-webkit-user-select:none;user-select:none}
 m-picker-field{min-height:120px;overflow:hidden}
 m-picker-field[m-variant=wheel]{background:var(--m-field-wheel)}
@@ -621,7 +622,11 @@ class IfBinding {
 }
 
 // A slot (<m-menu>, <m-editor>, ...): the theme's part for it, made once and
-// kept, inside it while the view model's test holds.
+// kept, inside it while the view model's test holds. When the test stops
+// holding, the slot is marked `m-closing` (and inert: no focus, no presses)
+// and the part leaves once the animations that mark starts have run (a
+// theme's way out, `m-menu[m-closing] …`; none: at once), SLOT_EXIT_MS at most.
+const SLOT_EXIT_MS = 400;
 class SlotBinding {
   // Its fields (set in its constructor and methods; declared only: nothing at run time).
   declare el: Element;
@@ -629,25 +634,56 @@ class SlotBinding {
   declare view: View;
   declare block: Block | null;
   declare shown: boolean;
+  declare leaving: boolean;
+  declare turn: number; // the leave going on (one stopped doesn't take away what came after)
   constructor(el: Element, b: SlotPlan, view: View) {
     this.el = el;
     this.b = b;
     this.view = view;
     this.block = null;
     this.shown = false;
+    this.leaving = false;
+    this.turn = 0;
   }
   update(scope: Scope) {
     const on = Boolean(lookup(scope, this.b.test));
     if (!on) {
-      if (this.shown) { this.block!.remove(); this.shown = false; } // (shown: made)
+      if (this.shown && !this.leaving) this.leave(); // (shown: made)
       return;
     }
     const plan = this.view.parts.get(this.b.part) ?? this.b.fallback;
     if (!plan) return;
+    if (this.leaving) this.stay();
     if (!this.block) this.block = new Block(plan, this.view, scope);
     else this.block.scope = scope;
     this.block.update();
     if (!this.shown) { this.block.insertBefore(this.el, null); this.shown = true; }
+  }
+  leave() {
+    const el = this.el as HTMLElement;
+    const all = () => (typeof el.getAnimations === 'function' ? el.getAnimations({ subtree: true }) : []);
+    const before = new Set(all());
+    el.setAttribute('m-closing', '');
+    el.inert = true;
+    this.leaving = true;
+    const turn = ++this.turn;
+    const done = () => {
+      if (!this.leaving || this.turn !== turn) return;
+      this.stay();
+      this.block!.remove();
+      this.shown = false;
+    };
+    // (getAnimations brings the style up to date, so what the mark starts is in it. Endless ones aren't waited for.)
+    const exits = all().filter((a) => !before.has(a) && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Infinity));
+    if (!exits.length) { done(); return; }
+    el.ownerDocument.defaultView!.setTimeout(done, SLOT_EXIT_MS);
+    Promise.all(exits.map((a) => a.finished)).then(done, done);
+  }
+  stay() {
+    const el = this.el as HTMLElement;
+    this.leaving = false;
+    el.removeAttribute('m-closing');
+    el.inert = false;
   }
 }
 
