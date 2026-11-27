@@ -7,7 +7,8 @@
 //!   main       the window that is the app (shown at the page area, or parked): one per host
 //!   auxiliary  settings, inspectors, floating panels, the app's other windows (a second document, the person's own)
 //!   dialog     alerts and sheets (shown on top of the main window)
-//!   strip      a full-screen window's toolbar or title band: the page area's width at least, at most 150 pt tall
+//!   strip      a full-screen window's toolbar or title band: the page area's width at least, at most 150 pt tall,
+//!              its top no lower than 152 pt below the page area's (never Safari's link status bubble at the page's foot)
 //!   leftover   restored from an earlier session, or opened by Margin only to wake something: to be closed or parked
 //!   helper     a window its app makes in answer to Margin sizing it, at the size Margin just set (Weather's
 //!              1264×966 window for 0.2 s after each tile resize, 2026-11-18 13:30): never shown, adopted, parked,
@@ -29,7 +30,8 @@
 //!  2b. a helper before (it stays one) or new within `HELPER_AFTER` of Margin sizing its app, at a size Margin set
 //!                                                                                 helper
 //!  2c. closed (its Accessibility element destroyed), still listed by the window server               transient
-//!   3. the page area's width at least, at most 150 pt tall                        strip
+//!   3. the page area's width at least, at most 150 pt tall, its top within 152 pt below the page area's top
+//!                                                                                 strip
 //!   4. under 100 pt on a side                                                     transient
 //!   5. opened by Margin only to wake its app                                      leftover
 //!   6. never ordered in while another of its app's windows is: a spare            transient
@@ -264,18 +266,23 @@ const FLOATING_SUBROLES: [&str; 2] = ["AXFloatingWindow", "AXSystemFloatingWindo
 const DIALOG_SUBROLES: [&str; 2] = ["AXDialog", "AXSystemDialog"];
 
 /// As the engine's own: the page area's width at least (the display's for one that went full screen on its own), at
-/// most 150 pt tall. Nothing to measure against (no placement yet): no strip.
+/// most 150 pt tall, and at the top: its top edge no lower than `STRIP_MAX_HEIGHT` (and `TOOLBAR_SLACK`) below the
+/// page area's top (the area's when there's no page area), as a toolbar's is, resting above or out over its window
+/// (`toolbar_of`'s band). Lower down it's no toolbar: Safari's link status bubble (its own window at the page's bottom,
+/// 20 pt tall, as wide as the page for a long link: taken for a strip on 2026-11-27 14:07, parked, and its window, the
+/// one Margin hosts, pulled out of Margin's Space with it, three times in 5 s: the host stepped down to members).
+/// Nothing to measure against (no placement yet): no strip.
 pub fn is_strip(b: &Rect, p: &Placement) -> bool {
     if !(b.width > 0.0 && b.height > 0.0 && b.height <= STRIP_MAX_HEIGHT) {
         return false;
     }
-    let wide = match (p.area.width > 0.0, p.page.width > 0.0) {
-        (true, true) => (p.area.width * 0.9).min(p.page.width - 2.0),
-        (true, false) => p.area.width * 0.9,
-        (false, true) => p.page.width - 2.0,
+    let (wide, top) = match (p.area.width > 0.0, p.page.width > 0.0) {
+        (true, true) => ((p.area.width * 0.9).min(p.page.width - 2.0), p.page.min_y()),
+        (true, false) => (p.area.width * 0.9, p.area.min_y()),
+        (false, true) => (p.page.width - 2.0, p.page.min_y()),
         (false, false) => return false,
     };
-    b.width >= wide
+    b.width >= wide && b.min_y() <= top + TOOLBAR_SLACK + STRIP_MAX_HEIGHT
 }
 
 /// A strip for the placement's page area, or for one of the app's hosts' own rects (a card's or a pane's full-screen

@@ -6,7 +6,8 @@
 //   main       the window that is the app (shown at the page area, or parked): one per host
 //   auxiliary  settings, inspectors, floating panels, the app's other windows (a second document, the person's own)
 //   dialog     alerts and sheets (shown on top of the main window)
-//   strip      a full-screen window's toolbar or title band: the page area's width at least, at most 150 pt tall
+//   strip      a full-screen window's toolbar or title band: the page area's width at least, at most 150 pt tall,
+//              its top no lower than 152 pt below the page area's (never Safari's link status bubble at the page's foot)
 //   leftover   restored from an earlier session, or opened by Margin only to wake something: to be closed or parked
 //   helper     its app's answer to Margin sizing it: a new window at the size Margin just set (Weather's 1264×966
 //              window for 0.2 s after each tile resize, 2026-11-18 13:30): never shown, adopted, parked, let in front
@@ -105,7 +106,8 @@ nonisolated enum WindowKinds {
     static var tinySide: CGFloat { CGFloat(HostCore.shared.constant("tinySide") ?? 100) }
     static var stripMaxHeight: CGFloat { CGFloat(HostCore.shared.constant("stripMaxHeight") ?? 150) }
 
-    // The page area's width at least (the display's for one that went full screen on its own), at most 150 pt tall.
+    // The page area's width at least (the display's for one that went full screen on its own), at most 150 pt tall,
+    // its top within 152 pt below the page area's top (the core's `is_strip`: a toolbar hangs from the top).
     // Nothing to measure against (no placement yet): no strip.
     static func isStrip(_ b: CGRect, in p: HostPlacement) -> Bool {
         var pl = p.margin

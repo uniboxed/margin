@@ -11995,3 +11995,27 @@ window's frames paused). Arcadia's menus: `m-menu[m-closing] { --m-exit: 1 }`. T
 with it: `fix/engine-clock-deadlines`' `deadline` and today's main-actor `capped` together (its deadline set as the
 wait begins, both tasks on the main actor), and the live-resize check's wait now the stand-in's `pass`.
 
+
+## A strip is at the top: Safari's link status bubble never one (`fix/strip-top-band`, 2026-11-27)
+
+**What happened** (the real Mac, 2026-11-27 14:07:43): window 42497 of Safari's, 1394×20 in Margin's Space, was read
+as a strip and parked. It was Safari's link status bubble (the URL at the page's foot under a hovered link: a child
+window of the window Margin hosts, made just before it, 18×20 off screen while hidden, as wide as the page for a long
+link; Accessibility's "destroyed" each time it hides, the window server keeping its number). Parking it pulled the
+hosted window out of Margin's Space with it; Margin brought that back and the bubble with it, three times in 5 s, and
+the host stepped down to members for Safari 27.2 (routes.json). From then on, until cleared by hand at 17:38: no live
+drags (the page area's changes held to the drag's end, then full screen left and entered again, twice failing with
+no full-screen Space within 6 s, the page gone about 10 s), and the hosted window falling out of Margin's Space now and
+then. The bubble passed the width check against a split pane's rect (about 700 pt) held for the split's other host,
+parked since 13:52; nothing asked where it was.
+**Fixed** (the core's `is_strip`, which the Mac's engine and observer ask through the FFI): a strip's top is at most
+`STRIP_MAX_HEIGHT` + `TOOLBAR_SLACK` (152 pt) below the top of what it's measured against (the page area's, the area's
+when there's none, a card's or pane's own for `is_strip_of_any`), the band `toolbar_of` already gives a window's own
+toolbar: resting above its window or out over it. Every strip seen so far is there (Mail's and Chameleon's across the
+screen's top, Safari's toolbars, a card's and a pane's). The bubble, under 100 pt tall, is now transient: the
+observer follows it by the lists alone, as when it's narrow.
+- **Not changed**: the rects of parked hosts still count for `is_strip_of_any` (a split's hosts keep theirs while it's
+  not shown). With the band, a window at a pane's foot no longer matches; whether a hidden split's rects should count
+  at all is left open.
+- **Not changed**: the screen tests' and the behaviour world's own strip checks (their independent judge of "no stray
+  strip on screen", by width and height): they never hover a link.
