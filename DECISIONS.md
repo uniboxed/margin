@@ -11798,3 +11798,27 @@ weight, place): no outline of either is copied, and no coordinate is taken from 
   profile's own SF Symbol at run time with `NSImage(systemSymbolName:)` (on macOS, in an Apple-platform app, nothing
   redistributed): not affected.
 
+
+## The engine's timers set on its clock when they're set; a test's wait in frames (`fix/engine-clock-deadlines`, 2026-11-27)
+
+Two Swift checks failed on `main` after `fix/safari-live-reflow`, both from the stand-in's virtual clock
+(`FakeHostWorld.sleep`: the clock moves to a sleeper's wake once it's been the earliest for three turns in a row):
+- **"…a page that never answers"** (live-resize-tests.swift, every run on this Mac, 3 of 3): its asks at 0.48, 5.48,
+  6.48 s, the first cap looking like 5 s, not 1. The engine's `capped` started its timer in a Task of its own, whose
+  sleep wasn't registered yet when the test's one `sleep(5)` after the drag became the earliest: the clock went
+  straight past the cap. **Fixed at the cause**: `HostSystem.deadline(_:)`, a deadline on the engine's clock set when
+  it's called (the protocol's default, for every real clock (RealHostSystem, the e2e glue world): its time taken then;
+  the stand-in's own: its sleeper registered then), awaited in the Task.
+  `capped` and `sizeTilesWhenHeldEnds` (the hold's end) use it, the only two timers the engine starts in a Task of
+  their own. The check passes with its `sleep(5)` unchanged.
+- **"screen: a re-entry held by the loop guard's hold"** (screen-engine-tests.swift, 3 in 40 runs four at a time, 1 in
+  7 alone): the hold's end fired on time (7.53 s, instrumented), but the work it starts (`sizeTilesSoon`, a Task into
+  `serial`, the re-entry) takes several Task turns, and when the test's `sleep(3)` had started before it (6.53 s: when
+  depends on the turns' order, so on load) that sleeper counted its calm turns while they went on and moved the clock
+  to 9.53 s. **Fixed**: the stand-in's `pass(_:)`, time passing for a test a 10 ms frame at a time as a real clock's
+  does, so that work runs in the frame its timer fired in; the check's wait uses it. Not made the stand-in's every
+  sleep (stepping them all would call `advance()` and `onClock` each frame, which several checks count:
+  split-real-use's frames, the behaviour world's ticks). The engine's `busy` (turns under way) can't stand in for "work
+  in flight": a turn asleep is under way too.
+- **Checked**: all 2315 pass, alone and 40 runs of 40 four at a time (before: 3 of 40 failed). "panes active: keeper: a
+  step at rest… costs a few µs" fails only with eight runs at once (its time budget on a loaded Mac), not otherwise.

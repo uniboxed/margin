@@ -1614,9 +1614,10 @@ final class HostEngine {
     private func sizeTilesWhenHeldEnds(_ until: Double) {
         guard !sizeRetryWaiting else { return }
         sizeRetryWaiting = true
+        let ends = sys.deadline(max(0, until - sys.now())) // (set now: no other wait on the clock passes it first)
         Task { [weak self] in
+            await ends()
             guard let self else { return }
-            await self.sys.sleep(max(0, until - self.sys.now()))
             self.sizeRetryWaiting = false
             self.sizeTilesSoon()
         }
@@ -5337,8 +5338,9 @@ final class HostEngine {
                 once.done = true
                 k.resume(returning: v)
             }
+            let ends = sys.deadline(seconds) // (set now: no other wait on the clock passes it first)
             Task { finish(await body()) }
-            Task { await self.sys.sleep(seconds); finish(nil) }
+            Task { await ends(); finish(nil) }
         }
     }
 
