@@ -11822,3 +11822,21 @@ Two Swift checks failed on `main` after `fix/safari-live-reflow`, both from the 
   in flight": a turn asleep is under way too.
 - **Checked**: all 2315 pass, alone and 40 runs of 40 four at a time (before: 3 of 40 failed). "panes active: keeper: a
   step at rest… costs a few µs" fails only with eight runs at once (its time budget on a loaded Mac), not otherwise.
+
+## Arcadia's motion as Arc's where the screen confirms it: the peek, "+"'s popover, the menus' fade (`fix/arcadia-arc-motion`, 2026-11-27)
+
+From the Arc motion study (docs/ARC-MOTION.md, `docs/arc-motion-study`). Only what the screen confirms was changed.
+- **The peek** (the sidebar out over the page and back): Arc's springyFast (response 0.18 s, damping ratio 0.80) both
+  ways, one `linear()` sampled from it, settled at 236 ms (it was 279 ms out on a fitted spring, 180 ms `--ease` in).
+- **"+"'s popover**: in from 0.95 about its arrow's tip in 100 ms, from clear in 50 ms; out to 0.95 in 70 ms, clear in
+  50 ms; all easeOutCubic (ArcMenu's code, seen frame by frame). The × turns back as it starts closing.
+- **The right-click menus**: in at once, faded out in 120 ms (macOS's own menus in Arc: about 117 ms on screen).
+- **A slot's way out** (render.ts `SlotBinding`, for any theme): when its test stops holding, the slot is marked
+  `m-closing`, inert and `pointer-events: none` (Margin.app's hit regions skip it: a click there reaches the page). The
+  part leaves when the animations that mark started have finished, at most 400 ms. With none it goes at once, as
+  before. Shown again meanwhile, the mark goes and the part stays. Only animations started by the mark are waited
+  for, so a part's own running ones (a loader's) never hold it.
+- **Not changed, the code and the screen disagreeing** (the code's times are labelled by the binary's neighbourhood,
+  not by symbol): the dock's swap (code 130 ms easeOutCubic; screen ≈ 230 ms in and out), the tooltip (code a 50 ms
+  fade; screen at once), "↓ Clear" (code 175 ms; screen at once). To measure again side by side before changing.
+- **Reduced motion**: the menus in and out at once, the peek as before (no transition).

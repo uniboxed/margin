@@ -981,6 +981,50 @@ for (const [engineName, engine] of ENGINES) {
         await page.keyboard.press('Escape');
       });
 
+      // Arc's motion (docs/ARC-MOTION.md): "+"'s popover in from 0.95 about its arrow and out to it; the right-click menus
+      // in at once and faded out (macOS's); the peek on Arc's springyFast both ways.
+      await t.test('motion as Arc\'s: "+"\'s popover in and out; the menus faded out, inert meanwhile; the peek\'s spring both ways', async () => {
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        const anims = () => ev(() => { const m = document.querySelector('m-menu')!; return { closing: m.hasAttribute('m-closing'), inert: (m as HTMLElement).inert, there: !!m.querySelector('.tab-menu'), names: m.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').map((a) => `${(a as CSSAnimation).animationName} ${a.effect!.getComputedTiming().duration}`).sort() }; });
+        const add = (await rect('.bar .add'))!;
+        await page.mouse.click(add.x, add.y);
+        assert.deepEqual((await anims()).names, ['arcadia-pop-grow 100', 'arcadia-pop-show 50'], '"+": grown and shown');
+        const origin = await ev(() => { const m = document.querySelector('.tab-menu') as HTMLElement; return [getComputedStyle(m).transformOrigin, `${m.offsetWidth - 16}px ${m.offsetHeight + 6}px`]; });
+        assert.equal(origin[0], origin[1], 'about its arrow\'s tip (16 px in from its right, 6 px under it)');
+        await page.waitForTimeout(150);
+        await page.keyboard.press('Escape');
+        assert.deepEqual(await anims(), { closing: true, inert: true, there: true, names: ['arcadia-pop-hide 50', 'arcadia-pop-shrink 70'] }, 'out: shrunk and hidden, inert meanwhile');
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('m-menu')!).pointerEvents), 'none', 'taking no pointer');
+        await page.waitForTimeout(160);
+        assert.deepEqual(await anims(), { closing: false, inert: false, there: false, names: [] }, 'then gone');
+        // A tab's menu: in at once, faded out; shown again while it fades, it stays.
+        const tab = (await ev(() => T.rtTodayIds(1)))[0];
+        await ev((id) => T.rtSetUi({ menu: { kind: 'tab', id, x: 40, y: 400 } }), tab);
+        assert.deepEqual((await anims()).names, [], 'a menu in at once');
+        await ev(() => T.rtSetUi({ menu: null }));
+        assert.deepEqual(await anims(), { closing: true, inert: true, there: true, names: ['arcadia-menu-out 120'] }, 'faded out');
+        await ev((id) => T.rtSetUi({ menu: { kind: 'tab', id, x: 40, y: 400 } }), tab);
+        await page.waitForTimeout(200);
+        assert.deepEqual(await anims(), { closing: false, inert: false, there: true, names: [] }, 'shown again while it faded: it stays');
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.tab-menu')!).opacity), '1');
+        await ev(() => T.rtSetUi({ menu: null }));
+        await page.waitForTimeout(200);
+        assert.equal((await anims()).there, false);
+        // The peek: Arc's spring out and back in, one linear() easing (236 ms).
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', container: 'document', settings: { sidebarPinnedOpen: false } }));
+        const feel = () => ev(() => { const s = getComputedStyle(document.querySelector('.margin-sidebar')!); return [s.transitionDuration.split(', ')[0], /^linear\(0[ ,%0-9.]*, 0\.049[ ,%0-9.]*, 0\.1627.*1\.0151/.test(s.transitionTimingFunction) || s.transitionTimingFunction]; });
+        const hidden = await feel();
+        await ev(() => T.rtSetUi({ sidebar: 'peek' }));
+        assert.deepEqual([hidden, await feel()], [['0.236s', true], ['0.236s', true]], 'in and out alike');
+        await ev(() => T.rtSetUi({ sidebar: null }));
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+        // (Mounted again as the "+" test left it: the next test starts there.)
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+      });
+
       await t.test('the inert controls do nothing; the space\'s ••• opens its menu under it', async () => {
         const before = [await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)];
         const title = (await rect('.space-title'))!;

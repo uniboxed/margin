@@ -60,6 +60,7 @@
   --drop: var(--accent);
   --danger: #d70015;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1); /* Arc's easeOutCubic (docs/ARC-MOTION.md) */
   /* Where the page card is: inside the frame (8 px), right of the sidebar when
      it's docked; its corner Arc's, 6 px (measured: docs/ARC-SIDEBAR.md "The
      window and the page card"; Tirth's, 2026-11-25). The sidebar out over the
@@ -363,15 +364,16 @@
   box-shadow: 0 1px 9px rgba(0, 0, 0, 0.17);
   transform: translateX(calc(-100% - 2 * var(--frame-inset)));
   visibility: hidden;
-  transition: transform 180ms var(--ease), visibility 0s linear 180ms;
+  transition: transform 236ms var(--peek-spring), visibility 0s linear 236ms;
 }
-/* Out over the page: Arc's spring (measured frame by frame: response 205 ms, damping 0.79, a 1.7% overshoot: 4.5 pt
-   past its place and back), sampled into one linear() easing the browser runs. (Going back in: Arcadia's own; Arc's
-   wasn't measured.) */
+/* Out over the page and back in: Arc's springyFast both ways (its preset, response 0.18 s, damping ratio 0.80, read
+   from its code; on screen it fits within 0.83 px out and 1.7 px back in: docs/ARC-MOTION.md), a 1.5% overshoot,
+   sampled into one linear() easing the browser runs, settled at 236 ms. */
+.arcadia { --peek-spring: linear(0, 0.049, 0.1627, 0.3035, 0.4473, 0.58, 0.6943, 0.7877, 0.8608, 0.9154, 0.9546, 0.9813, 0.9984, 1.0084, 1.0134, 1.0151, 1.0147, 1.0132, 1.0111, 1.0089, 1.0069, 1.005, 1.0035, 1.0024, 1); }
 .arcadia[data-sidebar="peek"] .margin-sidebar {
   transform: none;
   visibility: visible;
-  transition: transform 279ms linear(0, 0.0525, 0.1735, 0.3217, 0.4713, 0.6073, 0.7225, 0.8147, 0.8851, 0.9362, 0.9714, 0.9942, 1.0078, 1.0147, 1.0173, 1.0171, 1.0153, 1.0128, 1.0102, 1.0077, 1.0056, 1.0038, 1.0024, 1.0014, 1);
+  transition: transform 236ms var(--peek-spring);
 }
 .arcadia.m-resizing .margin-sidebar, .arcadia.m-resizing .margin-sidebar * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .margin-sidebar { transition: none !important; } }
@@ -872,6 +874,10 @@
 }
 .tab-menu .menu-item:focus { background: var(--accent); color: var(--on-accent); }
 .menu-separator { height: 1px; margin: 5px 10px; background: var(--panel-line); }
+/* In at once and faded out, as Arc's (macOS's own menus: about 117 ms out, measured on screen; docs/ARC-MOTION.md).
+   (Margin keeps the menu while it fades: m-menu[m-closing], inert.) */
+m-menu[m-closing] .tab-menu:not(.arc) { animation: arcadia-menu-out 120ms linear both; }
+@keyframes arcadia-menu-out { to { opacity: 0; } }
 
 /* "+" as Arc's (the theme's --m-add-menu: arc; Margin's menu.arc; M2.10, docs/ARC-SIDEBAR.md, read from Arc's popover):
    a dark panel in the space's colour (Arc's #140f00 over its beige space) over the "+", its right edge on the
@@ -895,6 +901,19 @@
   translate: calc(-100% + 32px) -10px;
 }
 .tab-menu.arc::after { content: ""; position: absolute; right: 10px; bottom: -6px; width: 12px; height: 6px; background: var(--arc-menu); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+/* Its motion Arc's (ArcMenu, read from its code and seen frame by frame; docs/ARC-MOTION.md): in, from 0.95 to its size
+   about its arrow's tip in 100 ms and from clear in 50 ms; out, back to 0.95 in 70 ms and clear in 50 ms; all
+   easeOutCubic. */
+.tab-menu.arc {
+  transform-origin: calc(100% - 16px) calc(100% + 6px);
+  animation: arcadia-pop-grow 100ms var(--ease-out-cubic) both, arcadia-pop-show 50ms var(--ease-out-cubic) both;
+}
+m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-out-cubic) both, arcadia-pop-hide 50ms var(--ease-out-cubic) both; }
+@keyframes arcadia-pop-grow { from { scale: 0.95; } }
+@keyframes arcadia-pop-show { from { opacity: 0; } }
+@keyframes arcadia-pop-shrink { to { scale: 0.95; } }
+@keyframes arcadia-pop-hide { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tab-menu, m-menu[m-closing] .tab-menu { animation: none; } }
 .tab-menu .menu-item { display: flex; align-items: center; }
 .tab-menu .menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tab-menu:not(.arc) .menu-icon { display: none; }
@@ -909,7 +928,7 @@
 .tab-menu.arc .menu-separator { height: 1px; margin: 8px 6px; background: rgba(255, 255, 255, 0.1); }
 .tab-menu.arc .menu-item.inert { cursor: default; }
 .margin-sidebar .bar .add .plus-icon { transition: rotate 150ms var(--ease); }
-.arcadia:has(.tab-menu.arc) .margin-sidebar .bar .add .plus-icon { rotate: 45deg; }
+.arcadia:has(m-menu:not([m-closing]) .tab-menu.arc) .margin-sidebar .bar .add .plus-icon { rotate: 45deg; }
 
 /* ---- Notices and prompts (Margin's <m-notice> and <m-prompt>) --------------- */
 

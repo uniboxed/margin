@@ -143,6 +143,11 @@ Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `toast`, `preview`, `launcher`, `settings`, `window-controls`, `page-loader`, `background-picker`. What a theme puts
 inside a slot is used when it has no part for it.
 
+A slot's way out: when its "While" stops holding, Margin marks the slot `m-closing` (inert, taking no pointer) and
+takes the part away once the animations that mark starts have finished (at most 400 ms; endless ones aren't waited
+for). Without any, it goes at once, as before. Arcadia's menus fade out so:
+`m-menu[m-closing] .tab-menu { animation: … }`. Shown again before then, the slot drops the mark and keeps the part.
+
 ### The preview card and Quick Tab (the `preview` part)
 
 Margin.app shows a link in a preview card over the page (Shift+click, or a click to another site from a pinned tab or a
