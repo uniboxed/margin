@@ -67,10 +67,14 @@ const windowId = self?.windowId ?? null;
 const modeOf = (link: any) => (!appDraws(link) ? 'off' : undrawn(link, windowId) ? 'undrawn' : 'app');
 let mode: 'app' | 'undrawn' | 'off' | null = null; // decided by the first read
 let appLinkNow = (null as any);
-// What the link is now: loaded again if this page should show something else; else its words.
+// What the link is now: loaded again when the app starts or stops drawing over this window (`app` or not); else its
+// words. (Not linked ↔ linked with nothing drawn here: no reload. A new tab being handed to the browser's own as the
+// app links meanwhile, Safari's first window as Margin.app starts, would come back not fresh and show the notice.)
 const take = (link: any) => {
   if (mode == null) return;
-  if (modeOf(link) !== mode) return void location.reload();
+  const next = modeOf(link);
+  if ((next === 'app') !== (mode === 'app')) return void location.reload();
+  mode = next;
   appLinkNow = link;
   if (mode !== 'app') describe(link);
 };
