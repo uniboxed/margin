@@ -325,7 +325,9 @@ test('theme.json: systemMaterials is a plain yes or no, read before the theme lo
 });
 
 test('values Margin binds into CSS variables: colors and lengths, never URLs, strings or escapes', () => {
-  for (const ok of ['#ffd23f', 'red', '12px', 'rgb(1 2 3 / 50%)', 'calc(100% - 4px)', 'color-mix(in srgb, red, blue)', 3, '-1.5em']) assert.equal(checkCssValue(ok), true, String(ok));
+  for (const ok of ['#ffd23f', 'red', '12px', 'rgb(1 2 3 / 50%)', 'calc(100% - 4px)', 'color-mix(in srgb, red, blue)', 3, '-1.5em', 'linear-gradient(180deg, #3d6fd1, #e8a33b)', 'linear-gradient(to bottom, rgb(1 2 3) 10%, #fff)']) assert.equal(checkCssValue(ok), true, String(ok));
+  // (A gradient holds only what a value may: no picture, no other image function inside it.)
+  for (const bad of ['linear-gradient(url(x), red)', 'linear-gradient(red, image-set("x" 1x))', 'linear-gradient(red, "x")', 'radial-gradient(red, blue)', 'repeating-linear-gradient(red, blue)', 'cross-fade(red, blue)']) assert.equal(checkCssValue(bad), false, bad);
   for (const bad of ['url(https://evil.test/x)', 'u\\72l(x)', '"a"', "'x'", 'red;background:url(x)', 'image-set("x" 1x)', 'red !important', 'attr(x)', '{', 'a\nb', 'x'.repeat(300), NaN, Infinity, null, {}, 'expression(1)', 'env(x)', 'src("x")']) {
     assert.equal(checkCssValue(bad), false, String(bad));
   }

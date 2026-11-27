@@ -12019,3 +12019,12 @@ observer follows it by the lists alone, as when it's narrow.
   at all is left open.
 - **Not changed**: the screen tests' and the behaviour world's own strip checks (their independent judge of "no stray
   strip on screen", by width and height): they never hover a link.
+
+## A space's colours bound as a gradient: `linear-gradient` in bound values (`fix/library-card-gradient`, 2026-11-27)
+
+The Library's Spaces cards bind `--card-ground` to the space's colours as one `linear-gradient(180deg, …)` (view
+model's `ground`, a space of two colours or more). `checkCssValue` allowed only colour and maths functions, so every
+such card's ground was refused (Margin.app's log: "m-style:--card-ground: value refused", 30 times in one Library
+visit) and the card showed the theme's plain colour under Margin's drawing of its background. `linear-gradient` is now
+allowed in bound values: it loads nothing, and what's inside it is held to the same list (no `url()`, no strings, no
+other image function: `radial-gradient`, `repeating-linear-gradient`, `image-set`, `cross-fade` still refused).

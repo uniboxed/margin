@@ -1344,6 +1344,10 @@ for (const [engineName, engine] of ENGINES) {
         assert.ok(dark && plain, JSON.stringify(cards.map((c) => c.id)));
         assert.deepEqual([dark.grounded, dark.drawn], [true, true], 'its space\'s background drawn in it by Margin');
         assert.deepEqual([plain.grounded, plain.drawn], [false, false], 'a space with none: the theme\'s colour');
+        // (Its colours as the card's own ground under Margin's drawing, a gradient bound in (refused until 2026-11-27:
+        // Margin.app's log said "m-style:--card-ground: value refused" for every such card).)
+        assert.deepEqual(await ev(([a, b]) => [a, b].map((id) => document.querySelector<HTMLElement>(`.lib-card[data-space-id="${id}"]`)!.style.getPropertyValue('--card-ground')), [ids[1], ids[0]] as const), ['linear-gradient(180deg, #1b2a4a, #3a2b5c)', ''], 'the card\'s ground: its colours');
+        assert.deepEqual((await ev(() => T.rtWarnings())).filter((w) => w.includes('--card-ground')), [], 'none refused');
         const bg = backgroundOf(DARK) as SpaceBackground;
         const want = lookOf(bg, appearanceOf(bg, false), { size: { width: dark.w, height: dark.h } }).vars['--m-fg'];
         const hex = (rgb: string) => `#${(rgb.match(/\d+/g) ?? []).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
