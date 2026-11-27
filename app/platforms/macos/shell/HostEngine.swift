@@ -5212,19 +5212,32 @@ final class HostEngine {
             liveStats = LiveStats(since: sys.now())
             liveRects = [:]
             // (Its minimum read once more as the drag begins (one read, none per frame): the page's edge stops there.)
-            if host.tile != nil { learnMinimum(host); _ = sys.setLiveResizing(marginSpace, true) }
+            liveSpace = nil
+            if host.tile != nil { learnMinimum(host); liveBegin() }
             for o in others.compactMap({ byHandle[$0] }) where o.tile != nil {
                 learnMinimum(o)
-                if host.tile == nil { _ = sys.setLiveResizing(marginSpace, true) }
+                liveBegin()
             }
+            Diagnostics.note("host: live resize: began, \(host.id) at \(Int(sys.bounds(window: host.window)?.width ?? 0)) pt: " + (liveSpace.map { "Margin's Space \($0.space) told\($0.taken ? "" : " (NOT taken)")" } ?? "no tile follows, Margin's Space not told"))
             return true
         }
         guard core.liveEnd() else { return false }
         liveRects = [:]
-        if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
-        Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)")
+        // (Told it's over whenever it was told it began, tiles on or not now: a Space left in its live resize keeps its
+        // windows' own (a web view in one lays out at the width it began at and shrinks to fit any narrower).)
+        let told = liveSpace
+        liveSpace = nil
+        let over = told.map { sys.setLiveResizing($0.space, false) }
+        Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)" + (over.map { $0 ? "; its Space told it's over" : "; its Space told it's over (NOT taken)" } ?? ""))
         lastLive = liveStats
         return true
+    }
+
+    // Margin's Space told a live resize began, once a drag (`dragging`): the Space, and whether the window server took it.
+    private var liveSpace: (space: UInt64, taken: Bool)?
+    private func liveBegin() {
+        guard liveSpace == nil else { return }
+        liveSpace = (marginSpace, sys.setLiveResizing(marginSpace, true))
     }
 
     // The one shown is a tile: it fills the page area as it follows a drag (a window-mode one may be smaller, centred).

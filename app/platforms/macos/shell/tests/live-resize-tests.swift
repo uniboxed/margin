@@ -342,6 +342,22 @@ func liveResizeTests() {
               "\(String(describing: r)) \(String(describing: e.tilesOff))")
     }
     do {
+        // The tiles off during a drag (another app's tile rect didn't take): Margin's Space still told the drag is over.
+        // Left in its live resize, a Space keeps its windows' own: a Safari tab lays out at the width the drag began at and
+        // shrinks to fit any narrower, through a reload (the real Mac, 2026-11-26).
+        let (w, e, _) = world()
+        _ = open(e, textEdit)
+        let follows = e.dragging(true)
+        let begun = w.liveResizing[FakeHostWorld.marginSpace] == true
+        w.rectsIgnored = true
+        _ = open(e, notes)
+        let off = e.tilesOff != nil
+        _ = e.dragging(false)
+        check("live resize: the tiles off during a drag: Margin's Space still told it's over",
+              follows && begun && off && w.liveResizing[FakeHostWorld.marginSpace] == false && w.calls.last == "liveResizing \(FakeHostWorld.marginSpace) false",
+              "\(follows) \(begun) \(off) \(w.calls.suffix(4))")
+    }
+    do {
         let (w, e, _) = world()
         w.tileWindow[FakeHostWorld.marginTile] = 999 // (Margin's own tile not found by its window)
         _ = open(e, textEdit)
