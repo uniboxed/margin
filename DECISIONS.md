@@ -12028,3 +12028,13 @@ such card's ground was refused (Margin.app's log: "m-style:--card-ground: value 
 visit) and the card showed the theme's plain colour under Margin's drawing of its background. `linear-gradient` is now
 allowed in bound values: it loads nothing, and what's inside it is held to the same list (no `url()`, no strings, no
 other image function: `radial-gradient`, `repeating-linear-gradient`, `image-set`, `cross-fade` still refused).
+
+## "↓ Clear" as Arc's: no fill, the line stopping before it (`fix/arcadia-clear`, 2026-11-27)
+
+Tirth's screenshot beside Arc's: Arcadia's Clear sat on a patch of `--frame` (the space's background as one flat
+colour, over the grain and off its hue: 191,207,241 on a 200,198,242 ground), the Today line running under it. Arc's
+(measured from that screenshot, 2×): no fill; its words in New Tab's muted colour (the same darkest pixel), ending 10
+pt in from the rows' right edge; the hairline (black at about 13%) stopping 8 pt before the arrow. Now Clear is in the
+line's row after it (no longer laid over it), with no fill: the line stops 8 pt before the arrow, its words where they
+were (10 pt in), and its place is kept while it's hidden, so the line never moves as the pointer comes and goes. With
+no tabs today (no Clear) the line runs to 10 pt in, as before. Its text colour was already Arc's (`--muted`, New Tab's).

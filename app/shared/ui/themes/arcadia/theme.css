@@ -135,7 +135,7 @@
 /* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
    m-background while one shows, m-appearance its light or dark). The ground gives way to it: the frame's spread and
    the docked sidebar are clear. The frame's colour is the background as one colour (--m-bg), for what lies over the
-   page (the sidebar out as a card, a divider, the page's picture, Clear's patch) and the fills mixed from it. On the
+   page (the sidebar out as a card, a divider, the page's picture) and the fills mixed from it. On the
    docked sidebar, which lies on the background, the text is Margin's palette and the fills are translucent whites,
    as Arcadia's own are over its tint (the menus and panels keep theirs, drawn in the page's appearance: the background's
    in Margin.app's window, the system's in the extension's overlay). */
@@ -505,10 +505,16 @@
 .margin-sidebar .divider { height: 1px; margin: 10px 10px; background: var(--border); }
 /* The line above today's tabs. Arc's (measured): 30 pt between the rows
    around it, a hairline in the middle 10 pt in from the rows' edges; "↓ Clear"
-   at its right while the pointer is anywhere in the sidebar, at once. */
-.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; height: 30px; padding: 0 10px; }
+   at its right while the pointer is anywhere in the sidebar, at once. Clear as
+   Arc's (Tirth's screenshot beside Arcadia's, 2026-11-27): no fill, its words
+   on the sidebar itself in New Tab's muted colour, ending 10 pt in from the
+   rows' right edge; the line stopping 8 pt before its arrow. Its place kept
+   while it's hidden (the line never moves); no Clear (no tabs today), the
+   line to 10 pt in, as before. */
+.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 6px 0 10px; }
+.margin-sidebar .today-split:not(:has(.clear)) { padding-right: 10px; }
 .margin-sidebar .today-split .rule { flex: 1; height: 0.5px; background: var(--rule); }
-.margin-sidebar .clear { position: absolute; top: 6.5px; right: 6px; display: flex; align-items: center; gap: 3px; height: 17px; padding: 0 4px 0 6px; border-radius: 4px; background: var(--frame); color: var(--muted); font-size: 11px; font-weight: 600; visibility: hidden; }
+.margin-sidebar .clear { flex: none; display: flex; align-items: center; gap: 3px; height: 17px; padding: 0 4px 0 6px; border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 600; visibility: hidden; }
 .margin-sidebar .clear-icon { width: 7.738px; height: 9.362px; stroke-width: 1.362; }
 .margin-sidebar:hover .clear, .margin-sidebar .clear:focus-visible { visibility: visible; }
 .margin-sidebar .clear:hover { color: var(--fg); }
