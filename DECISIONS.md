@@ -11645,3 +11645,14 @@ page's zoom or scale), not Safari's per-site zoom (a new tab of the site is whol
   fresh tab every time before now ends "whole again" every time (five tabs, two drags each), the page at its width.
 - **Tests:** live-resize-tests.swift (a Safari tile narrowed: at its widest and back, under the freeze, said once; a
   widening drag and another app's narrowed tile untouched), page-scale.test.ts (the page's reports).
+- **Live reflow while dragging, looked for and not taken** (2026-11-26): Safari reflows live in a plain window (its edge
+  dragged, or resized by Accessibility 60 times a second) and in macOS's own full-screen split view (its divider
+  dragged): scale 1 throughout. It shrinks only when its tile's rect is set from outside (Margin's way). The Space's
+  values are the same in both (`TileLayoutManager.LiveResizing` 1 during, removed after: read on the real Mac); the
+  difference is the window manager moving the divider between tiles (`SLSBridgedSpaceClientDrivenMoveSpacersToPoint
+  …`), which asks the app to resize itself in step. A tile's size through the window manager's own resize
+  (`SLSBridgedTileSpaceMoveSpacersForSizeOperation`, tried in a build) is taken but moves nothing: Margin's tiles have
+  no divider (its own tile under the whole page, the hosted one over the page area). A real split of Margin's Space
+  (its tile and the hosted one side by side) would get it; Tirth turned it down: it wouldn't look right and would
+  restrict the layout. So the page shrinks while a drag narrows Safari (Safari's own) and is laid out at its width
+  once it's let go (`relayNarrowed`).
