@@ -944,7 +944,7 @@ for (const [engineName, engine] of ENGINES) {
         await away();
       });
 
-      await t.test('"+" as Arc\'s: its popover over the button, its items; Easel and Boost do nothing; New Tab does', async () => {
+      await t.test('"+" as Arc\'s: its popover over the button, its items (Arc\'s without New Easel); Boost does nothing; New Tab does', async () => {
         await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', platform: { browser: 'safari', os: 'mac', features: { newSplit: true } } }));
         await page.waitForFunction(() => T.rtLayouts().length > 0);
         const add = (await rect('.bar .add'))!;
@@ -952,18 +952,18 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForTimeout(220); // (the "+" turns in 150 ms)
         const menu = await ev(() => { const m = document.querySelector('.tab-menu')!; const b = m.getBoundingClientRect(); return { arc: m.classList.contains('arc'), labels: [...m.querySelectorAll('.menu-label')].map((l) => l.textContent), keys: [...m.querySelectorAll('.menu-item')].map((i) => i.querySelector('.menu-keys')?.textContent ?? ''), right: Math.round(b.right), bottom: Math.round(b.bottom), width: Math.round(b.width) }; });
         assert.equal(menu.arc, true);
-        assert.deepEqual(menu.labels, ['New Space', 'New Folder', 'New Easel', 'New Boost', 'New Split', 'New Tab'], 'Arc\'s items, in its order');
-        assert.deepEqual(menu.keys, ['', '', '', '', '⌃⇧=', '⌘T']);
+        assert.deepEqual(menu.labels, ['New Space', 'New Folder', 'New Boost', 'New Split', 'New Tab'], 'Arc\'s items, in its order, without New Easel (Margin won\'t have Easels)');
+        assert.deepEqual(menu.keys, ['', '', '', '⌃⇧=', '⌘T']);
         assert.deepEqual([menu.width, menu.right], [210, Math.round(add.right)], 'its right edge on the button\'s');
         assert.ok(menu.bottom <= add.top - 10, `over the button, its arrow between (${menu.bottom}, ${add.top})`);
         assert.equal(await ev(() => getComputedStyle(document.querySelector('.bar .add .plus-icon')!).rotate), '45deg', '"+" as ×');
         const inert = await ev(() => [...document.querySelectorAll('.tab-menu .menu-item')].filter((i) => i.getAttribute('aria-disabled') === 'true').map((i) => [i.querySelector('.menu-label')!.textContent, i.getAttribute('title')]));
-        assert.deepEqual(inert, [['New Easel', 'Easels aren’t in Margin yet: coming soon'], ['New Boost', 'Boosts aren’t in Margin yet: coming soon']]);
+        assert.deepEqual(inert, [['New Boost', 'Boosts aren’t in Margin yet: coming soon']]);
         const sent = (await ev(() => T.rtSent())).length;
-        const easel = await ev(() => T.rtBoxText('.tab-menu .menu-label', 'New Easel'));
-        await page.mouse.click(easel!.x, easel!.y);
+        const boost = await ev(() => T.rtBoxText('.tab-menu .menu-label', 'New Boost'));
+        await page.mouse.click(boost!.x, boost!.y);
         await page.waitForTimeout(40);
-        assert.deepEqual([(await ev(() => T.rtSent())).length, (await ev(() => T.rtUi())).menu?.kind], [sent, 'add'], 'Easel: nothing, the menu stays');
+        assert.deepEqual([(await ev(() => T.rtSent())).length, (await ev(() => T.rtUi())).menu?.kind], [sent, 'add'], 'Boost: nothing, the menu stays');
         const tab = await ev(() => T.rtBoxText('.tab-menu .menu-label', 'New Tab'));
         await page.mouse.click(tab!.x, tab!.y);
         await page.waitForTimeout(60);
@@ -975,7 +975,7 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForFunction(() => T.rtLayouts().length > 0);
         await page.mouse.click(add.x, add.y);
         await page.waitForTimeout(80);
-        assert.deepEqual(await ev(() => [...document.querySelectorAll('.tab-menu .menu-label')].map((l) => l.textContent)), ['New Space', 'New Folder', 'New Easel', 'New Boost', 'New Tab']);
+        assert.deepEqual(await ev(() => [...document.querySelectorAll('.tab-menu .menu-label')].map((l) => l.textContent)), ['New Space', 'New Folder', 'New Boost', 'New Tab']);
         await page.keyboard.press('Escape');
       });
 
@@ -1463,7 +1463,7 @@ for (const [engineName, engine] of ENGINES) {
           line: document.querySelector('.lib-empty-text')?.textContent?.trim() ?? null,
         }));
         const a = await read();
-        assert.deepEqual(a.sections.map(([l]) => l), ['Media', 'Downloads', 'Easels', 'Spaces', 'Boosts', 'Archived Tabs'], 'Arc\'s rail, in its order');
+        assert.deepEqual(a.sections.map(([l]) => l), ['Media', 'Downloads', 'Spaces', 'Boosts', 'Archived Tabs'], 'Arc\'s rail, in its order, without Easels');
         assert.deepEqual(a.sections.find(([, on]) => on)?.[0], 'Archived Tabs', 'Archived Tabs first');
         assert.deepEqual([a.placeholder, a.filter], ['Search Archive…', true]);
         assert.deepEqual(a.days, ['Today', '1 week ago']);
@@ -1479,18 +1479,18 @@ for (const [engineName, engine] of ENGINES) {
         await page.locator('.lib-row').nth(1).click();
         assert.deepEqual((await ev(() => T.rtSent())).filter(([k]) => k === 'restoreArchive').map(([, p]) => p.archiveId), ['a2'], 'restored');
         // A section Margin hasn't got: chosen, its words.
-        await page.locator('.lib-section').nth(2).click();
+        await page.locator('.lib-section').nth(3).click();
         const e = await read();
-        assert.deepEqual([e.empty, e.line, e.placeholder, e.filter, e.rows.length], ['Out of ideas!', 'Click the + sign in the Sidebar to create a new Easel.', 'Search Easels…', false, 0], 'Arc\'s words');
+        assert.deepEqual([e.empty, e.line, e.placeholder, e.filter, e.rows.length], ['Nothing Boosted Yet!', 'Type \u201cNew Boost\u201d in URL bar to make your own, or grab one from the Boost Gallery.', 'Search Boosts…', false, 0], 'Arc\'s words');
         // Arc's words for each (read from its app), its icons: the one shown filled white, darker.
         await page.locator('.lib-section').nth(1).click();
         assert.deepEqual([(await read()).empty, (await read()).line], ['Nothing here yet!', 'Come back after you\u2019ve found some cool stuff to save.']);
-        await page.locator('.lib-section').nth(4).click();
+        await page.locator('.lib-section').nth(3).click();
         assert.equal((await read()).empty, 'Nothing Boosted Yet!');
         const fills = await ev(() => [...document.querySelectorAll('.lib-section')].map((b) => getComputedStyle(b.querySelector('.li:not([style*="none"]) .s, .li .s')!).fill));
-        assert.ok(fills[4] !== fills[0] && /255, 255, 255|#fff/.test(fills[4]), `the one shown filled white (${fills.join(' / ')})`);
+        assert.ok(fills[3] !== fills[0] && /255, 255, 255|#fff/.test(fills[3]), `the one shown filled white (${fills.join(' / ')})`);
         // Spaces: Arc's space manager across the window, a card per space as its sidebar has it.
-        await page.locator('.lib-section').nth(3).click();
+        await page.locator('.lib-section').nth(2).click();
         assert.equal((await read()).placeholder, null, 'Spaces: no search, as Arc\'s');
         await page.waitForTimeout(300);
         const cards = await ev(() => [...document.querySelectorAll('.lib-card')].map((c) => ({ name: c.querySelector('.lc-name')!.textContent!.trim(), rows: c.querySelectorAll('.lc-row').length, width: c.getBoundingClientRect().width })));

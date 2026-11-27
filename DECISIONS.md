@@ -11679,3 +11679,11 @@ page's zoom or scale), not Safari's per-site zoom (a new tab of the site is whol
   (its tile and the hosted one side by side) would get it; Tirth turned it down: it wouldn't look right and would
   restrict the layout. So the page shrinks while a drag narrows Safari (Safari's own) and is laid out at its width
   once it's let go (`relayNarrowed`).
+
+## No Easels (`refactor/no-easels`, 2026-11-27)
+
+Tirth: Margin won't have Arc's Easels. Gone wherever they were drawn: the Library's rail (Media, Downloads, Spaces,
+Boosts, Archived Tabs), its words for an empty Easels (and its note icon), the "+" menu's New Easel (Boost stays, inert)
+and Arcadia's glyphs and rules for them; the view model's `library.sections[]`, the `library.section` action's ids and
+the themes README with them. A Library last left on Easels opens on Archived Tabs (the view model's fallback for a
+section it doesn't know). docs/ARC-SIDEBAR.md still describes Arc's Easels as measured: that's Arc, not Margin.
