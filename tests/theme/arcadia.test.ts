@@ -1088,6 +1088,17 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtDispatch('newSpace.cancel'));
       });
 
+      await t.test('Margin.app\'s window: the palette\'s Archive opens the Library at its Archive (no launcher page there)', async () => {
+        await fresh({ appWindow: true });
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.keyboard.type('archive');
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.palette.rows.some((r: any) => r.id === 'action:launcher'), null, { timeout: 2000 });
+        await ev(() => T.rtDispatch('palette.run', 'action:launcher'));
+        await page.waitForFunction(() => (window as any).__rt.runtime.vm.library.open && (window as any).__rt.runtime.vm.library.section === 'archive', null, { timeout: 2000 });
+        assert.equal((await ev(() => T.rtUi())).palette.open, false, 'the palette closed');
+        await ev(() => T.rtDispatch('library.close'));
+      });
+
       await t.test('a key\'s switch of space while the Library or Create a Space is open: they go, and that space is shown', async () => {
         await fresh();
         const ids = await ev(() => (window as any).__rt.mock.state.spaces.map((s: any) => s.id) as string[]);

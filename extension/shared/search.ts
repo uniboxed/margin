@@ -136,7 +136,7 @@ export type PaletteItem = {
 
 // Everything the palette can offer for this window. `ctx`:
 // { windowId, tabId, inNewTab, canToggleSidebar, canFullscreen }.
-function paletteItems(state: State, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }) {
+function paletteItems(state: State, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; appWindow?: boolean; }) {
   const view = V;
   const spaceId = view.activeSpaceId(state, ctx.windowId);
   const spaceOf = (id: string | undefined) => state.spaces.find((s) => s.id === id);
@@ -224,7 +224,9 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
   // A Margin window of its own, in full screen like this one, on its space (background/handlers.ts newWindow).
   action('new-window', 'New window', { type: 'newWindow', ...(ctx.windowId != null ? { fromWindowId: ctx.windowId } : {}) }, { emoji: '⧉' });
   action('settings', 'Settings', { type: 'openLauncher', windowId: ctx.windowId, settings: true }, { emoji: '⚙︎' });
-  if (!ctx.inNewTab) action('launcher', 'Archive', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '◷' });
+  // Archive: the Library's (Arc's) in Margin.app's own window, which has no launcher page; else the launcher's.
+  if (ctx.appWindow) action('launcher', 'Archive', { local: 'archive' }, { emoji: '◷' });
+  else if (!ctx.inNewTab) action('launcher', 'Archive', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '◷' });
   if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
   // Chrome: full screen with no toolbar (extension/engines/chromium/fullscreen.ts).
   if (ctx.canFullscreen) action('fullscreen', 'Margin full screen (no toolbar) on/off', { type: 'toggleFullscreen', windowId: ctx.windowId }, { emoji: '⛶' });
@@ -336,7 +338,7 @@ function engineName(state: State) {
 
 // Ranked palette results for `query`: with nothing typed, Margin's own rows; typed, the order above, its "Open URL"
 // row first when the text is an address.
-function rankPalette(state: State, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }, limit = 40) {
+function rankPalette(state: State, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; appWindow?: boolean; }, limit = 40) {
   const q = (query ?? '').trim();
   const items = paletteItems(state, ctx);
   if (!q) {

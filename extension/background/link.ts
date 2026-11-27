@@ -1546,9 +1546,8 @@ export function createLink({
     poke() {
       if (on && !ws && (busy || askTimer)) void link({ kept: false });
     },
-    // Asked for by the person (the new-tab page's "Start Margin.app"): the
-    // link asked for now, from the start of the waits (the handler starts the
-    // app if it isn't running). False where there's no link to ask for.
+    // The link asked for now, from the start of the waits (the handler starts the app if it isn't running). False
+    // where there's no link to ask for. (No page asks since 2026-11-27: the new-tab page's Start Margin.app is gone.)
     askNow() {
       if (!on) return false;
       if (ws) return true;
@@ -1559,8 +1558,8 @@ export function createLink({
       void link({ kept: false });
       return true;
     },
-    // The new-tab page's Try again with the socket guard's off (a person's choice): its notes
-    // cleared, sockets on, and the link asked for now.
+    // Try again with the socket guard's off: its notes cleared, sockets on, and the link asked for now. (No page asks
+    // since 2026-11-27, the new-tab page's Try again gone: the guard's own end, `offUntil` or Safari's next start.)
     async retrySockets() {
       if (!on) return false;
       await Promise.all([

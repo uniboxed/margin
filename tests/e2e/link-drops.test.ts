@@ -64,7 +64,7 @@ test('the app gone a moment: the overlay dimmed, "Reconnecting", pages see it re
   assert.ok((await sidebar(ui)).tabs.length >= 2, 'its rows still there');
 });
 
-test('the app gone past 6 s: off, the new-tab page says so; a new app links again', async (t) => {
+test('the app gone past 6 s: off, Margin\'s new-tab page draws nothing; a new app links again', async (t) => {
   await m.shell.kill();
   const t0 = Date.now();
   await m.until(async () => (await state()) === 'off', { timeout: 10_000, interval: 100, what: 'off' });
@@ -74,15 +74,14 @@ test('the app gone past 6 s: off, the new-tab page says so; a new app links agai
   await m.until(async () => { const l = await stored(); return l?.state === 'off' && Object.keys(l.drawn ?? {}).length === 0; }, { what: 'the copy\'s link off, no window drawn' });
   const nt = await m.context.newPage();
   await nt.goto(m.newTabUrl());
-  await nt.waitForSelector('#notice:not([hidden])');
-  assert.equal((await nt.textContent('#title'))!.trim(), 'Margin.app isn’t running');
+  await nt.waitForFunction((() => document.title === 'New Tab' && document.body.innerText.trim() === '' && !document.getElementById('notice')), null, { timeout: 8000 });
   await m.shoot(t, 'off', { page: nt });
 
   await m.shell.restart();
   await appUp();
   await m.shell.overlay();
   await m.until(async () => (await state()) === 'linked', { what: 'linked again' });
-  await nt.waitForFunction(() => document.getElementById('notice')?.hidden === true, null, { timeout: 10_000 });
+  await nt.waitForFunction((() => document.title === 'New Tab' && document.body.innerText.trim() === '' && !document.getElementById('notice')), null, { timeout: 10_000 });
   await nt.close();
   await page.bringToFront();
   await m.shoot(t, 'back');

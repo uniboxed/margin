@@ -48,13 +48,10 @@ test('linked, the overlay draws the launcher over Margin\'s new-tab page', async
   await page.close();
 });
 
-// Found by this suite (2026-11-06), fixed: newtab.html's `main { display: grid }` overrode the
-// `hidden` attribute, so the page laid its "Margin.app isn't running" notice out even while linked.
 test('linked, Margin\'s new-tab page lays out nothing of its own', async () => {
   const { page } = await newTabPage();
   try {
-    await page.waitForFunction(() => document.getElementById('notice')?.hidden === true);
-    assert.equal(await page.isVisible('#notice'), false, 'the notice is not drawn');
+    await page.waitForFunction((() => document.title === 'New Tab' && document.body.innerText.trim() === '' && !document.getElementById('notice')));
   } finally {
     await page.close();
   }
@@ -130,18 +127,18 @@ test('Margin\'s start page opened on purpose (#launcher) is drawn as the launche
   }
 });
 
-test('a window the app says it doesn\'t draw over: the page says so itself', async (t) => {
+test('a window the app says it doesn\'t draw over: the page still draws nothing, and isn\'t loaded again', async () => {
   const { page } = await newTabPage();
   const windowId = m.shell.frontWindowId();
+  await page.evaluate(() => { (window as any).__kept = true; });
   m.shell.drawn(windowId, false);
   try {
-    await page.waitForFunction(() => document.getElementById('notice')?.hidden === false, null, { timeout: 8000 });
-    assert.equal((await page.textContent('#title'))!.trim(), 'Margin.app hasn’t placed this window yet');
-    assert.equal(await page.isVisible('#start'), false, 'no Start: the app is running');
-    await m.shoot(t, 'undrawn', { page });
+    await m.until(async () => (await m.stored('appLink')).appLink?.drawn?.[windowId] === false, { what: 'its window not drawn, stored' });
+    assert.equal(await page.evaluate((() => document.title === 'New Tab' && document.body.innerText.trim() === '' && !document.getElementById('notice'))), true, 'nothing drawn');
   } finally {
     m.shell.drawn(windowId, true);
   }
-  await page.waitForFunction(() => document.getElementById('notice')?.hidden === true, null, { timeout: 8000 });
+  assert.equal(await page.evaluate(() => (window as any).__kept === true), true, 'the same page: not loaded again');
   await page.close();
 });
+

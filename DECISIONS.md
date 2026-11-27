@@ -11878,8 +11878,7 @@ the toolbar down over the page.
   `chrome://new-tab-page/` (tested headless: Chrome 156 lands there, titled New Tab). Edge opens that address as an
   error page and its own (`edge://newtab/`) is Margin's page again: left blank there, titled New Tab, nothing drawn.
   Refused by a browser: left blank. Once a tab: the page it goes to isn't this one, and this page loaded again in the
-  tab isn't fresh. A tab already showing Margin's page when the app quits, Back to it, `#launcher`, `#settings`: the
-  notice as before.
+  tab isn't fresh.
 - Safari's `search` capability renamed `learn` → `app` (Margin.app's engine, never learned).
 - **On Tirth's Safari (27.2), on screen, 2026-11-27**: Margin.app not running, ⌘T in Safari → Safari's start page
   (Favorites, Recently Viewed), nothing of Margin's. Safari started with Margin.app started by margin-helper as it
@@ -11889,4 +11888,24 @@ the toolbar down over the page.
   not linked and linked-not-drawn. Seen once: Safari started right after Margin's extension was installed failed to
   load Margin's page itself (NSURLErrorDomain -1102, "You don't have permission", before any of its code ran): Safari's,
   not the hand-back's; not seen when started again.
+
+## No new-tab page of Margin's (`feat/new-tab-steps-aside`, 2026-11-27)
+
+Tirth: with Margin.app not running and Safari used on its own, Margin mustn't interfere; and Margin doesn't need a
+new-tab page layout at all (Arc's palette over the page). So nothing of a new-tab page is drawn anywhere:
+- **The browser's new-tab page** (`newtab/newtab.html`) draws nothing, ever: its notice ("Margin.app isn't running",
+  "isn't answering", "turned its link off", "hasn't placed this window yet"), Start, Try again and the address field
+  are gone, with the `startApp` and `retryLink` handlers that only they used (the link's `askNow` and `retrySockets`
+  stay, tested; with no page to choose Try again, a link the socket guard turned off comes back at `offUntil` or at
+  Safari's next start). A fresh new tab: Margin's palette in a window Margin draws, else the browser's own new tab
+  (above). Anything else (Back, a reload, a tab on it as the app quits, `#launcher`, `#settings`, `?again`): blank, never
+  sent anywhere (Back would come straight back), titled New Tab (Settings, Margin for its start page, `Margin <mark>`
+  for a window Margin.app asked for). It reads the link once and never loads again (it draws nothing either way).
+- **Margin.app's own window, nothing hosted**: the page area is the launcher's card with nothing in it (no field, pins,
+  or archive; every theme draws those only by `canSearch`, `hasPins`, `hasArchive`), opaque as before; Settings is
+  still drawn there. ⌘T opens the palette over it, as over any page. The palette's Archive opens the Library at its
+  Archive there (`local: 'archive'`), the launcher's elsewhere.
+- The overlay over a browser's window (not Margin.app's own) keeps its launcher.
+- Tests: `newtab-page.test.ts` (rewritten), `own-new-tab.test.ts`, `no-new-tab-page.test.ts`, Arcadia's "the palette's
+  Archive opens the Library", the e2e new-tab and link tests (the page blank, never loaded again; Start's test gone).
 

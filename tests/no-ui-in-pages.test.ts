@@ -130,7 +130,7 @@ test('not linked: ⌘T and the palette\'s key open Margin\'s new-tab page, once 
   assert.ok(!fake.toPages.some((t) => t === 'show-palette' || t === 'command'), 'nothing asked of a page');
 });
 
-test('not linked: a new tab the browser made stays, its page told there\'s no app; the start button asks for the link (none here: Chrome\'s profile has no link)', async () => {
+test('not linked: a new tab the browser made stays, its page told there\'s no app (the page hands it to the browser\'s own: newtab-page.test.ts)', async () => {
   fake.tabs.set(9, { id: 9, windowId: 1, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
   fake.tabs.get(1).active = false;
   fake.removed.length = 0;
@@ -138,7 +138,6 @@ test('not linked: a new tab the browser made stays, its page told there\'s no ap
   assert.deepEqual(reply, { ok: true, result: { app: false } });
   assert.deepEqual(fake.removed, [], 'the new tab stays');
   assert.ok(!fake.toPages.includes('show-palette'));
-  assert.deepEqual(await ask('startApp', {}, 9), { ok: true, result: false });
 });
 
 test.after(() => setTimeout(() => process.exit(0), 50));
