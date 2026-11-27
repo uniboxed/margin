@@ -11839,7 +11839,8 @@ keeping (guessy: only after a first address-bar search, Safari's URL tags, speci
   back shows them at once); the page keeps showing the last suggestions that still start with what's typed while the
   next come, so the rows don't flicker.
 - **The order** (shared/search.ts rankPalette): typed, the person's clearest match first (a tab's or pin's title or
-  site typed from its start, an app typed from its name's start, a command each typed word of which starts a word of
+  site typed from its start, or two words or more each the start of a word of its title, "quiet city": The Quiet City;
+  an app typed from its name's start, a command each typed word of which starts a word of
   its name: "switch work"; at least two characters; never a search page), then "Search for … — <engine>" (or Open …,
   always first for an address), then up to 4 suggestions as search rows (⌕), then the person's tabs, pins, apps and
   actions (6 in all with the top hit), then archived tabs (3). Search pages (an engine's results, any) are never a top

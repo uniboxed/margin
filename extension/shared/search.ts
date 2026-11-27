@@ -295,16 +295,19 @@ export type SearchSuggestions = { query: string, items: string[], engine?: { id:
 const SUGGEST_MAX = 4;
 const OWN_MAX = 6;
 const ARCHIVE_MAX = 3;
-// A clear match: at least two characters typed, the start of its title, or of its site's address (no www.); an app
-// typed from its name's start (APP_PREFIX); an action each typed word of which starts a word of its name ("switch
-// work": Switch to space Work); never a search page.
+// A clear match (at least two characters typed): a tab or pin whose title or site's address (no www.) starts with
+// what's typed, or, two words or more typed, each of which starts a word of its title ("quiet city": The Quiet City);
+// an app typed from its name's start (APP_PREFIX); an action each typed word of which starts a word of its name
+// ("switch work": Switch to space Work); never a search page.
 function isTopHit(item: PaletteItem, q: string) {
   if (q.length < 2 || !['tab', 'pin', 'app', 'action'].includes(item.kind)) return false;
   if (item.kind === 'app') return (item.boost ?? 0) >= APP_PREFIX;
   if (isSearchPage(item.url)) return false;
   const typed = q.toLowerCase();
-  if (item.kind === 'action') return typed.split(/\s+/).every((t) => wordStartAt(item.title.toLowerCase(), t) >= 0);
-  if (item.title.toLowerCase().startsWith(typed)) return true;
+  const words = typed.split(/\s+/);
+  const everyWordStarts = () => words.every((t) => wordStartAt(item.title.toLowerCase(), t) >= 0);
+  if (item.kind === 'action') return everyWordStarts();
+  if (item.title.toLowerCase().startsWith(typed) || (words.length > 1 && everyWordStarts())) return true;
   const host = (() => { try { return new URL(item.url ?? '').hostname.replace(/^www\./, ''); } catch { return ''; } })();
   return !!host && host.startsWith(typed);
 }

@@ -94,7 +94,7 @@ test('palette: searches tabs in all spaces, pins, archive; current space ranks f
 
 test('palette: multi-token queries need every token', () => {
   const ids = rankPalette(paletteState(), 'git pull', ctx).map((i) => i.id);
-  assert.deepEqual(ids.slice(0, 2), ['go', 'tab:1'], 'not the start of its title: "Search for" first, the tab next');
+  assert.deepEqual(ids.slice(0, 2), ['tab:1', 'go'], 'each word the start of one of its title\'s: the top hit');
   assert.ok(!ids.includes('archive:a1'));
 });
 
@@ -185,7 +185,9 @@ test('palette: a top hit: a title or site typed from its start, an app, a comman
   assert.equal(rankPalette(s, 'calen', ctx)[0].id, 'pin:p1', 'a pin');
   assert.equal(rankPalette(s, 'switch work', ctx)[0].id, 'action:space:work', 'a command, by its words');
   assert.equal(rankPalette(s, 'g', ctx)[0].id, 'go', 'one letter: no top hit');
-  assert.equal(rankPalette(s, 'pull', ctx)[0].id, 'go', 'inside a title: "Search for" first');
+  assert.equal(rankPalette(s, 'pull', ctx)[0].id, 'go', 'one word, inside a title: "Search for" first');
+  assert.equal(rankPalette(s, 'pull inbox', ctx)[0].id, 'go', 'words of two titles: no top hit');
+  assert.equal(rankPalette(s, 'gmail inb', ctx)[0].id, 'tab:2', 'each word a word\'s start of its title');
   const searched = M.upsertTab(s, { id: 8, windowId: 1, index: 8, url: 'https://duckduckgo.com/?q=docs&t=osx', title: 'docs at DuckDuckGo' } as BrowserTab, 8);
   assert.equal(rankPalette(searched, 'docs', ctx)[0].id, 'go');
   // At most six of the person's own rows, three archived.
