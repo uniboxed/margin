@@ -547,6 +547,41 @@ fn a_window_closed_full_screen_and_focused_by_its_copy() {
 }
 
 #[test]
+fn a_safari_pages_layout_asked_for_the_relay_after_a_drag() {
+    let (s, world, _lib) = session();
+    // (Asked to wait for a layout below a width, by half a second at the latest: its page's own cap.)
+    let args = json!({ "windowId": 90, "whole": true, "below": 1300.5, "within": 0.5 });
+    let out = s.input(&json!({ "type": "call", "id": 4, "flow": "safariPageLayout", "args": args }));
+    let seen = pump(&s, &world, out, &mut |c| match c {
+        Command::Ask { .. } => json!({ "result": { "tabId": 7, "scale": 1, "inner": 1202, "met": true } }),
+        c => usual(c),
+    });
+    let Command::Ask { kind, payload, .. } = &seen[0] else { panic!() };
+    assert_eq!(kind, "hostPageLayout");
+    assert_eq!(
+        Value::Object(payload.clone()),
+        json!({ "windowId": 90, "whole": true, "below": 1300.5, "notAfter": 1_800_000_000_500.0 })
+    );
+    let Some(Command::Reply { value, .. }) = seen.last() else { panic!() };
+    assert_eq!(value, &json!({ "tabId": 7, "scale": 1, "inner": 1202, "met": true }));
+    // No shown page (the copy's null), or no window: null.
+    let out = s.input(&json!({ "type": "call", "id": 5, "flow": "safariPageLayout", "args": { "windowId": 90 } }));
+    let seen = pump(&s, &world, out, &mut |c| match c {
+        Command::Ask { .. } => json!({ "result": null }),
+        c => usual(c),
+    });
+    let Command::Ask { payload, .. } = &seen[0] else { panic!() };
+    assert_eq!((payload["whole"].clone(), payload["below"].clone()), (json!(false), Value::Null), "asked as it is now");
+    let Some(Command::Reply { value, .. }) = seen.last() else { panic!() };
+    assert_eq!(value, &Value::Null);
+    let out = s.input(&json!({ "type": "call", "id": 6, "flow": "safariPageLayout", "args": {} }));
+    let seen = pump(&s, &world, out, &mut usual);
+    assert!(!seen.iter().any(|c| matches!(c, Command::Ask { .. })), "no window: nothing asked");
+    let Some(Command::Reply { value, .. }) = seen.last() else { panic!() };
+    assert_eq!(value, &Value::Null);
+}
+
+#[test]
 fn an_app_picked_in_the_palette() {
     let (s, world, lib) = session();
     space(&lib, "sp", 1);

@@ -3,8 +3,8 @@
 // `--m-swipe-ends: arc`); this keeps what they show.
 //
 // The Library (`library.open`, `library.close`, `library.section`; its search field `m-input="library-search"`): open
-// or not, the rail's section shown (Archived Tabs first; Media, Downloads, Easels, Spaces and Boosts aren't in Margin
-// yet: drawn with their words), what's typed in its search. Escape in it closes it.
+// or not, the rail's section shown (Archived Tabs first; Media, Downloads, Spaces and Boosts aren't in Margin yet:
+// drawn with their words), what's typed in its search. Escape in it closes it.
 //
 // Create a Space (`newSpace.open`, `newSpace.cancel`, `newSpace.create`, `newSpace.theme`; its fields
 // `m-input="new-space-name"` and `m-input="new-space-emoji"`; its profile from the `profile` menu): nothing is made

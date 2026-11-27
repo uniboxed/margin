@@ -29,6 +29,7 @@ extension Shell {
                                     freezer: freezer, sidebarMenu: { [weak self] in self?.sidebarMenu }, keepsActive: keepsActive)
         let engine = HostEngine(system: system, marker: hostMarkerURL, observation: RealHostObservation())
         engine.options.safariBundle = UserDefaults.standard.string(forKey: "MarginHostedSafari") ?? safariIdentifier
+        engine.options.safariScalingOffSince = SafariScaling.offSince
         // (`defaults write com.unibox.margin MarginTiles -bool NO`: no tiles, every hosted window a plain member of Margin's
         // Space, sized as it's shown: the screen suite's `--members` measures that route beside the tiles'.)
         if UserDefaults.standard.object(forKey: "MarginTiles") as? Bool == false {

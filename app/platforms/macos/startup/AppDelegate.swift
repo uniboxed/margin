@@ -37,6 +37,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // the open event is current.
     private var atLogin = false
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // (Safari's full-screen page scaling turned off before Margin starts any browser: SafariScaling.swift.)
+        _ = SafariScaling.offSince
         if let event = NSAppleEventManager.shared().currentAppleEvent, event.eventID == kAEOpenApplication,
            event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem {
             atLogin = true

@@ -496,6 +496,13 @@ export function startCore() {
     if (message?.type === 'mediaCommand' && typeof message.command === 'string') {
       return sendResponse({ ok: mediaWatcher.command(message.command) });
     }
+    // Margin.app's relay after a drag asking how Safari lays this page out (content/page-scale.ts `layout`).
+    if (message?.type === 'pageLayout') {
+      const below = typeof message.below === 'number' && Number.isFinite(message.below) ? message.below : null;
+      const deadline = typeof message.deadline === 'number' && Number.isFinite(message.deadline) ? message.deadline : 0;
+      void pageScale.layout({ whole: message.whole === true, below, deadline }).then(sendResponse, () => sendResponse(null));
+      return true;
+    }
     // Whether Margin.app draws over this window, as it changes (background.ts appLink.onDrawn).
     if (message?.type === 'appDrawn' && Number.isInteger(message.windowId) && typeof message.drawn === 'boolean') {
       if (!appLink) return;

@@ -870,7 +870,7 @@
    a dark panel in the space's colour (Arc's #140f00 over its beige space) over the "+", its right edge on the
    button's, an arrow down to it; rows 40 pt, 8 pt in, a glyph (Margin's own drawings, inline: the package loads nothing) in their first 39 pt, the
    label white and semibold, the key at the right, muted; the row under the pointer or the keys in the space's colour,
-   dimmed (Arc's olive #625729); the groups apart by a hairline. Easel and Boost look as Arc's (Tirth's choice) and do
+   dimmed (Arc's olive #625729); the groups apart by a hairline. Boost looks as Arc's (Tirth's choice) and does
    nothing: their tooltips say so. The "+" turns into × while it's open. */
 .arcadia { --m-add-menu: arc; }
 .tab-menu.arc {
@@ -895,7 +895,7 @@
 .tab-menu.arc .menu-icon { flex: none; display: grid; align-items: center; width: 39px; height: 22px; padding-left: 9px; }
 .tab-menu.arc .menu-icon .mi { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .tab-menu.arc .menu-item:is([data-icon="space"]) .mi-space, .tab-menu.arc .menu-item:is([data-icon="folder"]) .mi-folder,
-.tab-menu.arc .menu-item:is([data-icon="easel"]) .mi-easel, .tab-menu.arc .menu-item:is([data-icon="boost"]) .mi-boost,
+.tab-menu.arc .menu-item:is([data-icon="boost"]) .mi-boost,
 .tab-menu.arc .menu-item:is([data-icon="split"]) .mi-split, .tab-menu.arc .menu-item:is([data-icon="tab"]) .mi-tab { display: block; }
 .tab-menu.arc .menu-keys { flex: none; color: rgba(255, 255, 255, 0.5); font-size: 13px; font-weight: 500; letter-spacing: 0.04em; }
 .tab-menu.arc .menu-item:is(:hover, :focus) { background: color-mix(in srgb, var(--space-color) 45%, #2a2410); color: #fff; }
@@ -1531,10 +1531,8 @@
 .li .pf { fill: currentColor; }
 .lib-label { font-size: 11px; line-height: 13px; font-weight: 700; color: var(--lib-label); white-space: nowrap; }
 .lib-section.active .lib-label { color: var(--lib-label-on); }
-.lib-section .li-note, .lib-empty[data-icon="easels"] .li-easels, .lib-empty:not([data-icon="easels"]) .li-note { display: none; }
 :is(.lib-section, .lib-empty):not([data-icon="media"]) .li-media,
 :is(.lib-section, .lib-empty):not([data-icon="downloads"]) .li-downloads,
-:is(.lib-section, .lib-empty):not([data-icon="easels"]) .li-easels,
 :is(.lib-section, .lib-empty):not([data-icon="spaces"]) .li-spaces,
 :is(.lib-section, .lib-empty):not([data-icon="boosts"]) .li-boosts,
 :is(.lib-section, .lib-empty):not([data-icon="archive"]) .li-archive { display: none; }
@@ -1592,7 +1590,7 @@
 .lib-title, .lib-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lib-title { font-size: 14px; line-height: 17px; color: var(--fg); }
 .lib-sub { font-size: 12px; line-height: 15px; color: var(--muted); }
-/* A section with nothing to list (Arc's Easels' look: its icon, a heading, a line, in the middle of the list's place). */
+/* A section with nothing to list (Arc's look for one: its icon, a heading, a line, in the middle of the list's place). */
 .lib-empty { margin: auto; padding: 0 20px 56px; display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--muted); }
 .lib-empty .li { width: 52px; height: 52px; opacity: 0.55; }
 .lib-empty .li .ps { stroke-width: 1.1; }

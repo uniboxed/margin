@@ -939,6 +939,18 @@ export const handlers = {
     const shrunk = typeof scale === 'number' && scale < 1;
     appLink.note(`page scale #${n(count)}: tab ${sender.tab.id} (window ${n(sender.tab.windowId)}, ${shown === true ? 'shown' : 'not shown'}): ${shrunk ? 'SHRUNK to fit' : 'whole again'}: scale ${n(scale)}, laid out ${n(inner)} wide (outer ${n(outer)}), pixel ratio ${n(dpr)}`);
   },
+  // Margin.app laying a narrowed Safari tile out again after a drag (HostEngine `relayNarrowed`, core
+  // `safari_page_layout`): the shown tab of window `windowId` says how Safari lays it out (content/page-scale.ts
+  // `layout`), now or once it's `whole` / laid out `below` a width, by `notAfter` at the latest. Null: no shown tab, or
+  // its page didn't answer.
+  async hostPageLayout({ windowId, whole, below, notAfter }: { windowId: number, whole?: boolean, below?: number | null, notAfter?: number }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    if (!Number.isInteger(windowId)) throw new Error('no window');
+    const [tab] = await api.tabs.query({ active: true, windowId }).catch(() => []);
+    if (tab?.id == null) return null;
+    const answer = await api.tabs.sendMessage?.(tab.id, { type: 'pageLayout', whole: whole === true, below: typeof below === 'number' ? below : null, deadline: typeof notAfter === 'number' ? notAfter : Date.now() }).catch(() => null);
+    return answer && typeof answer === 'object' ? { tabId: tab.id, ...answer } : null;
+  },
   // A trackpad gesture Margin runs in the page (content/trackpad.ts), as it
   // goes: its feedback, drawn by Margin.app's overlay of the window.
   async gesture({ kind, state, progress = 0, direction = 0 }: { kind: 'pull' | 'swipe', state: string, progress?: number, direction?: number }, sender: BrowserMessageSender) {

@@ -163,6 +163,14 @@ nonisolated enum HostEvent: Equatable, Sendable {
 nonisolated enum HostPolicy: Equatable, Sendable { case regular, accessory, prohibited }
 
 // A running app, as the engine needs it: `launchedAt` (seconds since 1970) tells a pid used again from the one marked.
+// How Safari lays out a hosted window's shown page, its own word (content/page-scale.ts `layout`): its scale (below 1:
+// drawn shrunk to fit), its layout width (CSS px), whether what was asked for was met.
+nonisolated struct HostPageLayout: Equatable, Sendable {
+    var scale: Double
+    var inner: Double
+    var met: Bool
+}
+
 nonisolated struct HostApp: Equatable, Sendable {
     let pid: pid_t
     let bundleId: String

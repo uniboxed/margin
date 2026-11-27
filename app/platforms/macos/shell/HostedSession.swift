@@ -1607,6 +1607,15 @@ final class HostedSession {
         await call("safariFocus", ["profile": profile ?? NSNull(), "windowId": windowId]) as? Bool == true
     }
 
+    // How Safari lays out that window's shown page (the core's `safari_page_layout`, the copy's `hostPageLayout`): now, or
+    // once it's drawn `whole` / laid out `below` a width, the page answering within `within` s. Nil: no page, no answer.
+    func safariPageLayout(_ profile: String?, _ windowId: Int, whole: Bool, below: Double?, within: Double) async -> HostPageLayout? {
+        let args: JSONObject = ["profile": profile ?? NSNull(), "windowId": windowId, "whole": whole, "below": below ?? NSNull(), "within": within]
+        guard let r = await call("safariPageLayout", args) as? JSONObject,
+              let scale = (r["scale"] as? NSNumber)?.doubleValue, let inner = (r["inner"] as? NSNumber)?.doubleValue else { return nil }
+        return HostPageLayout(scale: scale, inner: inner, met: (r["met"] as? NSNumber)?.boolValue == true)
+    }
+
     // What the engine says happened outside Margin: an app or its window gone, its items have no page any more.
     func hostEvent(_ event: HostEvent) {
         switch event {

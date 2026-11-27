@@ -251,11 +251,12 @@ final class HostEngine {
         var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
-        // A Safari tile a drag narrowed: how long it's held at its widest width in the drag before its own (`relayNarrowed`).
-        var relayFrame = 1.0 / 30
-        // …and how long the freeze holds after its own width is back: Safari draws the page laid out again a few frames
-        // after its window's size (the real Mac: the wider layout cut off at the right for about 50 ms, unfrozen).
-        var relaySettle = 0.12
+        // A Safari tile a drag narrowed, laid out again (`relayNarrowed`): how long its page may take to say it's drawn at
+        // each width at most (a cap: its answer lets the screen go, never a time).
+        var relayCap = 0.5
+        // Since when Safari's own scaling of its full-screen pages is off (SafariScaling.swift, seconds since 1970): a
+        // Safari started at or after it lays its page out as a drag narrows it, and needs no `relayNarrowed`. nil: not off.
+        var safariScalingOffSince: Double? = nil
         // All panes active (PanesActive.swift): each change applied once per main-queue turn (off: at once, the tests').
         var activesCoalesced = true
     }
@@ -496,6 +497,10 @@ final class HostEngine {
     // Wired by the shell to the copy's `hostFocusWindow` (the profile, the copy's id): a Safari window brought in front of
     // its app's others by Safari itself, when Accessibility's raise didn't take (frontVisible). True: done.
     var safariFocus: ((String?, Int) async -> Bool)?
+    // Wired by the shell to the copy's `hostPageLayout` (the profile, the copy's id, whether to wait until it's drawn whole,
+    // a layout width to wait to be under, how long the page may take): how Safari lays out that window's shown page, its
+    // own word (`relayNarrowed`). Nil: no shown page, or no answer.
+    var safariPageLayout: ((String?, Int, Bool, Double?, Double) async -> HostPageLayout?)?
     // Wired by the shell: waits until that profile's extension copy is linked (true), before Safari's windows are read
     // and a window asked for, so windows a Safari just started restores meanwhile are never taken for Margin's own.
     var safariLinked: ((String?) async -> Bool)?
@@ -5224,8 +5229,9 @@ final class HostEngine {
                 learnMinimum(o)
                 liveBegin()
             }
-            // (Safari's tiles' widths as the drag begins: `relayNarrowed` at its end.)
-            for h in [host] + others.compactMap({ byHandle[$0] }) where h.safariWindow != nil {
+            // (Safari's tiles' widths as the drag begins, those of a Safari that may still scale its pages: `relayNarrowed`
+            // at its end.)
+            for h in [host] + others.compactMap({ byHandle[$0] }) where h.safariWindow != nil && safariMayScale(h.pid) {
                 if let tile = h.tile, let r = sys.tileRect(tile) { liveWidest[h.id] = r.width }
             }
             Diagnostics.note("host: live resize: began, \(host.id) at \(Int(sys.bounds(window: host.window)?.width ?? 0)) pt: " + (liveSpace.map { "Margin's Space \($0.space) told\($0.taken ? "" : " (NOT taken)")" } ?? "no tile follows, Margin's Space not told"))
@@ -5248,14 +5254,24 @@ final class HostEngine {
     }
 
     // Safari's tiles followed in this drag: each one's widest tile width in it (as it began, or any frame sent).
+    // Whether that Safari may still scale its full-screen pages: started before its scaling was turned off
+    // (SafariScaling.swift), or its start unread, or not turned off.
+    private func safariMayScale(_ pid: pid_t) -> Bool {
+        guard let since = options.safariScalingOffSince, let started = sys.app(pid: pid)?.launchedAt else { return true }
+        return started < since
+    }
+
     private var liveWidest: [HostID: CGFloat] = [:]
 
     // A drag that narrows a Safari tile over many frames leaves the tab shown in it laid out at the width it had as the
     // narrowing began, the page shrunk to fit any narrower, through later drags, a switch and a reload, until its window is
-    // as wide again or the page's zoom changes (Safari's own, the real Mac 2026-11-26: DECISIONS.md "A Safari tab locked
-    // laid out wider than its window after a drag"; one step narrower never locks it). So, the drag over: each Safari tile
-    // it left narrower than its widest in it is set at that width again for a frame and back at its own rect in one step,
-    // under the freeze (nothing of it seen): Safari lays its page out again at the width it ends at.
+    // as wide again or the page's zoom changes (Safari's own scaling of a full-screen window's pages, the real Mac
+    // 2026-11-26: DECISIONS.md "A Safari tab locked laid out wider than its window after a drag"; one step narrower never
+    // locks it; a Safari started since SafariScaling.swift turned it off never gets here, `safariMayScale`). So, the drag
+    // over: each Safari tile it left narrower than its widest in it whose page says it's drawn shrunk is set at that width
+    // again and back at its own rect in one step, under the freeze (nothing of it seen), each step held exactly until the
+    // page says it's drawn at that width (`pageLayout`: its own word, capped): Safari lays its page out again at the width
+    // it ends at.
     private func relayNarrowed(_ widest: [HostID: CGFloat]) async {
         var list: [(host: Host, tile: UInt64, own: CGRect, wide: CGRect)] = []
         for (id, width) in widest.sorted(by: { $0.key.raw < $1.key.raw }) {
@@ -5263,19 +5279,67 @@ final class HostEngine {
             // (Wider to the left, its right edge kept: as a drag of the sidebar's edge widens it.)
             list.append((h, tile, own, CGRect(x: own.maxX - width, y: own.minY, width: width, height: own.height)))
         }
-        guard !list.isEmpty else { return }
+        // (Only a page drawn shrunk now, its own word: a drag that left it whole needs nothing. Unanswered: laid out
+        // again, as it may be shrunk.)
+        var whole: [String] = []
+        if safariPageLayout != nil {
+            var shrunk: [(host: Host, tile: UInt64, own: CGRect, wide: CGRect)] = []
+            for e in list {
+                if let now = await pageLayout(e.host, whole: false, below: nil), now.scale >= Self.pageWholeAt { whole.append("\(e.host.id)"); continue }
+                shrunk.append(e)
+            }
+            list = shrunk
+        }
+        guard !list.isEmpty else {
+            if !whole.isEmpty { Diagnostics.note("host: \(whole.joined(separator: ", ")): drawn whole after a drag that narrowed it, nothing laid out again") }
+            return
+        }
         let t0 = sys.now()
         let mine = holdFreeze()
         defer { releaseFreeze(mine) }
         for e in list { observer.sized(pid: e.host.pid, rects: [e.wide]); _ = sys.setTileRect(e.tile, e.wide) }
         let wide = await wait(options.liveWait * 4, every: options.tileEvery) { list.allSatisfy { abs((self.sys.bounds(window: $0.host.window)?.width ?? 0) - $0.wide.width) < 1 } }
-        // (A frame for the page to be laid out at it.)
-        await sys.sleep(options.relayFrame)
+        // (Each page drawn whole at its wider width, its layout width then kept: the next step waits for a narrower one.)
+        var wideInner: [HostID: Double] = [:]
+        for e in list { if let l = await pageLayout(e.host, whole: true, below: nil), l.met { wideInner[e.host.id] = l.inner } }
         for e in list { observer.sized(pid: e.host.pid, rects: [e.own]); _ = sys.setTileRect(e.tile, e.own) }
         let back = await wait(options.liveWait * 4, every: options.tileEvery) { list.allSatisfy { abs((self.sys.bounds(window: $0.host.window)?.width ?? 0) - $0.own.width) < 1 } }
-        await sys.sleep(options.relaySettle)
+        // (…and drawn whole at its own, laid out narrower than at the wider one: the screen let go then.)
+        var drawn = 0
+        for e in list where await pageLayout(e.host, whole: true, below: wideInner[e.host.id].map { $0 - 0.5 })?.met == true { drawn += 1 }
+        let asked = safariPageLayout != nil
         Diagnostics.note("host: " + list.map { "\($0.host.id): laid out again at \(Int($0.own.width)) pt after a drag that narrowed it from \(Int($0.wide.width))" }.joined(separator: "; ")
-                         + " (at that width for a frame and back, \(mine ? "under the freeze" : "NOT frozen"))\(wide ? "" : ", its wider width NOT read")\(back ? "" : ", its own width NOT read back") in \(ms(since: t0)) ms")
+                         + " (at that width and back, \(mine ? "under the freeze" : "NOT frozen")"
+                         + (asked ? ", its page drawn whole at the wider width: \(wideInner.count) of \(list.count), at its own: \(drawn) of \(list.count)" : ", its page not asked") + ")"
+                         + (whole.isEmpty ? "" : "; \(whole.joined(separator: ", ")) drawn whole, not touched")
+                         + "\(wide ? "" : ", its wider width NOT read")\(back ? "" : ", its own width NOT read back") in \(ms(since: t0)) ms")
+    }
+
+    // A page Safari draws at a scale this close to 1 is whole (content/page-scale.ts SHRUNK_BELOW).
+    static let pageWholeAt = 0.995
+
+    // How Safari lays out the page shown in a host's Safari window, its own word (`safariPageLayout`): now, or once it's
+    // `whole` / laid out `below` a width, answered after the frame that draws it. The page answers by `relayCap` at the
+    // latest; never waited for more than twice that (a copy that doesn't answer: nil), as the screen is held still.
+    private func pageLayout(_ h: Host, whole: Bool, below: Double?) async -> HostPageLayout? {
+        guard let ask = safariPageLayout, let copy = h.safariWindow else { return nil }
+        let cap = options.relayCap
+        return await capped(cap * 2) { await ask(h.profile, copy, whole, below, cap) }
+    }
+
+    // `body`'s answer, or nil once `seconds` passed on the engine's clock (a cap, for a wait the screen is held still
+    // through; `body` left to end on its own).
+    private func capped<T>(_ seconds: Double, _ body: @escaping () async -> T?) async -> T? {
+        let once = HostOnce()
+        return await withCheckedContinuation { (k: CheckedContinuation<T?, Never>) in
+            let finish = { (v: T?) in
+                guard !once.done else { return }
+                once.done = true
+                k.resume(returning: v)
+            }
+            Task { finish(await body()) }
+            Task { await self.sys.sleep(seconds); finish(nil) }
+        }
     }
 
     // Margin's Space told a live resize began, once a drag (`dragging`): the Space, and whether the window server took it.
@@ -6667,3 +6731,6 @@ final class HostEngine {
 
 // Whether the operation before one is over (`serial`'s `heldAtMost`: set by a task of its own, read by the wait).
 private final class TurnOver { var over = false }
+
+// (Once a wait is over: `capped`'s first answer taken, any later one dropped.)
+final class HostOnce { var done = false }

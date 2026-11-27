@@ -118,7 +118,7 @@ export function installMenus(rt: Rt) {
       if (!menu) return false;
       const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space, favorites: rt.vm?.favorites, features: (rt.host.platform as any)?.features ?? null }).find((i) => i.id === itemId && !i.separator);
       if (!item) return false;
-      // (Drawn, doing nothing: Arc's Easel and Boost. The menu stays.)
+      // (Drawn, doing nothing: Arc's Boost. The menu stays.)
       if (item.inert) return false;
       if (item.confirm && menu.confirming !== item.id) {
         rt.setUi({ menu: { ...menu, confirming: item.id } });

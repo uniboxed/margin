@@ -11679,3 +11679,42 @@ page's zoom or scale), not Safari's per-site zoom (a new tab of the site is whol
   (its tile and the hosted one side by side) would get it; Tirth turned it down: it wouldn't look right and would
   restrict the layout. So the page shrinks while a drag narrows Safari (Safari's own) and is laid out at its width
   once it's let go (`relayNarrowed`).
+
+## Safari laid out live while a drag narrows it (`fix/safari-live-reflow`, 2026-11-27)
+
+The page Safari left drawn small after a drag of the sidebar's edge (above, "A Safari tab locked laid out wider than its
+window") is Safari's own choice for a window in full screen, as Margin hosts it, read in Safari 27.2's code (pulled from
+the dyld shared cache): `-[BrowserViewController _updateWKViewLayoutModeForWindow:]` puts the window's web view in
+WebKit's layout mode 4 (`_WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize`: `shouldScaleViewToFitDocument`, so
+WebKit's `DrawingArea::scaleViewToFitDocumentIfNeeded` lays the page out at the document's width when it's wider than
+the view and scales the view down to fit, and keeps scaling until the view is that wide again: the lock, 1392 in 1212,
+scale 0.87), and a window not in full screen in mode 0 (laid out at its size, as a plain window's drag shows). Unless
+`[NSUserDefaults boolForKey:@"DebugDisableTiledFullScreenScalingMode"]`: then it sets no mode, and the web view keeps 0.
+- **Fixed** (SafariScaling.swift, AppDelegate `applicationWillFinishLaunching`, before Margin starts any browser): Margin
+  sets that default in the global domain (the one a sandboxed Safari reads with its own; its container's would need the
+  person's permission), once, read back, and keeps when (`MarginSafariScalingOffSince`). A Safari started since lays its
+  page out at each width as a drag narrows it.
+- **Kept for a Safari started before** (HostEngine `safariMayScale`, from its launch time): a web view already in mode 4
+  stays so until Safari restarts, so its tiles still get `relayNarrowed` after a drag; a Safari started since gets
+  nothing after the drag (no freeze, no tile set). The write not taken: every Safari as before.
+- **The relay held by the page's own word, never a guessed time** (Tirth, the no-fixed-delays rule: the 33 ms frame and
+  the 120 ms hold it had are gone): `relayNarrowed` asks the page first (`hostPageLayout`, content/page-scale.ts
+  `layout`, through margin-core's `safari_page_layout`) whether Safari draws it shrunk: whole, nothing laid out again
+  and no freeze. Shrunk: the tile at its wider width is held until the page says it's drawn whole there, then at its own
+  until it says it's laid out narrower than that, each answered after the frame that draws it (two animation frames),
+  and the screen is let go then. The page answers by `relayCap` (0.5 s) at the latest, `met: false`; the engine never
+  waits more than twice that for an answer (a copy that doesn't answer), as the screen is held still through it.
+- **Tests:** live-resize-tests.swift (a Safari started after the default was set: nothing after a narrowing drag, failed
+  before; one started before: laid out again, as before; the page's word: shrunk, held for each of its answers under
+  the freeze; whole, asked once and nothing more; silent, each wait capped and the screen let go), requests_tests.rs
+  (the core's flow), page-scale.test.ts (the page's answer: now, once whole after its frame, narrower, its deadline).
+- **Real Safari:** to check once Safari is restarted under the new Margin (the page's own `pageScale` lines in
+  Margin.app's log say if a page is still shrunk).
+
+## No Easels (`refactor/no-easels`, 2026-11-27)
+
+Tirth: Margin won't have Arc's Easels. Gone wherever they were drawn: the Library's rail (Media, Downloads, Spaces,
+Boosts, Archived Tabs), its words for an empty Easels (and its note icon), the "+" menu's New Easel (Boost stays, inert)
+and Arcadia's glyphs and rules for them; the view model's `library.sections[]`, the `library.section` action's ids and
+the themes README with them. A Library last left on Easels opens on Archived Tabs (the view model's fallback for a
+section it doesn't know). docs/ARC-SIDEBAR.md still describes Arc's Easels as measured: that's Arc, not Margin.

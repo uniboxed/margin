@@ -412,6 +412,25 @@ impl Core {
         answer.result.as_ref().and_then(|r| json::flag(r.get("focused"))) == Some(true)
     }
 
+    /// Margin.app laying a narrowed Safari tile out again after a drag (HostEngine `relayNarrowed`): how Safari lays out
+    /// the shown page of a window it hosts (`hostPageLayout`, content/page-scale.ts `layout`): now, or once it's drawn
+    /// `whole` / laid out `below` a width, by `within` seconds at the latest (the page's own cap). Its
+    /// `{ tabId, scale, inner, met }`, or null (no shown page, no answer).
+    pub(crate) async fn safari_page_layout(
+        &self,
+        profile: Option<&str>,
+        window_id: i64,
+        whole: bool,
+        below: Option<f64>,
+        within: f64,
+    ) -> Value {
+        let p = self.resolve(profile);
+        let not_after = (self.ports.wall() + within.max(0.0)) * 1000.0;
+        let payload = object(json!({ "windowId": window_id, "whole": whole, "below": below, "notAfter": not_after }));
+        let answer = self.ask_held(&p, "hostPageLayout", payload, || self.link_wanted(&p)).await;
+        answer.result.map(Value::Object).unwrap_or(Value::Null)
+    }
+
     /// A flow Swift called: started now, as the Swift call ran its first part at once; its answer, for a caller that
     /// awaits it (`id`), a `Reply`.
     pub(crate) fn call_flow(&self, id: Option<u64>, flow: &str, args: json::Object) {
@@ -424,6 +443,7 @@ impl Core {
             "closeWindow",
             "safariFullScreen",
             "safariFocus",
+            "safariPageLayout",
             "applyLayout",
             "prepareBrowser",
             "openLauncher",
@@ -483,6 +503,15 @@ impl Core {
                 "safariFocus" => match swift_int(args.get("windowId")) {
                     Some(n) => json!(c.safari_focus(s("profile").as_deref(), n).await),
                     None => json!(false),
+                },
+                "safariPageLayout" => match swift_int(args.get("windowId")) {
+                    Some(n) => {
+                        let whole = args.get("whole").and_then(Value::as_bool) == Some(true);
+                        let below = args.get("below").and_then(Value::as_f64);
+                        let within = args.get("within").and_then(Value::as_f64).unwrap_or(0.0);
+                        c.safari_page_layout(s("profile").as_deref(), n, whole, below, within).await
+                    }
+                    None => Value::Null,
                 },
                 "applyLayout" => {
                     if let Some(main) = s("main") {

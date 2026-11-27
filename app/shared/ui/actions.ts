@@ -187,7 +187,7 @@ export const BEHAVIOR_ONLY = Object.freeze(new Set([
 // "profile": Create a Space's profiles (Margin.app's, for the browser the new space opens in).
 export const MENUS = Object.freeze(['add', 'space', 'profile']);
 // The Library's rail (`library.section`), as ui/view-model.ts LIBRARY_SECTIONS lists them.
-export const LIBRARY_SECTION_IDS: readonly string[] = Object.freeze(['media', 'downloads', 'easels', 'spaces', 'boosts', 'archive']);
+export const LIBRARY_SECTION_IDS: readonly string[] = Object.freeze(['media', 'downloads', 'spaces', 'boosts', 'archive']);
 // The Settings page's categories (`settings.category`), as ui/settings-form.ts SETTINGS_CATEGORIES lists them.
 export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'themes', 'tabs', 'browsing', 'keyboard']);
 
