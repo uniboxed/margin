@@ -11607,3 +11607,28 @@ frames placed the hosted window (at most one at a time, a tile's few ms) rather 
   last is over; each slide still says its own once each way (its `resizing`).
 - **Test** (arcadia.test.ts, both engines): a swipe out of the Library begun as the slide out of Spaces starts: told
   `[on, off]` (was `on on off off`).
+
+## A Safari tab locked laid out wider than its window after a drag (`fix/stuck-page-scale`, 2026-11-26)
+
+Tirth: sometimes, after widening the sidebar, Safari's page stays drawn small (about 85%), through a reload, ⌘0 and a
+pinch; a new tab at the same width is whole. In that tab's console: `innerWidth` 1392 in a 1212 pt tile,
+`visualViewport.scale` 0.87, `devicePixelRatio` 1.74: laid out at 1392 and shrunk to fit; at 1392 or wider it looks
+whole. Not macOS (its window server bounds and transform: 1212 wide, no scale), not Margin (nothing of Margin's sets a
+page's zoom or scale), not Safari's per-site zoom (a new tab of the site is whole).
+- **Reproduced on the real Mac** by posted drags of the sidebar's edge, with the page's own report (below): a tab locks
+  at the width it had as a drag that narrows Safari's tile over many frames begins (0.7 s or more, ten frames or more:
+  every time; 0.2-0.4 s: never; one step, 1402 → 1202: never, twice), and stays so through later drags, a switch away
+  and back, and a reload. The same with Margin's Space never told a live resize (`LiveResizing` off), and with it told
+  the drag is over 0.6 s after the last placing: not Margin's start or end of the live resize. A change of the page's
+  zoom unlocks it (⌘− then ⌘0); ⌘0 alone changes nothing at 100%. Safari's own (its responsive resize while a window
+  narrows: public WebKit has it for iPad's window scenes only; macOS's isn't in its sources).
+- **Diagnostic** (content/page-scale.ts, handlers.ts `pageScale`): each page tells Margin.app's log when Safari draws it
+  shrunk to fit (`visualViewport.scale` below 1: a pinch only magnifies on the Mac) and when it's whole again, with its
+  layout width, pixel ratio and whether it's shown: "page scale: tab N (window W, shown): SHRUNK to fit …".
+- **Fixed on the way** (HostEngine `dragging`): Margin's Space is told a drag is over whenever it was told it began; it
+  was told only while the tiles were on, so a drag during which they went off left the Space in its live resize. Both
+  are in the log ("live resize: began …", "… its Space told it's over"). Test: live-resize-tests.swift (the tiles off
+  during a drag; failed before).
+- **Open:** keeping a tab from locking (the tile moved, its width kept, while a drag narrows it, and sized once at the
+  end, as the Library's slide moves it; or a zoom change to unlock a tab that says it's locked, which writes Safari's
+  per-site zoom): the person's choice.
