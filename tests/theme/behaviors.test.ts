@@ -118,6 +118,8 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const [type, payload] = (await sent()).at(-1)!;
         if (second.startsWith('tab:')) assert.deepEqual([type, payload], ['activateTab', { tabId: Number(second.slice(4)) }]);
         else if (second.startsWith('pin:')) assert.deepEqual([type, payload], ['openPin', { pinId: second.slice(4), windowId: 1 }]);
+        // ("Search for" right after the top hit: shared/search.ts rankPalette.)
+        else if (second === 'go') assert.deepEqual([type, payload], ['search', { query: 'nimbus', windowId: 1 }]);
         else assert.fail(`row ${second}`);
         assert.equal((await ui()).palette.open, false, 'closed by the choice');
         // Opened again: an empty field (a theme's m-if keeps its block), focused.

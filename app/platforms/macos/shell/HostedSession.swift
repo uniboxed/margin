@@ -1738,6 +1738,18 @@ final class HostedSession {
         drive(core.input(["type": "ui", "kind": type, "payload": SessionRules.json(payload)]))["reply"] as? JSONObject ?? [:]
     }
 
+    // macOS's web search record as read (SearchEngineRecord.swift): the palette's engine, the core's
+    // (core/session/suggest.rs).
+    func searchEngine(identifier: String?, name: String?) {
+        drive(core.input(["type": "searchEngine", "identifier": identifier ?? NSNull(), "name": name ?? NSNull()]))
+    }
+
+    // A suggestions request's answer (`status` 0: none): what the window's page is told (`push`), the next request
+    // (`fetch`).
+    func suggestAnswer(window: Int, seq: Int, status: Int, body: String) -> JSONObject {
+        drive(core.input(["type": "suggestAnswer", "window": window, "seq": seq, "status": status, "body": body]))["reply"] as? JSONObject ?? [:]
+    }
+
     // ---- what the UI draws ----
 
     // The windows of a copy's that Margin draws (Shell.tellDrawn's `drawn`): a Safari copy's every role's for its profile.
@@ -1797,6 +1809,9 @@ final class LibraryWindowSource: MarginWindowSource {
     // A theme imported or linked (the core's `theme` route, docs/THEME-STORE.md §1): the shell's (ShellThemes.swift
     // `themeAsked`), with the window that asked.
     var onTheme: ((String, JSONObject, Int?) -> Void)?
+    // The engine's suggestions to ask for (the core's `suggest` route's `fetch`): the shell's (ShellHostedGlue.swift
+    // `fetchSuggestions`).
+    var onSuggest: ((JSONObject) -> Void)?
 
     init(library: Library, session: HostedSession, profileSource: DataSetWindowSource) {
         self.library = library
@@ -1833,6 +1848,9 @@ final class LibraryWindowSource: MarginWindowSource {
         case "theme":
             onTheme?(reply["name"] as? String ?? type, reply["payload"] as? JSONObject ?? [:], int(reply["window"]))
             return nil
+        case "suggest":
+            if let fetch = reply["fetch"] as? JSONObject { onSuggest?(fetch) }
+            return reply["value"] as? JSONObject
         default:
             return nil
         }

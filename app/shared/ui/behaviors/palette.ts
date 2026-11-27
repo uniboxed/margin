@@ -74,7 +74,9 @@ export function installPalette(rt: Rt) {
 
   return {
     onInput(name: string, value: string) {
-      if (name === 'palette' && rt.ui.palette.open) rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0 } });
+      if (name !== 'palette' || !rt.ui.palette.open) return;
+      rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0 } });
+      rt.host.suggest?.(value); // (the engine's suggestions, where the host has them: Margin.app's window)
     },
     afterRender(vm: ViewModel) {
       // The launcher's field has the focus as the new-tab page shows it

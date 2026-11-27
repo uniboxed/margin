@@ -354,3 +354,72 @@ fn what_a_window_draws_is_the_librarys_snapshot_with_the_open_items_as_tabs() {
     );
     assert_eq!((drawn["settings"].clone(), drawn["favicons"].clone()), (json!({ "a": 1 }), json!({})));
 }
+
+#[test]
+fn the_palettes_engine_and_suggestions() {
+    let (s, world, _) = session();
+    let engine = |id: Value, name: Value| {
+        s.input(&json!({ "type": "searchEngine", "identifier": id, "name": name })).reply.unwrap_or_default()
+    };
+    // No engine named yet: no suggestions, the search to the learned engine's address.
+    *world.settings.borrow_mut() = json!({ "safariSearch": { "template": "https://d.example/?q=%s" } });
+    assert_eq!(
+        ui(&s, "search.suggest", json!({ "windowId": 1, "query": "we" })),
+        json!({ "route": "suggest", "value": { "ok": true, "result": { "engine": null, "on": true, "items": [] } } })
+    );
+    assert_eq!(
+        ui(&s, "search", json!({ "windowId": 1, "query": "a" }))["payload"]["url"],
+        json!("https://d.example/?q=a")
+    );
+    // macOS names DuckDuckGo: the search and the suggestions its, over what was learned.
+    assert_eq!(
+        engine(json!("com.duckduckgo"), json!("DuckDuckGo")),
+        json!({ "engine": { "id": "duckduckgo", "name": "DuckDuckGo" } })
+    );
+    assert_eq!(
+        ui(&s, "search", json!({ "windowId": 1, "query": "a b" }))["payload"]["url"],
+        json!("https://duckduckgo.com/?q=a%20b&t=osx&ia=web")
+    );
+    assert_eq!(
+        ui(&s, "peek.go", json!({ "windowId": 1, "query": "x" }))["value"]["ok"],
+        json!(true),
+        "the card's search too"
+    );
+    let r = ui(&s, "search.suggest", json!({ "windowId": 1, "query": "we" }));
+    assert_eq!(r["value"]["result"]["engine"], json!({ "id": "duckduckgo", "name": "DuckDuckGo" }));
+    let fetch = r["fetch"].clone();
+    assert_eq!(fetch["url"], json!("https://duckduckgo.com/ac/?q=we&type=list"));
+    assert_eq!(fetch["window"], json!(1));
+    // Typed on meanwhile: held, asked once it answers.
+    assert_eq!(ui(&s, "search.suggest", json!({ "windowId": 1, "query": "wea" })).get("fetch"), None);
+    let answer = |seq: &Value, status: i64, body: &str| {
+        s.input(&json!({ "type": "suggestAnswer", "window": 1, "seq": seq, "status": status, "body": body }))
+            .reply
+            .unwrap_or_default()
+    };
+    let out = answer(&fetch["seq"], 200, r#"["we",["web","weather"]]"#);
+    assert_eq!(
+        out["push"],
+        json!({ "type": "suggestions", "query": "we", "items": ["web", "weather"], "engine": { "id": "duckduckgo", "name": "DuckDuckGo" } })
+    );
+    assert_eq!(out["fetch"]["url"], json!("https://duckduckgo.com/ac/?q=wea&type=list"));
+    assert_eq!(answer(&out["fetch"]["seq"], 0, ""), json!({}), "failed: nothing shown");
+    // Known: in the answer itself.
+    let r = ui(&s, "search.suggest", json!({ "windowId": 1, "query": "we" }));
+    assert_eq!(r["value"]["result"]["items"], json!(["web", "weather"]));
+    assert_eq!(r.get("fetch"), None);
+    // Off in the settings: none asked.
+    *world.settings.borrow_mut() = json!({ "searchSuggestions": false });
+    let r = ui(&s, "search.suggest", json!({ "windowId": 1, "query": "other" }));
+    assert_eq!((r["value"]["result"]["on"].clone(), r.get("fetch")), (json!(false), None));
+    // An engine not Safari's: none, and the search back to the learned (here: none, Google's).
+    assert_eq!(engine(json!("com.baidu.www"), json!("Baidu")), json!({ "engine": null }));
+    *world.settings.borrow_mut() = Value::Null;
+    assert!(
+        ui(&s, "search", json!({ "windowId": 1, "query": "a" }))["payload"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://www.google.com/search?client=safari")
+    );
+    assert_eq!(ui(&s, "search.suggest", json!({ "query": "a" })), json!({ "route": "none" }), "no window");
+}

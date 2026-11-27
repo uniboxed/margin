@@ -87,6 +87,8 @@ export type Host = {
    * plays its interface sounds (Margin.app on the Mac, M2.9 step 6: Edit Theme Color's ticks); none elsewhere.
    */
   readonly feedbackDevice?: FeedbackDevice | null,
+  /** What's typed in the palette, at each change (Margin.app's own window: the engine's suggestions for it, ui/host-app.ts). */
+  suggest?(query: string): void,
   /** Why the last request failed, if it did just now (taken once): Margin.app's (ui/host-app.ts). */
   takeFailure?(): { type: string, error: string } | null,
   /**

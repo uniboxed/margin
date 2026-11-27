@@ -128,14 +128,14 @@ test('palette: searches tabs in all spaces, pins, archive; current space ranks f
   const ids = rankPalette(s, 'g', ctx).map((i) => i.id);
   assert.ok(ids.indexOf('tab:2') < ids.indexOf('tab:1'), 'Gmail (current space) above GitHub (other space)');
   const gh = rankPalette(s, 'github', ctx).map((i) => i.id);
-  assert.deepEqual(gh.slice(0, 2), ['tab:1', 'archive:a1']);
-  assert.equal(gh.at(-1), 'go', 'search entry comes last');
+  assert.deepEqual(gh.slice(0, 2), ['tab:1', 'go'], 'a tab whose title starts with it: the top hit, above "Search for"');
+  assert.equal(gh.at(-1), 'archive:a1', 'archived tabs come last');
   assert.equal(rankPalette(s, 'calendar', ctx)[0].id, 'pin:p1');
 });
 
 test('palette: multi-token queries need every token', () => {
   const ids = rankPalette(paletteState(), 'git pull', ctx).map((i) => i.id);
-  assert.equal(ids[0], 'tab:1');
+  assert.deepEqual(ids.slice(0, 2), ['go', 'tab:1'], 'not the start of its title: "Search for" first, the tab next');
   assert.ok(!ids.includes('archive:a1'));
 });
 
@@ -190,4 +190,56 @@ test('Settings has a direct palette action and an internal address alias', () =>
     assert.equal(first.title, 'Settings');
     assert.deepEqual(first.action, { type: 'openLauncher', windowId: 1, settings: true });
   }
+});
+
+// The palette's search (DECISIONS.md "The palette's search: the engine from macOS, its suggestions").
+test('palette: past searches never crowd the top; "Search for" first, then the engine\'s suggestions', () => {
+  let s = paletteState();
+  for (const [i, q] of ['hello', 'hello world', 'hello kitty'].entries()) {
+    s = M.archiveTab(s, { id: `g${i}`, url: `https://www.google.com/search?client=safari&rls=en&q=${encodeURIComponent(q)}&ie=UTF-8&oe=UTF-8`, title: `${q} - Google Search`, spaceId: 'personal', closedAt: 10 + i });
+  }
+  s = M.upsertTab(s, { id: 9, windowId: 1, index: 9, url: 'https://www.google.com/search?q=hello+there', title: 'hello there - Google Search' } as BrowserTab, 9);
+  const withSearch = { ...s, search: { query: 'hello', items: ['hello neighbor', 'Hello', 'hello song'], engine: { id: 'duckduckgo', name: 'DuckDuckGo' } } };
+  const rows = rankPalette(withSearch as typeof s, 'hello', ctx);
+  assert.deepEqual(rows.map((r) => r.id), ['go', 'suggest:0', 'suggest:1', 'tab:9'], 'the old search pages archived aren\'t offered; an open one comes after');
+  assert.equal(rows[0].subtitle, 'DuckDuckGo', 'the engine Margin.app named');
+  assert.deepEqual(rows.slice(1, 3).map((r) => [r.kind, r.title, r.search]), [['suggestion', 'hello neighbor', true], ['suggestion', 'hello song', true]], 'never the typed text itself');
+  assert.deepEqual(rows[1].action, { type: 'search', query: 'hello neighbor', windowId: 1 });
+  assert.deepEqual(rankPalette(withSearch as typeof s, 'hello', { ...ctx, inNewTab: true })[1].action, { local: 'search', query: 'hello neighbor' });
+});
+
+test('palette: suggestions for what was typed a moment ago, while still the start of them; none for an address', () => {
+  const s = { ...paletteState(), search: { query: 'wea', items: ['weather', 'weather nyc', 'wealth'], engine: null } };
+  const ids = (q: string) => rankPalette(s as ReturnType<typeof paletteState>, q, ctx).filter((r) => r.kind === 'suggestion').map((r) => r.title);
+  assert.deepEqual(ids('wea'), ['weather', 'weather nyc', 'wealth']);
+  assert.deepEqual(ids('weat'), ['weather', 'weather nyc'], 'typed on: the ones it still starts');
+  assert.deepEqual(ids('we'), [], 'typed back: not this query\'s');
+  assert.deepEqual(ids('weather.com'), [], 'an address: none');
+  const many = { ...s, search: { query: 'a', items: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'], engine: null } };
+  assert.equal(rankPalette(many as ReturnType<typeof paletteState>, 'a', ctx).filter((r) => r.kind === 'suggestion').length, 4, 'at most four');
+});
+
+test('palette: a top hit: a title or site typed from its start, an app, a command; never a search page', () => {
+  const s = paletteState();
+  assert.equal(rankPalette(s, 'gmail', ctx)[0].id, 'tab:2', 'its title');
+  assert.equal(rankPalette(s, 'mail.goo', ctx)[0].id, 'go', 'an address typed: "Open" first');
+  assert.equal(rankPalette(s, 'calen', ctx)[0].id, 'pin:p1', 'a pin');
+  assert.equal(rankPalette(s, 'switch work', ctx)[0].id, 'action:space:work', 'a command, by its words');
+  assert.equal(rankPalette(s, 'g', ctx)[0].id, 'go', 'one letter: no top hit');
+  assert.equal(rankPalette(s, 'pull', ctx)[0].id, 'go', 'inside a title: "Search for" first');
+  const searched = M.upsertTab(s, { id: 8, windowId: 1, index: 8, url: 'https://duckduckgo.com/?q=docs&t=osx', title: 'docs at DuckDuckGo' } as BrowserTab, 8);
+  assert.equal(rankPalette(searched, 'docs', ctx)[0].id, 'go');
+  // At most six of the person's own rows, three archived.
+  let full = s;
+  for (let i = 0; i < 12; i++) full = M.upsertTab(full, { id: 100 + i, windowId: 1, index: 100 + i, url: `https://n${i}.example`, title: `Note ${i}` } as BrowserTab, 100 + i);
+  for (let i = 0; i < 6; i++) full = M.archiveTab(full, { id: `n${i}`, url: `https://old${i}.example`, title: `Note old ${i}`, spaceId: 'personal', closedAt: i });
+  const rows = rankPalette(full, 'note', ctx);
+  assert.equal(rows.filter((r) => r.kind === 'tab').length, 6);
+  assert.equal(rows.filter((r) => r.kind === 'archive').length, 3);
+});
+
+test('Safari\'s engines: the same search addresses as Margin.app\'s core (tests/fixtures/search-engines.json)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const v = JSON.parse(readFileSync(new URL('./fixtures/search-engines.json', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.entries(search.SAFARI_ENGINES).map(([id, e]) => [id, e.template(v.engines.find((x: { id: string }) => x.id === id).host)]), v.engines.map((e: { id: string, search: string }) => [e.id, e.search]));
 });

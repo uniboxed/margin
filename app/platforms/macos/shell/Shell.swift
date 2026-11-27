@@ -113,6 +113,7 @@ final class Shell: ExtensionLinkDelegate {
     var hostQuitting = false
     // The library's items shown by the host in Margin's window (HostedSession.swift, ShellHostedGlue.swift).
     var hosted: HostedSession?
+    var searchRecord: SearchEngineRecord? // (macOS's web search record followed, for the palette: SearchEngineRecord.swift)
     var browserPrepared = false // (the default browser made ready once per launch: prepareBrowserOnce)
     var hostedKeysRun: [String] = [] // Margin's keys run while hosting, newest last (the tests read it)
     var quitPrompt: QuitPrompt? // Margin's quit prompt, while it's up (ShellQuit.swift)

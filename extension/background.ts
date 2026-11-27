@@ -13,7 +13,6 @@ import { takeClosing } from './background/closing.ts';
 import * as restore from './background/restore.ts';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.ts';
 import { switchLog, switchLogTo } from './background/switch-log.ts';
-import { learnSearchEngine } from './background/search-engine.ts';
 import { handlers, hostedTabs, mediaHub, newTabHandOff, newTabKey } from './background/handlers.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
@@ -120,12 +119,6 @@ firstSync.then(async () => {
   if (!isOwner() || !isSynced()) return;
   if (!(await startWorkDue())) return;
   void engine.onboarding?.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
-  // Safari's search engine from tabs already open, if none is known yet (a
-  // stale tab mustn't override one learned since).
-  const s = await load();
-  if (!s.settings.safariSearch) {
-    learnSearchEngine(Object.values(s.tabs).sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0)).map((t) => t.url));
-  }
   return archiveStale();
 }).catch((err) => { if (!(err instanceof StaleError)) console.error('[margin]', err); });
 
@@ -173,11 +166,6 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   // Loading or done, for Margin.app's sidebar (background/page-loads.ts: not stored).
   if (change.status) pageLoads.statusChanged(tab, change.status);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
-  // The URL when it changes, and again once loaded (in case Safari reported
-  // the change without it, or it redirected). Not a Margin tab opened again
-  // from its record: no search was made now (search-engine.ts noteReopened).
-  const url = change.url ?? (change.status === 'complete' ? tab.url : null);
-  if (url) learnSearchEngine([url], { tabId });
   if (change.url) void engine.newTabHint?.tabAddress(tabId, change.url);
   if (change.status === 'complete') engine.newTabHint?.tabLoaded(tabId);
   // Safari reloading a tab as it's shown: it had unloaded it (diagnostics).

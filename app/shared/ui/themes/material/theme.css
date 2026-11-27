@@ -893,14 +893,18 @@
 .palette {
   --rows: 5;
 
+  /* Five rows (the field, list padding, rows and the gaps between them);
+     more scroll, the selection followed. Its full height centered in the
+     window (the field stays put as rows come and go), 16 px from an edge
+     at least. */
+  --full: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
+
   position: absolute;
-  top: 30%;
+  top: max(16px, calc((100% - var(--full)) / 2));
   left: 50%;
   transform: translateX(-50%);
   width: min(680px, calc(100% - 32px));
-  /* Five rows (the field, list padding, rows and the gaps between them);
-     more scroll, the selection followed. */
-  max-height: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
+  max-height: var(--full);
   direction: ltr;
   display: flex;
   flex-direction: column;
@@ -913,8 +917,7 @@
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
-/* Short windows: higher up, then fewer whole rows (never half of one). */
-@media (max-height: 507px) { .palette { top: 18%; } }
+/* Short windows: fewer whole rows (never half of one). */
 @media (max-height: 418px) { .palette { --rows: 4; } }
 @media (max-height: 357px) { .palette { --rows: 3; } }
 
@@ -1350,7 +1353,8 @@
 
 /* ---- The command bar: Material's search view ------------------------------- */
 .palette {
-  max-height: calc(65px + 8px + var(--rows) * 48px + (var(--rows) - 1) * 2px + 8px);
+  --full: calc(65px + 8px + var(--rows) * 48px + (var(--rows) - 1) * 2px + 8px);
+  max-height: var(--full);
   border-radius: 28px;
   background: var(--sc-high);
   box-shadow: var(--elev-3);

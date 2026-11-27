@@ -11,7 +11,6 @@ import { api, load, mutate, newId, now, thisCopy } from './store.ts';
 import { focusTab, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.ts';
 import { sleepIdle, wakeAll } from './sleep.ts';
 import { setWindowState, windowCall } from './handoff.ts';
-import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.ts';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.ts';
 import { THEMES } from '../../app/shared/ui/themes/index.ts';
@@ -332,24 +331,16 @@ export const handlers = {
     }
     const { settings } = await load();
     const url = S.searchUrl(text, settings);
-    const own = { at: now(), template: S.safariEngine(settings).template };
-    for (const map of [ownSearchTabs, ownSearchUrls]) for (const [key, entry] of map) if (now() - entry.at > OWN_SEARCH_MS) map.delete(key);
     // Its row says the search at once, not the page it leaves (state/model.ts goingTo).
     const going = (id: number) => mutate((s) => M.goingTo(s, id, { url, title: text }, now())).catch(() => {});
     if (tabId != null) {
-      ownSearchTabs.set(tabId, own);
       await going(tabId);
       return void (await api.tabs.update(tabId, { url }));
     }
-    // From a page: opened at the search's address (its row says so from the
-    // start), known as Margin's own by that address until it has an id.
-    if (from) {
-      ownSearchUrls.set(url, own);
-      return openBehind({ windowId, url, from, deadline, created: (tab) => ownSearchTabs.set(tab.id, own) });
-    }
+    // From a page: opened at the search's address (its row says so from the start).
+    if (from) return openBehind({ windowId, url, from, deadline });
     // Else marked before it navigates: created blank, then the search loads.
     const tab = await openTab({ windowId, url: 'about:blank', deadline });
-    ownSearchTabs.set(tab.id, own);
     await mutate((s) => M.goingTo(s.tabs[tab.id] ? s : M.upsertTab(s, tab, now()), tab.id, { url, title: text }, now())).catch(() => {});
     await api.tabs.update(tab.id, { url });
     // Shown (opened in front): the UI's switch to it went through (shared/switching.ts `failed`).

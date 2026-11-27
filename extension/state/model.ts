@@ -36,8 +36,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   // with its subdomains: shared/sleep.ts neverSleeps).
   sleepAfterHours: 4,
   neverSleepSites: Object.freeze([]),
-  // Searches use the browser's engine (shared/search.ts). Safari: the one
-  // learned from Safari's own address-bar searches, { id, name, template, at }.
+  // Searches use the browser's engine (shared/search.ts). Safari: the one an
+  // older Margin learned from Safari's address-bar searches, { id, name,
+  // template, at }, kept as it was (no longer learned: Margin.app follows the
+  // engine macOS names, core/session/suggest.rs).
   safariSearch: null,
   blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.ts)
   pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.ts)
