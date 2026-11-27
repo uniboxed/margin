@@ -483,7 +483,7 @@ host. Immutable: rows that didn't change are the same objects.
   `settings`, `platform`, `library` and `newSpace` (Arc's ends, below).
 - `library` (Arc's Library, behind the box button and before the first space): `open`, `shown` (open, or a swipe
   toward it shows it: its rows only then), `section` and `sections[]` (`id`, `label`, `active`: Media, Downloads,
-  Easels, Spaces, Boosts, Archived Tabs, Arc's order), `search` (whether the section has a search field) with
+  Spaces, Boosts, Archived Tabs, Arc's order without its Easels), `search` (whether the section has a search field) with
   `searchLabel` (its placeholder, "Search Archive…") and `query`, `filter` (Arc's Filter beside it: Downloads and
   Archived Tabs; not in Margin yet), `archive` (Archived Tabs shown) with `groups[]` (`label`: "Today", "Yesterday",
   "3 days ago"…, Arc's headings; `rows[]`: an archived tab's face, `id`, `address`: its URL as Arc writes it) and
@@ -550,7 +550,7 @@ else is ignored and logged.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
 - Menus: `menu.open` (`add`: New Folder and New Space; `space`: the space in front's menu, as its name's right-click
   opens it), `menu.run` (an item), `menu.close`. Set `--m-add-menu: arc` on your root for Arc's "+" instead: New
-  Space, New Folder, New Easel and New Boost (drawn, doing nothing: `menu.items[].inert`, their `hint` saying so), New
+  Space, New Folder, New Boost (drawn, doing nothing: `menu.items[].inert`, its `hint` saying so), New
   Split (where the host can make one), New Tab; each row's `keys` (`⌘T`) and `icon` (a glyph's name), and the menu's
   `arc`.
 - Edit Theme Color drawn by your theme: `picker.run` (one of `picker`'s items, by its `id`: below).

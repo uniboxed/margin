@@ -22,7 +22,7 @@ export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fd
 export type MenuItem = { id: string, label: string, separator: boolean, danger: boolean, confirm: boolean, action: string | null, arg?: any,
   /** Drawn, doing nothing (a feature Margin doesn't have yet: Arc's "+"); `hint` says so. */
   inert?: boolean, hint?: string,
-  /** Its key, shown at its right (`⌘T`); its glyph's name, for a theme that draws one (`space`, `folder`, `easel`, `boost`, `split`, `tab`). */
+  /** Its key, shown at its right (`⌘T`); its glyph's name, for a theme that draws one (`space`, `folder`, `boost`, `split`, `tab`). */
   keys?: string, icon?: string };
 /** `look`: the theme's way of drawing it (`arc`: Arc's "+" menu, the theme's `--m-add-menu`; ui/behaviors/menus.ts). */
 export type MenuTarget = { kind: 'tab' | 'pin' | 'favorite' | 'folder' | 'space' | 'add' | 'profile', id?: string | number | null, look?: string | null };
@@ -191,14 +191,13 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
     }
     case 'add':
       // Arc's "+" (M2.10, docs/ARC-SIDEBAR.md: its popover, read from Arc), for a theme that asks for it: its order, its
-      // glyphs and keys; Easel and Boost drawn, doing nothing (Tirth's choice: Margin has neither yet); New Split where
-      // the host can make one (Margin.app's ⌃⇧=), New Tab.
+      // glyphs and keys; Boost drawn, doing nothing (Tirth's choice: Margin hasn't got it yet; Arc's New Easel left out:
+      // Margin won't have Easels); New Split where the host can make one (Margin.app's ⌃⇧=), New Tab.
       if (target.look === 'arc') {
         // (New Space: Arc's Create a Space, nothing made until its Create Space: ui/behaviors/ends.ts.)
         item('New Space', 'newSpace.open', undefined, { icon: 'space' });
         item('New Folder', 'folder.new', undefined, { icon: 'folder' });
         separator();
-        item('New Easel', '', undefined, { icon: 'easel', inert: true, hint: 'Easels aren’t in Margin yet: coming soon' });
         item('New Boost', '', undefined, { icon: 'boost', inert: true, hint: 'Boosts aren’t in Margin yet: coming soon' });
         separator();
         if (features?.newSplit) item('New Split', 'split.new', undefined, { icon: 'split', keys: splitKeys(state.settings) });

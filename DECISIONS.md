@@ -11710,3 +11710,11 @@ scale 0.87), and a window not in full screen in mode 0 (laid out at its size, as
   (the core's flow), page-scale.test.ts (the page's answer: now, once whole after its frame, narrower, its deadline).
 - **Real Safari:** to check once Safari is restarted under the new Margin (the page's own `pageScale` lines in
   Margin.app's log say if a page is still shrunk).
+
+## No Easels (`refactor/no-easels`, 2026-11-27)
+
+Tirth: Margin won't have Arc's Easels. Gone wherever they were drawn: the Library's rail (Media, Downloads, Spaces,
+Boosts, Archived Tabs), its words for an empty Easels (and its note icon), the "+" menu's New Easel (Boost stays, inert)
+and Arcadia's glyphs and rules for them; the view model's `library.sections[]`, the `library.section` action's ids and
+the themes README with them. A Library last left on Easels opens on Archived Tabs (the view model's fallback for a
+section it doesn't know). docs/ARC-SIDEBAR.md still describes Arc's Easels as measured: that's Arc, not Margin.

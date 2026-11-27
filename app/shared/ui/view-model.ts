@@ -183,7 +183,8 @@ export type ArchiveRow = Face & { id: string, spaceId: string, closedAt: number,
 /** An archived tab as the Library lists it: its address as Arc writes it (no scheme, no www). */
 export type LibraryRow = ArchiveRow & { address: string };
 /** The Library's rail (Arc's, in its order) and the shown section (LibraryView). */
-export const LIBRARY_SECTIONS = Object.freeze(['media', 'downloads', 'easels', 'spaces', 'boosts', 'archive'] as const);
+// (Arc's Easels left out: Margin won't have them, Tirth 2026-11-27.)
+export const LIBRARY_SECTIONS = Object.freeze(['media', 'downloads', 'spaces', 'boosts', 'archive'] as const);
 export type LibraryView = {
   open: boolean,
   /** Drawn: open, or a swipe toward it shows it (its rows only then). */
@@ -229,7 +230,7 @@ export type PaletteRow = {
   isApp: boolean,
 };
 export type MenuRow = { id: string, label: string, separator: boolean, danger: boolean, confirming: boolean,
-  /** Drawn, doing nothing (Arc's Easel and Boost), `hint` saying so; its key (`⌘T`); its glyph's name. */
+  /** Drawn, doing nothing (Arc's Boost), `hint` saying so; its key (`⌘T`); its glyph's name. */
   inert: boolean, hint: string, keys: string, hasKeys: boolean, icon: string };
 export type EditorView = {
   id: string, name: string, emoji: string, color: string,
@@ -996,14 +997,13 @@ function gestureView(g: any): GestureView | null {
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 // The Library (Arc's, docs/ARC-SIDEBAR.md "The ends of the spaces"): its rail's words, each section's search
-// placeholder (as Arc's), and the words of a section Margin has nothing for yet (Arc's Easels heading kept).
-const LIBRARY_LABELS: Record<string, string> = { media: 'Media', downloads: 'Downloads', easels: 'Easels', spaces: 'Spaces', boosts: 'Boosts', archive: 'Archived Tabs' };
-const LIBRARY_SEARCH: Record<string, string> = { media: 'Search Media…', downloads: 'Search Downloads…', easels: 'Search Easels…', boosts: 'Search Boosts…', archive: 'Search Archive…' };
+// placeholder (as Arc's), and the words of a section Margin has nothing for yet.
+const LIBRARY_LABELS: Record<string, string> = { media: 'Media', downloads: 'Downloads', spaces: 'Spaces', boosts: 'Boosts', archive: 'Archived Tabs' };
+const LIBRARY_SEARCH: Record<string, string> = { media: 'Search Media…', downloads: 'Search Downloads…', boosts: 'Search Boosts…', archive: 'Search Archive…' };
 // (Arc's own words, read from its app: docs/ARC-SIDEBAR.md "The Library's sections". Media's names no app.)
 const LIBRARY_EMPTY: Record<string, { title: string, text: string, x?: boolean, after?: string }> = {
   media: { title: '', text: 'Save media to your Documents, Desktop, and Download Folders to see them here, alongside your Captures.' },
   downloads: { title: 'Nothing here yet!', text: 'Come back after you\u2019ve found some cool stuff to save.' },
-  easels: { title: 'Out of ideas!', text: 'Click the + sign in the Sidebar to create a new Easel.' },
   boosts: { title: 'Nothing Boosted Yet!', text: 'Type \u201cNew Boost\u201d in URL bar to make your own, or grab one from the Boost Gallery.' },
   archive: { title: 'Nothing here yet!', text: 'Hover your mouse over a tab and press the ', x: true, after: ' to archive it.' },
 };
