@@ -494,14 +494,27 @@ final class FakeHostWorld: HostSystem {
     func now() -> Double { clock }
     // Virtual time: each sleeper wakes at its own time, the clock moving to the earliest one's, so sleeps that overlap
     // (Margin's quit gives every host back at once) take the longest one's time, not their sum. A sleeper goes on once
-    // its wake is the earliest for a few turns in a row (every other task has reached its own sleep, or finished).
+    // its wake is the earliest for a few turns in a row (every other task has reached its own sleep, or finished). A
+    // `deadline` is a sleeper from when it's set, so a timer whose Task hasn't run yet still holds the clock at its wake
+    // (counting turns alone, a sleep of seconds after it went past it: the clock 5 s on, the cap's 1 s never seen).
     private var sleepers: [Int: Double] = [:]
     private var nextSleeper = 0
-    func sleep(_ seconds: Double) async {
+    func sleep(_ seconds: Double) async { await deadline(seconds)() }
+    func deadline(_ seconds: Double) -> () async -> Void {
         let me = nextSleeper
         nextSleeper += 1
         let wake = clock + max(0, seconds)
         sleepers[me] = wake
+        return { [self] in await wakes(me, at: wake) }
+    }
+    // Time passing for a test as it does on a real clock, a frame at a time: work a timer starts when it fires (a hold's
+    // end, a cap) runs within that frame, where one sleep of `seconds` beside it could move the clock past that work
+    // before its Tasks' turns came (the last sleeper left counting its calm turns while they still went on).
+    func pass(_ seconds: Double, frame: Double = 0.01) async {
+        let end = clock + seconds
+        while clock + 1e-9 < end { await sleep(min(frame, end - clock)) }
+    }
+    private func wakes(_ me: Int, at wake: Double) async {
         var calm = 0
         while calm < 3 {
             await Task.yield()
