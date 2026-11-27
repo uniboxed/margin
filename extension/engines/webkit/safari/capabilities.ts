@@ -24,9 +24,9 @@ export const capabilities: Capabilities = {
   // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
   // (shared/gestures.ts; setting `blockGestures`).
   blockGestures: true,
-  // No search API: the engine is learned from Safari's own searches
-  // (shared/search.ts).
-  search: 'learn',
+  // No search API: Margin.app searches with the engine chosen in Safari's
+  // Settings, as macOS keeps it (core/session/suggest.rs); never guessed.
+  search: 'app',
   marginFullscreen: false,
   // A worker's WebSocket hangs WebKit's background (docs/PROTOCOL.md Transport step 9): the link's socket only
   // from a page, and the socket guard (background/link.ts).

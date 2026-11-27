@@ -42,7 +42,7 @@ test('which engine\'s site a URL is on, Safari\'s parameters or not (for diagnos
 test('a search the extension makes itself in Safari: Safari\'s default (Google); in Chrome, Chrome\'s engine', () => {
   assert.equal(searchUrl('hello world'), 'https://www.google.com/search?client=safari&rls=en&q=hello%20world&ie=UTF-8&oe=UTF-8');
   assert.equal(searchUrl('c++ & more'), 'https://www.google.com/search?client=safari&rls=en&q=c%2B%2B%20%26%20more&ie=UTF-8&oe=UTF-8');
-  assert.equal(engineLabel({ search: 'learn' }), 'Google');
+  assert.equal(engineLabel({ search: 'app' }), 'Google');
   assert.equal(engineLabel({ search: 'browser' }), 'Chrome’s search engine');
 });
 

@@ -13,7 +13,7 @@ import { buildViewModel } from '../app/shared/ui/view-model.ts';
 import { smallState, W } from './ui/fixtures.ts';
 import { wrap } from './theme/payloads.ts';
 
-const SAFARI = { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'learn', marginFullscreen: false };
+const SAFARI = { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'app', marginFullscreen: false };
 // A browser whose sleeping tabs stay open, discarded (Chrome, Edge: Phase 5's), with Safari's other features.
 const DISCARDS = { ...SAFARI, sleepTabs: 'discard' };
 const CHROME = { sleepTabs: false, blockGestures: false, newTabHint: false, search: 'browser', marginFullscreen: true };

@@ -152,7 +152,7 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   assert.ok(manifestFor('chrome').permissions.includes('nativeMessaging'));
   assert.deepEqual(manifestFor('chrome').permissions.filter((p: string) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
   assert.equal(CAPABILITIES.chrome.search, 'browser');
-  assert.equal(CAPABILITIES.safari.search, 'learn');
+  assert.equal(CAPABILITIES.safari.search, 'app');
 });
 
 test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (app/engines/chromium/src/lib.rs, the connector\'s)', () => {

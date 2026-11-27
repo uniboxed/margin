@@ -83,7 +83,7 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('Settings: Material\'s switches (52 × 32)', async () => {
-        await mount({ appWindow: true, platform: { browser: 'safari', os: 'mac', features: { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'learn' } } });
+        await mount({ appWindow: true, platform: { browser: 'safari', os: 'mac', features: { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'app' } } });
         await ev(() => T.rtSetUi({ settingsPage: true, settingsCategory: 'browsing' }));
         const toggle = await rect('.settings-form input.toggle');
         assert.deepEqual([toggle.width, toggle.height, await computed('.settings-form input.toggle', 'appearance')], [52, 32, 'none']);

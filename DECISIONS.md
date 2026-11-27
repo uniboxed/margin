@@ -11865,3 +11865,20 @@ started a turn late; the check now sleeps in 50 ms steps, so a late cap is late 
 world's 3 turns to 12 broke the start screen's Try again check: not done.) Six runs, three at once, twice: all 2315
 checks pass.
 
+## A new tab Margin.app doesn't take: the browser's own (`feat/new-tab-steps-aside`, 2026-11-27)
+
+Tirth: with Margin.app not running (or a window that isn't Margin's), Margin shouldn't be in the way: a new tab there
+showed Margin's page ("Margin.app isn't running" with Start and an address field searching Google; in a window the app
+doesn't draw, "Margin.app hasn't placed this window yet"). Margin's new-tab page stays the browser's new-tab override:
+in Margin's own windows it catches Safari's own ⌘T, + and File › New Tab and hands them to Margin's palette over the
+page (background/handlers.ts newTabHandOff), else Safari's start page would come up with its address field pulling
+the toolbar down over the page.
+- **A fresh new tab Margin doesn't take** (`mode` not `app`: not linked, or the app draws nothing over the window) goes
+  to the browser's own new tab (shared/own-new-tab.ts): Safari's start page `favorites://`, Chrome's
+  `chrome://new-tab-page/` (tested headless: Chrome 156 lands there, titled New Tab). Edge opens that address as an
+  error page and its own (`edge://newtab/`) is Margin's page again: left blank there, titled New Tab, nothing drawn.
+  Refused by a browser: left blank. Once a tab: the page it goes to isn't this one, and this page loaded again in the
+  tab isn't fresh. A tab already showing Margin's page when the app quits, Back to it, `#launcher`, `#settings`: the
+  notice as before.
+- Safari's `search` capability renamed `learn` → `app` (Margin.app's engine, never learned).
+

@@ -69,6 +69,21 @@ test('the overlay follows the state: a tab opened, retitled and closed', async (
   await m.until(async () => !(await sidebar(ui)).tabs.some((r) => r.id === tab.id), { what: 'the row gone' });
 });
 
+test('the app not running: a fresh new tab draws nothing of Margin\'s, handed to the browser\'s own new tab', async () => {
+  const late = await startMargin({ name: 'link-own-new-tab', running: false, seed: SEED });
+  try {
+    // (A fresh new tab, as ⌘T makes it: its first page the new-tab override, Margin's page. This build is Safari's, so it
+    // asks for Safari's start page, which Chromium can't open: the page stays, blank, titled as any new tab.)
+    await late.bg(async () => { await chrome.tabs.create({}); });
+    const page = await late.until(() => late.context.pages().find((p) => p.url().endsWith('/newtab/newtab.html')), { what: 'the new tab' });
+    await page.waitForFunction(() => document.title === 'New Tab', null, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => document.getElementById('notice')?.hidden), true, 'no notice');
+    assert.equal(await page.evaluate(() => document.body.innerText.trim()), '', 'nothing drawn');
+  } finally {
+    await late.close();
+  }
+});
+
 test('the app starting after Safari: unlinked, the new-tab notice; then appUp links', async (t) => {
   const late = await startMargin({ name: 'link', running: false, seed: SEED });
   try {

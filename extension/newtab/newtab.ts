@@ -17,8 +17,9 @@
 // be missed), whenever it's shown or focused, and back from the back/forward
 // cache (a suspended page misses storage events). (Phase 7 makes the prompt
 // to install the app.)
-import { linksApp } from '../shared/capabilities.ts';
+import { capabilities, linksApp } from '../shared/capabilities.ts';
 import { resolveInput } from '../shared/search.ts';
+import { ownNewTabUrl } from '../shared/own-new-tab.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
 import { APP_LINK_KEY, appDraws, undrawn } from '../shared/app-link.ts';
 import type { MessageType, Request, Result } from '../../types/margin';
@@ -98,7 +99,19 @@ api.runtime.onMessage.addListener((message, _, sendResponse) => {
 });
 const address = () => (document.getElementById('address') as HTMLInputElement | null);
 
-if (mode !== 'app') showNotice();
+// A new tab Margin.app doesn't take for its palette (it isn't running, or the window isn't one of Margin's): the
+// browser's own new tab instead, so Safari is as it is without Margin (2026-11-27, Tirth: Margin stays out of the way
+// then). Once a tab: what it goes to isn't this page, and this page loaded again in that tab isn't `fresh` (its
+// history). Refused: this page draws nothing, the address bar the browser's as on any new tab.
+const ownNewTab = ownNewTabUrl(capabilities?.name, navigator.userAgent);
+if (fresh && mode !== 'app' && self?.id != null) {
+  document.title = 'New Tab'; // (as any new tab is, whether the browser takes it or it stays blank)
+  const handed = ownNewTab != null && await Promise.resolve(api.tabs.update(self.id, { url: ownNewTab })).then(() => true, (err) => {
+    console.info('[margin] new tab: the browser\'s own new tab refused:', String(err?.message ?? err));
+    return false;
+  });
+  console.info(`[margin] new tab ${self.id}: ${handed ? `handed to the browser's own (${ownNewTab})` : 'left blank'} (${mode === 'off' ? 'Margin.app not linked' : 'not a window of Margin.app\'s'})`);
+} else if (mode !== 'app') showNotice();
 
 // Not running, running and not answering (it sent no link), or linked with
 // nothing drawn over this window: said in the notice; the start button only
