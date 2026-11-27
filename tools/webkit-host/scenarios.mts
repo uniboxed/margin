@@ -225,7 +225,7 @@ export const SCENARIOS: Record<string, Step[]> = {
     check('B', 'B: still in Work', `const s = await ${STATE}(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`),
     { op: 'uninstall' }, wait(800), { op: 'install', sameId: true }, wait(3000),
     // Read from Margin's own page (the pages' old content-script world belongs to the copy before).
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: false }, wait(1500),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: false }, wait(1500), // (#launcher: an extension page to check from that stays; a fresh new tab is handed on)
     checkPage('N', 'after the update: B still in Work, A in Personal', `const s = await ${STATE}(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`, 5000),
     checkPage('N', 'and their ids are new', `const s = await ${STATE}('tabs'); return Object.values(s.tabs).filter((t) => /\\/p\\/[AB]$/.test(t.url)).every((t) => t.id > 50)`),
   ],
@@ -238,7 +238,7 @@ export const SCENARIOS: Record<string, Step[]> = {
   // installed one's messaging here, so their writes are made by hand.)
   owner: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, ready('A'), wait(1500),
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: false }, wait(1000),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: false }, wait(1000), // (#launcher: an extension page to check from that stays; a fresh new tab is handed on)
     { op: 'page', in: 'N', js: 'await browser.storage.local.set({ tabs: { 999: { id: 999, windowId: 998, index: 0, url: "http://example.com/", title: "old copy", active: true } }, tabSpace: { 999: "personal" }, activeSpaceByWindow: { 998: "personal" } }); return "an old copy wrote its tabs"' }, wait(800),
     check('A', 'A: its sidebar still lists the tabs by ids its copy has', `const { state } = Margin.content.getState(); const urls = Object.values(state.tabs).map((t) => t.url); return !state.tabs[999] && urls.some((u) => u.endsWith('/p/A')) && urls.some((u) => u.endsWith('/p/B'))`),
     switchTo('A', 'B'), shown('B'),
