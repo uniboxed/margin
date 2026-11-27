@@ -11697,7 +11697,16 @@ scale 0.87), and a window not in full screen in mode 0 (laid out at its size, as
 - **Kept for a Safari started before** (HostEngine `safariMayScale`, from its launch time): a web view already in mode 4
   stays so until Safari restarts, so its tiles still get `relayNarrowed` after a drag; a Safari started since gets
   nothing after the drag (no freeze, no tile set). The write not taken: every Safari as before.
+- **The relay held by the page's own word, never a guessed time** (Tirth, the no-fixed-delays rule: the 33 ms frame and
+  the 120 ms hold it had are gone): `relayNarrowed` asks the page first (`hostPageLayout`, content/page-scale.ts
+  `layout`, through margin-core's `safari_page_layout`) whether Safari draws it shrunk: whole, nothing laid out again
+  and no freeze. Shrunk: the tile at its wider width is held until the page says it's drawn whole there, then at its own
+  until it says it's laid out narrower than that, each answered after the frame that draws it (two animation frames),
+  and the screen is let go then. The page answers by `relayCap` (0.5 s) at the latest, `met: false`; the engine never
+  waits more than twice that for an answer (a copy that doesn't answer), as the screen is held still through it.
 - **Tests:** live-resize-tests.swift (a Safari started after the default was set: nothing after a narrowing drag, failed
-  before; one started before: laid out again, as before).
+  before; one started before: laid out again, as before; the page's word: shrunk, held for each of its answers under
+  the freeze; whole, asked once and nothing more; silent, each wait capped and the screen let go), requests_tests.rs
+  (the core's flow), page-scale.test.ts (the page's answer: now, once whole after its frame, narrower, its deadline).
 - **Real Safari:** to check once Safari is restarted under the new Margin (the page's own `pageScale` lines in
   Margin.app's log say if a page is still shrunk).

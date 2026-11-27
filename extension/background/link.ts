@@ -157,6 +157,8 @@ export const APP_REQUESTS = new Set([
   // Margin.app's host (app/platforms/macos/shell/HostedSession.swift): a window it made closed, a window's state
   // without taking focus.
   'closeWindow', 'setWindowState', 'hostFocusWindow',
+  // …and its relay after a drag asking how Safari lays a window's shown page out (background/handlers.ts).
+  'hostPageLayout',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.

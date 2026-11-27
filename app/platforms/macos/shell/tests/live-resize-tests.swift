@@ -441,6 +441,71 @@ func liveResizeTests() {
               before.tile != 0 && before.relayed && before.freezes == 1 && before.width == page(400).width, "\(before)")
     }
     do {
+        // The relay held by the page's own word (`safariPageLayout`), never a guessed time: asked first whether it's drawn
+        // shrunk (whole: nothing laid out again, no freeze); shrunk, the tile set at its wider width and held until the
+        // page says it's drawn whole there, then at its own and held until it says it's laid out narrower than that, the
+        // screen let go then. A page that never answers: each wait capped (`relayCap`), the screen let go all the same.
+        typealias Ask = (whole: Bool, below: Double?, width: CGFloat, frozen: Bool, at: Double)
+        func run(_ page: @escaping (FakeHostWorld, Int, Bool, Double?) async -> HostPageLayout?) -> (asks: [Ask], relayed: Bool, freezes: Int, frozen: Bool, lines: [String], end: Double, dragEnd: Double) {
+            let (w, e, _) = world()
+            w.start("com.apple.Safari", policy: .regular, windows: 0)
+            let copy = FakeSafariCopy(w) { w.running(bundleId: "com.apple.Safari").first?.pid }
+            copy.wire(e)
+            var asks: [Ask] = []
+            var n = 0
+            e.safariPageLayout = { _, _, whole, below, _ in
+                asks.append((whole, below, w.bounds(window: n)?.width ?? 0, w.frozen, w.clock))
+                return await page(w, n, whole, below)
+            }
+            _ = open(e, .safariWindow("Work"))
+            n = copy.windowOf[7914] ?? 0
+            let tile = w.tileOf(n) ?? 0
+            settle(e, 276)
+            let (l, restore) = listen()
+            defer { restore() }
+            let m = w.calls.count
+            let freezes = w.freezes
+            _ = e.dragging(true)
+            for left in Array(stride(from: 276.0, to: 400.0, by: 6)) + [400] { e.follow(placed(CGFloat(left))); _ = hostRun { await w.sleep(0.009); return true } }
+            _ = e.dragging(false)
+            let dragEnd = w.clock
+            _ = hostRun { await w.sleep(5); return true }
+            let after = Array(w.calls.dropFirst(m))
+            let lastLive = after.lastIndex(of: "liveResizing \(FakeHostWorld.marginSpace) false") ?? after.count
+            let relayed = after.dropFirst(lastLive + 1).contains { $0.hasPrefix("tileRect \(tile) ") }
+            return (asks, relayed, w.freezes - freezes, w.frozen, l.all.filter { $0.contains("laid out again") }, w.clock, dragEnd)
+        }
+        // (Safari's own: shrunk until its window is as wide as the widest of the drag, then whole at any width.)
+        var relaid = false
+        let shrunk = run { w, n, whole, below in
+            let width = Double(w.bounds(window: n)?.width ?? 0)
+            if !whole && below == nil { return HostPageLayout(scale: relaid ? 1 : 0.87, inner: relaid ? width : 1392, met: true) }
+            if below == nil {
+                if width >= 1100 { relaid = true }
+                return HostPageLayout(scale: relaid ? 1 : 0.87, inner: relaid ? width : 1392, met: relaid)
+            }
+            return HostPageLayout(scale: 1, inner: width, met: width < below!)
+        }
+        let a = shrunk.asks
+        check("live resize: a page drawn shrunk after the drag: asked, at its wider width until it says it's whole, at its own until it's laid out narrower, under the freeze, let go then",
+              a.count == 3 && !a[0].whole && a[0].below == nil && !a[0].frozen
+              && a[1].whole && a[1].below == nil && a[1].frozen && a[1].width > a[0].width
+              && a[2].whole && a[2].below == Double(a[1].width) - 0.5 && a[2].frozen && a[2].width == a[0].width
+              && shrunk.relayed && shrunk.freezes == 1 && !shrunk.frozen
+              && shrunk.lines.contains { $0.contains("its page drawn whole at the wider width: 1 of 1, at its own: 1 of 1") },
+              "\(a) \(shrunk.lines)")
+        let whole = run { w, n, _, _ in HostPageLayout(scale: 1, inner: Double(w.bounds(window: n)?.width ?? 0), met: true) }
+        check("live resize: …a page drawn whole after it: asked once, nothing laid out again, no freeze",
+              whole.asks.count == 1 && !whole.relayed && whole.freezes == 0 && whole.lines.contains { $0.contains("drawn whole after a drag that narrowed it, nothing laid out again") },
+              "\(whole.asks) \(whole.lines)")
+        let silent = run { w, _, _, _ in await w.sleep(100); return nil }
+        check("live resize: …a page that never answers: laid out again as it may be shrunk, each wait capped, the screen let go",
+              silent.asks.count == 3 && silent.relayed && silent.freezes == 1 && !silent.frozen
+              && silent.lines.contains { $0.contains("at the wider width: 0 of 1, at its own: 0 of 1") }
+              && silent.asks[1].at - silent.asks[0].at < 1.1 && silent.asks[2].at - silent.asks[1].at < 1.2,
+              "\(silent.asks) \(silent.lines)")
+    }
+    do {
         let (w, e, _) = world()
         w.tileWindow[FakeHostWorld.marginTile] = 999 // (Margin's own tile not found by its window)
         _ = open(e, textEdit)

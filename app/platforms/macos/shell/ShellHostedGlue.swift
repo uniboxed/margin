@@ -158,6 +158,7 @@ extension Shell {
         host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
         host.safariFocus = { [weak session] profile, id in await session?.safariFocus(profile, id) ?? false }
+        host.safariPageLayout = { [weak session] profile, id, whole, below, within in await session?.safariPageLayout(profile, id, whole: whole, below: below, within: within) }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
         host.hostedTile = { [weak session] on in session?.hostedTile(on) }

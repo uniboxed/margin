@@ -22,12 +22,58 @@ export function startPageScale({ on, send, win = globalThis }: { on: () => boole
     const shrunk = vv.scale < SHRUNK_BELOW;
     if (shrunk === told || !on()) return;
     told = shrunk;
-    const round = (v: number) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : -1);
     send('pageScale', { n: ++n, scale: round(vv.scale), inner: round(win.innerWidth), outer: round(win.outerWidth), dpr: round(win.devicePixelRatio), shown: win.document?.visibilityState === 'visible' });
   };
   win.visualViewport?.addEventListener('resize', check);
   win.addEventListener('resize', check);
   win.document?.addEventListener('visibilitychange', check);
   check();
-  return { check };
+
+  // Margin.app laying a narrowed Safari tile out again after a drag (HostEngine `relayNarrowed`, background handlers
+  // `hostPageLayout`): the page's own word on its layout, so the screen is held still exactly until the page is drawn
+  // at its width, never for a guessed time. Asked with nothing to wait for: answered now. `whole`: once Safari draws it
+  // whole (scale at least SHRUNK_BELOW); `below`: once it's whole and laid out narrower than that (its next layout, a
+  // tile set narrower in one step). Answered after the frame that draws it (two animation frames: the first's paint
+  // done), with `met`; at `deadline` (ms since 1970, Margin.app's cap) answered as it is, `met: false`.
+  const layout = ({ whole = false, below = null, deadline = 0 }: { whole?: boolean, below?: number | null, deadline?: number }): Promise<PageLayout> => {
+    const now = (): PageLayout => {
+      const scale = win.visualViewport?.scale;
+      return { scale: Number.isFinite(scale) ? round(scale) : -1, inner: round(win.innerWidth), met: false };
+    };
+    const ok = (l: PageLayout) => l.scale >= SHRUNK_BELOW && (below == null || l.inner < below);
+    if (!whole && below == null) return Promise.resolve({ ...now(), met: true });
+    return new Promise((resolve) => {
+      let done = false;
+      let drawing = false;
+      const finish = (l: PageLayout) => {
+        if (done) return;
+        done = true;
+        win.visualViewport?.removeEventListener('resize', look);
+        win.removeEventListener('resize', look);
+        win.clearTimeout?.(timer);
+        resolve(l);
+      };
+      // (Met: answered once the frame that draws it is done; looked at again then, as a later resize may undo it.)
+      function look() {
+        if (done || drawing || !ok(now())) return;
+        drawing = true;
+        win.requestAnimationFrame(() => win.requestAnimationFrame(() => {
+          drawing = false;
+          const l = now();
+          if (ok(l)) finish({ ...l, met: true });
+        }));
+      }
+      const timer = win.setTimeout(() => finish(now()), Math.max(0, deadline - Date.now()));
+      win.visualViewport?.addEventListener('resize', look);
+      win.addEventListener('resize', look);
+      look();
+    });
+  };
+  return { check, layout };
 }
+
+// The page's layout as told to Margin.app's relay (`layout`): its scale, its layout width (CSS px), and whether what was
+// asked for was met.
+export type PageLayout = { scale: number, inner: number, met: boolean };
+
+const round = (v: number) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : -1);
