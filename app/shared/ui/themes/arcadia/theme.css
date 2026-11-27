@@ -948,7 +948,8 @@
 
 /* ---- The command bar ------------------------------------------------------- */
 
-/* A floating panel centered on the window, a third of the way down: a large
+/* A floating panel in the middle of the window (its full height centered, so the field stays put as rows come and
+   go while typing; never nearer an edge than 16 px): a large
    field, then one-line rows (icon, title, a muted detail, where it is, an
    arrow); the selected row takes the current space's color. Light or dark
    as the system is, opaque (no blur). Laid out left-to-right in any
@@ -959,14 +960,16 @@
 .palette {
   --rows: 5;
 
+  /* Five rows (the field, list padding, rows and the gaps between them);
+     more scroll, the selection followed. */
+  --full: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
+
   position: absolute;
-  top: 30%;
+  top: max(16px, calc((100% - var(--full)) / 2));
   left: 50%;
   transform: translateX(-50%);
   width: min(680px, calc(100% - 32px));
-  /* Five rows (the field, list padding, rows and the gaps between them);
-     more scroll, the selection followed. */
-  max-height: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
+  max-height: var(--full);
   direction: ltr;
   display: flex;
   flex-direction: column;
@@ -979,8 +982,7 @@
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
-/* Short windows: higher up, then fewer whole rows (never half of one). */
-@media (max-height: 507px) { .palette { top: 18%; } }
+/* Short windows: fewer whole rows (never half of one). */
 @media (max-height: 418px) { .palette { --rows: 4; } }
 @media (max-height: 357px) { .palette { --rows: 3; } }
 

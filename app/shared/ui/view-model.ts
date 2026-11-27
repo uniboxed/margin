@@ -738,7 +738,7 @@ function fresh(input: ViewModelInput): ViewModel {
         spaceColor: item.spaceColor ?? '',
         emoji: item.emoji ?? '',
         // The typed text as a search, or as an address to open (a theme may draw its own icon).
-        isSearch: item.kind === 'go' && item.search === true,
+        isSearch: (item.kind === 'go' || item.kind === 'suggestion') && item.search === true,
         isOpen: item.kind === 'go' && item.search === false,
         // (An app picked from the installed ones, or an item of the space that's an app.)
         isApp: item.kind === 'app' || !!appOfItem(item),

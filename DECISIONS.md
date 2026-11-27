@@ -11798,3 +11798,70 @@ weight, place): no outline of either is copied, and no coordinate is taken from 
   profile's own SF Symbol at run time with `NSImage(systemSymbolName:)` (on macOS, in an Apple-platform app, nothing
   redistributed): not affected.
 
+## The palette's search: the engine from macOS, its suggestions (`feat/palette-suggestions`, 2026-11-27)
+
+Tirth: searching from the palette meant scrolling to the bottom (old searches and pages on top, "Search for…" last),
+no suggestions, and the palette not in the middle of the screen. Asked how Margin knows the engine (someone using
+Ecosia mustn't get Google's suggestions), and whether Margin's learning of it from Safari's search addresses was worth
+keeping (guessy: only after a first address-bar search, Safari's URL tags, special cases for Margin's own searches).
+- **The engine is macOS's record, Safari's own choice.** Read in Safari 27.2's code: Safari › Settings › Search
+  (`-[SearchPreferences changeDefaultSearchEngine:]`) → `-[SearchProvidersController setDefaultProvider:forPrivateBrowsing:]`
+  → (not for private windows) `_setSystemDefaultProvider:` → `changeUserWebSearchProviderInfoTo:` { display name,
+  identifier }, also as Safari loads its engines at each start. It lands in the user's global preferences
+  (`NSPreferredWebServices` → `NSWebServicesProviderWebSearch` { `NSProviderIdentifier` `com.google.www`,
+  `NSDefaultDisplayName` }), readable by any app with no permission; CoreFoundation's writer posts the Darwin notice
+  `com.apple.CFPreferences.WebServices._didChange`. Margin.app reads it at launch and at each notice
+  (`SearchEngineRecord.swift`); the core maps it to one of Safari's five engines (`suggest.rs engine_of_record`: a
+  label of the identifier, else the name), and the palette's searches and the card's go there (`search_address`).
+  An engine not Safari's, or none: no suggestions (never another engine's), the search to Google's.
+- **All guessing from search addresses is gone**: the learning (`background/search-engine.ts`, its calls on every
+  address change, `own-search.test.ts`, its e2e test), Safari's URL tags it read (`detectSafariSearch`, each engine's
+  `fromSafari`), and every read of what it stored: `safariSearch` is dropped from saved settings (`REMOVED_SETTINGS`),
+  the core and the Swift never read it. With no engine named by macOS the search goes to Google's (Safari's default);
+  the extension's own pages (Margin.app not linked) search Google's in Safari, Chrome's engine in Chrome.
+- **Chrome and Edge, tested** (headless, a throwaway profile, a test extension loaded over the DevTools pipe, a test
+  native host): Chrome 156 and Edge both start a native host as its own responsible process (`responsibility_get_pid_
+  responsible_for_pid` = itself), so Margin's connector can't read their profile folders (Local State, Preferences,
+  Web Data: `Operation not permitted`, as from any app without Full Disk Access); no extension API names the default
+  engine. Not needed yet: the Mac's session hosts web items in Safari only (`requests.rs`: "chrome isn't hosted
+  yet"), so every palette search opens in Safari, and Safari's engine is the right one. **When Chrome and Edge are
+  hosted** (the Mac, and the Windows shell, which hosts only them): a search in a Chrome or Edge space is handed to that
+  browser (`hostShow` with the query, the copy's `chrome.search.query` on the item's tab), so its own engine runs it;
+  the engine is then known from the address that search lands on (Margin's own search, run by the browser: no guess),
+  and its suggestions shown from then on; before the first, none.
+- **Suggestions: the engine's own**, each in the OpenSearch format (`["typed", ["s1", …]]`; checked 2026-11-27 with an
+  app's client name): Google `www.google.com/complete/search?client=firefox`, Bing `api.bing.com/osjson.aspx`,
+  DuckDuckGo `duckduckgo.com/ac/?type=list`, Ecosia `ac.ecosia.org/autocomplete?type=list`, Yahoo
+  `search.yahoo.com/sugg/ff?output=fxjson`. Never for an address (a scheme, one word with a dot, localhost) or more
+  than 100 characters; at most 8 read, each checked. Sent by Margin.app (an ephemeral session: no cookies, no cache,
+  4 s), on unless Settings › Browsing's "Show search suggestions in the command bar" is off. **No timer**: one request
+  in flight a window, what's typed meanwhile asked when it answers (the newest only), the last 24 answers kept (typing
+  back shows them at once); the page keeps showing the last suggestions that still start with what's typed while the
+  next come, so the rows don't flicker.
+- **The order** (shared/search.ts rankPalette): typed, the person's clearest match first (a tab's or pin's title or
+  site typed from its start, or two words or more each the start of a word of its title, "quiet city": The Quiet City;
+  an app typed from its name's start, a command each typed word of which starts a word of
+  its name: "switch work"; at least two characters; never a search page), then "Search for … — <engine>" (or Open …,
+  always first for an address), then up to 4 suggestions as search rows (⌕), then the person's tabs, pins, apps and
+  actions (6 in all with the top hit), then archived tabs (3). Search pages (an engine's results, any) are never a top
+  hit, rank 60 lower among open tabs, and archived ones aren't offered while typing: the suggestions say those searches.
+  Nothing typed: as before. Enter runs the first row.
+- **In the middle of the screen** (Tirth: dead center): every theme's palette has its full height (field and all its
+  rows) centered in the window, at least 16 px from an edge, so the field stays put as rows come and go while typing
+  (Arcadia and Material were 30% down, Liquid Glass and Neubrutalism 17%, Pixel 140 px).
+- Tests: `suggest.rs` (record, what's asked, answers read, one in flight, kept, another engine), `routing_tests.rs`
+  `the_palettes_engine_and_suggestions`, `tests/search.test.ts` (old searches never on top, suggestions typed on, top
+  hits, the caps), `tests/palette-suggest.test.ts` (the page's asks and pushes, the switch),
+  `tests/fixtures/search-engines.json` (the engines' search addresses the same in the extension and the core).
+
+## The relay's capped waits on the main actor, its test stepped (`fix/relay-cap-main`, 2026-11-27)
+
+The live-resize check "a page that never answers" failed about half the runs under load (the gate, three runs at
+once): a capped wait seemed to take 4–5 s, not 1. Two causes. `HostEngine.capped` started its two tasks (the body, the
+limit's sleep) with no actor named, so they could run off the main actor, its `once` flag set from two threads: both
+now run on the main actor, the limit's sleep asked for first. And the check waited out the relay with one 5 s sleep of
+its own: the test world's clock (a sleeper goes on once it's the earliest for 3 turns) could leap past a cap a busy run
+started a turn late; the check now sleeps in 50 ms steps, so a late cap is late by one step at most. (Widening the test
+world's 3 turns to 12 broke the start screen's Try again check: not done.) Six runs, three at once, twice: all 2315
+checks pass.
+

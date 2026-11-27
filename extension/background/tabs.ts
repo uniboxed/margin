@@ -19,7 +19,6 @@ import { tellNotice } from './notices.ts';
 import { oldSleepPage } from '../shared/sleep.ts';
 import { noteClosing, takeClosing } from './closing.ts';
 import { appLog, switchLog } from './switch-log.ts';
-import { noteReopened } from './search-engine.ts';
 
 // When each tab was last shown (a diagnostic in tabs.onUpdated).
 export const shownAt = new Map(); // tabId → when it was last activated
@@ -428,7 +427,6 @@ export async function openTab({ windowId, url, spaceId, deadline, index, keptId 
   // window could stay on the other one).
   if (spaceId && windowId != null) await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
   tooLate(deadline);
-  if (keptId) noteReopened(url); // (an old search there isn't one made now)
   const tab = await api.tabs.create({ windowId, url, active: true, ...(Number.isInteger(index) && (index as number) >= 0 ? { index } : {}) });
   if (spaceId || keptId) {
     await mutate((s) => {

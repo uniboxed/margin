@@ -212,6 +212,12 @@ extension Shell {
         }
         session.appName = { [weak self] id in self?.installedAppName(id) }
         hosted = session
+        // The palette's engine: the one macOS's web search record names (Safari's), followed as it changes.
+        if !options.harness {
+            let record = SearchEngineRecord { [weak session] said in session?.searchEngine(identifier: said.identifier, name: said.name) }
+            searchRecord = record
+            record.start()
+        }
         session.marginActive = { NSApp.isActive }
         session.activateMargin = { NSApp.activate() }
         if let host { wire(host, to: session); prepareBrowserOnce() }
@@ -225,6 +231,7 @@ extension Shell {
         Diagnostics.note("Margin's window: the library's \(library.spaces().count) space(s), \(library.items().count) item(s); hosting \(host == nil ? "off (no host engine)" : "on")")
         let source = LibraryWindowSource(library: library, session: session, profileSource: profiles)
         source.onTheme = { [weak self] name, payload, window in self?.themeAsked(name, payload, window: window) }
+        source.onSuggest = { [weak self] fetch in self?.fetchSuggestions(fetch) }
         return source
     }
 
@@ -405,6 +412,24 @@ extension Shell {
             Diagnostics.note("\(key.name) in a hosted app: \(done), \(Diagnostics.ms(since: started))")
             self.hostedKeysRun.append("\(key.name) → \(done)")
             if self.hostedKeysRun.count > 50 { self.hostedKeysRun.removeFirst(self.hostedKeysRun.count - 50) }
+        }
+    }
+}
+
+extension Shell {
+    // The engine's suggestions for what's typed in a Margin window's palette (the core's `fetch`, core/session/suggest.rs):
+    // sent, the answer given to the core, what it says pushed to that window's page, and the next request it hands
+    // out (what was typed meanwhile) sent after it: one in flight a window, none waiting on a timer.
+    func fetchSuggestions(_ fetch: JSONObject) {
+        guard let window = int(fetch["window"]), let seq = int(fetch["seq"]) else { return }
+        Task { @MainActor [weak self] in
+            let (status, body) = await SuggestionFetch.send(fetch)
+            guard let self, let session = self.hosted else { return }
+            let out = session.suggestAnswer(window: window, seq: seq, status: status, body: body)
+            if let push = out["push"] as? JSONObject, let text = jsonString(push) {
+                self.marginWindows?.controllers.first { $0.id == window }?.push(text)
+            }
+            if let next = out["fetch"] as? JSONObject { self.fetchSuggestions(next) }
         }
     }
 }

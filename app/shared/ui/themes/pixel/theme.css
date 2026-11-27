@@ -461,7 +461,8 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 
 /* The palette: the board's SELECT DESTINATION box. */
 .palette-layer { position: absolute; inset: 0; z-index: 20; }
-.palette { position: absolute; left: 50%; top: 140px; transform: translateX(-50%); width: min(660px, calc(100% - 100px)); max-height: calc(100% - 216px); box-sizing: content-box; padding: 18px; display: flex; flex-direction: column; background: var(--ground); }
+/* Its full height (480 px: the field, eight rows, the keys, its padding) centered in the window, the field staying put as rows come and go. */
+.palette { --top: max(16px, calc((100% - 480px) / 2)); position: absolute; left: 50%; top: var(--top); transform: translateX(-50%); width: min(660px, calc(100% - 100px)); max-height: calc(100% - 2 * var(--top) - 36px); box-sizing: content-box; padding: 18px; display: flex; flex-direction: column; background: var(--ground); }
 .palette-title { flex-shrink: 0; margin-bottom: 14px; font-family: 'Press Start 2P', monospace; font-size: 12px; color: var(--yellow); }
 .palette-field { flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; background: var(--deep); box-shadow: inset 0 0 0 2px var(--field); }
 .palette-field .chevron { font-family: 'Press Start 2P', monospace; font-size: 11px; }

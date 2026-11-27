@@ -5,7 +5,7 @@ import * as search from '../extension/shared/search.ts';
 
 const { DEFAULT_SETTINGS, normalizeState } = model;
 
-const { resolveInput, detectSafariSearch, searchUrl, safariEngine, engineLabel, SAFARI_DEFAULT } = search;
+const { resolveInput, searchUrl, engineLabel } = search;
 
 test('URLs pass through or get a scheme', () => {
   assert.deepEqual(resolveInput('https://a.com/x'), { kind: 'url', url: 'https://a.com/x' });
@@ -22,51 +22,13 @@ test('everything else is a search, left to the browser\'s engine', () => {
   assert.equal(resolveInput('   '), null);
 });
 
-test('no search engine of Margin\'s own: the old setting is gone, also from saved settings', () => {
+test('no search engine of Margin\'s own, none guessed: the old settings are gone, also from saved settings', () => {
   assert.equal('searchEngine' in DEFAULT_SETTINGS, false);
-  assert.equal(DEFAULT_SETTINGS.safariSearch, null);
-  const s = normalizeState({ settings: { searchEngine: 'https://duckduckgo.com/?q=%s', archiveAfterHours: 3 } });
+  assert.equal('safariSearch' in DEFAULT_SETTINGS, false);
+  const s = normalizeState({ settings: { searchEngine: 'https://duckduckgo.com/?q=%s', safariSearch: { id: 'duckduckgo', name: 'DuckDuckGo', template: 'https://duckduckgo.com/?q=%s&t=osx&ia=web', at: 1 }, archiveAfterHours: 3 } });
   assert.equal('searchEngine' in s.settings, false);
+  assert.equal('safariSearch' in s.settings, false, 'the engine an older Margin guessed: dropped');
   assert.equal(s.settings.archiveAfterHours, 3);
-});
-
-// Real Safari address-bar searches (macOS, and iOS where they differ), as in
-// SafariKeywordSearch's tests (github.com/arnemart/SafariKeywordSearch).
-test('Safari\'s own address-bar searches are recognized, with the engine and a matching template', () => {
-  const cases = [
-    ['https://www.google.com/search?client=safari&rls=en&q=monkey&ie=UTF-8&oe=UTF-8', 'Google', 'https://www.google.com/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8'],
-    ['https://www.google.co.uk/search?q=monkey&ie=UTF-8&oe=UTF-8&hl=en&client=safari&iga=1', 'Google', 'https://www.google.co.uk/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8'],
-    ['https://duckduckgo.com/?q=monkey&t=osx&ia=web', 'DuckDuckGo', 'https://duckduckgo.com/?q=%s&t=osx&ia=web'],
-    ['https://duckduckgo.com/?q=monkey&t=iphone&ia=web', 'DuckDuckGo', 'https://duckduckgo.com/?q=%s&t=osx&ia=web'],
-    ['https://www.bing.com/search?q=monkey&form=APMCS1&PC=APMC', 'Bing', 'https://www.bing.com/search?q=%s&form=APMCS1&PC=APMC'],
-    ['https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=monkey', 'Yahoo', 'https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
-    ['https://no.search.yahoo.com/search?p=monkey&fr=iphone&.tsrc=apple', 'Yahoo', 'https://no.search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
-    ['https://www.ecosia.org/search?q=monkey&tts=st_asaf_macos', 'Ecosia', 'https://www.ecosia.org/search?q=%s&tts=st_asaf_macos'],
-    // Yahoo's results pages put ;_ylt=…;_ylc=… into the path.
-    ['https://search.yahoo.com/search;_ylt=AwrFOX;_ylc=X1MDMjc?p=monkey&fr=aaplw&ei=UTF-8', 'Yahoo', 'https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
-  ];
-  for (const [url, name, template] of cases) {
-    const found = detectSafariSearch(url);
-    assert.ok(found, url);
-    assert.equal(found.name, name, url);
-    assert.equal(found.template, template, url);
-  }
-});
-
-test('other searches and look-alikes are not Safari\'s engine', () => {
-  for (const url of [
-    'https://www.google.com/search?q=monkey', // searched on google.com itself
-    'https://duckduckgo.com/?q=monkey', // on duckduckgo.com itself
-    'https://www.bing.com/search?q=monkey&form=QBLH',
-    'https://maps.google.com/?q=monkey&client=safari',
-    'https://docs.google.com/search?client=safari&q=x',
-    'https://notgoogle.com/search?client=safari&q=monkey',
-    'https://www.google.com.evil.com/search?client=safari&q=x',
-    'http://www.google.com/search?client=safari&q=x', // not https
-    'https://example.com/?q=monkey&t=osx',
-    'not a url',
-    undefined,
-  ]) assert.equal(detectSafariSearch(url as string), null, String(url)); // undefined too: its new URL() throws
 });
 
 test('which engine\'s site a URL is on, Safari\'s parameters or not (for diagnostics)', () => {
@@ -77,14 +39,11 @@ test('which engine\'s site a URL is on, Safari\'s parameters or not (for diagnos
   assert.equal(searchEngineOf('nope'), null);
 });
 
-test('searches in Safari use the learned engine, else Safari\'s default (Google)', () => {
-  assert.equal(searchUrl('hello world', {}), 'https://www.google.com/search?client=safari&rls=en&q=hello%20world&ie=UTF-8&oe=UTF-8');
-  assert.equal(safariEngine(null), SAFARI_DEFAULT);
-  const settings = { safariSearch: detectSafariSearch('https://duckduckgo.com/?q=x&t=osx&ia=web') };
-  assert.equal(searchUrl('c++ & more', settings), 'https://duckduckgo.com/?q=c%2B%2B%20%26%20more&t=osx&ia=web');
-  assert.equal(searchUrl('x', { safariSearch: { name: 'Broken', template: 'https://nope' } }), searchUrl('x', {}), 'a template without %s is ignored');
-  assert.equal(engineLabel(settings, { search: 'learn' }), 'DuckDuckGo');
-  assert.equal(engineLabel(settings, { search: 'browser' }), 'Chrome’s search engine');
+test('a search the extension makes itself in Safari: Safari\'s default (Google); in Chrome, Chrome\'s engine', () => {
+  assert.equal(searchUrl('hello world'), 'https://www.google.com/search?client=safari&rls=en&q=hello%20world&ie=UTF-8&oe=UTF-8');
+  assert.equal(searchUrl('c++ & more'), 'https://www.google.com/search?client=safari&rls=en&q=c%2B%2B%20%26%20more&ie=UTF-8&oe=UTF-8');
+  assert.equal(engineLabel({ search: 'learn' }), 'Google');
+  assert.equal(engineLabel({ search: 'browser' }), 'Chrome’s search engine');
 });
 
 // ---- fuzzy + palette --------------------------------------------------------
@@ -128,14 +87,14 @@ test('palette: searches tabs in all spaces, pins, archive; current space ranks f
   const ids = rankPalette(s, 'g', ctx).map((i) => i.id);
   assert.ok(ids.indexOf('tab:2') < ids.indexOf('tab:1'), 'Gmail (current space) above GitHub (other space)');
   const gh = rankPalette(s, 'github', ctx).map((i) => i.id);
-  assert.deepEqual(gh.slice(0, 2), ['tab:1', 'archive:a1']);
-  assert.equal(gh.at(-1), 'go', 'search entry comes last');
+  assert.deepEqual(gh.slice(0, 2), ['tab:1', 'go'], 'a tab whose title starts with it: the top hit, above "Search for"');
+  assert.equal(gh.at(-1), 'archive:a1', 'archived tabs come last');
   assert.equal(rankPalette(s, 'calendar', ctx)[0].id, 'pin:p1');
 });
 
 test('palette: multi-token queries need every token', () => {
   const ids = rankPalette(paletteState(), 'git pull', ctx).map((i) => i.id);
-  assert.equal(ids[0], 'tab:1');
+  assert.deepEqual(ids.slice(0, 2), ['tab:1', 'go'], 'each word the start of one of its title\'s: the top hit');
   assert.ok(!ids.includes('archive:a1'));
 });
 
@@ -190,4 +149,58 @@ test('Settings has a direct palette action and an internal address alias', () =>
     assert.equal(first.title, 'Settings');
     assert.deepEqual(first.action, { type: 'openLauncher', windowId: 1, settings: true });
   }
+});
+
+// The palette's search (DECISIONS.md "The palette's search: the engine from macOS, its suggestions").
+test('palette: past searches never crowd the top; "Search for" first, then the engine\'s suggestions', () => {
+  let s = paletteState();
+  for (const [i, q] of ['hello', 'hello world', 'hello kitty'].entries()) {
+    s = M.archiveTab(s, { id: `g${i}`, url: `https://www.google.com/search?client=safari&rls=en&q=${encodeURIComponent(q)}&ie=UTF-8&oe=UTF-8`, title: `${q} - Google Search`, spaceId: 'personal', closedAt: 10 + i });
+  }
+  s = M.upsertTab(s, { id: 9, windowId: 1, index: 9, url: 'https://www.google.com/search?q=hello+there', title: 'hello there - Google Search' } as BrowserTab, 9);
+  const withSearch = { ...s, search: { query: 'hello', items: ['hello neighbor', 'Hello', 'hello song'], engine: { id: 'duckduckgo', name: 'DuckDuckGo' } } };
+  const rows = rankPalette(withSearch as typeof s, 'hello', ctx);
+  assert.deepEqual(rows.map((r) => r.id), ['go', 'suggest:0', 'suggest:1', 'tab:9'], 'the old search pages archived aren\'t offered; an open one comes after');
+  assert.equal(rows[0].subtitle, 'DuckDuckGo', 'the engine Margin.app named');
+  assert.deepEqual(rows.slice(1, 3).map((r) => [r.kind, r.title, r.search]), [['suggestion', 'hello neighbor', true], ['suggestion', 'hello song', true]], 'never the typed text itself');
+  assert.deepEqual(rows[1].action, { type: 'search', query: 'hello neighbor', windowId: 1 });
+  assert.deepEqual(rankPalette(withSearch as typeof s, 'hello', { ...ctx, inNewTab: true })[1].action, { local: 'search', query: 'hello neighbor' });
+});
+
+test('palette: suggestions for what was typed a moment ago, while still the start of them; none for an address', () => {
+  const s = { ...paletteState(), search: { query: 'wea', items: ['weather', 'weather nyc', 'wealth'], engine: null } };
+  const ids = (q: string) => rankPalette(s as ReturnType<typeof paletteState>, q, ctx).filter((r) => r.kind === 'suggestion').map((r) => r.title);
+  assert.deepEqual(ids('wea'), ['weather', 'weather nyc', 'wealth']);
+  assert.deepEqual(ids('weat'), ['weather', 'weather nyc'], 'typed on: the ones it still starts');
+  assert.deepEqual(ids('we'), [], 'typed back: not this query\'s');
+  assert.deepEqual(ids('weather.com'), [], 'an address: none');
+  const many = { ...s, search: { query: 'a', items: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'], engine: null } };
+  assert.equal(rankPalette(many as ReturnType<typeof paletteState>, 'a', ctx).filter((r) => r.kind === 'suggestion').length, 4, 'at most four');
+});
+
+test('palette: a top hit: a title or site typed from its start, an app, a command; never a search page', () => {
+  const s = paletteState();
+  assert.equal(rankPalette(s, 'gmail', ctx)[0].id, 'tab:2', 'its title');
+  assert.equal(rankPalette(s, 'mail.goo', ctx)[0].id, 'go', 'an address typed: "Open" first');
+  assert.equal(rankPalette(s, 'calen', ctx)[0].id, 'pin:p1', 'a pin');
+  assert.equal(rankPalette(s, 'switch work', ctx)[0].id, 'action:space:work', 'a command, by its words');
+  assert.equal(rankPalette(s, 'g', ctx)[0].id, 'go', 'one letter: no top hit');
+  assert.equal(rankPalette(s, 'pull', ctx)[0].id, 'go', 'one word, inside a title: "Search for" first');
+  assert.equal(rankPalette(s, 'pull inbox', ctx)[0].id, 'go', 'words of two titles: no top hit');
+  assert.equal(rankPalette(s, 'gmail inb', ctx)[0].id, 'tab:2', 'each word a word\'s start of its title');
+  const searched = M.upsertTab(s, { id: 8, windowId: 1, index: 8, url: 'https://duckduckgo.com/?q=docs&t=osx', title: 'docs at DuckDuckGo' } as BrowserTab, 8);
+  assert.equal(rankPalette(searched, 'docs', ctx)[0].id, 'go');
+  // At most six of the person's own rows, three archived.
+  let full = s;
+  for (let i = 0; i < 12; i++) full = M.upsertTab(full, { id: 100 + i, windowId: 1, index: 100 + i, url: `https://n${i}.example`, title: `Note ${i}` } as BrowserTab, 100 + i);
+  for (let i = 0; i < 6; i++) full = M.archiveTab(full, { id: `n${i}`, url: `https://old${i}.example`, title: `Note old ${i}`, spaceId: 'personal', closedAt: i });
+  const rows = rankPalette(full, 'note', ctx);
+  assert.equal(rows.filter((r) => r.kind === 'tab').length, 6);
+  assert.equal(rows.filter((r) => r.kind === 'archive').length, 3);
+});
+
+test('Safari\'s engines: the same search addresses as Margin.app\'s core (tests/fixtures/search-engines.json)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const v = JSON.parse(readFileSync(new URL('./fixtures/search-engines.json', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.entries(search.SAFARI_ENGINES).map(([id, e]) => [id, e.template(v.engines.find((x: { id: string }) => x.id === id).host)]), v.engines.map((e: { id: string, search: string }) => [e.id, e.search]));
 });

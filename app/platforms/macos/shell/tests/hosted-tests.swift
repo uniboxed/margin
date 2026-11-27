@@ -2142,10 +2142,10 @@ func hostedGeometryTests() {
     check("hosted: the page area: Margin's whole window less the theme's insets", MarginWindowGeometry.pageRect(layout: arcadia, content: display) == CGRect(x: 260, y: 41, width: 1244, height: 933))
     check("hosted: a layout measured at another size: no page area until the page measures again", MarginWindowGeometry.pageRect(layout: arcadia, content: CGRect(x: 0, y: 33, width: 1200, height: 800)) == nil)
     check("hosted: that page area as its own Space's reservation", HostLayout.plan(HostPlacement(page: CGRect(x: 260, y: 41, width: 1244, height: 933), area: display)) == SlotEdges(left: 260, right: 8, top: 8, bottom: 8))
-    check("hosted: a search's address: the engine Safari uses, as learned, else Google's", LibraryWindowSource.searchUrl("a b&c", settings: nil).hasPrefix("https://www.google.com/search?client=safari")
-          && LibraryWindowSource.searchUrl("a b&c", settings: nil).contains("q=a%20b%26c")
-          && LibraryWindowSource.searchUrl("x", settings: ["safariSearch": ["template": "https://duckduckgo.com/?q=%s"]]) == "https://duckduckgo.com/?q=x"
-          && LibraryWindowSource.searchUrl("x", settings: ["safariSearch": ["template": "javascript:%s"]]).hasPrefix("https://www.google.com/"))
+    check("hosted: a search's address: the engine's, else Google's", LibraryWindowSource.searchUrl("a b&c", template: nil).hasPrefix("https://www.google.com/search?client=safari")
+          && LibraryWindowSource.searchUrl("a b&c", template: nil).contains("q=a%20b%26c")
+          && LibraryWindowSource.searchUrl("x", template: "https://duckduckgo.com/?q=%s&t=osx&ia=web") == "https://duckduckgo.com/?q=x&t=osx&ia=web"
+          && LibraryWindowSource.searchUrl("x", template: "javascript:%s").hasPrefix("https://www.google.com/"))
 }
 
 // The shell: the library is the windows' source, the first run's space, the engine wired to the session.

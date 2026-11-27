@@ -6,70 +6,48 @@ import type { InstalledApp } from './apps.ts';
 
 
 // ---- the browser's search engine ------------------------------------------
-// Margin searches with the browser's engine, never its own choice:
+// Margin searches with the browser's engine, never its own choice, and never
+// guesses it:
 //  - Chrome: the `search` API (chrome.search.query) uses Chrome's default.
-//  - Safari has no such API and no way to read its settings, so Margin
-//    learns the engine from searches Safari makes from its address bar:
-//    Safari tags those URLs (Google `client=safari`, Bing `form=AP…`,
-//    DuckDuckGo `t=osx`, Ecosia `tts=st_asaf_…`, Yahoo `fr=aapl…`; see
-//    DECISIONS.md), so a search made on an engine's own site doesn't count.
-//    Until it has seen one, Safari's default (Google). Margin's searches use
-//    the same URLs Safari makes on macOS, on the same (regional) host.
+//  - Safari: no such API. Margin.app reads the engine chosen in Safari's
+//    Settings from macOS's record of it and searches there
+//    (core/session/suggest.rs); the extension alone uses Safari's default.
+// Safari's engines: their search addresses as Safari makes them on macOS (the
+// core's the same: tests/fixtures/search-engines.json) and their results
+// pages' hosts and paths (`searchEngineOf`: a page of search results).
 const SAFARI_ENGINES = {
   google: {
     name: 'Google',
     host: /^www\.google(\.[a-z]{2,3}){1,2}$/,
     path: /^\/search$/,
-    fromSafari: (p: URLSearchParams) => p.get('client') === 'safari',
     template: (host: string) => `https://${host}/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8`,
   },
   bing: {
     name: 'Bing',
     host: /^www\.bing\.com$/,
     path: /^\/search$/,
-    fromSafari: (p: URLSearchParams) => /^AP/.test(p.get('form') ?? ''),
     template: (host: string) => `https://${host}/search?q=%s&form=APMCS1&PC=APMC`,
   },
   duckduckgo: {
     name: 'DuckDuckGo',
     host: /^duckduckgo\.com$/,
     path: /^\/$/,
-    fromSafari: (p: URLSearchParams) => ['osx', 'iphone', 'ipad'].includes(p.get('t') ?? ''),
     template: (host: string) => `https://${host}/?q=%s&t=osx&ia=web`,
   },
   ecosia: {
     name: 'Ecosia',
     host: /^www\.ecosia\.org$/,
     path: /^\/search$/,
-    fromSafari: (p: URLSearchParams) => (p.get('tts') ?? '').startsWith('st_asaf_'),
     template: (host: string) => `https://${host}/search?q=%s&tts=st_asaf_macos`,
   },
   yahoo: {
     name: 'Yahoo',
     host: /^([a-z]{2,10}\.)?search\.yahoo(\.[a-z]{2,3}){1,2}$/,
     path: /^\/search(;[^/]*)?$/, // Yahoo adds ;_ylt=…;_ylc=… to the path
-    fromSafari: (p: URLSearchParams) => /^(aapl|iphone$|ipad$)/.test(p.get('fr') ?? '') || p.get('.tsrc') === 'apple',
     template: (host: string) => `https://${host}/search?ei=utf-8&fr=aaplw&p=%s`,
   },
 };
 const SAFARI_DEFAULT = Object.freeze({ id: 'google', name: 'Google', template: SAFARI_ENGINES.google.template('www.google.com') });
-
-// A search Safari made from its address bar → { id, name, template }, else null.
-function detectSafariSearch(url: string) {
-  let u;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== 'https:') return null;
-  for (const [id, e] of Object.entries(SAFARI_ENGINES)) {
-    if (e.host.test(u.hostname) && e.path.test(u.pathname) && e.fromSafari(u.searchParams)) {
-      return { id, name: e.name, template: e.template(u.hostname) };
-    }
-  }
-  return null;
-}
 
 // Which engine's site a URL is on (any search there), for diagnostics.
 function searchEngineOf(url: string) {
@@ -81,13 +59,12 @@ function searchEngineOf(url: string) {
   }
 }
 
-// The engine Margin's searches use in Safari: learned, else the default.
-// (`settings`: the stored settings.)
-const safariEngine = (settings: any) => (settings?.safariSearch?.template?.includes('%s') ? settings.safariSearch : SAFARI_DEFAULT);
-const searchUrl = (query: string, settings: any) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
+// A search the extension makes itself in Safari (its own pages, Margin.app not linked: no engine is known there):
+// Safari's default's address. Margin.app's searches go to the engine macOS names (core/session/suggest.rs).
+const searchUrl = (query: string) => SAFARI_DEFAULT.template.replace('%s', encodeURIComponent(query));
 // For display: which engine a search goes to.
-const engineLabel = (settings: any, browserCan: Pick<P.Capabilities, 'search'> = P.capabilities) =>
-  (browserCan?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
+const engineLabel = (browserCan: Pick<P.Capabilities, 'search'> = P.capabilities) =>
+  (browserCan?.search === 'browser' ? 'Chrome’s search engine' : SAFARI_DEFAULT.name);
 
 const WITH_SCHEME = /^(https?|file|ftp):\/\//i;
 const OPAQUE_SCHEME = /^(about|data|mailto|view-source):/i;
@@ -307,46 +284,99 @@ function appMatches(state: State, q: string) {
   return hits.sort((x, y) => y.score + y.item.boost - (x.score + x.item.boost) || x.item.title.localeCompare(y.item.title)).slice(0, APP_MAX);
 }
 
-// Ranked palette results for `query`, including an "Open URL / Search for"
-// entry: first when the text is a URL, last when it's a search.
+// The search engine's suggestions for what's typed (Margin.app's, from the engine macOS names: core/session/suggest.rs),
+// as its window's page keeps them (ui/host-app.ts `search`): the query they're for, the engine and the suggestions.
+export type SearchSuggestions = { query: string, items: string[], engine?: { id: string, name: string } | null };
+// What the palette shows of a query (Arc's and Safari's order): the typed text's own row (Open… or Search for…) first,
+// unless one of the person's things is a clear match for it (`topHit`), which goes above it; then the engine's
+// suggestions (SUGGEST_MAX); then the person's tabs, pins, apps and actions (OWN_MAX); then archived tabs (ARCHIVE_MAX).
+// A page of search results (an engine's, any search) is never a top hit, and archived ones aren't offered while typing:
+// the engine's suggestions say those searches, and an old search page isn't what's being looked for.
+const SUGGEST_MAX = 4;
+const OWN_MAX = 6;
+const ARCHIVE_MAX = 3;
+// A clear match (at least two characters typed): a tab or pin whose title or site's address (no www.) starts with
+// what's typed, or, two words or more typed, each of which starts a word of its title ("quiet city": The Quiet City);
+// an app typed from its name's start (APP_PREFIX); an action each typed word of which starts a word of its name
+// ("switch work": Switch to space Work); never a search page.
+function isTopHit(item: PaletteItem, q: string) {
+  if (q.length < 2 || !['tab', 'pin', 'app', 'action'].includes(item.kind)) return false;
+  if (item.kind === 'app') return (item.boost ?? 0) >= APP_PREFIX;
+  if (isSearchPage(item.url)) return false;
+  const typed = q.toLowerCase();
+  const words = typed.split(/\s+/);
+  const everyWordStarts = () => words.every((t) => wordStartAt(item.title.toLowerCase(), t) >= 0);
+  if (item.kind === 'action') return everyWordStarts();
+  if (item.title.toLowerCase().startsWith(typed) || (words.length > 1 && everyWordStarts())) return true;
+  const host = (() => { try { return new URL(item.url ?? '').hostname.replace(/^www\./, ''); } catch { return ''; } })();
+  return !!host && host.startsWith(typed);
+}
+// A page of an engine's search results.
+const isSearchPage = (url: string | undefined) => !!url && searchEngineOf(url) != null;
+
+// The engine's suggestions to show for `q`: the ones kept for it, or for what it was a moment ago (typed on: the
+// ones that still start with it), never the typed text itself.
+function suggestionsFor(state: State, q: string): string[] {
+  const kept = (state as { search?: SearchSuggestions | null }).search;
+  if (!kept || !Array.isArray(kept.items) || typeof kept.query !== 'string') return [];
+  const typed = q.toLowerCase();
+  const asked = kept.query.toLowerCase();
+  if (!typed.startsWith(asked)) return [];
+  const exact = typed === asked;
+  return kept.items
+    .filter((s) => typeof s === 'string' && s.toLowerCase() !== typed && (exact || s.toLowerCase().startsWith(typed)))
+    .slice(0, SUGGEST_MAX);
+}
+
+// The engine a search goes to, for its row: the one Margin.app named, else the copy's own.
+function engineName(state: State) {
+  const named = (state as { search?: SearchSuggestions | null }).search?.engine?.name;
+  return typeof named === 'string' && named ? named : engineLabel();
+}
+
+// Ranked palette results for `query`: with nothing typed, Margin's own rows; typed, the order above, its "Open URL"
+// row first when the text is an address.
 function rankPalette(state: State, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }, limit = 40) {
   const q = (query ?? '').trim();
   const items = paletteItems(state, ctx);
-  let ranked: PaletteItem[];
   if (!q) {
-    ranked = items
+    return items
       .filter((i) => i.kind !== 'archive' && i.id !== `tab:${ctx.tabId}`)
-      .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.boost - a.boost || (b.recency ?? 0) - (a.recency ?? 0));
-  } else {
-    ranked = [...items.map((item) => ({ item, score: matchScore(q, item) })).filter((r) => r.score > -Infinity), ...appMatches(state, q)]
-      .map((r) => ({ ...r, score: r.score + r.item.boost }))
-      .sort((a, b) => b.score - a.score || (b.item.recency ?? 0) - (a.item.recency ?? 0))
-      .map((r) => r.item);
+      .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.boost - a.boost || (b.recency ?? 0) - (a.recency ?? 0))
+      .slice(0, limit);
   }
-  ranked = ranked.slice(0, limit);
   if (/^margin:\/\/settings\/?$/i.test(q)) return items.filter((i) => i.id === 'action:settings');
+  const scored = [...items.map((item) => ({ item, score: matchScore(q, item) })).filter((r) => r.score > -Infinity), ...appMatches(state, q)]
+    // (A search page below the person's other things.)
+    .map((r) => ({ ...r, score: r.score + r.item.boost - (isSearchPage(r.item.url) ? 60 : 0) }))
+    .sort((a, b) => b.score - a.score || (b.item.recency ?? 0) - (a.item.recency ?? 0))
+    .map((r) => r.item);
+  const own = scored.filter((i) => i.kind !== 'archive');
+  const archived = scored.filter((i) => i.kind === 'archive' && !isSearchPage(i.url)).slice(0, ARCHIVE_MAX);
   const target = resolveInput(q);
-  if (target) {
-    const isUrl = target.kind === 'url';
-    const go = {
-      id: 'go',
-      kind: 'go',
-      title: isUrl ? `Open ${target.url}` : `Search for “${q}”`,
-      badge: isUrl ? 'Open' : 'Search',
-      subtitle: isUrl ? '' : engineLabel(state.settings),
-      emoji: isUrl ? '↗' : '⌕',
-      search: !isUrl,
-      action: isUrl
-        ? (ctx.inNewTab ? { local: 'navigate', url: target.url } : { type: 'newTab', windowId: ctx.windowId, url: target.url })
-        : (ctx.inNewTab ? { local: 'search', query: target.query } : { type: 'search', query: target.query, windowId: ctx.windowId }),
-    };
-    if (target.kind === 'url') ranked.unshift(go);
-    else ranked.push(go);
-  }
-  return ranked;
+  const isUrl = target?.kind === 'url';
+  const top = !isUrl && own.length && isTopHit(own[0], q) ? own[0] : null;
+  const searchAction = (text: string) => (ctx.inNewTab ? { local: 'search', query: text } : { type: 'search', query: text, windowId: ctx.windowId });
+  const go: PaletteItem | null = target ? {
+    id: 'go',
+    kind: 'go',
+    title: isUrl ? `Open ${(target as { url: string }).url}` : `Search for “${q}”`,
+    badge: isUrl ? 'Open' : 'Search',
+    subtitle: isUrl ? '' : engineName(state),
+    emoji: isUrl ? '↗' : '⌕',
+    search: !isUrl,
+    action: isUrl
+      ? (ctx.inNewTab ? { local: 'navigate', url: (target as { url: string }).url } : { type: 'newTab', windowId: ctx.windowId, url: (target as { url: string }).url })
+      : searchAction((target as { query: string }).query),
+  } : null;
+  const suggested: PaletteItem[] = isUrl ? [] : suggestionsFor(state, q).map((text, i) => ({
+    id: `suggest:${i}`, kind: 'suggestion', title: text, subtitle: '', emoji: '⌕', search: true, action: searchAction(text),
+  }));
+  const rest = own.filter((i) => i !== top).slice(0, OWN_MAX - (top ? 1 : 0)); // (the top hit one of them)
+  return [...(top ? [top] : []), ...(go ? [go] : []), ...suggested, ...rest, ...archived].slice(0, limit);
 }
 
 export {
-  SAFARI_ENGINES, SAFARI_DEFAULT, detectSafariSearch, searchEngineOf, safariEngine, searchUrl, engineLabel,
-  resolveInput, fuzzyScore, paletteItems, rankPalette,
+  SAFARI_ENGINES, SAFARI_DEFAULT, searchEngineOf, searchUrl, engineLabel,
+  resolveInput, fuzzyScore, paletteItems, rankPalette, isSearchPage,
 };

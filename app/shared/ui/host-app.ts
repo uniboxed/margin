@@ -65,11 +65,24 @@ import type { Geometry, Host } from './host.ts';
 import { fromStorage } from '../../../extension/shared/stored.ts';
 import { isLauncherPage } from '../../../extension/shared/view.ts';
 import { appsOf, isBundleId } from '../../../extension/shared/apps.ts';
+import type { SearchSuggestions } from '../../../extension/shared/search.ts';
 import { capabilities } from '../../../extension/shared/capabilities.ts';
 import { deviceOf } from './picker/feedback.ts';
 import { USER_THEME_ID } from './themes/packages.ts';
 import { REPORT_REASONS } from './settings-form.ts';
 import type { FeedbackDevice } from './picker/feedback.ts';
+
+// The engine as the app names it: `{ id, name }` (short words), else null.
+function engineOf(v: any): { id: string, name: string } | null {
+  return v && typeof v.id === 'string' && /^[a-z]{1,20}$/.test(v.id) && typeof v.name === 'string' && v.name.length > 0 && v.name.length <= 40 ? { id: v.id, name: v.name } : null;
+}
+
+/** The engine's suggestions as the app gives them (its `suggestions` push, a `search.suggest` answer), checked: null if not that. */
+export function suggestionsOf(v: any): SearchSuggestions | null {
+  if (!v || typeof v.query !== 'string' || v.query.length > 400 || !Array.isArray(v.items)) return null;
+  const items = v.items.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0 && s.length <= 200 && !/[\u0000-\u001f\u007f]/.test(s)).slice(0, 8);
+  return { query: v.query, items, engine: engineOf(v.engine) };
+}
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it
@@ -420,6 +433,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pagePicture: string | null = pageState === 'elsewhere' ? pictureOf(hello?.pagePicture) : null;
   // Installed apps, as the app read them (null: none read yet).
   let apps = appsOf(hello?.apps);
+  // The palette's search (core/session/suggest.rs): the engine macOS names and its suggestions for what was typed
+  // (`search.suggest`'s answer, or the app's `suggestions` push once the engine answered), kept as the state's
+  // `search` (shared/search.ts rankPalette). `typed`: what was typed last (a push for another query is old).
+  let search: SearchSuggestions | null = null;
+  let typed = '';
   let layout: Geometry | null = null;
   let destroyed = false;
   const listeners = new Set<any>();
@@ -445,6 +463,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   (platform.features as any).haptics = appWindow && platform.os === 'mac';
   // A new Split View from a menu (Arc's "+" New Split, M2.10): the overlay makes it as ⌃⇧= does (`split.new`).
   (platform.features as any).newSplit = true;
+  // The palette's search in Margin.app's own window (core/session/suggest.rs): the engine macOS names, its suggestions.
+  (platform.features as any).appSearch = appWindow;
   // The window's tabs loading, as the copy last said (`push` `loading`).
   let loading: Set<number> = new Set();
   let failure: { type: string, error: string, at: number } | null = null;
@@ -456,6 +476,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     const next = raw ? fromStorage(raw) : null;
     let built = next?.spaces?.length ? next : null;
     if (built && apps) built = { ...built, apps };
+    if (built && search) built = { ...built, search } as typeof built;
     if (built && loading.size && built.tabs) {
       const tabs = { ...built.tabs };
       for (const id of loading) if (tabs[id]) tabs[id] = { ...tabs[id], loading: true };
@@ -519,6 +540,26 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get appMinimums() { return appMinimums; },
     /** A line in Margin.app's log. */
     note(text: string) { note(text); },
+    /**
+     * What's typed in the palette, at each change: the engine's suggestions for it (core/session/suggest.rs), in the
+     * answer when the app knows them, else pushed (`suggestions`) once the engine answered.
+     */
+    suggest(query: string) {
+      if (destroyed || !appWindow) return;
+      typed = String(query ?? '').slice(0, 400);
+      void post('send', { type: 'search.suggest', payload: { query: typed, windowId } }).then((text) => {
+        const res = typeof text === 'string' ? JSON.parse(text) : text;
+        const r = res?.ok ? res.result : null;
+        if (!r || typed !== String(query ?? '').slice(0, 400)) return;
+        const engine = engineOf(r.engine);
+        // (Known, or nothing to show: in the answer. Asked of the engine: the push brings them; the engine kept meanwhile.)
+        const next = Array.isArray(r.items) ? suggestionsOf({ query: typeof r.query === 'string' ? r.query : typed.trim(), items: r.items, engine }) : (search ? { ...search, engine } : { query: '', items: [], engine });
+        if (!next || JSON.stringify(next) === JSON.stringify(search)) return;
+        search = next;
+        if (state) state = { ...state, search } as typeof state;
+        emit();
+      }).catch(() => {});
+    },
     get paneLoading() { return paneLoading; },
     get paneCuts() { return paneCuts; },
     get paneHover() { return paneHover; },
@@ -737,6 +778,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           apps = appsOf(msg.apps);
           rebuild();
           return emit();
+        case 'suggestions': {
+          const next = suggestionsOf(msg);
+          if (!next || next.query.toLowerCase() !== typed.trim().toLowerCase()) return;
+          search = next;
+          if (state) state = { ...state, search } as typeof state;
+          return emit();
+        }
         case 'pageOutside': {
           const next = appWindow && msg.on === true;
           if (next === pageOutside) return;

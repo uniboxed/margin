@@ -44,6 +44,7 @@ pub mod restart;
 pub mod route;
 pub mod start;
 pub mod state;
+pub mod suggest;
 pub mod target;
 #[cfg(test)]
 mod tests;
@@ -503,6 +504,20 @@ pub enum Input {
         kind: String,
         args: Object,
     },
+    /// macOS's web search record as the shell read it (at launch and at each change macOS posts): the engine of the
+    /// palette's searches and suggestions (suggest.rs). Its reply: the engine (`{ id, name }`, null: none).
+    SearchEngine {
+        identifier: Option<String>,
+        name: Option<String>,
+    },
+    /// A suggestions request's answer (the shell sent the `fetch` a `search.suggest` or an answer gave): `status` 0
+    /// for none. Its reply: what to push to the window's page (`push`) and the next request (`fetch`).
+    SuggestAnswer {
+        window: i64,
+        seq: u64,
+        status: i64,
+        body: String,
+    },
     /// A request the UI makes (`LibraryWindowSource.perform`), its route in `reply`.
     Ui {
         kind: String,
@@ -603,6 +618,16 @@ impl Input {
             }),
             "cycled" => Ok(Input::Cycled { window: swift_int(o.get("window")).ok_or("no window")? }),
             "peek" => Ok(Input::Peek { kind: s("kind").ok_or("no kind")?.to_string(), args: o.clone() }),
+            "searchEngine" => Ok(Input::SearchEngine {
+                identifier: s("identifier").map(str::to_string),
+                name: s("name").map(str::to_string),
+            }),
+            "suggestAnswer" => Ok(Input::SuggestAnswer {
+                window: swift_int(o.get("window")).ok_or("no window")?,
+                seq: o.get("seq").and_then(Value::as_u64).ok_or("no seq")?,
+                status: swift_int(o.get("status")).unwrap_or(0),
+                body: s("body").unwrap_or("").to_string(),
+            }),
             "ui" => Ok(Input::Ui {
                 kind: s("kind").ok_or("no kind")?.to_string(),
                 payload: json::object(o.get("payload")).cloned().unwrap_or_default(),
@@ -692,6 +717,8 @@ pub(crate) struct Core {
     quit_at: Cell<Option<f64>>,
     /// The question about a Safari the person opened (restart.rs): the process it was asked for, how far it went.
     restart_ask: Cell<Option<(i64, restart::Asked)>>,
+    /// The palette's search: the engine macOS names, the suggestions asked and kept (suggest.rs).
+    suggest: RefCell<suggest::Suggest>,
 }
 
 /// The session: one per app. Every entry takes `&self` (re-entrant).
@@ -726,6 +753,7 @@ impl Session {
             hosts_asked: Cell::new(0),
             quit_at: Cell::new(None),
             restart_ask: Cell::new(None),
+            suggest: RefCell::new(suggest::Suggest::default()),
         }))
     }
 
@@ -1030,6 +1058,12 @@ impl Core {
                     return (None, Some(format!("bad input: {why}")));
                 }
             },
+            Input::SearchEngine { identifier, name } => {
+                return (Some(self.search_engine(identifier.as_deref(), name.as_deref())), None);
+            }
+            Input::SuggestAnswer { window, seq, status, body } => {
+                return (Some(self.suggest_answer(window, seq, status, body.as_bytes())), None);
+            }
             Input::Ui { kind, payload } => return (Some(self.ui_request(&kind, payload)), None),
             Input::LoadingForget { window, standing, said, profile } => {
                 self.loading_forget(window, standing, said, profile.as_deref());
@@ -1048,7 +1082,10 @@ impl Core {
             Input::WindowOpened { window } => self.resume_last(window),
             Input::WindowFocused { window } => self.focused(window),
             Input::WindowClosing { window, then } => return (Some(json!(self.window_closing(window, then))), None),
-            Input::WindowClosed { window } => self.window_closed(window),
+            Input::WindowClosed { window } => {
+                self.suggest.borrow_mut().forget(window);
+                self.window_closed(window);
+            }
             Input::StartupRetry => self.startup_retry(),
             Input::StartupSkip => self.startup_skip(),
             Input::PreparationOver => self.preparation_over(),

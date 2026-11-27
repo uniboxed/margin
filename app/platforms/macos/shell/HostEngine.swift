@@ -5329,16 +5329,18 @@ final class HostEngine {
 
     // `body`'s answer, or nil once `seconds` passed on the engine's clock (a cap, for a wait the screen is held still
     // through; `body` left to end on its own).
-    private func capped<T>(_ seconds: Double, _ body: @escaping () async -> T?) async -> T? {
+    // (Both on the main actor, the engine's: `once` is only ever read and set there, and the limit's sleep is asked for
+    // before the body starts, so a clock that moves on sleepers (the tests' world) always sees it.)
+    private func capped<T>(_ seconds: Double, _ body: @escaping @MainActor () async -> T?) async -> T? {
         let once = HostOnce()
         return await withCheckedContinuation { (k: CheckedContinuation<T?, Never>) in
-            let finish = { (v: T?) in
+            let finish: @MainActor (T?) -> Void = { v in
                 guard !once.done else { return }
                 once.done = true
                 k.resume(returning: v)
             }
-            Task { finish(await body()) }
-            Task { await self.sys.sleep(seconds); finish(nil) }
+            Task { @MainActor in await self.sys.sleep(seconds); finish(nil) }
+            Task { @MainActor in finish(await body()) }
         }
     }
 

@@ -283,8 +283,8 @@ private func webAddressTests() {
 
 private func searchUrlTests() {
     let google = "https://www.google.com/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8"
-    let q = { (query: String) in LibraryWindowSource.searchUrl(query, settings: nil).replacingOccurrences(of: "https://www.google.com/search?client=safari&rls=en&q=", with: "").replacingOccurrences(of: "&ie=UTF-8&oe=UTF-8", with: "") }
-    check("search url: Google's when nothing's learned", LibraryWindowSource.searchUrl("x", settings: nil) == google.replacingOccurrences(of: "%s", with: "x"))
+    let q = { (query: String) in LibraryWindowSource.searchUrl(query, template: nil).replacingOccurrences(of: "https://www.google.com/search?client=safari&rls=en&q=", with: "").replacingOccurrences(of: "&ie=UTF-8&oe=UTF-8", with: "") }
+    check("search url: Google's with no engine", LibraryWindowSource.searchUrl("x", template: nil) == google.replacingOccurrences(of: "%s", with: "x"))
     check("search url: kept as is: ASCII letters and digits and -_.!~*'()", q("aZ09-_.!~*'()") == "aZ09-_.!~*'()")
     check("search url: encoded: space, & = + / ? # % : @ and the rest of ASCII", q(" &=+/?#%:@\"<>[]\\^`{|}$,;") == "%20%26%3D%2B%2F%3F%23%25%3A%40%22%3C%3E%5B%5D%5C%5E%60%7B%7C%7D%24%2C%3B", q(" &=+/?#%:@\"<>[]\\^`{|}$,;"))
     check("search url: encoded: controls", q("\t\n\u{7f}") == "%09%0A%7F", q("\t\n\u{7f}"))
@@ -294,12 +294,10 @@ private func searchUrlTests() {
           q("café") == "caf%C3%A9" && q("e\u{301}") == "e%CC%81" && q("日本") == "%E6%97%A5%E6%9C%AC" && q("١٢") == "%D9%A1%D9%A2" && q("½Ⅻ") == "%C2%BD%E2%85%AB" && q("ß") == "%C3%9F", q("café") + " " + q("١٢"))
     check("search url: other Unicode encoded as UTF-8: symbols, punctuation, spaces, emoji",
           q("€") == "%E2%82%AC" && q("—") == "%E2%80%94" && q("\u{a0}") == "%C2%A0" && q("😀") == "%F0%9F%98%80" && q("«") == "%C2%AB", q("€") + q("😀"))
-    check("search url: a learned engine's template (https, with %s), every %s filled",
-          LibraryWindowSource.searchUrl("a b", settings: ["safariSearch": ["template": "https://e.example/?q=%s&again=%s"]]) == "https://e.example/?q=a%20b&again=a%20b")
-    check("search url: a learned template that isn't one: Google's (no %s, not https, not a string)",
-          [["template": "https://e.example/?q="], ["template": "http://e.example/?q=%s"], ["template": 5], [:]].allSatisfy { (t: JSONObject) in
-              LibraryWindowSource.searchUrl("x", settings: ["safariSearch": t]).hasPrefix("https://www.google.com/") })
-    check("search url: settings without a learned engine: Google's", LibraryWindowSource.searchUrl("x", settings: ["safariSearch": "nope"]).hasPrefix("https://www.google.com/"))
+    check("search url: an engine's template (https, with %s), every %s filled",
+          LibraryWindowSource.searchUrl("a b", template: "https://e.example/?q=%s&again=%s") == "https://e.example/?q=a%20b&again=a%20b")
+    check("search url: a template that isn't one: Google's (no %s, not https)",
+          ["https://e.example/?q=", "http://e.example/?q=%s", "javascript:%s"].allSatisfy { LibraryWindowSource.searchUrl("x", template: $0).hasPrefix("https://www.google.com/") })
     check("search url: a query with %s in it isn't a template", q("%s") == "%25s")
 }
 

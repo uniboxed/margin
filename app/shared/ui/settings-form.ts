@@ -67,12 +67,14 @@ export function currentShortcuts(settings: any) {
   };
 }
 
-/** Which engine searches use (always the browser's: shared/search.ts). */
+/**
+ * Which engine searches use: in Margin.app's window (`appSearch`), the one chosen in Safari's Settings, as macOS keeps it
+ * (core/session/suggest.rs); in Chrome, Chrome's; else Safari's default (the extension alone knows no other).
+ */
 function engineText(settings: any, features: any) {
-  const learned = settings?.safariSearch;
   if (features?.search === 'browser') return 'Searches use Chrome’s search engine (Chrome Settings → Search engine).';
-  if (learned) return `Searches use Safari’s search engine: ${learned.name} (seen in Safari’s address bar ${new Date(learned.at).toLocaleString()}). Margin follows it: after changing it in Safari → Settings → Search, search once from Safari’s address bar.`;
-  return `Searches use Safari’s default search engine (${S.SAFARI_DEFAULT.name}) until you search once from Safari’s address bar; from then on, whatever Safari uses (Safari → Settings → Search).`;
+  if (features?.appSearch) return 'Searches use the search engine chosen in Safari (Safari › Settings › Search). Margin follows it when you change it there.';
+  return `Searches use ${S.SAFARI_DEFAULT.name}.`;
 }
 
 function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['kind'], label: string }): SettingsField {
@@ -123,6 +125,14 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
     options: feedbackChoices.map((id) => ({ id, label: f.haptics || id !== 'auto' ? FEEDBACK_NAMES[id] : 'Automatic: a click', selected: id === feedback })),
   }));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
+  // The engine's suggestions as the command bar is typed in (Margin.app's window: core/session/suggest.rs).
+  if (f.appSearch) {
+    list.push(field({
+      id: 'searchSuggestions', kind: 'toggle', label: 'Show search suggestions in the command bar',
+      help: 'As you type, Margin asks your search engine (only that one) for suggestions. What you type as an address is never sent.',
+      checked: s.searchSuggestions !== false,
+    }));
+  }
   const favScope = s.favoritesScope === 'profile' ? 'profile' : 'global';
   list.push(field({
     id: 'favoritesScope',
@@ -197,7 +207,7 @@ export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
 export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this order: tests/settings-form.test.ts)
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
 const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
-const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
+const BROWSING_FIELDS = new Set(['engine', 'searchSuggestions', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
 const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'appShortcuts', ...Object.keys(APP_SHORTCUT_FIELDS), 'resetShortcuts']);
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */

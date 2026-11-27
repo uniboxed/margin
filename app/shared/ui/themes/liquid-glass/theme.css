@@ -465,7 +465,8 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 .palette-layer { position: absolute; inset: 0; z-index: 10; }
 .scrim { position: absolute; inset: 0; background: var(--scrim); animation: lg-fade .14s ease-out; }
 .scrim.clear-scrim { background: none; animation: none; }
-.palette { --top: min(150px, 17%); position: absolute; left: 50%; top: var(--top); transform: translateX(-50%); width: min(680px, calc(100% - 64px)); max-height: calc(100% - var(--top) - 28px); box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; border-radius: 24px; animation: lg-drop .16s cubic-bezier(.2, .8, .3, 1); }
+/* Its full height (405 px: the field, eight rows) centered in the window, the field staying put as rows come and go. */
+.palette { --top: max(16px, calc((100% - 405px) / 2)); position: absolute; left: 50%; top: var(--top); transform: translateX(-50%); width: min(680px, calc(100% - 64px)); max-height: calc(100% - 2 * var(--top)); box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; border-radius: 24px; animation: lg-drop .16s cubic-bezier(.2, .8, .3, 1); }
 @keyframes lg-drop { from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(.985); } }
 .palette-field { flex: none; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; }
 .search-ico { width: 20px; height: 20px; color: var(--secondary); }

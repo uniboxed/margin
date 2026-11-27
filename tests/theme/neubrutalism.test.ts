@@ -196,11 +196,11 @@ for (const [name, engine] of ENGINES) {
           const list = (await ev(() => T.rtRect('.palette-rows')))!;
           assert.ok(list.height <= 8 * 46 + 7 * 10 + 1, `${height}: eight rows at most (${list.height} px)`);
           assert.equal(await computed('.palette-rows', 'overflow-y'), 'auto');
+          // Full (eight rows and more): in the middle of the window (the field stays put as rows come and go).
+          assert.ok(Math.abs(box.top - (height - (box.bottom - box.top)) / 2) <= 1, `${height}: centered (${box.top}–${box.bottom})`);
         }
-        assert.equal(Math.round((await ev(() => T.rtRect('.palette')))!.top), 102, 'a short window: nearer the top');
         await mount();
         await ev(() => T.rtDispatch('palette.open'));
-        assert.equal(Math.round((await ev(() => T.rtRect('.palette')))!.top), 150, 'the board\'s place');
         assert.equal(await ev(() => T.rtActive()), 'palette');
         for (let i = 0; i < 11; i++) await page.keyboard.press('ArrowDown');
         const vm = await ev(() => T.rtVmFull());

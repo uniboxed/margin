@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use serde_json::{Value, json};
 
 use super::unicode::{COMPOSED_EXTEND, GRAPHEME_EXTEND, contains_characters, has};
-use super::{Core, swift_int};
+use super::{Core, suggest, swift_int};
 use crate::json::{self, Object};
 
 /// Safari's default engine, Google's.
@@ -40,7 +40,7 @@ fn replace_composed(text: &str, needle: &str, with: &str) -> String {
 /// A query percent-encoded as Foundation's `addingPercentEncoding(withAllowedCharacters:)` did with
 /// `CharacterSet.alphanumerics` and `-_.!~*'()`: that method ignores whatever of the set isn't ASCII, so ASCII's
 /// letters and digits and those marks stay, everything else is its UTF-8 bytes as `%XX` (encodeURIComponent's set).
-fn encode(query: &str) -> String {
+pub(crate) fn encode(query: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut out = String::with_capacity(query.len());
     for &b in query.as_bytes() {
@@ -55,13 +55,18 @@ fn encode(query: &str) -> String {
     out
 }
 
-/// The search's address: the engine Safari searches with as the copy learned it (`settings.safariSearch.template`,
-/// shared/search.ts safariEngine: an https address with `%s` in it), else Google's, as Safari's default; every `%s`
+/// A search's address: an engine's (`template`: an https address with `%s` in it: suggest.rs ENGINES's, the engine
+/// macOS names), else Google's, as Safari's default; every `%s`
 /// is the query, encoded.
-pub fn search_url(query: &str, learned: Option<&str>) -> String {
+pub fn search_url(query: &str, template: Option<&str>) -> String {
     let template =
-        learned.filter(|t| contains_characters(t, "%s") && has_prefix_characters(t, "https://")).unwrap_or(GOOGLE);
+        template.filter(|t| contains_characters(t, "%s") && has_prefix_characters(t, "https://")).unwrap_or(GOOGLE);
     replace_composed(template, "%s", &encode(query))
+}
+
+/// A suggestions request for the shell to send (suggest.rs `Fetch`).
+fn fetch_json(f: &suggest::Fetch) -> Value {
+    json!({ "seq": f.seq, "window": f.window, "url": f.url, "largest": suggest::LARGEST })
 }
 
 /// The requests the UI makes that need nothing here (its scroll, the copy's own waking).
@@ -179,11 +184,30 @@ impl Core {
                 if query.is_empty() {
                     return none();
                 }
-                let settings = self.ports.settings();
-                let learned = settings.get("safariSearch").and_then(|s| s.get("template")).and_then(Value::as_str);
-                let url = search_url(&query, learned);
+                let url = self.search_address(&query);
                 let p = json!({ "windowId": window, "url": url, "title": query });
                 return perform("newTab", p.as_object().cloned().unwrap_or_default());
+            }
+            // What's typed in the palette (each change): the engine's suggestions for it (suggest.rs), known at once
+            // in the answer, else asked of the engine by the shell (`fetch`) and pushed to the page when it answers.
+            "search.suggest" => {
+                let typed = json::string(payload.get("query")).unwrap_or("");
+                let on = self.ports.settings().get("searchSuggestions").and_then(Value::as_bool) != Some(false);
+                let Some(window) = window else { return none() };
+                let ask = self.suggest.borrow_mut().ask(window, typed, on);
+                let mut result = json!({ "engine": self.engine_json(), "on": on });
+                let mut out = json!({ "route": "suggest" });
+                match ask {
+                    suggest::Ask::Clear => result["items"] = json!([]),
+                    suggest::Ask::Known(query, items) => {
+                        result["query"] = query.into();
+                        result["items"] = items.into();
+                    }
+                    suggest::Ask::Fetch(f) => out["fetch"] = fetch_json(&f),
+                    suggest::Ask::Held => {}
+                }
+                out["value"] = json!({ "ok": true, "result": result });
+                return out;
             }
             "goBack" | "goForward" | "reload" => {
                 self.navigate(kind, window);
@@ -241,14 +265,8 @@ impl Core {
                 // (An address as it was typed, or a search: its address from the engine Safari searches with.)
                 let query = trimmed(json::string(payload.get("query")).unwrap_or("")).to_string();
                 let typed = json::string(payload.get("url")).filter(|u| self.web_address(u)).map(str::to_string);
-                let url = typed.or_else(|| {
-                    (!query.is_empty()).then(|| {
-                        let settings = self.ports.settings();
-                        let learned =
-                            settings.get("safariSearch").and_then(|s| s.get("template")).and_then(Value::as_str);
-                        search_url(&prefix_characters(&query, 1000), learned)
-                    })
-                });
+                let url = typed
+                    .or_else(|| (!query.is_empty()).then(|| self.search_address(&prefix_characters(&query, 1000))));
                 let Some(url) = url else {
                     return json!({ "route": "answer", "value": { "ok": false, "error": "no address" } });
                 };
@@ -269,6 +287,43 @@ impl Core {
             _ => {}
         }
         perform(kind, payload)
+    }
+
+    /// A search's address: the engine macOS's record names (suggest.rs), else Google's, as Safari's default
+    /// (`search_url`). Never guessed.
+    pub(crate) fn search_address(&self, query: &str) -> String {
+        search_url(query, self.suggest.borrow().engine().map(|e| e.search))
+    }
+
+    /// The palette's engine as the page takes it (`{ id, name }`; null: none known).
+    fn engine_json(&self) -> Value {
+        self.suggest.borrow().engine().map_or(Value::Null, |e| json!({ "id": e.id, "name": e.name }))
+    }
+
+    /// macOS's web search record read (`Input::SearchEngine`): the engine it names, logged when it changes.
+    pub(crate) fn search_engine(&self, identifier: Option<&str>, name: Option<&str>) -> Value {
+        let engine = suggest::engine_of_record(identifier, name);
+        if self.suggest.borrow_mut().set_engine(engine) {
+            self.note(match engine {
+                Some(e) => format!("search: the engine macOS names is {} (its suggestions shown as the palette is typed in)", e.name),
+                None => "search: macOS names no engine of Safari's (no suggestions; searches go to Google's, Safari's default)".to_string(),
+            });
+        }
+        json!({ "engine": self.engine_json() })
+    }
+
+    /// A suggestions request's answer (`Input::SuggestAnswer`): what the window's page is told, the next request.
+    pub(crate) fn suggest_answer(&self, window: i64, seq: u64, status: i64, body: &[u8]) -> Value {
+        let (shown, next) = self.suggest.borrow_mut().answered(window, seq, status, body);
+        let mut out = json!({});
+        if let Some((query, items)) = shown {
+            out["push"] =
+                json!({ "type": "suggestions", "query": query, "items": items, "engine": self.engine_json() });
+        }
+        if let Some(f) = next {
+            out["fetch"] = fetch_json(&f);
+        }
+        out
     }
 
     /// Which open items the UI draws as open tabs of the Margin window hosting them (`live`): the items with a page,
@@ -365,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn a_learned_template() {
+    fn an_engines_template() {
         assert_eq!(
             search_url("a b", Some("https://e.example/?q=%s&again=%s")),
             "https://e.example/?q=a%20b&again=a%20b"

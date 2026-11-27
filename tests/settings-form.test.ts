@@ -33,7 +33,7 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
   assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false], ['liquid-glass', 'Liquid Glass', false], ['material', 'Material', false]]);
   assert.equal(f.neverSleepSites.value, 'mail.example.com');
   assert.equal(f.archiveAfterHours.value, '12');
-  assert.match(f.engine.label, /Safari’s default search engine/);
+  assert.equal(f.engine.label, 'Searches use Google.', 'over a browser with no engine stored: Safari’s default');
   assert.equal(f.resetShortcuts.status, SHORTCUT_HELP);
   assert.ok(f.blockGestures.isToggle && f.theme.isChoice && f.neverSleepSites.isList && f.nextTab.isShortcut && f.shortcuts.isGroup);
   // Safari closes a sleeping tab (each opens as it's clicked): nothing to wake.

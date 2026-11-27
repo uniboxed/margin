@@ -1,0 +1,10 @@
+{
+  "about": "Safari's engines' search addresses (www hosts), the same in the extension (shared/search.ts SAFARI_ENGINES) and Margin.app's core (core/session/suggest.rs ENGINES): each side's test checks its own against this.",
+  "engines": [
+    { "id": "google", "host": "www.google.com", "search": "https://www.google.com/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8" },
+    { "id": "bing", "host": "www.bing.com", "search": "https://www.bing.com/search?q=%s&form=APMCS1&PC=APMC" },
+    { "id": "duckduckgo", "host": "duckduckgo.com", "search": "https://duckduckgo.com/?q=%s&t=osx&ia=web" },
+    { "id": "ecosia", "host": "www.ecosia.org", "search": "https://www.ecosia.org/search?q=%s&tts=st_asaf_macos" },
+    { "id": "yahoo", "host": "search.yahoo.com", "search": "https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s" }
+  ]
+}
