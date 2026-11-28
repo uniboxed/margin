@@ -1004,7 +1004,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The folded panes' blurs where the core says (their holes), from the content's top left.
     private func placeBlurs() {
         let content = contentFrame
+        let had = blurs.shown
         blurs.show(core.blurs(content: content).map { $0.offsetBy(dx: -content.minX, dy: -content.minY) })
+        // (Said as one folds or unfolds, or another pane folds instead: not each frame of a move.)
+        let now = blurs.shown
+        if now.count != had.count || now.contains(where: { r in !had.contains { $0.intersects(r) } }) { Diagnostics.note("Margin's window \(id): \(blurs.shown.isEmpty ? "no pane folded" : "folded panes blurred: \(blurs.shown.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))×\(Int($0.height))" }.joined(separator: ", "))")") }
     }
 
     // Where the hosted window goes while hosting: the page area from its own layout, measured in full screen at its

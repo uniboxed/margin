@@ -216,6 +216,17 @@ for (const [name, engine] of ENGINES) {
         assert.ok(near(folds[1].width, need, 2) && folds[0].folded, `pressed: open at once: ${JSON.stringify(folds)}`);
         const focused = (await ev(() => T.rtSent())).filter(([t]) => t === 'activateTab').map(([, a]) => a.tabId);
         assert.deepEqual(focused, [tabs[1]], `and its pane focused (split.focus): ${JSON.stringify(focused)}`);
+        // A folded pane that fits at the split's own sizes (its app's minimum less than its share): resting on its card
+        // puts the split back to them.
+        await ev((m) => T.rtPaneMin(m), { [cutId]: [need, 300], [otherId]: [Math.round(room / 2) - 60, 300] });
+        await frames();
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(folds[0].folded && !folds[1].folded, `still open, the other folded: ${JSON.stringify(folds)}`);
+        await page.mouse.move(folds[0].card!.x, folds[0].card!.y, { steps: 2 });
+        await page.waitForTimeout(900);
+        await frames();
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[0].width, folds[1].width, 3) && folds.every((f) => !f.folded), `resting on a folded pane that fits: the split back at its sizes: ${JSON.stringify(folds)}`);
         // Click mode: resting doesn't open (a new split shown: at its ratios).
         await ev((s) => T.rtSettings(s), { splitExpand: 'click' });
         await ev((t) => T.rtSplit(t, { id: 'spv-click' }), tabs.slice(0, 2));

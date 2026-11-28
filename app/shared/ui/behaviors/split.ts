@@ -370,8 +370,11 @@ export function installSplit(rt: Rt) {
     const cutItem = hover == null ? null : Object.entries(host().paneCuts ?? {}).find(([, c]) => c.window === hover)?.[0] ?? null;
     const place = cutItem != null ? null : pointerPlace(split, el);
     const want = cutItem ?? (place && place !== 'page' && place !== 'ui' ? place : null);
-    if (want && want !== (isOpen ? opened!.item : null) && openedSizes(split, el, want)) {
-      if (dwell?.item !== want) { cancelDwell(); dwell = { item: want, timer: rt.later(() => { dwell = null; openPane(want); }, EXPAND_DWELL) }; }
+    // (What resting there does: opens it; a folded pane that fits at the split's own sizes, the split back to them.)
+    const to = want && want !== (isOpen ? opened!.item : null) ? goesTo(split, el, want) : undefined;
+    if (to !== undefined) {
+      const key = to ?? '';
+      if (dwell?.item !== key) { cancelDwell(); dwell = { item: key, timer: rt.later(() => { dwell = null; openPane(to); }, EXPAND_DWELL) }; }
     } else cancelDwell();
     if (isOpen && place === 'ui' && cutItem == null) { if (!leave) leave = rt.later(() => { leave = null; openPane(null); }, EXPAND_LEAVE); } else cancelLeave();
   }
@@ -416,10 +419,17 @@ export function installSplit(rt: Rt) {
     focusedSeen.item = id;
     const el = page();
     if (!id || !el || drag) return;
-    const can = !!openedSizes(split, el, id);
+    const to = goesTo(split, el, id);
     // (After this render: the move draws through sync.)
-    if (can) queueMicrotask(() => openPane(id));
+    if (to !== undefined) queueMicrotask(() => openPane(to));
     else if (mode() === 'click' && opened?.split === split.id) queueMicrotask(() => openPane(null));
+  }
+  // What a pane the pointer rests on or a press focuses does: opens (its item), or, folded now and fitting at the split's
+  // own sizes, puts the split back to them (null); undefined: nothing (it fits, and isn't folded).
+  function goesTo(split: Split, el: HTMLElement, item: string): string | null | undefined {
+    if (openedSizes(split, el, item)) return item;
+    const p = panesOf(el).find((x) => x.getAttribute('m-pane-id') === item);
+    return opened?.split === split.id && p?.hasAttribute('m-folded') ? null : undefined;
   }
 
   // The page's place drawn as the split now: its panes, their order, ratios and minimums, the focused one; nothing new
@@ -540,7 +550,8 @@ export function installSplit(rt: Rt) {
     const item = p.getAttribute('m-pane-id') ?? '';
     const pane = split.panes.find((x) => String(x.id) === item);
     if (!pane) return;
-    openPane(item);
+    const to = goesTo(split, page()!, item);
+    if (to !== undefined) openPane(to);
     rt.dispatch('split.focus', pane.tabId, 'behavior');
   }, true);
   // The pointer's place, as WebKit's own moves say it (the panel key) and as Margin's hover marks change (it isn't).
