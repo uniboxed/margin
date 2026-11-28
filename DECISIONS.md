@@ -12195,3 +12195,28 @@ Tirth's call: such an app gets its Dock icon, and opens as fast as any app that 
   launch for hosting goes through `launchForHosting`) is started with its Dock icon. Applies to apps started from then on
   (a running app's Dock icon can't be taken back). Tests: settings-form "Settings › Apps", docked.rs, host-tests "apps
   not hidden from the Dock".
+
+## After Tirth's first try of the Dock icons (`fix/dock-icon-followups`, 2026-11-28)
+
+From his session's log (Margin, MenuBarAgent):
+- **A blank page area while the first Safari tabs were picked.** Safari's window was prepared out of sight at launch;
+  the first picks found it there, asked its copy for the tab first (Safari's background paused: the first `hostShow`
+  4.2 s) and showed the window only after. The page draws its loader only while its window hosts, and that window
+  wasn't hosting yet (nothing shown since launch: no last item, the test runs had removed theirs), so it stayed blank
+  until an app's pick. Now (`show_web`, margin-core session/requests.rs): such a pick tells the window's page it hosts
+  before the ask (as a resumed item does), and lets go again if nothing comes (refused, overtaken, moved, no window).
+  Tests: requests_tests `a_web_item_of_a_prepared_window_*` (failing first).
+- **Reminders' first open slid part-way.** Given its Dock icon in place, its window was in Margin's Space (an app with no
+  Dock icon opens its window in the current Space) and the full-screen ask from there wasn't taken: 1.5 s, then the slow
+  path's move to its Desktop and a second ask (the slide). An app started with its Dock icon has its window on the
+  Desktop (its next open: the early path, 764 ms). Now `dockForFullScreen` moves the window onto its Desktop, out of
+  sight, before the ask. Test: host-tests "dock for full screen" with `launchInCurrent` + `desktopOnlyFullScreen`
+  (failing first).
+- **No menu bar at the top edge while Music or Reminders is shown.** MenuBarAgent: with Margin the front app of its Space
+  (any app with no Dock icon shown) `mode=autoHide`, the top edge tracked; with Music in front (a Dock app is its
+  Space's front app) `appState=missing, mode=nil`, nothing tracked: Margin starts hosted apps with
+  `-NSMenuEnableMenuBarAgent NO`, so it never registered a bar. Decision asked of Tirth.
+- **The screen suite wrote "Error: Could not find key …" into Margin's defaults** (MarginFront, MarginPrepareBrowser,
+  MarginResumeLast, MarginTiles): macOS 27's `defaults read` error for an unset key was recorded as its value and
+  written back. Margin read each as unset (no effect seen); deleted on his Mac, and `defaultsRead` now takes both
+  wordings as unset.

@@ -531,6 +531,19 @@ impl Core {
         let label = self.title_of(item).unwrap_or_else(|| "Safari".into());
         // (Its window there already: a switch, quick (the page's switch grace); made first: as usual.)
         let pace = if !comes || there { Pace::Quick } else { Pace::Usual };
+        // (Its window there already, prepared out of sight, and this Margin window hosting nothing yet: its tab is asked
+        // for before the window comes, and the page draws a loader only while it hosts, so it's told it does now (as a
+        // resumed item is); let go again if nothing comes. 2026-11-28: Safari's background paused, its first hostShow
+        // 4.2 s, the page area left blank meanwhile.)
+        let early = comes && there && self.hosting() != Some(w);
+        if early {
+            self.ports.window_set_hosting(w, true);
+        }
+        let let_go = || {
+            if early && self.hosting() != Some(w) && self.ports.window(Some(w)).is_some() {
+                self.ports.window_set_hosting(w, false);
+            }
+        };
         if comes {
             self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), pace);
             if !there && !self.host(&target, w, item).await {
@@ -539,6 +552,7 @@ impl Core {
         }
         let Some(window_id) = self.safari_window(p, Role::Main) else {
             self.note(format!("{item}: no Safari window of its profile"));
+            let_go();
             return Go::Stop;
         };
         let url = if address.is_empty() { "about:blank" } else { address };
@@ -550,8 +564,12 @@ impl Core {
         }
         let result = match self.ask_show(w, item, p, payload, &label, pace).await {
             Asked::Tab(result) => result,
-            Asked::Not => return Go::Stop,
+            Asked::Not => {
+                let_go();
+                return Go::Stop;
+            }
             Asked::Moved(result) => {
+                let_go();
                 // (Its tab in front in its window, but another window's show took the engine while it waited: the later
                 // pick keeps it. This window keeps the item as its card, as when another window hosts.)
                 self.set_open(item, Some(OpenItem { host: id.to_string(), profile: Some(p.to_string()) }));
@@ -570,6 +588,7 @@ impl Core {
             self.set_safari_tab(item, Some(tab));
         }
         if comes && there && !self.host(&target, w, item).await {
+            let_go();
             return Go::Stop;
         }
         self.note(format!("{item}: shown in Safari window {window_id}"));

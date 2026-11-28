@@ -85,7 +85,12 @@ func bringMarginFront(_ m: NSRunningApplication, _ built: String) -> String {
 }
 
 // ---- defaults (Margin's and the test apps' own) ----
-func defaultsRead(_ domain: String, _ key: String) -> String { sh("/usr/bin/defaults", ["read", domain, key]).trimmingCharacters(in: .whitespacesAndNewlines) }
+// A default as `defaults read` prints it; "" when it isn't set (its error, "does not exist" before macOS 27, "Could not
+// find key" since: never taken for a value, or the restore wrote that text back as the setting, seen 2026-11-28).
+func defaultsRead(_ domain: String, _ key: String) -> String {
+  let out = sh("/usr/bin/defaults", ["read", domain, key]).trimmingCharacters(in: .whitespacesAndNewlines)
+  return out.contains("does not exist") || out.contains("Could not find key") ? "" : out
+}
 func defaultsPut(_ domain: String, _ key: String, _ was: String) {
   if was == "1" || was == "0" { sh("/usr/bin/defaults", ["write", domain, key, "-bool", was == "1" ? "YES" : "NO"]) }
   else if was.contains("does not exist") || was.isEmpty { sh("/usr/bin/defaults", ["delete", domain, key]) }

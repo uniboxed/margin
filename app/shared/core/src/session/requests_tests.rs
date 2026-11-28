@@ -1319,3 +1319,64 @@ fn at_quit_a_copy_that_acks_then_never_answers_holds_the_quit_no_longer_than_qui
     assert_eq!(kinds(&seen), ["ask closeWindow", "cancel", "reply"], "{seen:?}");
     assert_eq!(world.now.get(), 16.0);
 }
+
+// Its profile's window prepared out of sight at launch (there, hosted, parked) and Margin's window hosting nothing yet:
+// the window's page told it hosts before its copy is asked for the tab, so its loader shows while a slow copy answers
+// (2026-11-28: Safari's background paused, hostShow 4.2 s, the page area left blank meanwhile); hosted after.
+#[test]
+fn a_web_item_of_a_prepared_window_shows_the_loader_while_its_copy_is_asked() {
+    let (s, world, lib) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    s.core().edit(Field::SafariWindows, |st| st.safari_windows.insert(("s-default".into(), Role::Main), 90));
+    world.hosted.borrow_mut().push(HostTarget::Safari("s-default".into(), Role::Main).id());
+    item(
+        &lib,
+        "w1",
+        json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://a/", "title": "A" }),
+    );
+    let mut at_ask: Vec<Value> = vec![];
+    let out = s.input(&json!({ "type": "library", "request": { "type": "newTab", "item": "w1", "windowId": 1 } }));
+    let seen = pump(&s, &world, out, &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => {
+            at_ask = world.acts.borrow().clone();
+            usual(c)
+        }
+        c => usual(c),
+    });
+    assert_eq!(kinds(&seen), ["ask hostShow", "engine open"], "the tab first, then its window shown");
+    assert!(
+        named(&at_ask, "setHosting").contains(&json!(["setHosting", 1, true])),
+        "hosting before the ask: {at_ask:?}"
+    );
+    assert!(
+        named(&at_ask, "setShowing").contains(&json!(["setShowing", 1, "A", "com.apple.Safari", "quick"])),
+        "its loader: {at_ask:?}"
+    );
+    assert_eq!(s.core().hosting(), Some(1));
+    let a = acts(&world);
+    assert!(!named(&a, "setHosting").contains(&json!(["setHosting", 1, false])), "never let go: {a:?}");
+}
+
+// The same, its copy refusing the tab: the window's page let go of hosting again (nothing shown there, nothing hosted).
+#[test]
+fn a_web_item_of_a_prepared_window_refused_lets_the_page_go() {
+    let (s, world, lib) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    s.core().edit(Field::SafariWindows, |st| st.safari_windows.insert(("s-default".into(), Role::Main), 90));
+    world.hosted.borrow_mut().push(HostTarget::Safari("s-default".into(), Role::Main).id());
+    item(
+        &lib,
+        "w1",
+        json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://a/", "title": "A" }),
+    );
+    let out = s.input(&json!({ "type": "library", "request": { "type": "newTab", "item": "w1", "windowId": 1 } }));
+    let seen = pump(&s, &world, out, &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => json!({ "error": "refused" }),
+        c => usual(c),
+    });
+    assert!(!kinds(&seen).contains(&"engine open".to_string()), "nothing shown: {:?}", kinds(&seen));
+    let a = acts(&world);
+    let hosting = named(&a, "setHosting");
+    assert_eq!(hosting.last(), Some(&json!(["setHosting", 1, false])), "let go again: {hosting:?}");
+    assert_eq!(s.core().hosting(), None);
+}
