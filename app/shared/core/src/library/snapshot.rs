@@ -14,8 +14,8 @@ use std::fmt::Write as _;
 
 use super::js::{self, LocaleCompare};
 use super::state::{
-    ArchiveEntry, Background, FORMAT, Favorite, Folder, Item, LibState, LibTarget, Pin, Rule, Space, Split, Values,
-    is_imported, state_of,
+    ArchiveEntry, Background, FORMAT, Favorite, Folder, Item, LibState, LibTarget, Pin, Rule, Space, Split, SplitKid,
+    SplitNode, Values, is_imported, state_of,
 };
 use crate::session::LiveRow;
 
@@ -366,7 +366,7 @@ fn write_rule(out: &mut String, r: &Rule) {
         .end();
 }
 
-/// LT:107-114: `{ id, spaceId, axis, panes, ratios, pinned?, folderId?, pos? }`.
+/// LT:107-114: `{ id, spaceId, axis, panes, ratios, tree?, pinned?, folderId?, pos? }`.
 fn write_split(out: &mut String, g: &Split) {
     let mut o = Obj::new(out);
     o.str("id", &g.id).str("spaceId", &g.space_id).str("axis", g.axis.as_str());
@@ -388,10 +388,37 @@ fn write_split(out: &mut String, g: &Split) {
         write_num(ratios, *r);
     }
     ratios.push(']');
+    if let Some(tree) = &g.tree {
+        write_tree(o.key("tree"), tree);
+    }
     if g.pinned {
         o.bool("pinned", true);
     }
     o.opt_str("folderId", g.folder_id.as_deref()).opt_num("pos", g.pos).end();
+}
+
+/// A split's tree (`{ axis, kids, ratios }`, kids items' ids or nodes).
+fn write_tree(out: &mut String, n: &SplitNode) {
+    out.push_str("{\"axis\":");
+    write_str(out, n.axis.as_str());
+    out.push_str(",\"kids\":[");
+    for (i, k) in n.kids.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        match k {
+            SplitKid::Leaf(s) => write_str(out, s),
+            SplitKid::Node(inner) => write_tree(out, inner),
+        }
+    }
+    out.push_str("],\"ratios\":[");
+    for (i, r) in n.ratios.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        write_num(out, *r);
+    }
+    out.push_str("]}");
 }
 
 /// LT:117: `{ id, spaceId, name, open, pos, parentId? }`.

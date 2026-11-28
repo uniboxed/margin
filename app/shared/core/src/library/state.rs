@@ -445,7 +445,24 @@ impl Axis {
     }
 }
 
-/// A split (M's `SplitGroup`): 2–4 items' ids, a ratio each.
+/// A split's tree when it's nested (docs/FLEX-SPLIT.md step 3; extension/shared/split-tree.ts `SplitNode`): its axis,
+/// its kids (items or nodes), a ratio each, as stored (`copyTree`: nothing else it held) or as a rule made it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SplitNode {
+    pub axis: Axis,
+    pub kids: Vec<SplitKid>,
+    pub ratios: Vec<f64>,
+}
+
+/// A node's kid (split-tree.ts `SplitKid`): an item's id, or a node.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SplitKid {
+    Leaf(Str),
+    Node(SplitNode),
+}
+
+/// A split (M's `SplitGroup`): 2 to [`MAX_SPLIT_PANES`] items' ids, a ratio each (nested: each pane's share of the
+/// area), its tree when it's nested (`tree` set: the key there, whether or not it still holds for its panes).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Split {
     pub id: Str,
@@ -453,6 +470,7 @@ pub struct Split {
     pub axis: Axis,
     pub panes: Vec<Str>,
     pub ratios: Vec<f64>,
+    pub tree: Option<Rc<SplitNode>>,
     pub pinned: bool,
     pub folder_id: Option<Str>,
     /// Kept only when it's a number (LT:113 `Number.isFinite(g.pos) ? { pos }`): never a 0 that wasn't there.
@@ -925,12 +943,13 @@ pub fn state_of<V: Values + ?Sized>(values: &V, compare: &dyn LocaleCompare) -> 
     }
 }
 
-/// The most panes a split has (M:1628 `MAX_SPLIT_PANES`).
-pub const MAX_SPLIT_PANES: usize = 4;
+/// The most panes a split has (split-tree.ts `MAX_SPLIT_PANES`; the room is the real limit).
+pub const MAX_SPLIT_PANES: usize = 16;
 
 /// LT:101-115: a split's panes as stored: item ids (strings, not empty), each once, at most [`MAX_SPLIT_PANES`], each
 /// with the ratio stored at its own place (one per pane given; else 1 each), normalised to 4 decimals; fewer than 2:
-/// no split.
+/// no split. A nested one's tree as stored when it's one for those panes (split-tree.ts `storedTree`, kept as
+/// `copyTree`), else none: flat.
 fn split_of(id: &str, space_id: &str, given: &[Value], g: &Map<String, Value>) -> Option<Rc<Split>> {
     let at: Vec<usize> = given
         .iter()
@@ -953,12 +972,15 @@ fn split_of(id: &str, space_id: &str, given: &[Value], g: &Map<String, Value>) -
         _ => vec![1.0; at.len()],
     };
     let sum = ratios.iter().fold(0.0, |a, b| a + b);
+    let panes: Vec<Str> = at.iter().map(|&i| Str::from(given[i].as_str().unwrap_or(""))).collect();
+    let tree = super::model::split_tree::stored_tree(g.get("tree"), &panes).map(Rc::new);
     Some(Rc::new(Split {
         id: id.into(),
         space_id: space_id.into(),
         axis: Axis::of(g.get("axis")),
-        panes: at.iter().map(|&i| Str::from(given[i].as_str().unwrap_or(""))).collect(),
+        panes,
         ratios: ratios.iter().map(|r| js::round((r / sum) * 10000.0) / 10000.0).collect(),
+        tree,
         pinned: js::truthy(g.get("pinned")),
         folder_id: some_str(g.get("folderId")).map(Str::from),
         pos: js::finite(g.get("pos")),
