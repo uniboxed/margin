@@ -158,8 +158,9 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   `exitFullScreenMode:`), never for its position; it reads the tile from `SLSSpaceGetRect`. (The earlier "a tile past
   the edge is ejected in 0.6 s" was a tile narrower than its window's minimum.) Only a tile may: while a window enters
   (its own Space reserves its edges, never negative: `layout::plan`), as a member, or with tiles off, its frame is held
-  within the display (`layout::within`), and a slide shows only what that lets it.
-- **Kept under the panes it lies under** (only those: `lyingUnder`), the focused one too (`frontVisible`, several in
+  within the display (`layout::within`).
+- **Kept under the panes it lies under** (only those: `lyingUnder`: a pane between two, whose rest goes before it, or
+  one held within the display), the focused one too (`frontVisible`, several in
   their chain's order, `tuckedOrder`): never raised over them; its keys given without a raise
   (`_SLPSSetFrontProcessWithOptions` with kCPSNoWindows, 0x400, and the make-key pair: yabai's). A press on it (any
   button, its drags and its release) goes to its window as the window server's records, built from the press's own
@@ -172,7 +173,8 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   shown, and puts it back (at most 1.5 s later at rest). A loop's guard: 3 times in 5 s. A cut pane lying under none
   is as any pane: nothing kept, nothing polled.
 - **Arrows: replaced 2026-11-28** by opening the pane to fit its app (docs/FLEX-SPLIT.md step 1); the page draws
-  none, and the engine's slide goes once that's checked on screen. What they were: (the page's `<m-pane-arrow m-mode="slide">`, on each hidden side, while the pointer is over that pane:
+  none, and the engine's slide was removed the same day (margin-core's `Slide`, `slide_for`, `slide_step`, the FFI's
+  `margin_model_slide_for`/`_slide_step`/`margin_model_cut`, HostEngine's `slide`). What they were: (the page's `<m-pane-arrow m-mode="slide">`, on each hidden side, while the pointer is over that pane:
   Margin.app's `paneHover`, said as the pointer enters and leaves it): a **slide** to the other alignment along that
   axis, which shows that side whole (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the
   window a frame behind at most, with Safari). Coming in under a pane it will lie under: ordered behind it first, so it
@@ -183,7 +185,7 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   kept active by records and takes an activation for done, never raising its window. So it's let go first, the front
   handed to the pane below without a raise if it's the front app already, then activated, and the window server's
   order waited for (`orderWait` at most) before the keys move on: handed back 10 ms later, its app never raised its
-  window (2026-11-22, eight tries in a row). A press on Margin's own over the page area (a divider, an arrow) is never
+  window (2026-11-22, eight tries in a row). A press on Margin's own over the page area (a divider, a folded pane's card) is never
   a press on the pane under it, and the poll holds off while a window is out to a private Space and back
   (`outAndBack`): read mid-way, it was a stray brought back alone, and the split was gone (2026-11-22).
 - Tried and ruled out (2026-11-21/22): bringing a cut pane over its neighbours to show its side at the display's edge

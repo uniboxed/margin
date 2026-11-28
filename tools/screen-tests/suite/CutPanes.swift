@@ -1,4 +1,4 @@
-// A cut pane (docs/PEEK-SPLIT.md §4b; Margin's HostEngine `cutOf`, `slide`): a split of two Chameleon copies, the one
+// A cut pane (docs/PEEK-SPLIT.md §4b; Margin's HostEngine `isCut`): a split of two Chameleon copies, the one
 // at the page area's end with a minimum wider than its pane. Its window at that minimum from its pane's start, the rest
 // past the display's edge (macOS keeps a full-screen tile there), held (never taken out of its tile); the pointer
 // resting on it opens it to fit its app, the other pane folded and blurred (docs/FLEX-SPLIT.md step 1); the sidebar puts
@@ -14,15 +14,14 @@ extension Runner {
     return CGRect(x: x, y: y, width: w, height: h)
   }
 
-  // The sides Margin last told its page for copy `n`'s pane (`cut panes {…}`: each side its arrow slides); nil: none said.
-  func cutSides(_ n: Int, since mark: LogMark? = nil) -> Set<String>? {
+  // Whether Margin last told its page copy `n`'s pane is cut (`cut panes {…}`: each cut pane's window); nil: none said.
+  func cutSaid(_ n: Int, since mark: LogMark? = nil) -> Bool? {
     guard let item = paneItems[n] else { return nil }
     let lines = mark.map { $0.since("cut panes ") } ?? said("cut panes ")
     guard let last = lines.last, let r = last.range(of: "cut panes ") else { return nil }
     let json = String(last[r.upperBound...])
-    guard json != "none", let d = json.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: [String: Any]] else { return [] }
-    guard let pane = o[item] else { return [] }
-    return Set(["left", "right", "up", "down"].filter { pane[$0] as? String == "slide" })
+    guard json != "none", let d = json.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: [String: Any]] else { return false }
+    return o[item] != nil
   }
 
   // Whether copy `a`'s window is behind copy `b`'s on screen (the window server's order); nil: one isn't on screen.
@@ -35,10 +34,10 @@ extension Runner {
   }
 
   // Copy `n`'s window at its minimum (`minWidth`) from its pane's start, the rest past the display's edge, in Margin's
-  // Space only, on screen, its right its one arrow; held `seconds` (a read every 0.5 s): never moved, never out of
+  // Space only, on screen, told to the page as cut; held `seconds` (a read every 0.5 s): never moved, never out of
   // Margin's Space, nothing of it over copy `other`'s pane.
   func cutPaneEdge(_ n: Int, other: Int, minWidth: CGFloat, seconds: Double) {
-    let title = "cut pane: Chameleon \(n)'s window at its minimum (\(Int(minWidth))) from its pane's start, the rest past the display's edge, held \(Int(seconds)) s (never out of its tile), its right its one arrow"
+    let title = "cut pane: Chameleon \(n)'s window at its minimum (\(Int(minWidth))) from its pane's start, the rest past the display's edge, held \(Int(seconds)) s (never out of its tile), told to the page as cut"
     gate("the cut pane at the display's edge")
     guard let pid = copyApp(n)?.processIdentifier, let pane = paneRect(n), let otherPane = paneRect(other) else { return step(title, false, "the panes aren't known (\(layoutLine().map { String($0.suffix(220)) } ?? "no layout"))") }
     let screen = mainDisplay()
@@ -64,10 +63,10 @@ extension Runner {
     let pastEdge = w.r.maxX > screen.maxX + 1
     let inMargin = w.on && w.spaces == [marginSpace]
     let overOther = w.r.intersection(otherPane.insetBy(dx: 2, dy: 2)).isNull == false
-    let sides = cutSides(n)
+    let told = cutSaid(n)
     let ejected = mark.since("app:\(copy(n).id)").filter { $0.contains("out of full screen") || $0.contains("strayed") || $0.contains("its own full-screen Space") }
-    step(title, atStart && pastEdge && inMargin && !overOther && moved.isEmpty && sides == ["right"] && ejected.isEmpty,
-         "its pane \(rect(pane)), its window #\(w.n) \(rect(w.r)) (past the display's \(Int(screen.maxX)) by \(Int(w.r.maxX - screen.maxX))), on screen \(w.on), Spaces \(w.spaces) (Margin's \(marginSpace)); over Chameleon \(other)'s pane \(overOther); \(reads) reads, changes \(moved.isEmpty ? "none" : moved.joined(separator: "; ")); its arrows \(sides.map { $0.sorted().joined(separator: ",") } ?? "not said"); Margin: \(ejected.map { String($0.suffix(140)) })")
+    step(title, atStart && pastEdge && inMargin && !overOther && moved.isEmpty && told == true && ejected.isEmpty,
+         "its pane \(rect(pane)), its window #\(w.n) \(rect(w.r)) (past the display's \(Int(screen.maxX)) by \(Int(w.r.maxX - screen.maxX))), on screen \(w.on), Spaces \(w.spaces) (Margin's \(marginSpace)); over Chameleon \(other)'s pane \(overOther); \(reads) reads, changes \(moved.isEmpty ? "none" : moved.joined(separator: "; ")); told cut \(told.map { "\($0)" } ?? "not said"); Margin: \(ejected.map { String($0.suffix(140)) })")
   }
 
   // The pointer resting on copy `n`'s cut pane (its hole: the copy's): after the page's pause it opens to its app's

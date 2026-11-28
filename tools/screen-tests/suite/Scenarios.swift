@@ -96,6 +96,8 @@ enum Step: Equatable {
   case paneOpens(Int, other: Int, minWidth: CGFloat) // the pointer resting on a cut pane: opened to fit its app, the other folded
   case paneBack(Int, other: Int)                  // the pointer on the sidebar: the split back at its sizes
   case foldedCardOpens(Int, other: Int, minWidth: CGFloat) // the pointer resting on a folded pane's card: that one opened
+  // a sidebar row dropped on the page (SplitDrop.swift; docs/FLEX-SPLIT.md step 2)
+  case rowDrop(Int, RowDrop, expect: [Int])       // that copy's row dragged from the sidebar and dropped there: the split then
   // every pane of a split draws active (PanesActive.swift; Margin's PanesActive.swift)
   case panesActive(Int, Int)                      // both copies active, each its pane's window key; the focused one the front app
   case panesActiveFlips(Int, Int, times: Int)     // clicks back and forth: both active after each, the inactive gaps timed
@@ -157,6 +159,7 @@ enum Step: Equatable {
     case .paneOpens(let n, let o, let w): return "split opens: the pointer resting on Chameleon \(n)'s cut pane (in its hole, the copy's): after the pause Margin's page opens it to its app's minimum (\(Int(w))), its window at its pane now (no longer cut), Chameleon \(o)'s pane folded with its window at its own minimum and blurred behind its card (Margin's `folded panes blurred`), both in Margin's Space"
     case .paneBack(let n, let o): return "split back: the pointer moved onto Margin's sidebar: after its pause the split goes back to its own sizes (Chameleon \(n)'s and \(o)'s panes even again), no pane folded (Margin's `no pane folded`)"
     case .foldedCardOpens(let n, let o, let w): return "split opens: the pointer resting on Chameleon \(n)'s folded card (Margin's to take: no hole there): that pane opens to its app's minimum (\(Int(w))), Chameleon \(o)'s folds and is blurred"
+    case .rowDrop(let n, let k, let e): return "split drop: Chameleon \(n)'s row pressed in Margin's sidebar, dragged over the page (the pointer Margin's over the holes while held) and let go \(k): the split then \(e) left to right, each copy's window in Margin's Space"
     case .paneClickTimes(let a, let b, let t): return "pane click times: \(t) grid clicks back and forth between Chameleon \(a) and \(b), each in the pane without the keys: every one delivered, Margin's key time (median, most; under the 120 ms cap) and the press's post to the copy's click; then a click in the pane with the keys: straight through, Margin says nothing"
     case .panesActive(let a, let b): return "panes active: Chameleon \(a) and \(b) each asked its state (its notification: AppKit's own word): both active, each its pane's window key, the focused one the window server's front app"
     case .panesActiveFlips(let a, let b, let t): return "panes active flips: \(t) grid clicks back and forth between Chameleon \(a) and \(b) (each a pane click, posted as pane-clicks posts them): both active after every one; the one that had the keys inactive for a moment only (its own resign and activation times)"
@@ -398,6 +401,18 @@ let cutPanes = Scenario(name: "cut-panes", title: "a split whose pane at the dis
   .marginQuitTiles([1, 2]),
 ], estimate: 120)
 
+// A sidebar row dropped on the page (SplitDrop.swift; docs/FLEX-SPLIT.md step 2): Chameleon 2's row on the right edge of
+// Chameleon 1 shown alone (a new split), 3's on 2's pane (in its place), 2's on the gap between 1 and 3 (between them).
+let splitDrop = Scenario(name: "split-drop", title: "sidebar rows dropped on the page: beside the page shown (a new split), on a pane (in its place), between two panes",
+                         copies: [1, 2, 3], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
+  .openMargin, .host(.copy(3)), .host(.copy(2)), .host(.copy(1)),
+  .rowDrop(2, .side(1), expect: [1, 2]),
+  .rowDrop(3, .over(2), expect: [1, 3]),
+  .rowDrop(2, .between(1, 3), expect: [1, 2, 3]),
+  .marginQuitTiles([1, 2, 3]),
+], estimate: 120)
+
 // Every pane of a split draws active (PanesActive.swift; Margin's PanesActive.swift): a split of Chameleon 1 and 2, both
 // active, clicks back and forth, a key after a click, another app in front, the split hidden, Margin's quit; then, from a
 // launch of its own, Margin killed with the split up and opened again.
@@ -443,6 +458,7 @@ func parts(realApps withReal: Bool) -> [Part] {
   out.append(Part(name: "panes-active", scenarios: [panesActiveScenario], realApps: false))
   out.append(Part(name: "panes-active-crash", scenarios: [panesActiveCrashScenario], realApps: false))
   out.append(Part(name: "cut-panes", scenarios: [cutPanes], realApps: false))
+  out.append(Part(name: "split-drop", scenarios: [splitDrop], realApps: false))
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
   if withReal, isInstalled(weather.bundle) { out.append(Part(name: "real-apps-min", scenarios: [realMinScenario(weather)], realApps: true, apps: [weather])) }
   if withReal, isInstalled(weather.bundle), isInstalled(maps.bundle) { out.append(Part(name: "real-apps-loop", scenarios: [realLoopScenario(weather, maps)], realApps: true, apps: [weather, maps])) }

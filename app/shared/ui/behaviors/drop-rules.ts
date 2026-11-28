@@ -13,7 +13,9 @@
 //   it and its pins); on a pin's row, before (top half) or after it, at its
 //   level; below the last row, the end of the top level. A tab dropped there
 //   is pinned in that place, a pin moves there, folders stay at the top level;
-// - nowhere a row already is (a drop that wouldn't move it is no target).
+// - nowhere a row already is (a drop that wouldn't move it is no target);
+// - on the page (Margin's own window, docs/FLEX-SPLIT.md step 2): a tab beside the page shown, between two panes or
+//   in a pane's place (where: ui/behaviors/split.ts dropAt, which says it as the `split.drop` it runs).
 import type { FolderRow, SpaceView } from '../view-model.ts';
 import { MAX_FOLDER_DEPTH } from '../../../../extension/shared/pinned-rules.ts';
 
@@ -25,7 +27,10 @@ export type Over = { zone: 'space', spaceId: string }
   | { zone: 'tabs', rows: number[], tab: number | null, y: number }
   | { zone: 'pins', row: { kind: 'pin' | 'folder', id: string, folder: string | null } | null, y: number }
   | { zone: 'folder', folder: string }
-  | { zone: 'favorites', rows: string[], favorite: string | null, x: number };
+  | { zone: 'favorites', rows: string[], favorite: string | null, x: number }
+  | { zone: 'page', drop: SplitDrop };
+/** A row dropped on the page: `split.drop`'s argument (ui/actions.ts). */
+export type SplitDrop = { tab: number | string, split: string | null, nextTo: number | string | null, at: number, replace: number | null, axis: 'horizontal' | 'vertical' };
 export type Target = { space: string }
   | { unpin: true }
   | { unfavorite: true }
@@ -33,7 +38,8 @@ export type Target = { space: string }
   | { favoriteBefore: string | null }
   | { tab: number, side: 'before' | 'after' }
   | { into: string }
-  | { folderId: string | null, beforeId: string | null, row?: { kind: 'pin' | 'folder', id: string }, side?: 'before' | 'after' };
+  | { folderId: string | null, beforeId: string | null, row?: { kind: 'pin' | 'folder', id: string }, side?: 'before' | 'after' }
+  | { page: SplitDrop };
 
 function allFlat(space: SpaceView | null | undefined) {
   if (space?.pinnedFlat) return space.pinnedFlat;
@@ -133,6 +139,7 @@ export function stays(space: SpaceView | null | undefined, drag: Drag, level: st
  * */
 export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | null | undefined): Target | null {
   if (!drag || !over || drag.kind === 'space') return null; // spaces don't move (no handler)
+  if (over.zone === 'page') return drag.kind === 'tab' && over.drop.tab === drag.id ? { page: over.drop } : null;
   if (over.zone === 'favorites') {
     if (drag.kind === 'tab' || drag.kind === 'pin') return { favoriteAdd: true };
     if (drag.kind !== 'favorite') return null;
@@ -214,6 +221,7 @@ export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | nul
  * */
 export function dropAction(drag: Drag, where: Target): { name: string, arg: any } {
   const w = (where as any);
+  if (w.page) return { name: 'split.drop', arg: w.page };
   if (w.space) return { name: 'tab.moveToSpace', arg: { tab: drag.id, space: w.space } };
   if (w.unpin) return { name: 'tab.unpin', arg: String(drag.id) };
   if (w.unfavorite) return { name: 'favorite.remove', arg: String(drag.id) };

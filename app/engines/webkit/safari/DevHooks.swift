@@ -47,7 +47,7 @@ protocol DevHookWorld: AnyObject {
     func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) -> String? // a drag of its handle in the page; nil if begun
     func devFront() -> String // how the front window is in front, its page card and its hole, in one line
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) // the page area in Margin's own window's picture
-    func devPage(_ what: String, done: @escaping (String) -> Void) // `field` or `spot` of the front window's page, in one line
+    func devPage(_ what: String, row: String?, done: @escaping (String) -> Void) // `field`, `spot` or a `row` of the front window's page, in one line
     func devUI(_ action: String, arg: String?, done: @escaping (String) -> Void) // a theme action in the front window's page
     func devState(done: @escaping (String) -> Void) // the front page's tab, card and split, in one line
     func devLayout() -> String // the front window's visible hosts (session and engine), in one line
@@ -146,8 +146,11 @@ final class DevHooks {
                 return say("dev hook: host say state \(asked)")
             }
             if fields["say"] == "layout" { return say("dev hook: layout: \(world.devLayout()) \(asked)") }
-            if let what = fields["say"], what == "field" || what == "spot" || what == "animations" {
-                world.devPage(what) { [weak self] line in self?.say("dev hook: \(what): \(line) \(asked)") }
+            if let what = fields["say"], what == "field" || what == "spot" || what == "animations" || what == "row" {
+                // (`row`: a tab's row, `arg` its number or its item's id, as `ui` takes it.)
+                let row = what == "row" ? fields["arg"] : nil
+                if what == "row", !(row.map { $0.count <= 64 && $0.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ":" }) } ?? false) { return refuse("no row") }
+                world.devPage(what, row: row) { [weak self] line in self?.say("dev hook: \(what): \(line) \(asked)") }
                 return say("dev hook: host say \(what) \(asked)")
             }
             if fields["say"] == "picture" {
@@ -256,8 +259,9 @@ extension Shell: DevHookWorld {
         return w.devFront + (host.map { "; engine: \($0.readShown())" } ?? "") + ", last \(last)"
     }
 
-    // The page's own answer (one script): its focused field's length only; a sidebar point no control is under.
-    func devPage(_ what: String, done: @escaping (String) -> Void) {
+    // The page's own answer (one script): its focused field's length only; a sidebar point no control is under; a tab's
+    // row's middle (`row`: its number).
+    func devPage(_ what: String, row: String?, done: @escaping (String) -> Void) {
         guard let w = marginWindows?.front else { return done("no Margin window") }
         // (animations: what the page keeps redrawing for: its running animations and transitions, where, whether they
         // can be seen; and its own requestAnimationFrame calls counted for a second. The idle-cost part's diagnosis.)
@@ -278,6 +282,8 @@ extension Shell: DevHookWorld {
             """ : what == "field" ? """
             const a = document.activeElement, field = !!a && (a.matches('input, textarea') || a.isContentEditable);
             return 'focused ' + field + ', length ' + (field ? String((a.value ?? a.textContent ?? '').length) : '-1') + ', palette ' + (!!document.querySelector('[m-input="palette"]'));
+            """ : what == "row" ? """
+            return window.marginApp && window.marginApp.devRowSpot ? window.marginApp.devRowSpot(row) : 'none';
             """ : """
             // (The double-click's own rule, ui/empty.ts: where a press does nothing and a double-click opens the palette.)
             if (window.marginApp && window.marginApp.devEmptySpot) return window.marginApp.devEmptySpot();
@@ -292,9 +298,10 @@ extension Shell: DevHookWorld {
             }
             return 'none';
             """
-        w.webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result in
+        let rowValue = row.map { DevHooks.uiArgument($0, row: { [weak self] in self?.hosted?.openRow(ofItem: $0) }) }
+        w.webView.callAsyncJavaScript(script, arguments: rowValue.map { ["row": $0] } ?? [:], in: nil, in: .page) { result in
             guard case .success(let value) = result, let text = value as? String else { return done("no answer from the page") }
-            guard what == "spot" else { return done(text) }
+            guard what == "spot" || what == "row" else { return done(text) }
             let parts = text.split(separator: ",").compactMap { Double($0) }
             guard parts.count == 2 else { return done("none") }
             let content = w.contentFrame

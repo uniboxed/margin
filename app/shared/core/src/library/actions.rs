@@ -1426,10 +1426,22 @@ fn add_to_split(s: &LibState, cx: &mut Cx) -> Done {
             cx.push(request);
             return Ok((used(s, &k.id, w.as_deref(), cx.now), json!({ "splitId": &*existing.id })));
         }
-        if let Some(why) = split_refusal(s, &existing.panes, &[&k.id], &existing.space_id) {
+        // (LT `addToSplit`'s drop on the page: `replace`, a pane of it that the item takes the place of; else `at`.)
+        let out = cx.str("replace").filter(|r| existing.panes.iter().any(|x| **x == **r));
+        let refusal = match out {
+            Some(out) => {
+                let left: Vec<Str> = existing.panes.iter().filter(|x| ***x != *out).cloned().collect();
+                split_refusal(s, &left, &[&k.id], &existing.space_id)
+            }
+            None => split_refusal(s, &existing.panes, &[&k.id], &existing.space_id),
+        };
+        if let Some(why) = refusal {
             return Err(Fail::Refused(why));
         }
-        let next = splits::add_to_split(s, &existing.id, &k.id);
+        let next = match out {
+            Some(out) => splits::replace_in_split(s, &existing.id, out, &k.id),
+            None => splits::add_to_split_at(s, &existing.id, &k.id, cx.get("at")),
+        };
         let group = next.splits.iter().find(|g| *g.id == *existing.id).cloned();
         let Some(group) = group.filter(|g| g.panes.iter().any(|x| *x == k.id)) else { return refuse("not added") };
         let request = split_shown(&next, &group, Some(&k.id), cx);
@@ -1437,8 +1449,11 @@ fn add_to_split(s: &LibState, cx: &mut Cx) -> Done {
         return Ok((used(&next, &k.id, w.as_deref(), cx.now), json!({ "splitId": &*existing.id })));
     }
     let Some(front) = front else { return refuse("no second item to split with") };
-    // (`ACTIONS.createSplit({ p: { ...p, panes: [front.id, k.id], spaceId: k.spaceId, focus: k.id } })`.)
-    split_of_items(s, &[&front.id, &k.id], Some(&k.space_id), Some(&k.id), cx)
+    // (`ACTIONS.createSplit({ p: { ...p, panes: p?.at === 0 ? [k.id, front.id] : [front.id, k.id], spaceId: k.spaceId,
+    // focus: k.id } })`: `p?.at === 0` a JSON number 0, -0 too.)
+    let first = cx.get("at").and_then(Value::as_f64) == Some(0.0);
+    let panes: [&str; 2] = if first { [&k.id, &front.id] } else { [&front.id, &k.id] };
+    split_of_items(s, &panes, Some(&k.space_id), Some(&k.id), cx)
 }
 
 /// LT:715 `openSplit`: the split shown, `focus` (else its first pane with an item) focused.

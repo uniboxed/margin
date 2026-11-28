@@ -695,6 +695,9 @@ const ACTIONS: Record<string, Handler> = {
   // `tabId` into the split of the item in front of its space (`nextTo`: that item; `splitId`: that split), or a new
   // split of the two: Arc's Add to Split View on a row. Refused: a split of 4 already, an app that's in it already, an
   // item of another space, one of Margin's own pages. Already a pane of it: the split shown, that pane focused.
+  // A row dropped on the page (docs/FLEX-SPLIT.md step 2): `at`, its place among the panes (a new split: 0 first, else
+  // after); `replace`, a pane it takes the place of (its ratio, that item out of the split; the count stays, so a split
+  // of 4 takes it); `axis`, a new split's.
   addToSplit({ s, p, ids, now, requests }) {
     const k = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
@@ -708,16 +711,17 @@ const ACTIONS: Record<string, Handler> = {
         requests.push(splitShown(s, existing, k.id, p));
         return { s: used(s, k.id, w, now), result: { splitId: existing.id } };
       }
-      const why = splitRefusal(s, existing.panes, [k.id], existing.spaceId);
+      const out = typeof p?.replace === 'string' && existing.panes.includes(p.replace) ? p.replace : null;
+      const why = splitRefusal(s, out ? existing.panes.filter((x) => x !== out) : existing.panes, [k.id], existing.spaceId);
       if (why) return fail(s, why);
-      const next = M.addToSplit(s, existing.id, k.id) as LibState;
+      const next = (out ? M.replaceInSplit(s, existing.id, out, k.id) : M.addToSplit(s, existing.id, k.id, p?.at)) as LibState;
       const group = (next.splits ?? []).find((g) => g.id === existing.id);
       if (!group || !group.panes.includes(k.id)) return fail(s, 'not added');
       requests.push(splitShown(next, group, k.id, p));
       return { s: used(next, k.id, w, now), result: { splitId: existing.id } };
     }
     if (!front) return fail(s, 'no second item to split with');
-    return ACTIONS.createSplit({ s, p: { ...p, panes: [front.id, k.id], spaceId: k.spaceId, focus: k.id }, now, ids, requests });
+    return ACTIONS.createSplit({ s, p: { ...p, panes: p?.at === 0 ? [k.id, front.id] : [front.id, k.id], spaceId: k.spaceId, focus: k.id }, now, ids, requests });
   },
   openSplit({ s, p, now, requests }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);

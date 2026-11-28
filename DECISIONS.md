@@ -12269,3 +12269,43 @@ Tirth's ask after the flexible split prototype, step 1 of docs/FLEX-SPLIT.md: re
   - Idle cost is 0.41% CPU.
   - The picture shows the folded pane's app blurred under its icon and name.
 - **The arrows** are gone from the page and themes. The engine's slide (`HostEngine.slide`, `slide_for`, `slide_step`) is unused now and is removed in a cleanup.
+
+## The cut pane's slide removed (`refactor/remove-pane-slide`, 2026-11-28)
+
+The cleanup docs/FLEX-SPLIT.md step 1 promised, now that a pane opens to fit its app instead of sliding.
+
+- **Removed, end to end:**
+  - margin-core's `Slide`, a host's `slid` alignment and its fields, `slide_for`, `slid_frame`, `slide_step`, `slide_rect`, a cut pane's sides (`cut_of`, `Side`) and the page's `split.slide` (`Said::Slide`).
+  - The FFI's `MarginSlide`, `margin_model_slide_for`, `margin_model_slide_step` and `margin_model_cut` (sides). `margin_model_is_cut` says whether a pane is cut.
+  - Margin.app's `HostEngine.slide`, `slideTime`, `PaneSide`, `PaneSlide`, `PaneCut`, the session's `slidePane` and the window's `onPaneSlide`.
+- **Numbers kept stable:**
+  - The model's field numbers 19, 20 and 67 and the page's said kind 12 are left unused rather than renumbered.
+  - `HostShownWindow.cut` is now a flag. The page's `paneCut` push carries only each cut pane's window (the page read nothing else since step 1).
+- **Kept:** `layout::cut` keeps its alignment arguments. It is a pure rule with its own tests, and Swift reaches it through `margin_layout_cut` (always with none now). A pane's frame is always laid out away from the other panes.
+- **Tests:** the tucked-pane checks (keys without a raise, the ⌘-Tab and poll repairs, the raise retries) no longer use a slide to get a pane under another.
+  - margin-core and the order rules use a pane held within the display (not a tile).
+  - The engine's multi-host test uses the middle of three panes.
+
+## A sidebar tab dropped on the page (`feat/split-drop`, 2026-11-28)
+
+docs/FLEX-SPLIT.md step 2, Tirth's order after the prototype.
+
+- **Where it goes** is the page's rule (ui/behaviors/split.ts `dropPlace`, pure).
+  - On the page shown alone: the nearest edge, a new split on that side (left or right side by side, top or bottom stacked).
+  - On a split: a pane's ends or the gap go between panes, its middle takes that pane's place.
+  - A split of four only takes a replace.
+  - Only the split's own axis has edges until step 3's tree.
+- **What drops:** tab rows only, as Add to Split View, and only in Margin's own window with a window hosted. Never Margin's own pages, the item shown, or a pane of the split shown.
+- **The mark** is Margin's own `<m-drop-zone m-kind="side|between|replace">` on the theme's root, styled by the theme (themes/README.md). It is a blue tint by default.
+- **The action** is `split.drop`, behavior-only. Its replaced pane is named by index, read from the split in the state, because an open item isn't a "tab" the action checker knows.
+- **The library's `addToSplit`** gains `at` (a place), `replace` (a pane's item: its ratio kept, that item out of the split, the count unchanged) and `axis` (a new split's). Both copies changed (library.ts over model.ts with `M.replaceInSplit`, and margin-core's port).
+  - The shared vectors were re-recorded with the generator's new fields. Node and JavaScriptCore agree on every step, and the Rust answers all 8,861 action steps the same.
+  - The re-drawn sequences moved three counts the tests pin: the known `createSpace` gap is 21 steps (was 14), 269 snapshot steps (floor lowered from 290 to 260), and 66 address-parsing steps (floor lowered from 70 to 60).
+- **Not done as planned: folded panes in the room check.** The room check is the add's, unchanged. Counting folded panes at `PANE_FOLD` would let a split hold more panes than fit at rest, and a middle pane's window would then cross its neighbours (only the end panes' windows can pass the page's edge). That goes to step 3, to ask Tirth.
+- **The pointer over the holes needs no native change.** A drag started on Margin's sidebar stays Margin's: the pass-through holds while a button is down, and the press tap delivers a panel press with its drags and release to the panel.
+- **The real screen found two things the engines' tests can't.**
+  - A press switches to the row's tab (Arc's), so the drag reached a page showing the dragged tab itself. The drag now undoes the press's switch the first time it reaches the page (press.ts `switchBack`), and the row drops beside or into what was shown.
+  - WebKit's `buttons` reads none on the press tap's re-made drags (it asks the window server, which the tap took the press from), so the sidebar's drag was dropped as "no button held". In Margin's own window the drag now ends at its release only. Sidebar reordering with an app hosted had the same fault.
+  - Margin's log says `sidebar drag: a tab's row` as a drag starts.
+  - The `split-drop` screen part passes 9 of 9.
+- **The screen suite** gains a dev hook `say: row` (a tab row's middle on the screen, by its number or its item's id) and the `split-drop` part.

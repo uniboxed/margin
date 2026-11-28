@@ -141,6 +141,10 @@ export const ACTIONS = Object.freeze({
   'split.add': 'tab',
   // (Its name in themes/README.md: the same action.)
   'split.addPane': 'tab',
+  // A sidebar row dropped on the page (ui/behaviors/split.ts dropPlace, docs/FLEX-SPLIT.md step 2): into the split
+  // shown (`split`) at a place (`at`) or in a pane's place (`replace`, that pane's index), else a new split with the
+  // item shown (`nextTo`) on that side (`at` 0: first) along `axis`.
+  'split.drop': Object.freeze({ tab: 'tab', split: 'split?', nextTo: 'tab?', at: Object.freeze([0, 1, 2, 3, 4]), replace: Object.freeze([null, 0, 1, 2, 3]), axis: Object.freeze(['horizontal', 'vertical']) }),
   // (A new Split View as the host's ⌃⇧= makes one: Arc's "+" New Split; only a host that gives the runtime `addSplit`.)
   'split.new': 'none',
   'split.open': 'split',
@@ -533,6 +537,7 @@ export const ACTION_MAP = Object.freeze({
   'linkRules.toggle': 'toggleAirTrafficRule',
   'split.add': 'addToSplit',
   'split.addPane': 'addToSplit',
+  'split.drop': 'addToSplit',
   'split.new': 'local',
   'split.open': 'openSplit',
   'split.focus': 'activateTab',
@@ -662,6 +667,13 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'linkRules.toggle': return send('toggleAirTrafficRule', { ruleId: arg });
     case 'split.add':
     case 'split.addPane': return send('addToSplit', { tabId: arg, windowId });
+    case 'split.drop': {
+      // (The pane it takes the place of by its item, as the split in the state has it.)
+      const group = arg.split != null ? (state?.splits ?? []).find((g: { id: string }) => g.id === arg.split) : null;
+      const out = group && arg.replace != null ? group.panes[arg.replace] ?? null : null;
+      const where = arg.split != null ? { splitId: arg.split } : { nextTo: arg.nextTo, axis: arg.axis };
+      return send('addToSplit', { tabId: arg.tab, windowId, ...where, ...(out != null ? { replace: out } : { at: arg.at }) });
+    }
     case 'split.open': return send('openSplit', { splitId: arg, windowId, ...show });
     case 'split.focus': return send('activateTab', { tabId: arg, ...(typeof arg === 'string' && windowId != null ? { windowId } : {}), ...show });
     case 'split.breakOut': return send('breakOutSplit', { tabId: arg, windowId });

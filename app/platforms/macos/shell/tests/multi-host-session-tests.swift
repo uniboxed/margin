@@ -80,27 +80,18 @@ func multiHostSessionTests() {
           && session.open[editItem]?.host == HostTarget.app("com.apple.TextEdit").id, "\(String(describing: session.layout[1]))")
     check("multi-host session: …Margin's window told both hosted windows (its holes)", window.hosted == mainWindow && told.last?.map(\.window) == [mainWindow, editWindow], "\(told)")
     check("multi-host session: …no pane cut: the page told none", (window.paneCutsSaid.last ?? "{}") == "{}", "\(window.paneCutsSaid)")
-    // TextEdit's window at least 700 wide in its 618 pane: shown cut, the page told its item's cut sides for the arrows.
-    // (The page's side only: the window's cut frame is the engine's, multi-host-tests' "cut pane" checks with tiles on.)
+    // TextEdit's window at least 700 wide in its 618 pane: shown cut, the page told its item and window (the page opens
+    // it to fit its app on hover, docs/FLEX-SPLIT.md). (The page's side only: the window's cut frame is the engine's,
+    // multi-host-tests' "cut pane" checks with tiles on.)
     let editHost = HostTarget.app("com.apple.TextEdit").id
     engine.hosts[editHost]?.minSize = CGSize(width: 700, height: 300)
     run { await session.setLayout(window: 1, main: aItem, mainRect: left, extras: [HostedLayout.Extra(item: editItem, role: .pane, rect: right)]) }
-    let cutSaid = window.paneCutsSaid.last ?? ""
-    // (Its tile's frame past the display's edge, 886…1586: its right its arrow; the stand-in's window keeps its own frame.)
-    check("multi-host session: a pane narrower than its window's minimum: shown cut, the page told its item, window and side (its right, a slide)",
-          cutSaid == #"{"\#(editItem)":{"window":\#(editWindow),"right":"slide"}}"#, "\(window.paneCutsSaid)")
-    let focusedBefore = session.layout[1]?.focused
-    session.slidePane(editItem, side: "left", in: window)
-    _ = hostRun { for _ in 0..<50 { await Task.yield() } }
-    check("multi-host session: …an arrow it doesn't have: nothing slid, the focus as it was", window.paneCutsSaid.last == cutSaid && session.layout[1]?.focused == focusedBefore, "\(window.paneCutsSaid)")
-    session.slidePane(editItem, side: "right", in: window)
-    _ = hostRun { for _ in 0..<400 { if window.paneCutsSaid.last != cutSaid { break }; await Task.yield() } }
-    check("multi-host session: its right arrow: slid (its left its arrow now), the focus as it was (a press on Margin's own control)",
-          window.paneCutsSaid.last == #"{"\#(editItem)":{"window":\#(editWindow),"left":"slide"}}"# && session.layout[1]?.focused == focusedBefore, "\(window.paneCutsSaid)")
-    // The page's word for a cut pane with sides (tiles on, the engine's: multi-host-tests' "cut pane" checks).
-    check("multi-host session: the page told each side its arrow slides",
-          session.paneCutsJSON([HostShownWindow(window: editWindow, rect: right, role: .pane, z: 0, focused: false, frame: right, tucked: false, cut: PaneCut(sides: [.right, .left]))])
-          == #"{"\#(editItem)":{"window":\#(editWindow),"left":"slide","right":"slide"}}"#)
+    check("multi-host session: a pane narrower than its window's minimum: shown cut, the page told its item and window",
+          window.paneCutsSaid.last == #"{"\#(editItem)":{"window":\#(editWindow)}}"#, "\(window.paneCutsSaid)")
+    check("multi-host session: the page told a cut pane, never one that isn't",
+          session.paneCutsJSON([HostShownWindow(window: editWindow, rect: right, role: .pane, z: 0, focused: false, frame: right, tucked: false, cut: true),
+                                HostShownWindow(window: mainWindow, rect: left, role: .main, z: 1, focused: true, frame: left, tucked: false, cut: false)])
+          == #"{"\#(editItem)":{"window":\#(editWindow)}}"#)
     engine.hosts[editHost]?.minSize = nil
     run { await session.setLayout(window: 1, main: aItem, mainRect: left, extras: [HostedLayout.Extra(item: editItem, role: .pane, rect: right)]) }
     check("multi-host session: …its minimum gone: no longer cut, the page told none", window.paneCutsSaid.last == "{}", "\(window.paneCutsSaid)")

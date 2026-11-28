@@ -838,6 +838,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       const why = behaviors.split?.refusesAdd?.(arg);
       if (why) { showToast(why); return refuse(name, arg, why); }
     }
+    // (A row dropped on the page: the panes it would make, at their place.)
+    if (name === 'split.drop') {
+      const why = behaviors.split?.refusesDrop?.(arg);
+      if (why) { showToast(why); return refuse(name, arg, why); }
+    }
     // ...nor stacked (or put side by side) when they wouldn't fit along the other axis.
     if (name === 'split.toggleAxis') {
       const why = behaviors.split?.refusesAxis?.(arg);

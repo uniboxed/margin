@@ -73,6 +73,9 @@ m-page[m-split="row"]>m-pane>m-pane-card>m-pane-name{writing-mode:vertical-rl;ma
 m-page[m-split="column"]>m-pane>m-pane-card{flex-direction:row}
 @keyframes m-pane-fold{from{opacity:0}}
 @media (prefers-reduced-motion:reduce){m-pane>m-pane-card{animation:none}}
+m-drop-zone{position:fixed;z-index:2147483600;display:block;box-sizing:border-box;pointer-events:none!important;border-radius:10px;background:rgb(10 132 255/.16);box-shadow:inset 0 0 0 2px rgb(10 132 255/.75);transition:left .12s ease-out,top .12s ease-out,width .12s ease-out,height .12s ease-out}
+m-drop-zone[m-kind="between"]{border-radius:3px;background:rgb(10 132 255/.9);box-shadow:0 0 0 1px rgb(255 255 255/.55)}
+@media (prefers-reduced-motion:reduce){m-drop-zone{transition:none}}
 m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview,m-picker{display:block}
 m-preview-page{display:block}

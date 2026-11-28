@@ -136,8 +136,6 @@ protocol HostedEngine: AnyObject {
     // its full-screen toolbar down over the page), then the layout's focused host given the keys back (HostEngine
     // `focusPages`); nil: none was a Safari window.
     func focusPages(_ ids: [HostID]) async -> String?
-    // A cut pane's arrow (docs/PEEK-SPLIT.md §4b): its window slid to show that side (true: done).
-    func slide(_ id: HostID, side: PaneSide) async -> Bool
     // A Safari the person opened (margin-core session/restart.rs, HostEngine): the one running (nil: none), and it
     // started again with Margin's hosting arguments.
     func safariRun() -> HostSafariRun?
@@ -264,7 +262,6 @@ extension HostedEngine {
     var knownAppMinimums: [String: CGSize] { [:] }
     func toolbarsRest(_ ids: [HostID]) async -> String? { nil }
     func focusPages(_ ids: [HostID]) async -> String? { nil }
-    func slide(_ id: HostID, side: PaneSide) async -> Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
     // (A stand-in hosts no Safari: nothing to ask about, nothing restarted.)
@@ -340,8 +337,8 @@ protocol HostedWindow: AnyObject {
     func push(_ json: String)
     // Every visible host's window while more than one is (docs/PEEK-SPLIT.md §1: its holes), [] when one is again.
     func setVisibleHosts(_ list: [HostShownWindow])
-    // A split's cut panes (docs/PEEK-SPLIT.md §4b), told to its page for their arrows: `{ <item>: { window,
-    // left|right|up|down: "slide" } }` (JSON, each side its arrow slides), `{}` for none. Said only when it changes.
+    // A split's cut panes (docs/PEEK-SPLIT.md §4b), told to its page (it opens one to fit its app, docs/FLEX-SPLIT.md):
+    // `{ <item>: { window } }` (JSON), `{}` for none. Said only when it changes.
     func setPaneCuts(_ json: String)
     // Where its page draws the preview card page (the theme's <m-preview-page>, top-left screen points), nil: none drawn.
     var cardRect: CGRect? { get }
@@ -1275,22 +1272,15 @@ final class HostedSession {
     // are known (the engine says it at the layout's end, before the session has the items of the windows it opened).
     private var shownList: [HostShownWindow] = []
 
-    // A split's cut panes by their items, for the page's arrows (docs/PEEK-SPLIT.md §4b): `{}` for none.
+    // A split's cut panes by their items, each its window (docs/PEEK-SPLIT.md §4b; the page opens one to fit its app,
+    // docs/FLEX-SPLIT.md): `{}` for none.
     func paneCutsJSON(_ list: [HostShownWindow]) -> String {
         var out: [String] = []
         for s in list {
-            guard let cut = s.cut, let target = engine.target(ofWindow: s.window), let item = open.first(where: { $0.value.host == target.id })?.key, let key = jsonString(item) else { continue }
-            let sides = PaneSide.allCases.filter { cut.sides.contains($0) }.map { #""\#($0.rawValue)":"slide""# }
-            out.append(#"\#(key):{"window":\#(s.window)\#(sides.isEmpty ? "" : "," + sides.joined(separator: ","))}"#)
+            guard s.cut, let target = engine.target(ofWindow: s.window), let item = open.first(where: { $0.value.host == target.id })?.key, let key = jsonString(item) else { continue }
+            out.append(#"\#(key):{"window":\#(s.window)}"#)
         }
         return "{" + out.sorted().joined(separator: ",") + "}"
-    }
-
-    // A cut pane's arrow pressed in its page (`split.slide`: its item, the side): the engine slides its window to show
-    // that side (docs/PEEK-SPLIT.md §4b). The focus stays where it is (a press on Margin's own control).
-    func slidePane(_ item: String, side: String, in w: HostedWindow) {
-        guard w.id == hostingWindow, layout[w.id]?.items.contains(item) == true, let id = open[item]?.host, let s = PaneSide(rawValue: side) else { return }
-        Task { _ = await self.engine.slide(id, side: s) }
     }
 
     // The one shown's own minimum width (HostEngine `onMinimum`; nil: none): told to the Margin window hosting it.

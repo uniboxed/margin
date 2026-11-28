@@ -614,7 +614,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if changed { keepFront() }
     }
 
-    // A split's cut panes, for their arrows (docs/PEEK-SPLIT.md §4b): pushed when it changes, and in each hello.
+    // A split's cut panes (docs/PEEK-SPLIT.md §4b; the page opens one to fit its app): pushed when it changes, and in
+    // each hello.
     private(set) var paneCuts = "{}"
     func setPaneCuts(_ json: String) {
         guard json != paneCuts else { return }
@@ -1174,8 +1175,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
                 owner?.onPagePress?(self, at)
             }
         } else if hosted != nil, !onHits, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
-            // (Never a press on Margin's own over the page area (a divider, a cut pane's arrow): 2026-11-22, an arrow's
-            // press focused the pane under it, and a divider's the pane beside it.)
+            // (Never a press on Margin's own over the page area (a divider, a folded pane's card): 2026-11-22, a cut
+            // pane's arrow's press (since removed) focused the pane under it, and a divider's the pane beside it.)
             owner?.onPagePress?(self, at)
         }
         // (Kept in front by its order: a press on the hosted window raised it over this one; above it again, once the
@@ -1952,9 +1953,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             sidebarResizing(on, divider: divider)
         case .haptic(let level):
             hapticTick(level: level)
-        case .slide(let item, let side):
-            // (A cut pane's arrow (ui/behaviors/split.ts): the session's, docs/PEEK-SPLIT.md §4b.)
-            owner?.onPaneSlide?(self, item, side.rawValue)
         case .ask(let name, let arg):
             ask(name, arg)
         case .log(let warn, let text):
@@ -2309,8 +2307,6 @@ final class MarginWindows {
     var paneTapTrusted: () -> Bool = { AXIsProcessTrusted() }
     var paneTapGrace: TimeInterval = 1
     var onPaneClick: ((MarginWindowController, PaneClickResult) -> Void)?
-    // A cut pane's arrow in a Margin window's page (`split.slide`: its item, the side): docs/PEEK-SPLIT.md §4b.
-    var onPaneSlide: ((MarginWindowController, String, String) -> Void)?
     private(set) var paneTap: PaneClickTapping?
     private(set) var paneTapsMade = 0 // (the tests read them)
     private(set) var paneTapsEnded = 0

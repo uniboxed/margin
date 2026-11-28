@@ -32,10 +32,6 @@ fn pane(m: &mut HostModel, id: &str, rect: Option<Rect>, min: Option<(f64, f64)>
     h
 }
 
-fn sides(bits: Option<u8>) -> Option<Vec<Side>> {
-    bits.map(|b| Side::ALL.into_iter().filter(|s| b & s.bit() != 0).collect())
-}
-
 #[test]
 fn a_pane_below_its_minimum_is_cut_its_rest_past_the_displays_edge() {
     let mut m = model();
@@ -45,8 +41,6 @@ fn a_pane_below_its_minimum_is_cut_its_rest_past_the_displays_edge() {
     let start = Rect::new(894.0, 41.0, 700.0, 933.0);
     assert_eq!(m.frame(notes, None), start);
     assert!(m.is_cut(notes) && !m.is_cut(main));
-    assert_eq!(sides(m.cut_of(notes)), Some(vec![Side::Right]));
-    assert_eq!(m.cut_of(main), None);
     // Under no pane: its rest is past the display's edge.
     assert!(!m.tucked(notes, None));
     // Not a tile (or tiles off): held within the display, whatever its tile's would be; so is its entry's placement.
@@ -58,53 +52,33 @@ fn a_pane_below_its_minimum_is_cut_its_rest_past_the_displays_edge() {
 }
 
 #[test]
-fn a_slide_shows_its_other_side_and_tucks_it_under_the_pane_beside() {
+fn held_within_the_display_it_lies_under_the_pane_beside() {
     let mut m = model();
     let main = pane(&mut m, "edit", Some(LEFT), None, 0);
     let notes = pane(&mut m, "notes", Some(RIGHT), Some((700.0, 400.0)), 1);
-    let to = m.slide_for(notes, Side::Right).unwrap();
-    assert_eq!(to, Slide { pane: RIGHT, end_x: Some(true), end_y: None });
-    m.set_rect(notes, Field::SlidPane, Some(to.pane));
-    m.set_int(notes, Field::SlidEndX, 1);
-    let end = Rect::new(804.0, 41.0, 700.0, 933.0);
-    assert_eq!(m.frame(notes, None), end);
-    assert_eq!(sides(m.cut_of(notes)), Some(vec![Side::Left]));
+    // Not a tile: held within the display, its rest under the left pane.
+    m.set_int(notes, Field::Tiled, 0);
+    assert_eq!(m.frame(notes, None), Rect::new(812.0, 41.0, 700.0, 933.0));
     let mut under = [0; 4];
     assert_eq!(m.lying_under(notes, None, &mut under), 1);
     assert_eq!(under[0], main);
+    assert!(m.lies_under(notes, main) && !m.lies_under(main, notes));
     // Over the pane it lies under in the on-screen list (front to back): over; behind it: not; unlisted: not.
     assert!(m.over_under(notes, &[10 + 1, 10]));
     assert!(!m.over_under(notes, &[10, 10 + 1]));
     assert!(!m.over_under(notes, &[10 + 1]));
     // A frame given (a drag's): its own pane's rect alone lies under nothing.
     assert!(!m.tucked(notes, Some(RIGHT)));
-    // Its pane changed (a divider moved): away from the other panes again, whatever it was slid to.
+    // Its pane changed (a divider moved): its frame follows the pane.
     let narrower = Rect::new(914.0, 41.0, 590.0, 933.0);
     m.set_rect(notes, Field::Rect, Some(narrower));
+    assert_eq!(m.frame(notes, None), Rect::new(812.0, 41.0, 700.0, 933.0));
+    m.set_int(notes, Field::Tiled, 1);
     assert_eq!(m.frame(notes, None), Rect::new(914.0, 41.0, 700.0, 933.0));
 }
 
 #[test]
-fn slide_for_keeps_the_other_axis_as_it_is() {
-    let mut m = model();
-    pane(&mut m, "top", Some(Rect::new(276.0, 41.0, 1228.0, 300.0)), None, 0);
-    let low = Rect::new(276.0, 349.0, 1228.0, 300.0);
-    let h = pane(&mut m, "low", Some(low), Some((1300.0, 500.0)), 1);
-    // Wider and taller than its pane, away from the other panes: on x at the page's end (its start at the pane's,
-    // passing its end), on y not (its end at the pane's, passing its start).
-    let f = m.frame(h, None);
-    assert_eq!(f, Rect::new(276.0, 149.0, 1300.0, 500.0));
-    assert_eq!(m.slide_for(h, Side::Up), Some(Slide { pane: low, end_x: Some(false), end_y: Some(false) }));
-    assert_eq!(m.slide_for(h, Side::Down), Some(Slide { pane: low, end_x: Some(false), end_y: Some(true) }));
-    assert_eq!(m.slide_for(h, Side::Left), Some(Slide { pane: low, end_x: Some(false), end_y: Some(true) }));
-    assert_eq!(m.slide_for(h, Side::Right), Some(Slide { pane: low, end_x: Some(true), end_y: Some(true) }));
-    // No rect: no slide.
-    let main = m.add("main", "main", 1, 1);
-    assert_eq!(m.slide_for(main, Side::Left), None);
-}
-
-#[test]
-fn three_panes_a_chain_never_a_crossing_slide() {
+fn three_panes_a_chain() {
     let mut m = model();
     let a = Rect::new(276.0, 41.0, 404.0, 933.0);
     let b = Rect::new(688.0, 41.0, 404.0, 933.0);
@@ -114,14 +88,10 @@ fn three_panes_a_chain_never_a_crossing_slide() {
     let maps = pane(&mut m, "maps", Some(c), Some((600.0, 400.0)), 2);
     assert_eq!(m.frame(notes, None), Rect::new(392.0, 41.0, 700.0, 933.0));
     assert_eq!(m.frame(maps, None), Rect::new(1100.0, 41.0, 600.0, 933.0));
-    assert_eq!(sides(m.cut_of(notes)), Some(vec![Side::Left]));
-    assert_eq!(sides(m.cut_of(maps)), Some(vec![Side::Right]));
-    // The last one slid right: under the middle one, which lies under the first.
-    m.set_rect(maps, Field::SlidPane, Some(c));
-    m.set_int(maps, Field::SlidEndX, 1);
-    assert_eq!(m.frame(maps, None), Rect::new(904.0, 41.0, 600.0, 933.0));
-    // The middle one's left no longer offered: slid, it would lie over the last one's pane while that lies over its.
-    assert_eq!(sides(m.cut_of(notes)), Some(vec![]));
+    assert!(m.is_cut(notes) && m.is_cut(maps));
+    // The last one not a tile: held within the display, under the middle one, which lies under the first.
+    m.set_int(maps, Field::Tiled, 0);
+    assert_eq!(m.frame(maps, None), Rect::new(912.0, 41.0, 600.0, 933.0));
     // Each behind the ones it lies under, whatever order they're given in.
     let mut out = [0; 4];
     for given in [[notes, maps], [maps, notes]] {
@@ -136,12 +106,13 @@ fn tucked_order_as_given_without_a_chain_and_on_a_loop() {
     let mut m = model();
     let a = pane(&mut m, "a", Some(LEFT), Some((700.0, 400.0)), 0);
     let b = pane(&mut m, "b", Some(RIGHT), Some((700.0, 400.0)), 1);
-    // Each slid into the other's pane.
-    for (h, r, end) in [(a, LEFT, 0), (b, RIGHT, 1)] {
-        m.set_rect(h, Field::SlidPane, Some(r));
-        m.set_int(h, Field::SlidEndX, end);
+    // Neither a tile, a drag's page area ending at the left pane: the left one's rest past its pane's end (into the
+    // right pane), the right one held within the display (into the left pane).
+    for h in [a, b] {
+        m.set_int(h, Field::Tiled, 0);
     }
-    // Each lies under the other (two over each other's, which cut_of never offers): as given.
+    m.set_live_page(Some(LEFT));
+    // Each lies under the other (two over each other's): as given.
     assert!(m.lies_under(a, b) && m.lies_under(b, a), "{:?} {:?}", m.frame(a, None), m.frame(b, None));
     let mut out = [0; 4];
     assert_eq!(m.tucked_order(&[a, b], &mut out), 2);
@@ -152,6 +123,7 @@ fn tucked_order_as_given_without_a_chain_and_on_a_loop() {
     assert_eq!(m.tucked_order(&[b], &mut out), 1);
     assert_eq!(out[0], b);
     assert_eq!(m.tucked_order(&[], &mut out), 0);
+    m.set_live_page(None);
 }
 
 #[test]
@@ -205,34 +177,4 @@ fn an_apps_kept_minimum_with_its_version_unread_is_noted() {
     m.versions_clear();
     assert_eq!(m.frame(o, None), LEFT);
     assert_eq!(m.versions_wanted(&mut out), 0);
-}
-
-#[test]
-fn a_slides_frames_eased_out_to_the_last() {
-    let from = Rect::new(894.0, 41.0, 700.0, 933.0);
-    let to = Rect::new(804.0, 41.0, 700.0, 933.0);
-    let (r, last) = slide_rect(&from, &to, 0.0, 0.15);
-    assert_eq!((r, last), (from, false));
-    let (r, last) = slide_rect(&from, &to, 0.075, 0.15);
-    // Half the time: 7/8 of the way (1 - 0.5³).
-    assert_eq!((r.x, last), (894.0 - 90.0 * 0.875, false));
-    assert_eq!(slide_rect(&from, &to, 0.15, 0.15), (to, true));
-    assert_eq!(slide_rect(&from, &to, 1.0, 0.15), (to, true));
-    // One a frame (1/120 s): 19 rects for 150 ms, the last at its end.
-    let mut steps = 0;
-    let mut t = 0.0;
-    loop {
-        steps += 1;
-        if slide_rect(&from, &to, t, 0.15).1 {
-            break;
-        }
-        t += 1.0 / 120.0;
-    }
-    assert_eq!(steps, 19);
-    // A frame's tile in Margin's placement from its own tile.
-    let m = model();
-    let home = Rect::new(0.0, 0.0, 1512.0, 982.0);
-    let s = m.slide_step(&from, &to, 0.15, 0.15, Some(&home));
-    assert!(s.last && s.tile.is_some() && s.page == to);
-    assert_eq!(m.slide_step(&from, &to, 0.0, 0.15, None).tile, None);
 }

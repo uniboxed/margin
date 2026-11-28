@@ -192,7 +192,7 @@ export const FIELDS: Record<string, string[]> = {
   toggleAirTrafficRule: ['ruleId', 'enabled'],
   routeUrl: ['url'],
   createSplit: ['panes', 'spaceId', 'axis', 'ratios', 'focus', 'windowId'],
-  addToSplit: ['tabId', 'nextTo', 'splitId', 'windowId'],
+  addToSplit: ['tabId', 'nextTo', 'splitId', 'windowId', 'at', 'replace', 'axis'],
   openSplit: ['splitId', 'focus', 'windowId'],
   breakOutSplit: ['tabId', 'windowId'],
   removeFromSplit: ['tabId', 'focus', 'windowId'],
@@ -248,6 +248,8 @@ export function field(r: Rand, values: any, name: string): unknown {
     case 'pattern': return r.pick(PATTERNS);
     case 'enabled': case 'open': case 'front': return r.pick([true, false, true, 1, 0]);
     case 'a': case 'b': return r.pick([0, 1, 2, 3, 1.5, -1, '1']);
+    case 'at': return r.pick([0, 1, 2, 3, 4, 1.5, -1, '0', null]);
+    case 'replace': return some('tabs', 't');
     default: return null;
   }
 }

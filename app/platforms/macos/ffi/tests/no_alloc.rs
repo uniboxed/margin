@@ -98,7 +98,7 @@ fn the_hot_paths_allocate_nothing() {
         unsafe {
             // The model's typed get and set, every kind.
             for f in
-                [Field::Window, Field::Phase, Field::Role, Field::Mode, Field::Unread, Field::Gone, Field::SlidEndX]
+                [Field::Window, Field::Phase, Field::Role, Field::Mode, Field::Unread, Field::Gone, Field::FreshFront]
             {
                 let v = margin_model_get(core, h, f as u32);
                 margin_model_set(core, h, f as u32, v + 1);
@@ -108,7 +108,7 @@ fn the_hot_paths_allocate_nothing() {
                 std::hint::black_box(margin_model_get_real(core, h, f as u32));
             }
             let mut r = MarginRect::default();
-            for f in [Field::Rect, Field::PlacedPage, Field::MinSize, Field::SlidPane] {
+            for f in [Field::Rect, Field::PlacedPage, Field::MinSize] {
                 margin_model_set_rect(core, h, f as u32, &page);
                 std::hint::black_box(margin_model_get_rect(core, h, f as u32, &mut r));
                 margin_model_set_rect(core, h, f as u32, std::ptr::null());
@@ -192,13 +192,12 @@ fn the_hot_paths_allocate_nothing() {
             std::hint::black_box(margin_layout_window_frame(page, area, true, true, 1.0, &mut r));
             std::hint::black_box(margin_layout_at_page_area(page, page, 1.0));
             // Cut panes (part 3): a drag's frame per follower (its page area followed), a placing's wait, a poll's
-            // look, a slide's frames.
+            // look.
             margin_model_set_live_page(core, &page);
             let narrow = MarginRect { x: 900.0, width: 400.0, ..page };
             margin_model_set_rect(core, other, Field::Rect as u32, &narrow); // (moved to the page area above)
             let pl = MarginPlacement { page: narrow, ..p };
             let home = p.display;
-            let mut slide = MarginSlide::default();
             let screen = [42i64, 41];
             for x in [h, other] {
                 margin_model_frame(core, x, &pl, &mut r);
@@ -207,18 +206,10 @@ fn the_hot_paths_allocate_nothing() {
                 margin_model_fitted(core, x, std::ptr::null(), true, &mut q);
                 std::hint::black_box(margin_model_tile_rect(core, x, &pl, home, &mut r));
                 std::hint::black_box(margin_model_is_cut(core, x));
-                std::hint::black_box(margin_model_cut(core, x));
-                for side in 0..4 {
-                    std::hint::black_box(margin_model_slide_for(core, x, side, &mut slide));
-                }
                 std::hint::black_box(margin_model_lying_under(core, x, &narrow, handles.as_mut_ptr(), handles.len()));
                 std::hint::black_box(margin_model_tucked(core, x, std::ptr::null()));
                 std::hint::black_box(margin_model_over_under(core, x, screen.as_ptr(), screen.len()));
                 std::hint::black_box(margin_model_versions_wanted(core, handles.as_mut_ptr(), handles.len()));
-            }
-            let mut tile = MarginRect::default();
-            for t in [0.0, 0.05, 0.2] {
-                std::hint::black_box(margin_model_slide_step(core, page, narrow, t, 0.15, &home, &mut r, &mut tile));
             }
             margin_model_set_live_page(core, std::ptr::null());
             // The window order's check while the focused one is waited for (part 2): every few milliseconds.
