@@ -677,20 +677,48 @@ mod tests {
     fn docked_apps_through_the_api() {
         let mut core = HostCore::new();
         let facts = json!({"app": true, "launchedByMargin": true, "dockless": true, "canFullScreen": false, "resizable": true, "zoomable": true, "minimized": false});
-        let give = |core: &mut HostCore, v: &str| call(core, json!({ "type": "giveDockIcon", "bundle": "com.apple.Music", "version": v, "facts": facts }))["give"].clone();
+        let give = |core: &mut HostCore, v: &str| {
+            call(core, json!({ "type": "giveDockIcon", "bundle": "com.apple.Music", "version": v, "facts": facts }))["give"].clone()
+        };
         assert_eq!(give(&mut core, "1.6"), json!(true));
-        assert_eq!(call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"], json!(false));
-        assert_eq!(call(&mut core, json!({ "type": "dockedResult", "bundle": "com.apple.Music", "version": "1.6", "needs": true }))["remembered"], json!(true));
-        assert_eq!(call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"], json!(true));
-        assert_eq!(call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music" }))["docked"], json!(false), "version unread");
-        assert_eq!(call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Notes", "hideFromDock": false }))["docked"], json!(true), "apps not hidden: every one");
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"],
+            json!(false)
+        );
+        assert_eq!(
+            call(
+                &mut core,
+                json!({ "type": "dockedResult", "bundle": "com.apple.Music", "version": "1.6", "needs": true })
+            )["remembered"],
+            json!(true)
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"],
+            json!(true)
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music" }))["docked"],
+            json!(false),
+            "version unread"
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Notes", "hideFromDock": false }))["docked"],
+            json!(true),
+            "apps not hidden: every one"
+        );
         let saved = call(&mut core, json!({ "type": "saveDocked" }));
         let mut fresh = HostCore::new();
         assert_eq!(call(&mut fresh, json!({ "type": "loadDocked", "docked": saved["docked"] }))["loaded"], json!(1));
-        assert_eq!(call(&mut fresh, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"], json!(true));
+        assert_eq!(
+            call(&mut fresh, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"],
+            json!(true)
+        );
         assert_eq!(call(&mut fresh, json!({ "type": "loadDocked", "docked": [1] }))["loaded"], Value::Null);
         // Given it and still unable: never again for that version.
-        call(&mut core, json!({ "type": "dockedResult", "bundle": "com.apple.Music", "version": "1.6", "needs": false }));
+        call(
+            &mut core,
+            json!({ "type": "dockedResult", "bundle": "com.apple.Music", "version": "1.6", "needs": false }),
+        );
         assert_eq!(give(&mut core, "1.6"), json!(false));
     }
 

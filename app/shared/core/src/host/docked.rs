@@ -145,7 +145,10 @@ mod tests {
     fn remembered_per_version() {
         let mut d = DockedApps::default();
         assert!(!d.starts_docked("com.apple.Music", Some("1.6"), true), "nothing known: no Dock icon");
-        assert!(d.starts_docked("com.apple.Music", Some("1.6"), false), "apps not hidden from the Dock: every app with its icon");
+        assert!(
+            d.starts_docked("com.apple.Music", Some("1.6"), false),
+            "apps not hidden from the Dock: every app with its icon"
+        );
         assert!(d.starts_docked("com.apple.Safari", None, false), "any app, its version read or not");
         assert!(d.remember("com.apple.Music", "1.6", true));
         assert!(!d.remember("com.apple.Music", "1.6", true), "the same: not kept again");
@@ -165,9 +168,13 @@ mod tests {
         d.remember("com.apple.Music", "1.6 (16)", true);
         d.remember("com.example.Odd", "2", false);
         let v = d.to_json();
-        assert_eq!(v, json!({"com.apple.Music": {"version": "1.6 (16)", "needs": true}, "com.example.Odd": {"version": "2", "needs": false}}));
+        assert_eq!(
+            v,
+            json!({"com.apple.Music": {"version": "1.6 (16)", "needs": true}, "com.example.Odd": {"version": "2", "needs": false}})
+        );
         assert_eq!(DockedApps::load(&v), Some(d));
-        for bad in [json!({"a": {"version": "1"}}), json!({"a": {"version": 1, "needs": true}}), json!([1]), json!("x")] {
+        for bad in [json!({"a": {"version": "1"}}), json!({"a": {"version": 1, "needs": true}}), json!([1]), json!("x")]
+        {
             assert_eq!(DockedApps::load(&bad), None, "{bad}");
         }
         assert_eq!(DockedApps::load(&json!({})), Some(DockedApps::default()));
