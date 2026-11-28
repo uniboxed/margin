@@ -1390,7 +1390,19 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
                                   marginFront: appActive(), buttonsDown: buttonsDown, pointer: at, screen: screen) else { return }
         barTaken = true
         barTakes += 1
-        activate("the pointer at the top edge over an app with a Dock icon: macOS brings Margin's menu bar down (the keys back to it once the bar is up)")
+        // (The window server's front process, as a click would make it: AppKit's own activation is refused here, Margin
+        // not being the active app, seen on screen 2026-11-28; it's the fallback. MenuBarAgent then brings Margin's bar
+        // down at the pointer's next move, as a hand pushing at the edge makes.)
+        let why = "the pointer at the top edge over an app with a Dock icon: macOS brings Margin's menu bar down (the keys back to it once the bar is up)"
+        activations.append(why)
+        if activations.count > 50 { activations.removeFirst(activations.count - 50) }
+        guard !options.harness else { return }
+        if owner?.takeFront(window.windowNumber) == true {
+            Diagnostics.note("Margin's window \(id): Margin made the front app: \(why)")
+        } else {
+            activate(why + " (AppKit's activation: the window server's not taken)")
+            activations.removeLast() // (counted once)
+        }
     }
 
     // Margin's own menu item run while it's the front app (clicked from its Dock icon, ⌘-Tab): the app shown gets
@@ -2202,6 +2214,9 @@ final class MarginWindows {
     // (Run while Margin is the active app, its menu bar's: the app shown gets the activation back after, `menuItemRan`.)
     // Margin's own menu items held (the start screen up, HostedSession `startupShown`): none of them runs.
     var holdsMenu: () -> Bool = { false }
+    // Margin made the window server's front process, `window` its window, as a click would (the shell's: the host
+    // engine's private call); false: not taken (AppKit's activation tried then).
+    var takeFront: (Int) -> Bool = { _ in false }
     func perform(_ action: MarginMenuAction) {
         if holdsMenu() { return Diagnostics.note("Margin's menu: \(action.rawValue) not now, the start screen is up") }
         if action == .newWindow { open(); return }

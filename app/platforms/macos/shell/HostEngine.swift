@@ -6498,6 +6498,10 @@ final class HostEngine {
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
     var paneFronting: PaneFronting? { sys.paneFronting }
     var paneDelivery: PaneFronting? { sys.paneDelivery }
+    // Margin itself made the window server's front process, `window` its window, as a person's click would (the menu bar
+    // over an app with a Dock icon: MarginWindowController `barAtEdge`). AppKit's own activation is refused then (macOS's
+    // cooperative activation: Margin isn't the active app, the person didn't act in it; 2026-11-28 on screen). True: taken.
+    func makeMarginFront(window: Int) -> Bool { sys.makeFront(pid: ProcessInfo.processInfo.processIdentifier, window: window) }
 
     private func queueActives() {
         guard sys.keepsPanesActive || !actives.kept.isEmpty else { return } // (off with nothing kept: nothing at all)
