@@ -135,7 +135,7 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
 
 test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Browsing, Keyboard; every field in one, in the form\'s order', () => {
   assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.id), [...SETTINGS_CATEGORY_IDS], 'the action\'s ids (ui/actions.ts) are the categories\'');
-  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Themes', 'Tabs', 'Browsing', 'Keyboard'], 'Themes (the theme store) only where Margin.app offers it: the view model leaves it out elsewhere');
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Themes', 'Tabs', 'Browsing', 'Apps', 'Keyboard'], 'Themes (the theme store) and Apps only where Margin.app offers them: the view model leaves them out elsewhere');
   const theme = { id: 'arcadia', name: 'Arcadia', settings: { sidebarWidth: { type: 'number', label: 'Sidebar width', default: 260, min: 160, max: 500 } } };
   const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
   const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
@@ -232,4 +232,26 @@ test('Settings: Margin.app\'s own keys (⌘L, ⌘D, ⌃1–9, ⌘1–9…) can b
   assert.deepEqual(keys['space-3'], ['Ctrl+Digit3']);
   const none = keyBindings({ appKeys: { spaceDigits: '' } });
   assert.deepEqual(Array.from({ length: 9 }, (_, i) => none[`space-${i + 1}`]), Array(9).fill([]));
+});
+
+test('Settings › Apps (Margin.app\'s window on the Mac): hide apps from the Dock, on unless turned off; nowhere else', () => {
+  const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
+  const vm = (settings: Record<string, unknown>, features: Record<string, unknown>) => buildViewModel({ state: { ...state, settings: { ...state.settings, ...settings } }, ui: { windowId: W, launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'apps' }, platform: { browser: 'safari', os: 'mac', features } });
+  const app = vm({}, { ...SAFARI, appDock: true });
+  assert.deepEqual(app.settingsTab!.categories.map((c) => c.id), ['appearance', 'tabs', 'browsing', 'apps', 'keyboard']);
+  assert.equal(app.settingsTab!.current.id, 'apps');
+  assert.ok(app.settingsTab!.categories.find((c) => c.id === 'apps')!.isApps);
+  const f = app.settingsForm!.fields.find((x) => x.id === 'hideAppsFromDock')!;
+  assert.equal(f.kind, 'toggle');
+  assert.equal(f.checked, true, 'on by default');
+  assert.match(f.label, /Hide apps from the Dock when Margin opens them \(might not work with some apps\)/);
+  assert.deepEqual(app.settingsForm!.fields.map((x) => x.id), ['hideAppsFromDock'], 'the Apps category: only it');
+  assert.equal(vm({ hideAppsFromDock: false }, { ...SAFARI, appDock: true }).settingsForm!.fields.find((x) => x.id === 'hideAppsFromDock')!.checked, false);
+  assert.deepEqual((saveField(f, false, {}) as { payload: { patch: unknown } }).payload.patch, { hideAppsFromDock: false });
+  // Not offered (a browser's Settings): no Apps category, asked for it: Appearance; never a field.
+  const browser = vm({}, SAFARI);
+  assert.ok(!browser.settingsTab!.categories.some((c) => c.id === 'apps'));
+  assert.equal(browser.settingsTab!.current.id, 'appearance');
+  assert.ok(!settingsFields({}, SAFARI).some((x) => x.id === 'hideAppsFromDock'));
+  assert.equal(categoryOf('hideAppsFromDock'), 'apps');
 });

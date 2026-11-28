@@ -168,6 +168,15 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   list.push(field({ id: 'autoPeekPins', kind: 'toggle', label: 'Open external links from Pinned tabs and Favorites in a preview', checked: s.autoPeekPins !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   list.push(...airTrafficFields(ui.airTraffic ?? null));
+  // Apps Margin.app opens in its window (`features.appDock`, the Mac's hosting engine: margin-core host/docked.rs): with
+  // no Dock icon unless turned off; an app that goes full screen only with its icon keeps it.
+  if (f.appDock) {
+    list.push(field({
+      id: 'hideAppsFromDock', kind: 'toggle', label: 'Hide apps from the Dock when Margin opens them (might not work with some apps)',
+      help: 'Apps that can go full screen only with a Dock icon, such as Music or Reminders, keep theirs. Turned off, every app Margin opens shows in the Dock. Applies to apps Margin opens from now on.',
+      checked: s.hideAppsFromDock !== false,
+    }));
+  }
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
   // Keyboard shortcuts: recorded by pressing them.
@@ -201,6 +210,8 @@ export const SETTINGS_CATEGORIES = Object.freeze([
   { id: 'themes', label: 'Themes', help: 'Themes other people made: try one in your window before you install it.' },
   { id: 'tabs', label: 'Tabs', help: 'When tabs are archived or put to sleep.' },
   { id: 'browsing', label: 'Browsing', help: 'Searches, gestures and pages.' },
+  // Margin.app on the Mac only (`features.appDock`): view-model.ts leaves it out elsewhere.
+  { id: 'apps', label: 'Apps', help: 'Apps Margin opens in its window.' },
   { id: 'keyboard', label: 'Keyboard', help: 'Shortcuts for Margin’s sidebar, tabs and spaces.' },
 ] as const);
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
@@ -208,6 +219,7 @@ export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this 
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
 const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
 const BROWSING_FIELDS = new Set(['engine', 'searchSuggestions', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
+const APPS_FIELDS = new Set(['hideAppsFromDock']);
 const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'appShortcuts', ...Object.keys(APP_SHORTCUT_FIELDS), 'resetShortcuts']);
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */
@@ -215,6 +227,7 @@ export function categoryOf(id: string): SettingsCategory {
   if (STORE_FIELDS.has(id) || STORE_PREFIXES.some((p) => id.startsWith(p))) return 'themes';
   if (TABS_FIELDS.has(id)) return 'tabs';
   if (BROWSING_FIELDS.has(id)) return 'browsing';
+  if (APPS_FIELDS.has(id)) return 'apps';
   if (KEYBOARD_FIELDS.has(id)) return 'keyboard';
   if (id === AIR_TRAFFIC_GROUP || id === AIR_TRAFFIC_NONE || id.startsWith(AIR_TRAFFIC_TOGGLE) || id.startsWith(AIR_TRAFFIC_REMOVE)) return 'browsing';
   return 'appearance';

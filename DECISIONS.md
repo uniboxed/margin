@@ -12147,3 +12147,51 @@ Tirth asked for the engines Arc offers beyond its own table. Arc takes these fro
   black, as X), both "Ask". Left out, their address taking no question (2026-11-27): Gemini (tested in a browser: it
   ignores `?q=` and `?prompt=`), Copilot (`?q=` reported broken since 2025), Meta AI and Mistral (nothing confirms one).
 - Not built: sites learned from the person's own searches (Arc's Chromium does it) and a Settings list to manage them.
+
+## Apps that go full screen only with their Dock icon get it (`feat/dock-icon-full-screen`, 2026-11-28)
+
+Seen by Tirth on another Mac: apps that can go full screen (Music, Reminders, App Store…) opened through Margin showed
+the green "+" (zoom) and stayed in window mode. Cause, read in AppKit (macOS 27.2) and proven with a test app: Margin
+starts apps with no Dock icon (LaunchServices' UIElement launch), and `-[NSWindow _implicitlyAllowsFullScreenPrimary]`
+refuses full screen to a UIElement or background app first, before anything else (`_NXIsBackgroundOnly`, asked of
+LaunchServices at every request). Apps that allow full screen in their own code (Maps, Weather, Photos) aren't affected.
+Every other way in (⌃⌘F, the menu, Accessibility's AXFullScreen → `toggleFullScreen:`, any default or launch option)
+passes the same check; the only paths that don't (state restoration into a named tile Space, WindowManager's tile
+request) need talagent's protected store or are WindowManager's alone (research in the memory notes; not shippable).
+
+Tirth's call: such an app gets its Dock icon, and opens as fast as any app that goes full screen.
+- **The rule** (margin-core `host/docked.rs`): an app Margin started with no Dock icon whose resizable, unminimized
+  window with its green button (Accessibility's AXZoomButton/AXFullScreenButton, enabled) can't go full screen is given
+  its Dock icon (a Safari window of Margin's, an app the person opened, a fixed-size window or one with no green button
+  never are: AppKit keeps those out of full screen with a Dock icon too). Not the subrole: an app with no Dock icon reports
+  its main window as an AXDialog (the first real-screen run gave none their icon for that, 2026-11-28).
+- **Given it for nothing: quit and opened again with none.** An app that switches full screen off itself (its
+  `fullScreenNone`) looks the same from outside (Accessibility: no full screen, the green button there; the window
+  server's tags differ by one bit on the Desktop, bit 45, but that bit is cleared for every window in another app's
+  full-screen Space, where an app Margin starts opens its window: tried and dropped). Given its Dock icon, such a window
+  isn't shown in Margin's Space (the second real-screen run: the `noFullScreen` copy off screen, Margin's panel not on
+  screen). So when its window still can't go full screen with the icon, the app (Margin started it a moment before) is
+  quit and its open goes on at once with no Dock icon (`HostStep.redock`, never said), remembered per version, and never
+  given the icon again that session (`redocked`). Only with its version read (else no icon is ever given).
+  The suite puts docked.json back after each part, and runs this scenario last (its copy is remembered per version).
+- **In place, no relaunch:** LaunchServices' open of the running app (the same private open, without the UIElement
+  option, not activated, kept hidden: `HostPrivate.launchDocked`) makes it a regular app at once: same process, its type
+  UIElement → Foreground, AppKit's check passing from the next ask (test app: 0.25 s, then the usual full-screen
+  animation). The engine waits for its policy to read regular (`dockWait` 1 s) and its window's AXFullScreen to be
+  settable (`dockReadWait` 1 s), then shows it full screen; else window mode as before.
+- **Remembered per version** (docked.json beside routes.json): from its next start the app is started with its Dock icon
+  (`StartsDocked`), so it goes full screen with no step in between. One that still couldn't go full screen with its Dock
+  icon is remembered too and never given it again at that version (that first time it keeps the icon until it's closed:
+  a running app's can't be taken back). Another version learns again.
+- Margin's own open and type change aren't said as an open from outside or a promotion (`host.docked`).
+- Tests: docked.rs (rule, memory, file), the API's calls, host-tests "dock for full screen" (in place, the next start,
+  another version, still unable, a fixed-size window); failing first (5 checks fail with the step off). The real-screen
+  suite's Chameleon has `implicitFullScreen` (no collection behaviour of its own, as Music) and a behaviours-4 scenario.
+- **Settings › Apps** (Tirth, 2026-11-28): "Hide apps from the Dock when Margin opens them (might not work with some
+  apps)", on by default, in a new Apps category shown only in Margin.app's own window on the Mac (`features.appDock`;
+  every theme has its icon). Kept with Margin's own settings (the app's defaults, `MarginWindowSettings`,
+  `hideAppsFromDock`); the engine asks it at each start of an app (`HostEngine.hidesFromDock`, ShellHost.swift), and it's
+  the core rule's first input (`StartsDocked`'s `hideFromDock`): off, every app Margin starts (Safari included: every
+  launch for hosting goes through `launchForHosting`) is started with its Dock icon. Applies to apps started from then on
+  (a running app's Dock icon can't be taken back). Tests: settings-form "Settings › Apps", docked.rs, host-tests "apps
+  not hidden from the Dock".

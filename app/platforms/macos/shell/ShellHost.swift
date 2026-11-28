@@ -30,6 +30,12 @@ extension Shell {
         let engine = HostEngine(system: system, marker: hostMarkerURL, observation: RealHostObservation())
         engine.options.safariBundle = UserDefaults.standard.string(forKey: "MarginHostedSafari") ?? safariIdentifier
         engine.options.safariScalingOffSince = SafariScaling.offSince
+        // Settings › Apps, "Hide apps from the Dock when Margin opens them" (on unless turned off in Margin's window:
+        // its settings, kept in the app's defaults), asked at each start of an app.
+        engine.hidesFromDock = { [weak self] in
+            let own = self?.hostedSettings?.settings ?? SettingsKeeper.appDefaults.read()
+            return own[HostEngine.hideFromDockKey] as? Bool != false
+        }
         // (`defaults write com.unibox.margin MarginTiles -bool NO`: no tiles, every hosted window a plain member of Margin's
         // Space, sized as it's shown: the screen suite's `--members` measures that route beside the tiles'.)
         if UserDefaults.standard.object(forKey: "MarginTiles") as? Bool == false {

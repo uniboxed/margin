@@ -469,6 +469,18 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         return true
     }
 
+    // Opened with its Dock icon (docked.rs, 2026-11-28): the same open as `launchDockless` without the UIElement option,
+    // never activated, kept hidden. A running instance started with no Dock icon is made a regular app by it at once
+    // (proven on the real Mac with a test app: same process, LaunchServices' type UIElement → Foreground, AppKit's
+    // full-screen check passing from the next ask); a fresh launch starts as any app does. True: asked.
+    func launchDocked(_ url: URL, arguments: [String], done: @escaping @Sendable (Bool) -> Void) -> Bool {
+        guard !refuses, let openURLs, let activate = keys["_kLSOpenOptionActivateKey"], let hide = keys["_kLSOpenOptionHideKey"],
+              let recents = keys["_kLSOpenOptionAddToRecentsKey"], let args = keys["_kLSOpenOptionArgumentsKey"] else { return false }
+        let options: [String: Any] = [activate: false, hide: true, recents: false, args: arguments]
+        openURLs([] as CFArray, url as CFURL, options as CFDictionary) { _, ok, _ in done(ok) }
+        return true
+    }
+
     // LaunchServices' notifications for one app (by its pid): every code, as the research run subscribed (0..<8192),
     // heard on the main queue. The token to stop with; nil: not listening.
     func listen(pid: pid_t, heard: @escaping @Sendable (Int32) -> Void) -> UnsafeRawPointer? {

@@ -22,6 +22,7 @@ pub mod api;
 pub mod causes;
 pub mod choice;
 pub mod close;
+pub mod docked;
 pub mod driver;
 pub mod exits;
 pub mod front;

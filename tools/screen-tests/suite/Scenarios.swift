@@ -189,20 +189,20 @@ let core = Scenario(name: "core", title: "check10's steps: Margin's window in fr
 // ---- one scenario per behaviour class (docs/HOSTING-CORE.md's table): Chameleon 3 hosted with that switch, Chameleon 1
 // hosted plain first (the item a park shows instead) ----
 let hold = 30.0
-func behaviour(_ name: String, _ title: String, _ switches: [String: String], framed: Bool = false, auxiliary: Bool = false, prime: Bool = false, settles: (String, Double)? = nil, then: [Step] = [], closesItem: Bool = false) -> Scenario {
-  let d = Desired(target: .copy(3), framed: framed, auxiliary: auxiliary, settles: settles)
-  var steps: [Step] = [.setSwitches(3, switches)]
-  if prime { steps.append(.prime(3)) }
+func behaviour(_ name: String, _ title: String, _ switches: [String: String], framed: Bool = false, auxiliary: Bool = false, prime: Bool = false, settles: (String, Double)? = nil, then: [Step] = [], closesItem: Bool = false, copy n: Int = 3) -> Scenario {
+  let d = Desired(target: .copy(n), framed: framed, auxiliary: auxiliary, settles: settles)
+  var steps: [Step] = [.setSwitches(n, switches)]
+  if prime { steps.append(.prime(n)) }
   // (It read its switches: its launch line names them, as Switches.swift writes them.)
   let on = ChameleonSwitches.parse(switches).on.joined(separator: " ")
-  steps += [.host(.copy(3)), .expect(.said(3, "options pid")), .expect(.said(3, " on \(on)"))]
+  steps += [.host(.copy(n)), .expect(.said(n, "options pid")), .expect(.said(n, " on \(on)"))]
   // (Primed: AppKit restored exactly the windows the switch made, nothing an earlier scenario left.)
-  if prime, let r = ChameleonSwitches.parse(switches).restore { steps.append(.expect(.said(3, " restored \(r.count) "))) }
+  if prime, let r = ChameleonSwitches.parse(switches).restore { steps.append(.expect(.said(n, " restored \(r.count) "))) }
   steps += [.expect(.desired(d))]
   steps += then
   // (Its window closed for good: the item closed, and still so 10 s later; else the desired state held.)
-  steps += closesItem ? [.expect(.itemClosed(3)), .wait(10, "nothing reopened meanwhile"), .expect(.itemClosed(3)), .forget(.copy(3))] : [.hold(.desired(d), seconds: hold), .forget(.copy(3))]
-  return Scenario(name: name, title: title, copies: [3], steps: steps, estimate: 22 + (closesItem ? 14 : hold) + (prime ? 15 : 0) + then.reduce(0) { $0 + $1.estimate })
+  steps += closesItem ? [.expect(.itemClosed(n)), .wait(10, "nothing reopened meanwhile"), .expect(.itemClosed(n)), .forget(.copy(n))] : [.hold(.desired(d), seconds: hold), .forget(.copy(n))]
+  return Scenario(name: name, title: title, copies: [n], steps: steps, estimate: 22 + (closesItem ? 14 : hold) + (prime ? 15 : 0) + then.reduce(0) { $0 + $1.estimate })
 }
 extension Step {
   var estimate: Double {
@@ -236,6 +236,9 @@ let behaviours: [Scenario] = [
   behaviour("fixedSize", "a fixed-size window that can't go full screen (Calculator)", ["fixedSize": "400x300", "noFullScreen": "YES"], framed: true),
   // (The extra window is the person's, asked of the app: kept beside the main one, never over the sidebar in front.)
   behaviour("extraWindow", "opens another window on demand, like Safari's profile wake", ["extraWindow": "menu"], auxiliary: true, then: [.trigger(3), .wait(3, "its extra window made")]),
+  // (Started with no Dock icon its window can't go full screen; Margin gives it its Dock icon in place and shows it full
+  // screen (the hosting core's docked.rs, 2026-11-28). Last, and on copy 2: Margin remembers what a Dock icon did per copy and version (noFullScreen teaches it "no" for copy 3), so it never decides another scenario's start.)
+  behaviour("implicitFullScreen", "goes full screen only with its Dock icon (Music, Reminders, App Store): given it, shown full screen", ["implicitFullScreen": "YES"], copy: 2),
 ]
 // The part every behaviour part starts with: Margin open, Chameleon 1 hosted plain (what a park shows instead).
 let behaviourSetup = Scenario(name: "setup", title: "Margin open, Chameleon 1 hosted plain", copies: [1], steps: [.setSwitches(1, [:]), .openMargin, .host(.copy(1)), .expect(.desired(Desired(target: .copy(1))))], estimate: 45)
