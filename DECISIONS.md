@@ -12035,6 +12035,21 @@ Tirth's screenshot beside Arc's: Arcadia's Clear sat on a patch of `--frame` (th
 colour, over the grain and off its hue: 191,207,241 on a 200,198,242 ground), the Today line running under it. Arc's
 (measured from that screenshot, 2×): no fill; its words in New Tab's muted colour (the same darkest pixel), ending 10
 pt in from the rows' right edge; the hairline (black at about 13%) stopping 8 pt before the arrow. Now Clear is in the
-line's row after it (no longer laid over it), with no fill: the line stops 8 pt before the arrow, its words where they
-were (10 pt in), and its place is kept while it's hidden, so the line never moves as the pointer comes and goes. With
-no tabs today (no Clear) the line runs to 10 pt in, as before. Its text colour was already Arc's (`--muted`, New Tab's).
+line's row after it (no longer laid over it), with no fill: the line stops 8 pt before the arrow while Clear shows,
+its words where they were (10 pt in). While it doesn't (the pointer out of the sidebar, or no tabs today) the line runs
+the full width, to 10 pt in, as Arc's (Tirth, the same day: a first version kept Clear's place while it was hidden, so
+the line stopped short there too). Its text colour was already Arc's (`--muted`, New Tab's).
+
+## The command bar open, the sidebar stays the person's (`fix/arcadia-clear`, 2026-11-27)
+
+Tirth: with Arcadia's command bar open the sidebar took neither the wheel nor the pointer (no hover): the bar's layer
+and its backdrop (a transparent button that closes it) covered the whole window. Arc's sidebar stays live under its
+command bar. Now the layer starts at the sidebar's right edge (docked: `--width`; out over the page: the card's edge;
+hidden: the whole window), the panel still centred on the window and as wide as before. The layer and its backdrop
+stay one size, so `hitRects` is as before over the page: in Margin's own window it takes the pointer there (a press
+closes the bar); over a browser's window neither counts, a press reaching the page.
+A click in the sidebar closes the bar and goes on to what it's on (a tab shown): `ui/behaviors/palette.ts`, any theme
+(a click or right-click outside the palette's own layer, the field's ancestor at the top of the theme's tree; the
+other four themes' scrims cover the window, so nothing there is outside). At the click, not the press: the double-click
+on the sidebar's empty part (ui/behaviors/empty.ts) checks at its first press that the bar wasn't open, so a
+double-click there with the bar open closes it and never opens it again (tests/theme/empty-dblclick.test.ts).

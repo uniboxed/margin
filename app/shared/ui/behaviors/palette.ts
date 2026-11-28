@@ -71,6 +71,23 @@ export function installPalette(rt: Rt) {
   rt.listen(container, 'pointerdown', (e: PointerEvent) => {
     if (rt.ui.palette.open && view.actionAt(e.target)?.name === 'palette.run') e.preventDefault();
   });
+  // A click outside the palette's own layer (the field's ancestor at the top of the theme's tree: its backdrop and
+  // its panel) closes it, and goes on to what it's on: a theme that leaves the sidebar the person's while it's open
+  // (Arcadia's, as Arc's command bar: its rows hovered, scrolled, pressed). A theme whose layer covers the window has
+  // no outside to press (its scrim's own press closes it). At the click, not the press: the press saw it open (a
+  // double-click on the sidebar's empty part then closes it, never opening it again: ui/behaviors/empty.ts).
+  const outside = (e: MouseEvent) => {
+    if (!rt.ui.palette.open) return;
+    const input = view.input('palette');
+    const root = view.rootElement();
+    if (!input || !root) return;
+    let layer: Element = input;
+    while (layer.parentElement && layer.parentElement !== root) layer = layer.parentElement;
+    if (layer.parentElement !== root || layer.contains(e.target as Node)) return;
+    rt.dispatch('palette.close', undefined, 'behavior');
+  };
+  rt.listen(container, 'click', outside, true);
+  rt.listen(container, 'contextmenu', outside, true);
 
   return {
     onInput(name: string, value: string) {

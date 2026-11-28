@@ -666,6 +666,12 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   const withLayer = el('div', [0, 0, 1280, 800], {}, [el('m-page', [260, 8, 1012, 784]), el('m-if', [0, 0, 0, 0], {}, [layer])]);
   assert.deepEqual(hitRects((withLayer as unknown as Element), slot, { getStyle, keepEqual: true }), { rects: [[0, 0, 1280, 800]], all: false });
   assert.deepEqual(hitRects((withLayer as unknown as Element), slot, { getStyle }), { rects: [], all: false });
+  // The layer from the sidebar's edge (the sidebar the person's while the bar is open, 2026-11-27): the same, over the
+  // page area alone.
+  const moved = el('div', [260, 0, 1020, 800], {}, [el('button', [260, 0, 1020, 800]), el('div', [380, 100, 520, 60])]);
+  const withMoved = el('div', [0, 0, 1280, 800], {}, [el('m-page', [260, 8, 1012, 784]), el('aside', [0, 0, 260, 800]), el('m-if', [0, 0, 0, 0], {}, [moved])]);
+  assert.deepEqual(hitRects((withMoved as unknown as Element), slot, { getStyle, keepEqual: true }), { rects: [[260, 0, 1020, 800]], all: false });
+  assert.deepEqual(hitRects((withMoved as unknown as Element), slot, { getStyle }), { rects: [], all: false });
   const many = el('div', [0, 0, 1280, 800], {}, Array.from({ length: 70 }, (_, i) => el('b', [300 + i * 10, 100, 5, 5])));
   assert.deepEqual(hitRects((many as unknown as Element), slot, { getStyle }), { rects: [], all: true });
 });

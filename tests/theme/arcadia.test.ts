@@ -626,14 +626,15 @@ for (const [engineName, engine] of ENGINES) {
 
       // Clear as Arc's (Tirth's screenshot beside Arcadia's, 2026-11-27: Arcadia's sat on a patch of the space's flat
       // colour, over the grain, the line running under it): no fill; its words 10 pt in from the rows' right edge; the
-      // line stopping 8 pt before its arrow, the same with Clear shown or hidden; no Clear, the line to 10 pt in.
-      await t.test('"↓ Clear" as Arc\'s: no fill, the line stopping 8 pt before its arrow, never moving; none, the line to 10 pt in', async () => {
+      // line stopping 8 pt before its arrow while it shows, to 10 pt in while it doesn't (the pointer elsewhere, or no
+      // tabs today), as Arc's.
+      await t.test('"↓ Clear" as Arc\'s: no fill, the line stopping 8 pt before its arrow; hidden or none, the line to 10 pt in', async () => {
         await ev(() => document.querySelector('.today-split')!.scrollIntoView({ block: 'center' }));
         const look = () => ev(() => {
           const rule = document.querySelector('.today-split .rule')!.getBoundingClientRect();
           const c = document.querySelector('.clear') as HTMLElement | null;
           const row = document.querySelector('.new-tab-row')!.getBoundingClientRect();
-          if (!c) return { line: [rule.left, rule.right], rowRight: row.right, clear: null };
+          if (!c || getComputedStyle(c).display === 'none') return { line: [rule.left, rule.right], rowRight: row.right, clear: null };
           const arrow = c.querySelector('.clear-icon')!.getBoundingClientRect();
           const words = document.createRange();
           words.selectNodeContents(c);
@@ -646,7 +647,9 @@ for (const [engineName, engine] of ENGINES) {
         await page.mouse.move(title.x, title.y);
         await page.waitForTimeout(30);
         const shown = await look();
-        assert.deepEqual(hidden.line, shown.line, 'the line the same, Clear shown or hidden');
+        assert.equal(hidden.clear, null, 'Clear not shown with the pointer away');
+        assert.ok(Math.abs(hidden.rowRight - hidden.line[1] - 10) < 0.5, `hidden: the line to 10 pt in, full width (${hidden.rowRight - hidden.line[1]})`);
+        assert.equal(shown.line[0], hidden.line[0], 'its start the same');
         const c = shown.clear!;
         assert.equal(c.fill, 'rgba(0, 0, 0, 0)', 'no fill');
         assert.ok(Math.abs(c.gap - 8) < 0.5, `the line 8 pt before the arrow (${c.gap})`);
@@ -661,6 +664,46 @@ for (const [engineName, engine] of ENGINES) {
         assert.ok(Math.abs(none.rowRight - none.line[1] - 10) < 0.5, `the line to 10 pt in (${none.rowRight - none.line[1]})`);
         await ev(() => { const r = (window as any).__rt; r.mock.state = (window as any).__clearSaved; r.host.setState(r.mock.state); });
         await page.waitForFunction(() => !!document.querySelector('.clear'), null, { timeout: 2000 });
+      });
+
+      // The command bar open, the sidebar stays the person's, as Arc's (Tirth, 2026-11-27: neither its hover nor its
+      // scrolling worked under the bar's backdrop): the backdrop starts at its edge; a row there is under the pointer
+      // and hovered, the wheel scrolls its list, a press on a tab closes the bar and shows the tab; a press over the
+      // page still closes it.
+      await t.test('the command bar open: the sidebar hovered, scrolled and pressed (the bar closing, the tab shown); a press over the page closes it', async () => {
+        await away();
+        await ev(() => T.rtSetScroll('.tabs-section', 0));
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.waitForFunction(() => !!document.querySelector('.palette'), null, { timeout: 2000 });
+        const edge = await ev(() => [document.querySelector('.margin-sidebar')!.getBoundingClientRect().right, document.querySelector('.palette-layer .backdrop')!.getBoundingClientRect().left]);
+        assert.equal(edge[1], edge[0], `the backdrop from the sidebar's edge (${edge})`);
+        const panel = await ev(() => { const r = document.querySelector('.palette')!.getBoundingClientRect(); return [r.left + r.width / 2, r.width, innerWidth / 2, Math.min(680, innerWidth - 32)]; });
+        assert.ok(Math.abs(panel[0] - panel[2]) < 0.5 && Math.abs(panel[1] - panel[3]) < 0.5, `the panel centred on the window, as wide as before (${panel})`);
+        const id = (await ev(() => T.rtTodayIds(1)))[0];
+        const box = await ev((tid) => { const el = [...document.querySelectorAll<HTMLElement>('.margin-sidebar .tab')].find((t) => (window as any).__rt.runtime.view.subjectOf(t)?.id === tid) ?? document.querySelector<HTMLElement>('.margin-sidebar .tab')!; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, id);
+        await page.mouse.move(box.x, box.y);
+        await page.waitForTimeout(30);
+        const under = await ev(([x, y]) => { const el = document.elementFromPoint(x, y)!; const row = el.closest('.tab'); return { sidebar: !!el.closest('.margin-sidebar'), hovered: !!row && row.matches(':hover') }; }, [box.x, box.y] as const);
+        assert.deepEqual(under, { sidebar: true, hovered: true }, 'a row under the pointer, hovered');
+        const top = await ev(() => document.querySelector('.tabs-section')!.scrollTop);
+        await page.mouse.wheel(0, 120);
+        await page.waitForFunction((t) => document.querySelector('.tabs-section')!.scrollTop !== t, top, { timeout: 2000 });
+        assert.equal((await ev(() => T.rtUi())).palette.open, true, 'scrolling leaves the bar open');
+        // A press on a tab: the bar closes, the tab is shown.
+        const tab = await ev(() => { const el = document.querySelector<HTMLElement>('.margin-sidebar .tab:not(.active)')!; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, id: (window as any).__rt.runtime.view.subjectOf(el)?.id as string }; });
+        const sent = (await ev(() => T.rtSent())).length;
+        await page.mouse.click(tab.x, tab.y);
+        await page.waitForTimeout(60);
+        assert.equal((await ev(() => T.rtUi())).palette.open, false, 'a press in the sidebar closes the bar');
+        assert.ok((await ev(() => T.rtSent())).slice(sent).some(([, p]) => JSON.stringify(p ?? null).includes(tab.id)), 'and shows the tab pressed');
+        // Over the page: the backdrop's, the bar closed.
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.waitForFunction(() => !!document.querySelector('.palette'), null, { timeout: 2000 });
+        assert.equal(await ev(() => document.elementFromPoint(innerWidth - 20, innerHeight - 20)!.classList.contains('backdrop')), true, 'over the page: the backdrop');
+        await page.mouse.click(1260, 780);
+        await page.waitForTimeout(60);
+        assert.equal((await ev(() => T.rtUi())).palette.open, false, 'a press over the page closes it');
+        await away();
       });
 
       await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {

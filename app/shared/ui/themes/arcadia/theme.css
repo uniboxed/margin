@@ -508,15 +508,14 @@
    at its right while the pointer is anywhere in the sidebar, at once. Clear as
    Arc's (Tirth's screenshot beside Arcadia's, 2026-11-27): no fill, its words
    on the sidebar itself in New Tab's muted colour, ending 10 pt in from the
-   rows' right edge; the line stopping 8 pt before its arrow. Its place kept
-   while it's hidden (the line never moves); no Clear (no tabs today), the
-   line to 10 pt in, as before. */
-.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 6px 0 10px; }
-.margin-sidebar .today-split:not(:has(.clear)) { padding-right: 10px; }
+   rows' right edge; the line stopping 8 pt before its arrow while it shows,
+   and running to 10 pt in while it doesn't (the pointer elsewhere, or no
+   tabs today), as Arc's (Tirth, 2026-11-27). */
+.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 10px; }
 .margin-sidebar .today-split .rule { flex: 1; height: 0.5px; background: var(--rule); }
-.margin-sidebar .clear { flex: none; display: flex; align-items: center; gap: 3px; height: 17px; padding: 0 4px 0 6px; border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 600; visibility: hidden; }
+.margin-sidebar .clear { flex: none; display: none; align-items: center; gap: 3px; height: 17px; margin-right: -4px; padding: 0 4px 0 6px; border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .margin-sidebar .clear-icon { width: 7.738px; height: 9.362px; stroke-width: 1.362; }
-.margin-sidebar:hover .clear, .margin-sidebar .clear:focus-visible { visibility: visible; }
+.margin-sidebar:hover .clear, .margin-sidebar .clear:focus-visible { display: flex; }
 .margin-sidebar .clear:hover { color: var(--fg); }
 
 /* Rows, Arc's (measured): 36 high, 5 apart, the corner 11.5; the icon 16
@@ -980,7 +979,14 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
    arrow); the selected row takes the current space's color. Light or dark
    as the system is, opaque (no blur). Laid out left-to-right in any
    language. */
-.palette-layer { position: absolute; inset: 0; z-index: 5; }
+/* The sidebar stays the person's while it's open, as Arc's (its rows' hover, its scrolling; a press there closes the
+   bar and does what it's on: ui/behaviors/palette.ts): the layer starts at its right edge, docked or out over the
+   page (Tirth, 2026-11-27: the sidebar took neither the wheel nor the pointer under it); hidden, the whole window.
+   The panel still centred on the window. (The layer and its backdrop one size, as before: over a browser's window
+   neither takes the pointer, a press on the page reaching it (ui/host-app.ts hitRects).) */
+.palette-layer { --layer-left: 0px; position: absolute; top: 0; right: 0; bottom: 0; left: var(--layer-left); z-index: 5; }
+.arcadia:not([data-sidebar="hidden"]):not([data-sidebar="peek"]) .palette-layer { --layer-left: var(--width); }
+.arcadia[data-sidebar="peek"] .palette-layer { --layer-left: calc(var(--frame-inset) + var(--width)); }
 /* Catches clicks outside; the page isn't dimmed. */
 .palette-layer .backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; background: transparent; }
 .palette {
@@ -992,9 +998,9 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
 
   position: absolute;
   top: max(16px, calc((100% - var(--full)) / 2));
-  left: 50%;
+  left: calc(50% - var(--layer-left) / 2);
   transform: translateX(-50%);
-  width: min(680px, calc(100% - 32px));
+  width: min(680px, calc(100% + var(--layer-left) - 32px));
   max-height: var(--full);
   direction: ltr;
   display: flex;
