@@ -159,8 +159,8 @@ fn splits_as_read() {
     } }));
     assert_eq!(ids(&s.splits, |g| &g.id), ["a", "b"]);
     let a = &s.splits[0];
-    assert_eq!(a.panes.len(), 4, "at most 4");
-    assert_eq!(a.ratios, [0.25; 4], "ratios not one per pane given: 1 each");
+    assert_eq!(a.panes.len(), 5, "an empty one left out");
+    assert_eq!(a.ratios, [0.2; 5], "ratios not one per pane given: 1 each");
     assert_eq!((a.axis, a.pinned, a.folder_id.as_deref(), a.pos), (Axis::Vertical, true, Some("f"), None));
     let b = &s.splits[1];
     assert_eq!(b.ratios, [0.3333, 0.3333, 0.3333], "a ratio not above 0: 1");

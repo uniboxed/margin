@@ -80,7 +80,7 @@ fn every_perform_vector_answers_as_library_ts() {
         "the actions' vectors: {checked} perform steps checked, {skipped} skipped (the gap); by action {:?}",
         engine.by
     );
-    assert_eq!(engine.gap, 21, "the createSpace steps of the known gap");
+    assert_eq!(engine.gap, 16, "the createSpace steps of the known gap");
     assert_eq!(skipped, engine.gap, "every other perform step checked");
     assert!(checked > 8700, "{checked} perform steps");
     let names: Vec<&str> = engine.by.keys().map(String::as_str).filter(|n| ACTION_NAMES.contains(n)).collect();
@@ -249,13 +249,14 @@ fn a_failed_composite_asks_nothing() {
 #[test]
 fn what_three_breaks_showed() {
     // (Each checked against library.ts in Node: the vectors had no step of it.)
-    let tabs: Map<String, Value> = (1..=4)
+    let tabs: Map<String, Value> = (1..=16)
         .map(|i| (format!("t-{i}"), json!({ "url": format!("https://a{i}.com/"), "spaceId": "a", "order": i })))
         .collect();
     let s = lib(json!({ "spaces": { "a": { "order": 0 }, "b": { "order": 1 } }, "tabs": tabs }));
     // splitRefusal counts a pane given twice twice (`adding` isn't made unique against itself).
-    let out = run(&s, "createSplit", json!({ "panes": ["t-1", "t-1", "t-2", "t-3", "t-4"] }), &["abcd"]);
-    assert_eq!(out.error.as_deref(), Some("a split has 4 panes at most"));
+    let twice: Vec<String> = std::iter::once("t-1".to_owned()).chain((1..=16).map(|i| format!("t-{i}"))).collect();
+    let out = run(&s, "createSplit", json!({ "panes": twice }), &["abcd"]);
+    assert_eq!(out.error.as_deref(), Some("a split has 16 panes at most"));
     let out = run(&s, "createSplit", json!({ "panes": ["t-1", "t-2", "t-3", "t-4"] }), &["abcd"]);
     assert_eq!(out.result, json!({ "splitId": "spv-abcd" }));
     // moveTabToSpace moves the item a key finds (`String(p.tabId)`: `["t-1"]` is `t-1`).

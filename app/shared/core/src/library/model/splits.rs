@@ -14,8 +14,9 @@ use std::rc::Rc;
 use serde_json::Value;
 
 use super::has_space;
+use super::split_tree::{self, Side};
 use crate::library::js;
-use crate::library::state::{Axis, LibState, MAX_SPLIT_PANES, Split, Str};
+use crate::library::state::{Axis, LibState, MAX_SPLIT_PANES, Split, SplitKid, SplitNode, Str};
 
 /// M:1637 `normalizeSplitRatios(ratios, count)` for ratios as numbers (the state's own: always an array): `count`
 /// ratios summing to about 1 at 4 decimals, each given one kept relative to the others when there's one per pane (a
@@ -95,6 +96,35 @@ fn map_split(s: &LibState, split_id: &str, mut remake: impl FnMut(&Split) -> Rc<
     next
 }
 
+/// M `nestedTree(g)`: its tree when it's set and still one for its panes (split_tree.rs `checked`); none: flat.
+pub fn nested_tree(g: &Split) -> Option<&SplitNode> {
+    g.tree.as_deref().filter(|t| split_tree::checked(t, &g.panes))
+}
+
+/// M `fromTree(g, k)`: the split remade from tree `k` (split_tree.rs `stored_of`: flat, no tree; nested, its tree with
+/// each pane's share of the area as its ratio), its other fields as they were; none: fewer than 2 panes (it goes).
+fn from_tree(g: &Split, k: Option<SplitKid>) -> Option<Split> {
+    let s = split_tree::stored_of(k)?;
+    Some(Split { axis: s.axis, panes: s.panes, ratios: s.ratios, tree: s.tree.map(Rc::new), ..g.clone() })
+}
+
+/// M `remadeSplit(state, splitId, next)`: every split of this id as `next` (none: they go).
+fn remade_split(s: &LibState, split_id: &str, next: Option<Split>) -> LibState {
+    match next.map(Rc::new) {
+        Some(next) => map_split(s, split_id, |_| next.clone()),
+        None => {
+            let mut out = s.clone();
+            out.splits = Rc::new(s.splits.iter().filter(|g| *g.id != *split_id).cloned().collect());
+            out
+        }
+    }
+}
+
+/// An item's id as a pane takes it (the item's own id when it's the key's).
+fn item_id(s: &LibState, key: &str) -> Str {
+    s.kept.get(key).map(|k| k.id.clone()).filter(|id| **id == *key).unwrap_or_else(|| Str::from(key))
+}
+
 /// M:1667 `withPanes(group, panes)`: the split with only `panes` of its own left, in that order, their ratios kept
 /// relative to each other; none for fewer than 2 (the split goes).
 pub fn with_panes(group: &Split, panes: Vec<Str>) -> Option<Split> {
@@ -153,6 +183,7 @@ pub fn create_split(
         axis,
         panes: unique,
         ratios,
+        tree: None,
         pinned: false,
         folder_id: None,
         pos: None,
@@ -190,6 +221,15 @@ pub fn add_to_split_at(s: &LibState, split_id: &str, pane_id: &str, at: Option<&
     if let Some(other) = split_for_item(&next, key).filter(|o| *o.id != *split_id).map(|o| o.id.clone()) {
         next = remove_from_split(&next, &other, key);
     }
+    // (Nested: among its root's kids, theirs made equal.)
+    if let Some(tree) = nested_tree(&group) {
+        let mut kids = tree.kids.clone();
+        let place = place_of(at, kids.len());
+        kids.insert(place, SplitKid::Leaf(item_id(s, key)));
+        let fresh = split_of(&next, split_id).map(|g| (**g).clone()).unwrap_or_else(|| (*group).clone());
+        let node = SplitNode { axis: tree.axis, ratios: vec![1.0; kids.len()], kids };
+        return remade_split(&next, split_id, from_tree(&fresh, Some(SplitKid::Node(node))));
+    }
     let mut panes = group.panes.clone();
     let place = place_of(at, panes.len());
     panes.insert(
@@ -216,9 +256,44 @@ pub fn replace_in_split(s: &LibState, split_id: &str, out_id: &str, pane_id: &st
     if let Some(other) = split_for_item(&next, key).filter(|o| *o.id != *split_id).map(|o| o.id.clone()) {
         next = remove_from_split(&next, &other, key);
     }
-    let id = s.kept.get(key).map(|k| k.id.clone()).filter(|id| **id == *key).unwrap_or_else(|| Str::from(key));
+    let id = item_id(s, key);
+    if let Some(tree) = nested_tree(&group) {
+        let mut swap = |l: &Str| Some(SplitKid::Leaf(if **l == *out_id { id.clone() } else { l.clone() }));
+        let mapped = split_tree::map_leaves(&SplitKid::Node(tree.clone()), &mut swap);
+        return remade_split(&next, split_id, from_tree(&group, mapped));
+    }
     let panes: Vec<Str> = group.panes.iter().map(|p| if **p == *out_id { id.clone() } else { p.clone() }).collect();
     map_split(&next, split_id, |g| Rc::new(Split { panes: panes.clone(), ..g.clone() }))
+}
+
+/// M `besideInSplit(state, splitId, targetId, side, paneId)` (docs/FLEX-SPLIT.md step 3): the item beside the split's
+/// pane `target_id` on `side` (split_tree.rs `beside_leaf`, the two sharing the target's room), out of any other split
+/// first. The state itself for no such split, `target_id` not a pane of it, the item none or a pane of it already, or a
+/// split full.
+pub fn beside_in_split(s: &LibState, split_id: &str, target_id: &str, side: Side, pane: &str) -> LibState {
+    let key = pane_key(pane);
+    let group = split_of(s, split_id);
+    let (Some(group), Some(key)) = (group, key) else { return s.clone() };
+    if !has_margin_tab(s, key)
+        || group.panes.iter().any(|p| **p == *key)
+        || !group.panes.iter().any(|p| **p == *target_id)
+        || group.panes.len() >= MAX_SPLIT_PANES
+    {
+        return s.clone();
+    }
+    let group = group.clone();
+    let mut next = s.clone();
+    if let Some(other) = split_for_item(&next, key).filter(|o| *o.id != *split_id).map(|o| o.id.clone()) {
+        next = remove_from_split(&next, &other, key);
+    }
+    let tree = match nested_tree(&group) {
+        Some(t) => t.clone(),
+        None => split_tree::flat_tree(group.axis, &group.panes, &group.ratios),
+    };
+    match split_tree::beside_leaf(&tree, target_id, side, &item_id(s, key)) {
+        Some(placed) => remade_split(&next, split_id, from_tree(&group, Some(SplitKid::Node(placed)))),
+        None => s.clone(),
+    }
 }
 
 /// M:1709 `removeFromSplit(state, splitId, paneId)`: the pane out, the others' ratios kept relative to each other; one
@@ -229,6 +304,11 @@ pub fn remove_from_split(s: &LibState, split_id: &str, pane_id: &str) -> LibStat
     let (Some(group), Some(key)) = (group, key) else { return s.clone() };
     if !group.panes.iter().any(|p| **p == *key) {
         return s.clone();
+    }
+    if let Some(tree) = nested_tree(group) {
+        let mut out = |l: &Str| (**l != *key).then(|| SplitKid::Leaf(l.clone()));
+        let mapped = split_tree::map_leaves(&SplitKid::Node(tree.clone()), &mut out);
+        return remade_split(s, split_id, from_tree(group, mapped));
     }
     // Fewer than 2 panes remaining: dissolve the split group automatically.
     let left = with_panes(group, group.panes.iter().filter(|p| ***p != *key).cloned().collect()).map(Rc::new);
@@ -270,8 +350,25 @@ pub fn settle_splits(s: &LibState) -> LibState {
             kept[n] = i;
             n += 1;
         }
+        // (Nested (M's `stored !== undefined` and its tree one for its panes): its tree's leaves that stay.)
+        if let Some(tree) = g.tree.as_deref().filter(|t| split_tree::checked(t, raw)) {
+            if n == raw.len() {
+                if let Some(done) = &mut out {
+                    done.push(g.clone());
+                }
+                continue;
+            }
+            let kept_ids: Vec<&str> = kept[..n].iter().map(|&i| &*raw[i]).collect();
+            let mut keep = |l: &Str| kept_ids.contains(&&**l).then(|| SplitKid::Leaf(l.clone()));
+            let left = from_tree(g, split_tree::map_leaves(&SplitKid::Node(tree.clone()), &mut keep));
+            let done = out.get_or_insert_with(|| list[..at].to_vec());
+            if let Some(left) = left {
+                done.push(Rc::new(left));
+            }
+            continue;
+        }
         // (The kept places rise, so `n` of them for `raw.len()` panes are every pane in its place.)
-        let same = n == raw.len() && g.ratios.len() == raw.len();
+        let same = g.tree.is_none() && n == raw.len() && g.ratios.len() == raw.len();
         if same && n >= 2 {
             if let Some(done) = &mut out {
                 done.push(g.clone());
@@ -286,7 +383,7 @@ pub fn settle_splits(s: &LibState) -> LibState {
         let panes: Vec<Str> = kept[..n].iter().map(|&i| raw[i].clone()).collect();
         let ratios: Vec<f64> = kept[..n].iter().map(|&i| old[i]).collect();
         let ratios = normalize_split_ratios(Some(&ratios), n);
-        done.push(Rc::new(Split { panes, ratios, ..(**g).clone() }));
+        done.push(Rc::new(Split { panes, ratios, tree: None, ..(**g).clone() }));
     }
     match out {
         Some(splits) => {
@@ -316,6 +413,21 @@ pub fn swap_split_panes(s: &LibState, split_id: &str, index_a: f64, index_b: f64
         return s.clone();
     }
     let (a, b) = (index_a as usize, index_b as usize);
+    // (Nested: the two leaves trade places, each place keeping its size.)
+    if let Some(tree) = nested_tree(group) {
+        let (pa, pb) = (group.panes[a].clone(), group.panes[b].clone());
+        let mut trade = |l: &Str| {
+            Some(SplitKid::Leaf(if *l == pa {
+                pb.clone()
+            } else if *l == pb {
+                pa.clone()
+            } else {
+                l.clone()
+            }))
+        };
+        let mapped = split_tree::map_leaves(&SplitKid::Node(tree.clone()), &mut trade);
+        return remade_split(s, split_id, from_tree(group, mapped));
+    }
     let mut panes = group.panes.clone();
     let mut ratios = normalize_split_ratios(Some(&group.ratios), panes.len());
     panes.swap(a, b);
@@ -323,19 +435,47 @@ pub fn swap_split_panes(s: &LibState, split_id: &str, index_a: f64, index_b: f64
     map_split(s, split_id, |g| Rc::new(Split { panes: panes.clone(), ratios: ratios.clone(), ..g.clone() }))
 }
 
-/// M:1765 `resizeSplit(state, splitId, ratios)`: the payload's ratios (`p?.ratios`), one per pane, normalised; the state
-/// itself for no such split or ratios that aren't an array of one per pane.
-pub fn resize_split(s: &LibState, split_id: &str, ratios: Option<&[Value]>) -> LibState {
+/// M:1765 `resizeSplit(state, splitId, ratios, path)`: the payload's ratios (`p?.ratios`), one per pane, normalised; the
+/// state itself for no such split or ratios that aren't an array of one per pane. Nested: the node at `path` (none:
+/// the root) given them when they're one a kid of it (else as it was), the split remade from its tree either way; no
+/// node there: the state itself. Flat, a path past its root: the state itself.
+pub fn resize_split(s: &LibState, split_id: &str, ratios: Option<&[Value]>, path: Option<&[usize]>) -> LibState {
     let Some(group) = split_of(s, split_id) else { return s.clone() };
+    if let Some(tree) = nested_tree(group) {
+        let resized = split_tree::with_node_at(tree, path.unwrap_or(&[]), |n| match ratios {
+            Some(r) if r.len() == n.kids.len() => {
+                SplitNode { ratios: normalize_split_ratios_of(Some(r), n.kids.len()), ..n.clone() }
+            }
+            _ => n.clone(),
+        });
+        return match resized {
+            Some(r) => remade_split(s, split_id, from_tree(group, Some(SplitKid::Node(r)))),
+            None => s.clone(),
+        };
+    }
+    if path.is_some_and(|p| !p.is_empty()) {
+        return s.clone();
+    }
     let Some(ratios) = ratios.filter(|r| r.len() == group.panes.len()) else { return s.clone() };
     let norm = normalize_split_ratios_of(Some(ratios), group.panes.len());
     map_split(s, split_id, |g| Rc::new(Split { ratios: norm.clone(), ..g.clone() }))
 }
 
-/// M:1773 `toggleSplitAxis(state, splitId)`: side by side ↔ stacked (the first split of the id decides, every one of it
-/// takes it); the state itself for no such split.
-pub fn toggle_split_axis(s: &LibState, split_id: &str) -> LibState {
+/// M:1773 `toggleSplitAxis(state, splitId, path)`: side by side ↔ stacked (the first split of the id decides, every one
+/// of it takes it); the state itself for no such split. Nested: the node at `path` (none: the root) turned with all
+/// that's in it (split_tree.rs `turned`), the split remade; no node there: the state itself. Flat, a path past its
+/// root: the state itself.
+pub fn toggle_split_axis(s: &LibState, split_id: &str, path: Option<&[usize]>) -> LibState {
     let Some(group) = split_of(s, split_id) else { return s.clone() };
+    if let Some(tree) = nested_tree(group) {
+        return match split_tree::with_node_at(tree, path.unwrap_or(&[]), split_tree::turned) {
+            Some(done) => remade_split(s, split_id, from_tree(group, Some(SplitKid::Node(done)))),
+            None => s.clone(),
+        };
+    }
+    if path.is_some_and(|p| !p.is_empty()) {
+        return s.clone();
+    }
     let axis = if group.axis == Axis::Vertical { Axis::Horizontal } else { Axis::Vertical };
     map_split(s, split_id, |g| Rc::new(Split { axis, ..g.clone() }))
 }
