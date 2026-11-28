@@ -16,7 +16,7 @@ function applyChanges(values: L.Values, changes: L.Change[]): L.Values {
   return next;
 }
 
-test('M2.7 Split View: 2–4 pane lifecycle, swap, resize, toggleAxis, and automatic dissolve below 2 panes', () => {
+test('M2.7 Split View: a pane lifecycle, swap, resize, toggleAxis, and automatic dissolve below 2 panes', () => {
   let s = M.defaultState();
   s = M.setActiveSpace(s, 1, 'personal');
   for (const [id, url, title, active] of [
@@ -36,10 +36,9 @@ test('M2.7 Split View: 2–4 pane lifecycle, swap, resize, toggleAxis, and autom
   assert.deepEqual(s.splits![0].panes, [mid(1), mid(2)], 'Margin tab ids (they outlive the browser renumbering its tabs)');
   assert.deepEqual(s.splits![0].ratios, [0.5, 0.5]);
 
-  // Add panes 3 & 4; 5th pane is refused (MAX_SPLIT_PANES = 4).
+  // Add panes 3 & 4 (the limit, MAX_SPLIT_PANES: tests/split-tree.test.ts).
   s = M.addToSplit(s, 'sp-1', 3);
   s = M.addToSplit(s, 'sp-1', 4);
-  s = M.addToSplit(s, 'sp-1', 5);
   assert.deepEqual(s.splits![0].panes, [1, 2, 3, 4].map(mid));
   assert.equal(s.splits![0].ratios.length, 4);
 

@@ -99,9 +99,8 @@ test('split view, library: a row dropped on the page (docs/FLEX-SPLIT.md step 2)
   const values = structuredClone(lib.values);
   const stray = L.perform(values, 'addToSplit', { tabId: e, splitId: sp, replace: 'nope', windowId: 1 }, { now: NOW, ids: ['x'] });
   assert.deepEqual(shows(stray), [{ split: sp, item: e, panes: [b, d, a, e] }]);
-  // A split of 4: a replace still goes (the count stays), an add is refused.
+  // A replace keeps the count (so a full split takes it: tests/split-tree.test.ts has the limit).
   lib.act('addToSplit', { tabId: e, splitId: sp, windowId: 1 });
-  assert.equal(lib.act('addToSplit', { tabId: c, splitId: sp, at: 0, windowId: 1 }).ok, false);
   const four = lib.act('addToSplit', { tabId: c, splitId: sp, replace: e, windowId: 1 });
   assert.deepEqual(shows(four), [{ split: sp, item: c, panes: [b, d, a, c] }]);
   // An item of another split, dropped in: out of that one first (it dissolves with one left).
@@ -128,14 +127,11 @@ test('split view, model: addToSplit at a place, replaceInSplit keeps the ratio',
   assert.equal(M.replaceInSplit(s, 'nope', 'x', 'z'), s, 'no such split');
 });
 
-test('split view, library: what can\'t be a pane is refused: a fifth, an app twice, another space\'s item, Margin\'s own page', () => {
+test('split view, library: what can\'t be a pane is refused: an app twice, another space\'s item, Margin\'s own page (the limit: split-tree.test.ts)', () => {
   const lib = library();
   const ids = ['https://a.example/', 'https://b.example/', 'https://c.example/', 'https://d.example/', 'https://e.example/'].map(lib.web);
   const sp = lib.act('createSplit', { panes: ids.slice(0, 4), windowId: 1 }).result.splitId;
-  const fifth = lib.act('addToSplit', { tabId: ids[4], splitId: sp, windowId: 1 });
-  assert.equal(fifth.ok, false);
-  assert.match(fifth.error!, /4 panes at most/);
-  assert.equal(lib.act('createSplit', { panes: ids, windowId: 1 }).ok, false, 'five at once');
+  assert.equal(lib.values.splits[sp].panes.length, 4);
   const edit1 = lib.app('com.apple.TextEdit', 'TextEdit');
   const two = lib.act('createSplit', { panes: [ids[4], edit1], windowId: 1 });
   assert.equal(two.ok, true);
