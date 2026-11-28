@@ -240,7 +240,7 @@ for (const [name, engine] of ENGINES) {
         assert.ok(list.height <= 8 * 42 + 1, `eight rows show (${list.height} px)`);
         const box = (await ev(() => T.rtRect('.palette')))!;
         assert.ok(box.bottom <= 900 && box.top >= 0, 'the box stays in the window');
-        assert.ok(Math.abs(box.top - (900 - box.height) / 2) <= 1, `full: in the middle of the window (${box.top}–${box.bottom})`);
+        assert.ok(Math.abs(box.top - 900 * 0.322) <= 1, `its top where Arc's command bar's is, 32.2% down (${box.top}–${box.bottom})`);
         assert.deepEqual([Math.round(box.width), Math.round(box.left + box.width / 2)], [696, 720], 'the board\'s 660 px box and its padding, centred');
         assert.equal(await count('.palette-row.on'), 1);
         for (let i = 0; i < 11; i++) await page.keyboard.press('ArrowDown');

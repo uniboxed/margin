@@ -677,8 +677,8 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForFunction(() => !!document.querySelector('.palette'), null, { timeout: 2000 });
         const edge = await ev(() => [document.querySelector('.margin-sidebar')!.getBoundingClientRect().right, document.querySelector('.palette-layer .backdrop')!.getBoundingClientRect().left]);
         assert.equal(edge[1], edge[0], `the backdrop from the sidebar's edge (${edge})`);
-        const panel = await ev(() => { const r = document.querySelector('.palette')!.getBoundingClientRect(); return [r.left + r.width / 2, r.width, innerWidth / 2, Math.min(680, innerWidth - 32)]; });
-        assert.ok(Math.abs(panel[0] - panel[2]) < 0.5 && Math.abs(panel[1] - panel[3]) < 0.5, `the panel centred on the window, as wide as before (${panel})`);
+        const panel = await ev(() => { const r = document.querySelector('.palette')!.getBoundingClientRect(); return [r.left + r.width / 2, r.width, innerWidth / 2, Math.min(766, innerWidth - 32)]; });
+        assert.ok(Math.abs(panel[0] - panel[2]) < 0.5 && Math.abs(panel[1] - panel[3]) < 0.5, `the panel centred on the window, as wide as Arc's (${panel})`);
         const id = (await ev(() => T.rtTodayIds(1)))[0];
         const box = await ev((tid) => { const el = [...document.querySelectorAll<HTMLElement>('.margin-sidebar .tab')].find((t) => (window as any).__rt.runtime.view.subjectOf(t)?.id === tid) ?? document.querySelector<HTMLElement>('.margin-sidebar .tab')!; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, id);
         await page.mouse.move(box.x, box.y);
@@ -730,6 +730,53 @@ for (const [engineName, engine] of ENGINES) {
         await page.mouse.click(spot!.x, spot!.y);
         await page.waitForFunction(() => !(window as any).__rt.runtime.ui.palette.open, null, { timeout: 2000 });
         await away();
+      });
+
+      // The command bar as Arc's (docs/ARC-COMMAND-BAR.md, Arc 1.174 measured in a 1512 × 949 window): its top at 32.2%
+      // of the window (305.5 pt), 766 pt wide, centred on the window; a 64 pt header, the field's text 18 px; rows 46 pt,
+      // 4 pt apart, 10 pt in, corner 4; the selected row the space's colour, white text; no motion.
+      await t.test('the command bar as Arc\'s: top at 32.2% of the window, 766 wide and centred, a 64 pt header, 46 pt rows 4 apart and 10 in, the selected one the space\'s colour', async () => {
+        const was = page.viewportSize();
+        await page.setViewportSize({ width: 1512, height: 949 });
+        await ev(() => T.mountRuntime({ width: 1512, height: 949, container: 'document', mode: 'windowed' }));
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.waitForFunction(() => document.querySelectorAll('.palette .result').length >= 3, null, { timeout: 2000 });
+        const m = await ev(() => {
+          const r = (q: string) => document.querySelector(q)!.getBoundingClientRect();
+          const p = r('.palette');
+          const rows = [...document.querySelectorAll('.palette .result')].slice(0, 3).map((e) => e.getBoundingClientRect());
+          const sel = document.querySelector('.palette .result[aria-selected="true"]') as HTMLElement;
+          const probe = document.createElement('div');
+          probe.style.background = 'var(--space-color)';
+          sel.parentElement!.append(probe);
+          const space = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const pal = getComputedStyle(document.querySelector('.palette')!);
+          return {
+            top: p.top, width: p.width, middle: p.left + p.width / 2, header: r('.palette .search').height,
+            field: getComputedStyle(document.querySelector('.palette .query')!).fontSize,
+            rows: rows.map((x) => x.height), gaps: [rows[1].top - rows[0].bottom, rows[2].top - rows[1].bottom], inset: rows[0].left - p.left,
+            firstBelowHeader: rows[0].top - r('.palette .search').bottom, radius: getComputedStyle(sel).borderTopLeftRadius,
+            selected: getComputedStyle(sel).backgroundColor, space, text: getComputedStyle(sel).color,
+            motion: [pal.animationName, pal.transitionDuration],
+          };
+        });
+        assert.ok(Math.abs(m.top - 949 * 0.322) < 1, `its top at 32.2% of the window (${m.top})`);
+        assert.equal(m.width, 766);
+        assert.ok(Math.abs(m.middle - 756) < 0.5, `centred on the window (${m.middle})`);
+        assert.equal(m.header, 64);
+        assert.equal(m.field, '18px');
+        assert.deepEqual(m.rows, [46, 46, 46]);
+        assert.deepEqual(m.gaps, [4, 4]);
+        assert.equal(m.inset, 10);
+        assert.equal(m.firstBelowHeader, 6);
+        assert.equal(m.radius, '4px');
+        assert.equal(m.selected, m.space, 'the selected row in the space\'s colour');
+        assert.equal(m.text, 'rgb(255, 255, 255)');
+        assert.deepEqual(m.motion, ['none', '0s'], 'no motion');
+        await ev(() => T.rtDispatch('palette.close'));
+        if (was) await page.setViewportSize(was);
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
       });
 
       await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {

@@ -973,12 +973,37 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
 
 /* ---- The command bar ------------------------------------------------------- */
 
-/* A floating panel in the middle of the window (its full height centered, so the field stays put as rows come and
-   go while typing; never nearer an edge than 16 px): a large
-   field, then one-line rows (icon, title, a muted detail, where it is, an
-   arrow); the selected row takes the current space's color. Light or dark
-   as the system is, opaque (no blur). Laid out left-to-right in any
-   language. */
+/* As Arc's command bar (docs/ARC-COMMAND-BAR.md, measured on screen and read from its code, 2026-11-27): a panel across
+   the middle of the window, its top at 32.2% of the window's height, growing down with its rows (never vertically
+   centred), 766 pt wide; a 64 pt header (the icon, an 18 px field) over a hairline, then rows 46 pt tall 4 pt apart,
+   10 pt in from its sides; the selected row in the space's colour. Its edge: a 0.5 pt dark line outside, a 1 pt light
+   one inside. No motion: it's there at once, and gone at once. Light or dark as the system is (Arc's colours, each its
+   own for both); its fill opaque, with a little of the space's colour (Arc's is a material over the page, which
+   Margin's window can't see through to). Laid out left-to-right in any language. */
+.arcadia {
+  --bar: color-mix(in srgb, var(--space-color) 5%, #f7f7f8);
+  --bar-fg: rgba(0, 0, 0, 0.8);
+  --bar-muted: rgba(0, 0, 0, 0.45);
+  --bar-hover: rgba(0, 0, 0, 0.05);
+  --bar-divider: rgba(0, 0, 0, 0.1);
+  --bar-outer: rgba(0, 0, 0, 0.25);
+  --bar-inner: rgba(255, 255, 255, 0.7);
+  --bar-box: rgba(0, 0, 0, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  .arcadia {
+    --bar: color-mix(in srgb, var(--space-color) 10%, #2c2a29);
+    --bar-fg: rgba(255, 255, 255, 0.9);
+    --bar-muted: rgba(255, 255, 255, 0.45);
+    --bar-hover: rgba(255, 255, 255, 0.05);
+    --bar-divider: rgba(255, 255, 255, 0.1);
+    --bar-outer: rgba(0, 0, 0, 0.95);
+    --bar-inner: rgba(255, 255, 255, 0.24);
+    --bar-box: rgba(255, 255, 255, 0.1);
+  }
+}
+@media (prefers-contrast: more) { .arcadia { --bar-muted: rgba(0, 0, 0, 0.72); --bar-outer: rgba(0, 0, 0, 0.6); } }
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) { .arcadia { --bar-muted: rgba(255, 255, 255, 0.78); --bar-inner: rgba(255, 255, 255, 0.5); } }
 /* The sidebar stays the person's while it's open, as Arc's (its rows' hover, its scrolling; a press there closes the
    bar and does what it's on: ui/behaviors/palette.ts): the layer starts at its right edge, docked or out over the
    page (Tirth, 2026-11-27: the sidebar took neither the wheel nor the pointer under it); hidden, the whole window.
@@ -992,23 +1017,23 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
 .palette {
   --rows: 5;
 
-  /* Five rows (the field, list padding, rows and the gaps between them);
-     more scroll, the selection followed. */
-  --full: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
+  /* Five rows (the header, the list's padding, the rows and the gaps between them); more scroll, the selection
+     followed. Its top at Arc's 32.2% of the window (Arc: 305.5 of 949 pt), never so low it leaves the window. */
+  --full: calc(64px + 6px + var(--rows) * 46px + (var(--rows) - 1) * 4px + 10px);
 
   position: absolute;
-  top: max(16px, calc((100% - var(--full)) / 2));
+  top: 32.2%;
   left: calc(50% - var(--layer-left) / 2);
   transform: translateX(-50%);
-  width: min(680px, calc(100% + var(--layer-left) - 32px));
-  max-height: var(--full);
+  width: min(766px, calc(100% + var(--layer-left) - 32px));
+  max-height: min(var(--full), calc(67.8% - 16px));
   direction: ltr;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
-  color: var(--panel-fg);
-  border-radius: 16px;
-  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 30px 80px rgba(0, 0, 0, 0.34), 0 6px 18px rgba(0, 0, 0, 0.12);
+  background: var(--bar);
+  color: var(--bar-fg);
+  border-radius: 12px;
+  box-shadow: 0 0 0 0.5px var(--bar-outer), inset 0 0 0 1px var(--bar-inner), 0 30px 80px rgba(0, 0, 0, 0.34), 0 6px 18px rgba(0, 0, 0, 0.12);
   overflow: hidden;
   font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -1018,19 +1043,19 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
 @media (max-height: 418px) { .palette { --rows: 4; } }
 @media (max-height: 357px) { .palette { --rows: 3; } }
 
-/* 60 high above a hairline; the magnifier centered on the row icons'
-   column, the text where the titles start. */
+/* 64 high to the hairline: the icon 26 pt in, the text 55 pt in (Arc's). */
 .palette .search {
   position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 61px;
-  padding: 0 18px 1px 21px;
-  border-bottom: 1px solid var(--panel-line);
+  gap: 15px;
+  height: 64px;
+  box-sizing: border-box;
+  padding: 0 18px 0 26px;
+  border-bottom: 0.5px solid var(--bar-divider);
 }
-.palette .search-icon { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--panel-muted); stroke-width: 2; stroke-linecap: round; }
+.palette .search-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--bar-muted); stroke-width: 2.2; stroke-linecap: round; }
 .palette .query {
   flex: 1;
   min-width: 0;
@@ -1038,61 +1063,67 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--panel-fg);
+  color: var(--bar-fg);
+  caret-color: AccentColor;
   font: inherit;
-  font-size: 20px;
+  font-size: 18px;
   outline: none;
 }
-.palette .query::placeholder { color: var(--panel-muted); }
+.palette .query::placeholder { color: var(--bar-muted); }
 .palette .results {
   margin: 0;
-  padding: 8px;
+  padding: 6px 10px 10px;
   overflow-y: auto;
   overscroll-behavior: none;
   scrollbar-width: none;
-  scroll-padding: 8px 0; /* the selection scrolled into view keeps the padding */
+  scroll-padding: 6px 0 10px; /* the selection scrolled into view keeps the padding */
 }
+/* 46 pt rows, 4 pt apart, corner 4 (Arc's): the icon's 24 pt slot 10 pt in, the title 42 pt in, the arrow 10 pt from the right. */
 .palette .result {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 44px;
-  padding: 0 10px 0 11px;
-  border-radius: 10px;
+  gap: 8px;
+  height: 46px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 4px;
 }
-.palette .result + .result { margin-top: 2px; }
+.palette .result + .result { margin-top: 4px; }
 /* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */
-.palette .result-section { padding: 12px 10px 5px; color: var(--panel-muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.palette .result:hover { background: var(--panel-hover); }
-.palette .result[aria-selected="true"] { background: color-mix(in srgb, var(--space-color) 84%, #000); color: #fff; }
-.palette .result.empty { color: var(--panel-muted); justify-content: center; }
+.palette .result-section { padding: 12px 10px 5px; color: var(--bar-muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette .result:hover { background: var(--bar-hover); }
+.palette .result[aria-selected="true"] { background: var(--space-color); color: #fff; }
+.palette .result.empty { color: var(--bar-muted); justify-content: center; }
 /* Each icon fills a 24 px slot: favicons 16 px in it (on a white tile when
    selected), letters on a 16 px tile, emoji at 15 px. */
 .palette .avatar { width: 24px; height: 24px; }
-.palette img.avatar { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 6px; }
+.palette img.avatar { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 5px; }
 .palette [aria-selected="true"] img.avatar { background: #fff; }
 .palette .avatar.letter { width: 16px; height: 16px; margin: 0 4px; }
 .palette .avatar.emoji { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 /* An installed app's icon (Margin.app): its own shape, no tile behind it. */
 .palette img.avatar.app, .palette [aria-selected="true"] img.avatar.app { width: 22px; height: 22px; margin: 0; padding: 1px; border-radius: 0; background: none; }
-/* The title keeps its room; the detail after it gives way first. */
+/* The title keeps its room; the detail after it ("— weather.com", Arc's) gives way first. */
 .palette .title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
-.palette .detail { flex: 0 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--panel-muted); font-size: 13px; }
+.palette .detail { flex: 0 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--bar-muted); font-weight: 500; }
 .palette .spacer { flex: 1 0 0; }
-.palette .badge { flex: none; color: var(--panel-muted); font-size: 12px; font-weight: 500; }
-.palette [aria-selected="true"] :is(.badge, .detail) { color: rgba(255, 255, 255, 0.8); }
+/* Where it is (a space's name, "Switch to Tab"), as Arc's: its words, no pill. */
+.palette .badge { flex: none; color: var(--bar-muted); font-size: 13px; font-weight: 500; }
+.palette [aria-selected="true"] :is(.badge, .detail) { color: rgba(255, 255, 255, 0.85); }
 .palette .go-button {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--panel-hover);
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--bar-box);
+  color: var(--bar-muted);
 }
-.palette .arrow-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.palette [aria-selected="true"] .go-button { background: rgba(255, 255, 255, 0.22); }
+.palette .arrow-icon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* Selected, Arc's white box with the arrow in the row's colour. */
+.palette [aria-selected="true"] .go-button { background: #fff; color: var(--space-color); }
 
 /* ---- The new-tab launcher (Margin's <m-launcher>, the "launcher" part) ------- */
 
