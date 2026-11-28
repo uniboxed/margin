@@ -15,7 +15,8 @@
 //   is pinned in that place, a pin moves there, folders stay at the top level;
 // - nowhere a row already is (a drop that wouldn't move it is no target);
 // - on the page (Margin's own window, docs/FLEX-SPLIT.md step 2): a tab beside the page shown, between two panes or
-//   in a pane's place (where: ui/behaviors/split.ts dropAt, which says it as the `split.drop` it runs).
+//   in a pane's place, beside a pane on any side (where: ui/behaviors/split.ts dropAt, which says it as the
+//   `split.drop` it runs).
 import type { FolderRow, SpaceView } from '../view-model.ts';
 import { MAX_FOLDER_DEPTH } from '../../../../extension/shared/pinned-rules.ts';
 
@@ -30,7 +31,7 @@ export type Over = { zone: 'space', spaceId: string }
   | { zone: 'favorites', rows: string[], favorite: string | null, x: number }
   | { zone: 'page', drop: SplitDrop };
 /** A row dropped on the page: `split.drop`'s argument (ui/actions.ts). */
-export type SplitDrop = { tab: number | string, split: string | null, nextTo: number | string | null, at: number, replace: number | null, axis: 'horizontal' | 'vertical' };
+export type SplitDrop = { tab: number | string, split: string | null, nextTo: number | string | null, pane: number | null, side: 'left' | 'right' | 'top' | 'bottom' | 'middle' };
 export type Target = { space: string }
   | { unpin: true }
   | { unfavorite: true }

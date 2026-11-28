@@ -767,9 +767,9 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 .pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) m-pane:not([m-focused]) { box-shadow: none; }
 .pixel m-divider { background: var(--ground); }
 .pixel m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 40px; transform: translate(-50%, -50%); background: repeating-linear-gradient(to bottom, var(--muted) 0 4px, transparent 4px 8px); }
-.pixel m-page[m-split="column"] > m-divider::after { width: 40px; height: 4px; background: repeating-linear-gradient(to right, var(--muted) 0 4px, transparent 4px 8px); }
+.pixel m-divider[m-axis="column"]::after { width: 40px; height: 4px; background: repeating-linear-gradient(to right, var(--muted) 0 4px, transparent 4px 8px); }
 .pixel m-divider:is(:hover, :focus-visible)::after { background: repeating-linear-gradient(to bottom, var(--yellow) 0 4px, transparent 4px 8px); }
-.pixel m-page[m-split="column"] > m-divider:is(:hover, :focus-visible)::after { background: repeating-linear-gradient(to right, var(--yellow) 0 4px, transparent 4px 8px); }
+.pixel m-divider[m-axis="column"]:is(:hover, :focus-visible)::after { background: repeating-linear-gradient(to right, var(--yellow) 0 4px, transparent 4px 8px); }
 .pixel m-divider[m-dragging]::after { background: var(--yellow); }
 .pixel m-pane[m-focused] { box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }
 

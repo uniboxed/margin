@@ -39,9 +39,11 @@ const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
 m-page[m-split]{display:flex!important;flex-direction:row;align-items:stretch}
 m-page[m-split="column"]{flex-direction:column}
+m-split-group{display:flex;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;flex-direction:row;align-items:stretch;background:none!important;pointer-events:none!important}
+m-split-group[m-split="column"]{flex-direction:column}
 m-pane{display:block;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;background:none!important;pointer-events:none!important}
 m-divider{display:block;box-sizing:border-box;flex:0 0 var(--m-split-gap,8px);position:relative;pointer-events:auto!important;cursor:col-resize;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
-m-page[m-split="column"]>m-divider{cursor:row-resize}
+m-divider[m-axis="column"]{cursor:row-resize}
 m-pane{position:relative}
 /* Each pane a card of its own: painted above the gap (its edge, shadow and ring on every side, the gap's too), the
    grip and band title above it; its inner corners (where it meets another pane) masked in the theme's
@@ -51,11 +53,7 @@ m-pane{position:relative}
 m-page[m-split]{isolation:isolate}
 m-pane{z-index:1}
 m-divider::before,m-divider::after,m-divider>m-band-title{z-index:2}
-m-pane::before{content:"";position:absolute;inset:0;z-index:1;border-radius:inherit;box-shadow:0 0 0 100vmax var(--m-pane-ground,transparent);clip-path:inset(0);pointer-events:none}
-m-page[m-split="row"]>m-pane:first-of-type::before{clip-path:inset(0 0 0 round(up,50%,1px))}
-m-page[m-split="row"]>m-pane:last-of-type::before{clip-path:inset(0 round(up,50%,1px) 0 0)}
-m-page[m-split="column"]>m-pane:first-of-type::before{clip-path:inset(round(up,50%,1px) 0 0 0)}
-m-page[m-split="column"]>m-pane:last-of-type::before{clip-path:inset(0 0 round(up,50%,1px) 0)}
+m-pane::before{content:"";position:absolute;inset:0;z-index:1;border-radius:inherit;box-shadow:0 0 0 100vmax var(--m-pane-ground,transparent);clip-path:var(--m-pane-clip,inset(0));pointer-events:none}
 m-pane>m-pane-loader{position:absolute;inset:0;display:flex;background:Canvas;color:CanvasText;color-scheme:light dark;flex-direction:column;align-items:center;justify-content:center;gap:10px;overflow:hidden;pointer-events:none;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
 m-pane-loader>m-pane-spinner{display:block;flex:none;width:20px;height:20px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-pane-spin .9s linear infinite}
 m-pane-loader>m-pane-label{display:block;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.72}
@@ -74,7 +72,6 @@ m-page[m-split="column"]>m-pane>m-pane-card{flex-direction:row}
 @keyframes m-pane-fold{from{opacity:0}}
 @media (prefers-reduced-motion:reduce){m-pane>m-pane-card{animation:none}}
 m-drop-zone{position:fixed;z-index:2147483600;display:block;box-sizing:border-box;pointer-events:none!important;border-radius:10px;background:rgb(10 132 255/.16);box-shadow:inset 0 0 0 2px rgb(10 132 255/.75);transition:left .12s ease-out,top .12s ease-out,width .12s ease-out,height .12s ease-out}
-m-drop-zone[m-kind="between"]{border-radius:3px;background:rgb(10 132 255/.9);box-shadow:0 0 0 1px rgb(255 255 255/.55)}
 @media (prefers-reduced-motion:reduce){m-drop-zone{transition:none}}
 m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview,m-picker{display:block}
@@ -1137,7 +1134,8 @@ export class View {
     const radii = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(corner);
     const border = Math.max(px(cs.borderTopWidth), px(cs.borderLeftWidth));
     // (A split's panes, Margin's own `<m-pane>`s in the page's place: each one's box, by its item, in order.)
-    const paneEls = [...el.children].filter((p) => p.localName === 'm-pane' && p.hasAttribute('m-pane-id'));
+    // (Every pane of the split's tree, its groups' too, in order: ui/behaviors/split.ts.)
+    const paneEls = [...el.querySelectorAll('m-pane[m-pane-id]')];
     const split = paneEls.length >= 2 ? el.getAttribute('m-split-id') : null;
     return {
       insets: { left: round(outer.left + bw.left), top: round(outer.top + bw.top), right: round(outer.right + bw.right), bottom: round(outer.bottom + bw.bottom) },

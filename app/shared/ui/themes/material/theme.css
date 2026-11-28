@@ -1669,12 +1669,12 @@
 .m3 m-pane { border-radius: var(--card-radius); --m-pane-ground: var(--frame); }
 .m3 m-divider { background: var(--frame); }
 .m3 m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 48px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 28%, transparent); transition: background-color .15s cubic-bezier(.2, 0, 0, 1), transform .15s cubic-bezier(.2, 0, 0, 1); }
-.m3 m-page[m-split="column"] > m-divider::after { width: 48px; height: 4px; }
+.m3 m-divider[m-axis="column"]::after { width: 48px; height: 4px; }
 .m3 m-divider:is(:hover, :focus-visible)::after { background: var(--accent); }
-.m3 m-page[m-split="row"] > m-divider:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleY(1.34); }
-.m3 m-page[m-split="column"] > m-divider:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleX(1.34); }
-.m3 m-page[m-split="row"] > m-divider[m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.5, 1.34); }
-.m3 m-page[m-split="column"] > m-divider[m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.34, 1.5); }
+.m3 m-divider[m-axis="row"]:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleY(1.34); }
+.m3 m-divider[m-axis="column"]:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleX(1.34); }
+.m3 m-divider[m-axis="row"][m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.5, 1.34); }
+.m3 m-divider[m-axis="column"][m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.34, 1.5); }
 .m3 m-pane[m-focused] { box-shadow: 0 0 0 2px var(--accent); }
 @media (prefers-reduced-motion: reduce) { .m3 m-divider::after { transition: none; } }
 

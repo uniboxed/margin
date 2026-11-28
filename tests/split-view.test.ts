@@ -9,9 +9,10 @@ import * as L from '../app/shared/library/library.ts';
 import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
 import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
 import { buildViewModel } from '../app/shared/ui/view-model.ts';
-import { appKeyOf, dividerSizes, dragRatios, dropPlace, DROP_BAR, equalRatios, expandSizes, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, PANE_FOLD, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../app/shared/ui/behaviors/split.ts';
+import { appKeyOf, dividerSizes, dragRatios, dropPlace, equalRatios, expandSizes, maskClip, nextSplitPane, nodeDividers, paneEdges, topPanes, treeMin, paneFloors, panesFit, PANE_FLOOR, PANE_FOLD, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../app/shared/ui/behaviors/split.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 import * as M from '../extension/state/model.ts';
+import type { SplitNode } from '../extension/shared/split-tree.ts';
 
 const NOW = 1_000_000;
 function applyChanges(values: L.Values, changes: L.Change[]): L.Values {
@@ -211,10 +212,16 @@ function splitState() {
 test('split view, UI: split.resize, split.addPane, split.remove are checked and sent', () => {
   const s = splitState();
   const ctx = contextFromState(s);
-  assert.equal(checkAction('split.resize', { split: 'sp', ratios: [0.3, 0.7] }, ctx).ok, true);
-  for (const bad of [[0.3], [0, 1], [0.2, 0.2, 0.2, 0.2, 0.2], ['a', 'b'], [2, 1]]) assert.equal(checkAction('split.resize', { split: 'sp', ratios: bad }, ctx).ok, false, JSON.stringify(bad));
-  assert.equal(checkAction('split.resize', { split: 'nope', ratios: [0.5, 0.5] }, ctx).ok, false);
-  assert.deepEqual(requestFor('split.resize', { split: 'sp', ratios: [0.3, 0.7] }, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'resizeSplit', payload: { splitId: 'sp', ratios: [0.3, 0.7], windowId: 1 } });
+  // (A node's ratios by its path from the root, docs/FLEX-SPLIT.md step 3: [] the root.)
+  assert.equal(checkAction('split.resize', { split: 'sp', ratios: [0.3, 0.7], path: [] }, ctx).ok, true);
+  assert.equal(checkAction('split.resize', { split: 'sp', ratios: [0.3, 0.7], path: [1, 0] }, ctx).ok, true);
+  assert.equal(checkAction('split.resize', { split: 'sp', ratios: [0.3, 0.7] }, ctx).ok, false, 'its path named');
+  for (const bad of [[0.3], [0, 1], Array(17).fill(1 / 17), ['a', 'b'], [2, 1]]) assert.equal(checkAction('split.resize', { split: 'sp', ratios: bad, path: [] }, ctx).ok, false, JSON.stringify(bad));
+  assert.equal(checkAction('split.resize', { split: 'sp', ratios: [0.2, 0.2, 0.2, 0.2, 0.2], path: [] }, ctx).ok, true, 'five: up to 16 now');
+  for (const path of [[-1], [0.5], ['0'], null]) assert.equal(checkAction('split.resize', { split: 'sp', ratios: [0.5, 0.5], path }, ctx).ok, false, JSON.stringify(path));
+  assert.equal(checkAction('split.resize', { split: 'nope', ratios: [0.5, 0.5], path: [] }, ctx).ok, false);
+  assert.deepEqual(requestFor('split.resize', { split: 'sp', ratios: [0.3, 0.7], path: [] }, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'resizeSplit', payload: { splitId: 'sp', ratios: [0.3, 0.7], windowId: 1 } });
+  assert.deepEqual(requestFor('split.resize', { split: 'sp', ratios: [0.3, 0.7], path: [1] }, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'resizeSplit', payload: { splitId: 'sp', ratios: [0.3, 0.7], path: [1], windowId: 1 } });
   assert.deepEqual(requestFor('split.addPane', 3, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'addToSplit', payload: { tabId: 3, windowId: 1 } });
   assert.deepEqual(requestFor('split.remove', 2, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'removeFromSplit', payload: { tabId: 2, windowId: 1 } });
 });
@@ -290,33 +297,49 @@ test('split view, UI: a pane opened to fit its app (docs/FLEX-SPLIT.md step 1): 
   }
 });
 
-test('split view, UI: where a row dropped on the page goes (docs/FLEX-SPLIT.md step 2): a page\'s nearest edge, a pane\'s ends and middle, between', () => {
+test('split view, UI: where a row dropped on the page goes (docs/FLEX-SPLIT.md steps 2, 3): a page\'s nearest edge, a pane\'s four edges and middle, a gap', () => {
   const page = { left: 100, top: 50, width: 800, height: 600 };
-  // One page: its nearest edge, a new split's place and axis, the half the new pane takes.
-  assert.deepEqual(dropPlace([page], null, 150, 350), { kind: 'side', at: 0, axis: 'horizontal', rect: { left: 100, top: 50, width: 400, height: 600 } });
-  assert.deepEqual(dropPlace([page], null, 880, 300), { kind: 'side', at: 1, axis: 'horizontal', rect: { left: 500, top: 50, width: 400, height: 600 } });
-  assert.deepEqual(dropPlace([page], null, 500, 60), { kind: 'side', at: 0, axis: 'vertical', rect: { left: 100, top: 50, width: 800, height: 300 } });
-  assert.deepEqual(dropPlace([page], null, 500, 640), { kind: 'side', at: 1, axis: 'vertical', rect: { left: 100, top: 350, width: 800, height: 300 } });
-  assert.equal(dropPlace([page], null, 99, 300), null, 'outside the page');
-  assert.equal(dropPlace([], null, 150, 300), null);
-  // Side by side, two panes 8 apart: a pane's ends (a quarter each) beside it, its middle in its place, the gap between.
+  // One page: its nearest edge, the half the new pane takes.
+  assert.deepEqual(dropPlace([page], true, 150, 350), { kind: 'side', pane: 0, side: 'left', rect: { left: 100, top: 50, width: 400, height: 600 } });
+  assert.deepEqual(dropPlace([page], true, 880, 300), { kind: 'side', pane: 0, side: 'right', rect: { left: 500, top: 50, width: 400, height: 600 } });
+  assert.deepEqual(dropPlace([page], true, 500, 60), { kind: 'side', pane: 0, side: 'top', rect: { left: 100, top: 50, width: 800, height: 300 } });
+  assert.deepEqual(dropPlace([page], true, 500, 640), { kind: 'side', pane: 0, side: 'bottom', rect: { left: 100, top: 350, width: 800, height: 300 } });
+  assert.equal(dropPlace([page], true, 99, 300), null, 'outside the page');
+  assert.equal(dropPlace([], true, 150, 300), null);
+  // Two panes side by side, 8 apart: a pane's nearest edge (a quarter each way) beside it, any side, its middle in its place.
   const two = [{ left: 100, top: 50, width: 396, height: 600 }, { left: 504, top: 50, width: 396, height: 600 }];
-  const bar = (left: number) => ({ left, top: 50, width: DROP_BAR, height: 600 });
-  assert.deepEqual(dropPlace(two, 'horizontal', 120, 300), { kind: 'between', at: 0, axis: 'horizontal', rect: bar(100) }, 'the first pane\'s start: the page\'s edge');
-  assert.deepEqual(dropPlace(two, 'horizontal', 480, 300), { kind: 'between', at: 1, axis: 'horizontal', rect: bar(500 - DROP_BAR / 2) });
-  assert.deepEqual(dropPlace(two, 'horizontal', 500, 300), { kind: 'between', at: 1, axis: 'horizontal', rect: bar(500 - DROP_BAR / 2) }, 'the gap');
-  assert.deepEqual(dropPlace(two, 'horizontal', 520, 300), { kind: 'between', at: 1, axis: 'horizontal', rect: bar(500 - DROP_BAR / 2) });
-  assert.deepEqual(dropPlace(two, 'horizontal', 890, 300), { kind: 'between', at: 2, axis: 'horizontal', rect: bar(900 - DROP_BAR) }, 'the last pane\'s end');
-  assert.deepEqual(dropPlace(two, 'horizontal', 300, 300), { kind: 'replace', at: 0, axis: 'horizontal', rect: two[0] });
-  assert.deepEqual(dropPlace(two, 'horizontal', 700, 60), { kind: 'replace', at: 1, axis: 'horizontal', rect: two[1] }, 'its top: still its middle along the axis');
-  assert.equal(dropPlace(two, 'horizontal', 300, 660), null, 'below the panes');
+  assert.deepEqual(dropPlace(two, false, 480, 300), { kind: 'beside', pane: 0, side: 'right', rect: { left: 298, top: 50, width: 198, height: 600 } });
+  assert.deepEqual(dropPlace(two, false, 700, 600), { kind: 'beside', pane: 1, side: 'bottom', rect: { left: 504, top: 350, width: 396, height: 300 } }, 'across the split: below the pane');
+  assert.deepEqual(dropPlace(two, false, 700, 80), { kind: 'beside', pane: 1, side: 'top', rect: { left: 504, top: 50, width: 396, height: 300 } });
+  assert.deepEqual(dropPlace(two, false, 300, 300), { kind: 'replace', pane: 0, side: 'middle', rect: two[0] });
+  // The gap: beside the nearer pane, on its side facing the point.
+  assert.deepEqual(dropPlace(two, false, 499, 300), { kind: 'beside', pane: 0, side: 'right', rect: { left: 298, top: 50, width: 198, height: 600 } });
+  assert.deepEqual(dropPlace(two, false, 502, 300), { kind: 'beside', pane: 1, side: 'left', rect: { left: 504, top: 50, width: 198, height: 600 } });
+  assert.equal(dropPlace(two, false, 300, 660), null, 'below the panes');
   // Full (no pane can be added): every place in a pane is its place, the gap none.
-  assert.deepEqual(dropPlace(two, 'horizontal', 120, 300, false), { kind: 'replace', at: 0, axis: 'horizontal', rect: two[0] });
-  assert.equal(dropPlace(two, 'horizontal', 500, 300, false), null);
-  // Stacked: along y.
-  const stacked = [{ left: 100, top: 50, width: 800, height: 296 }, { left: 100, top: 354, width: 800, height: 296 }];
-  assert.deepEqual(dropPlace(stacked, 'vertical', 500, 340), { kind: 'between', at: 1, axis: 'vertical', rect: { left: 100, top: 350 - DROP_BAR / 2, width: 800, height: DROP_BAR } });
-  assert.deepEqual(dropPlace(stacked, 'vertical', 500, 500), { kind: 'replace', at: 1, axis: 'vertical', rect: stacked[1] });
+  assert.deepEqual(dropPlace(two, false, 120, 300, false), { kind: 'replace', pane: 0, side: 'middle', rect: two[0] });
+  assert.equal(dropPlace(two, false, 500, 300, false), null);
+});
+
+test('split view, UI: a tree\'s least size, its bands, each pane\'s edges and mask (docs/FLEX-SPLIT.md step 3)', () => {
+  const safari = (id: string) => id.startsWith('s');
+  const flat: SplitNode = { axis: 'horizontal', kids: ['a', 'b', 'c'], ratios: [1, 1, 1] };
+  assert.equal(treeMin(flat, 'horizontal'), 3 * 220 + 2 * 8);
+  assert.equal(treeMin(flat, 'vertical'), 220);
+  const nested: SplitNode = { axis: 'horizontal', kids: ['a', { axis: 'vertical', kids: ['b', 'sc'], ratios: [1, 1] }], ratios: [1, 1] };
+  assert.equal(treeMin(nested, 'horizontal', safari), 2 * 220 + 8);
+  assert.equal(treeMin(nested, 'vertical', safari), 2 * 220 + 52, 'the band above the Safari pane below');
+  assert.deepEqual(nodeDividers(nested.kids[1] as SplitNode, safari), [52]);
+  assert.deepEqual(topPanes({ axis: 'vertical', kids: [{ axis: 'horizontal', kids: ['a', 'b'], ratios: [1, 1] }, 'c'], ratios: [1, 1] }), ['a', 'b']);
+  const edges = paneEdges(nested);
+  assert.deepEqual(edges.get('a'), { top: true, right: false, bottom: true, left: true });
+  assert.deepEqual(edges.get('b'), { top: true, right: true, bottom: false, left: false });
+  assert.deepEqual(edges.get('sc'), { top: false, right: true, bottom: true, left: false });
+  // The masks: as a flat split's halves (tests/theme/pane-mask-seam), an L for a corner pane, all four inside.
+  assert.equal(maskClip(edges.get('a')!), 'inset(0 0 0 round(up,50%,1px))');
+  assert.equal(maskClip({ top: true, right: true, bottom: true, left: false }), 'inset(0 round(up,50%,1px) 0 0)', 'the right pane: its left half');
+  assert.match(maskClip(edges.get('b')!), /^polygon\(/, 'top right: all but its own corner');
+  assert.equal(maskClip({ top: false, right: false, bottom: false, left: false }), 'inset(0)');
 });
 
 test('split view, UI: stacked, the gap above a Safari pane is a band its full-screen toolbar rests in (never over the pane above)', () => {

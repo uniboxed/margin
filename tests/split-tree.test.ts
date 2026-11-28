@@ -92,7 +92,7 @@ test('split tree, library: a pane split across, stored with its tree; resized, t
   const lib = library();
   const [a, b, c, d] = ['https://a.example/', 'https://b.example/', 'https://c.example/', 'https://d.example/'].map(lib.web);
   const sp = lib.act('createSplit', { panes: [a, b], windowId: 1 }).result.splitId;
-  assert.equal(lib.values.splits[sp].tree, undefined, 'flat: no tree');
+  assert.equal((lib.values.splits[sp] as any).tree, undefined, 'flat: no tree');
   // c below b: b's pane split across.
   const below = lib.act('addToSplit', { tabId: c, splitId: sp, beside: b, side: 'bottom', windowId: 1 });
   assert.equal(below.ok, true);
@@ -103,10 +103,10 @@ test('split tree, library: a pane split across, stored with its tree; resized, t
   assert.equal(shown.item, c);
   // The inner node resized (its path), then the root.
   lib.act('resizeSplit', { splitId: sp, path: [1], ratios: [0.25, 0.75] });
-  assert.deepEqual(lib.values.splits[sp].tree.kids[1].ratios, [0.25, 0.75]);
+  assert.deepEqual((lib.values.splits[sp] as any).tree.kids[1].ratios, [0.25, 0.75]);
   assert.deepEqual(lib.values.splits[sp].ratios, [0.5, 0.125, 0.375]);
   lib.act('resizeSplit', { splitId: sp, ratios: [0.4, 0.6] });
-  assert.deepEqual(lib.values.splits[sp].tree.ratios, [0.4, 0.6]);
+  assert.deepEqual((lib.values.splits[sp] as any).tree.ratios, [0.4, 0.6]);
   assert.equal(lib.act('resizeSplit', { splitId: sp, path: [0], ratios: [1, 1] }).changes.length, 0, 'a leaf: nothing');
   // Turned: the inner node alone (it then runs its parent's way: merged), or the whole.
   const whole = structuredClone(lib.values);
@@ -121,13 +121,13 @@ test('split tree, library: a pane split across, stored with its tree; resized, t
   // Swapped: places traded, each keeping its size.
   lib.act('swapSplit', { splitId: sp, a: 0, b: 2 });
   assert.deepEqual(lib.values.splits[sp].panes, [c, b, a]);
-  assert.deepEqual(lib.values.splits[sp].tree.kids[0], c);
+  assert.deepEqual((lib.values.splits[sp] as any).tree.kids[0], c);
   // d beside a on its right: in a's node (it runs that way).
   lib.act('addToSplit', { tabId: d, splitId: sp, beside: a, side: 'right', windowId: 1 });
-  assert.deepEqual(lib.values.splits[sp].tree.kids[1], { axis: 'vertical', kids: [b, { axis: 'horizontal', kids: [a, d], ratios: [0.5, 0.5] }], ratios: [0.25, 0.75] });
+  assert.deepEqual((lib.values.splits[sp] as any).tree.kids[1], { axis: 'vertical', kids: [b, { axis: 'horizontal', kids: [a, d], ratios: [0.5, 0.5] }], ratios: [0.25, 0.75] });
   // Out: d (a's node of one goes), then b (the split flat again).
   lib.act('removeFromSplit', { tabId: d, windowId: 1 });
-  assert.deepEqual(lib.values.splits[sp].tree.kids[1], { axis: 'vertical', kids: [b, a], ratios: [0.25, 0.75] });
+  assert.deepEqual((lib.values.splits[sp] as any).tree.kids[1], { axis: 'vertical', kids: [b, a], ratios: [0.25, 0.75] });
   lib.act('removeFromSplit', { tabId: b, windowId: 1 });
   assert.deepEqual(lib.values.splits[sp], { spaceId: 'a', axis: 'horizontal', panes: [c, a], ratios: [0.4, 0.6] });
 });

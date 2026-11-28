@@ -6,6 +6,7 @@
 // too, some of which only they may run (BEHAVIOR_ONLY). Nothing here runs an
 // action: the runtime does, once it's checked against the state. An unknown
 // action or a bad argument is ignored and logged.
+import { MAX_SPLIT_PANES, pathOf } from '../../../extension/shared/split-tree.ts';
 import type { State } from '../../../types/margin';
 import { backgroundOf } from '../../../extension/shared/space-background.ts';
 
@@ -141,10 +142,10 @@ export const ACTIONS = Object.freeze({
   'split.add': 'tab',
   // (Its name in themes/README.md: the same action.)
   'split.addPane': 'tab',
-  // A sidebar row dropped on the page (ui/behaviors/split.ts dropPlace, docs/FLEX-SPLIT.md step 2): into the split
-  // shown (`split`) at a place (`at`) or in a pane's place (`replace`, that pane's index), else a new split with the
-  // item shown (`nextTo`) on that side (`at` 0: first) along `axis`.
-  'split.drop': Object.freeze({ tab: 'tab', split: 'split?', nextTo: 'tab?', at: Object.freeze([0, 1, 2, 3, 4]), replace: Object.freeze([null, 0, 1, 2, 3]), axis: Object.freeze(['horizontal', 'vertical']) }),
+  // A sidebar row dropped on the page (ui/behaviors/split.ts dropPlace, docs/FLEX-SPLIT.md steps 2, 3): into the split
+  // shown (`split`) beside its pane `pane` (its index among the split's panes) on `side`, or in that pane's place
+  // (`side` 'middle'); else a new split with the item shown (`nextTo`) on that side.
+  'split.drop': Object.freeze({ tab: 'tab', split: 'split?', nextTo: 'tab?', pane: 'pane-index?', side: Object.freeze(['left', 'right', 'top', 'bottom', 'middle']) }),
   // (A new Split View as the host's ⌃⇧= makes one: Arc's "+" New Split; only a host that gives the runtime `addSplit`.)
   'split.new': 'none',
   'split.open': 'split',
@@ -156,7 +157,7 @@ export const ACTIONS = Object.freeze({
   'split.swap': 'split',
   'split.toggleAxis': 'split',
   // A divider let go (ui/split-panes.ts): the split's panes' ratios, one each, saved.
-  'split.resize': Object.freeze({ split: 'split', ratios: 'ratios' }),
+  'split.resize': Object.freeze({ split: 'split', ratios: 'ratios', path: 'path' }),
   'window.close': 'none',
   'window.minimise': 'none',
   'window.fullscreen': 'none',
@@ -242,8 +243,12 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
     case 'hex': return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
-    // A split's ratios: 2–4 positive numbers (normalized where they're saved).
-    case 'ratios': return Array.isArray(v) && v.length >= 2 && v.length <= 4 && v.every((r) => typeof r === 'number' && Number.isFinite(r) && r > 0 && r <= 1);
+    // A split node's ratios: 2 to MAX_SPLIT_PANES positive numbers (normalized where they're saved).
+    case 'ratios': return Array.isArray(v) && v.length >= 2 && v.length <= MAX_SPLIT_PANES && v.every((r) => typeof r === 'number' && Number.isFinite(r) && r > 0 && r <= 1);
+    // A node of a split's tree: its kids' indexes from the root (none: the root).
+    case 'path': return pathOf(v) !== null;
+    // A pane's index among a split's panes.
+    case 'pane-index': return Number.isInteger(v) && v >= 0 && v < MAX_SPLIT_PANES;
     case 'theme': return isId(v) && !!ctx.hasTheme?.(v);
     // A space's background: one the model reads as one (extension/state/model.ts backgroundOf), as plain data.
     case 'background': return isPlainObject(v) && backgroundOf(v) !== null;
@@ -668,11 +673,16 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'split.add':
     case 'split.addPane': return send('addToSplit', { tabId: arg, windowId });
     case 'split.drop': {
-      // (The pane it takes the place of by its item, as the split in the state has it.)
-      const group = arg.split != null ? (state?.splits ?? []).find((g: { id: string }) => g.id === arg.split) : null;
-      const out = group && arg.replace != null ? group.panes[arg.replace] ?? null : null;
-      const where = arg.split != null ? { splitId: arg.split } : { nextTo: arg.nextTo, axis: arg.axis };
-      return send('addToSplit', { tabId: arg.tab, windowId, ...where, ...(out != null ? { replace: out } : { at: arg.at }) });
+      // (Into the split shown: its pane by its item, as the split in the state has it; beside it, or in its place.)
+      if (arg.split != null) {
+        const group = (state?.splits ?? []).find((g: { id: string }) => g.id === arg.split);
+        const target = group && arg.pane != null ? group.panes[arg.pane] ?? null : null;
+        const where = arg.side === 'middle' ? { replace: target } : { beside: target, side: arg.side };
+        return send('addToSplit', { tabId: arg.tab, windowId, splitId: arg.split, ...where });
+      }
+      // (A new split with the item shown, on that side.)
+      const axis = arg.side === 'top' || arg.side === 'bottom' ? 'vertical' : 'horizontal';
+      return send('addToSplit', { tabId: arg.tab, windowId, nextTo: arg.nextTo, axis, at: arg.side === 'left' || arg.side === 'top' ? 0 : 1 });
     }
     case 'split.open': return send('openSplit', { splitId: arg, windowId, ...show });
     case 'split.focus': return send('activateTab', { tabId: arg, ...(typeof arg === 'string' && windowId != null ? { windowId } : {}), ...show });
@@ -681,7 +691,7 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'split.closePane': return send('closeSplitPane', { tabId: arg, windowId });
     case 'split.swap': return send('swapSplit', { splitId: arg, windowId });
     case 'split.toggleAxis': return send('toggleSplitAxis', { splitId: arg, windowId });
-    case 'split.resize': return send('resizeSplit', { splitId: arg.split, ratios: arg.ratios, windowId });
+    case 'split.resize': return send('resizeSplit', { splitId: arg.split, ratios: arg.ratios, ...(arg.path?.length ? { path: arg.path } : {}), windowId });
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

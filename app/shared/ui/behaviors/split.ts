@@ -1,26 +1,33 @@
-// Split View's panes in Margin's own window (docs/PEEK-SPLIT.md §4): while the item in front is a pane of a split and
-// a hosted window is in the page area (Margin.app's `pageHosted`), Margin puts the split's boxes in the page's place:
-// `<m-page m-split="row|column" m-split-id>` holds one `<m-pane m-pane-id m-index [m-focused]>` per pane, flexed by the
-// split's ratios, with an `<m-divider m-index>` between each two. They're Margin's own elements (a theme can't write
-// them: ui/sanitize.ts), never drawn by the renderer's template; a theme styles them (the gap, the divider and its
-// hover and drag, the focused pane's ring) by its CSS. The view measures each pane with the page (ui/render.ts
-// View.measure: `split`, `panes`), and Margin.app places each pane's window at its box (HostedSession.swift).
+// Split View's panes in Margin's own window (docs/PEEK-SPLIT.md §4; a tree since docs/FLEX-SPLIT.md step 3): while the
+// item in front is a pane of a split and a hosted window is in the page area (Margin.app's `pageHosted`), Margin puts
+// the split's boxes in the page's place. `<m-page m-split="row|column" m-split-id>` is the split's root; each node of
+// its tree inside it is an `<m-split-group m-split="row|column" m-path>` (rows inside columns inside rows: `m-path` its
+// kids' indexes from the root, dotted); each pane is an `<m-pane m-pane-id m-index [m-focused]>` (its index among all
+// the panes, in order), each flexed by its node's ratios, with an `<m-divider m-index m-path m-axis>` between each two
+// kids of a node. They're Margin's own elements (a theme can't write them: ui/sanitize.ts), never drawn by the
+// renderer's template; a theme styles them (the gap, the divider and its hover and drag, the focused pane's ring) by
+// its CSS. The view measures each pane with the page (ui/render.ts View.measure: `split`, `panes`), and Margin.app
+// places each pane's window at its box (HostedSession.swift).
 //
 // - A pane is never laid out below Arc's least, PANE_FLOOR (220 pt, `minimumPaneWidth` in Arc 1.174.0's split view, also
-//   its least height stacked): its box's `min-width` (side by side) or `min-height` (stacked). Its window may need more:
-//   Margin.app shows it cut, its window at its own minimum, the rest hidden (docs/PEEK-SPLIT.md §4b, arrows to see it).
-// - A divider dragged: the two panes beside it change size with the pointer, at most once a frame, each stopping at
-//   220; within SNAP (14 pt) of an even split of the two, they're even (Arc's), with Margin's alignment haptic as it
-//   snaps when the drag is slow (Arc's: 120 pt/s at most); the page measured and reported that frame (the app's windows follow it live: `split.resizing`, as a
-//   drag of the sidebar's edge); let go, `split.resize` saves the ratios. Double-click: equal sizes. Focused (Tab),
-//   ←/→ (↑/↓ stacked) move it 2% (⇧: 10%), Home/End to its ends, Enter makes them equal; each saved.
+//   its least height stacked); a node no smaller than what's in it needs (`treeMin`): its box's `min-width` (in a row)
+//   or `min-height` (in a column). Its window may need more: Margin.app shows it cut, its window at its own minimum,
+//   the rest hidden (docs/PEEK-SPLIT.md §4b).
+// - A divider dragged: the two kids of its node beside it change size with the pointer, at most once a frame, each
+//   stopping at its least; within SNAP (14 pt) of an even split of the two, they're even (Arc's), with Margin's
+//   alignment haptic as it snaps when the drag is slow (Arc's: 120 pt/s at most); the page measured and reported that
+//   frame (the app's windows follow it live: `split.resizing`, as a drag of the sidebar's edge); let go, `split.resize`
+//   saves that node's ratios (its `path`). Double-click: equal sizes. Focused (Tab), ←/→ (↑/↓ in a column) move it 2%
+//   (⇧: 10%), Home/End to its ends, Enter makes them equal; each saved.
 // - Nothing per frame but a drag's own frames; nothing at all while no split is shown (no listener does any work).
-// - Stacked, the gap above a pane hosted in a Safari window (a web item's) is a band at least SAFARI_TOOLBAR tall
-//   (`<m-divider m-band>`, the pane's name in its `<m-band-title>`): Safari's full-screen toolbar window rests just
-//   above its window, and is drawn whenever its window was raised after the pane above (the focused pane is raised
-//   last); in the band it rests under Margin's opaque ground, never in the hole of the pane above. That toolbar window
-//   is never moved or parked (it broke Safari's full screen: DECISIONS.md). Side by side, the toolbars rest under
-//   Margin's top frame, as one window's does: no band.
+// - In a column, the gap above a pane hosted in a Safari window (a web item's) at the top of the kid below it is a band
+//   at least SAFARI_TOOLBAR tall (`<m-divider m-band>`, the pane's name in its `<m-band-title>`): Safari's full-screen
+//   toolbar window rests just above its window, and is drawn whenever its window was raised after the pane above (the
+//   focused pane is raised last); in the band it rests under Margin's opaque ground, never in the hole of the pane
+//   above. That toolbar window is never moved or parked (it broke Safari's full screen: DECISIONS.md). At the page's
+//   top, the toolbars rest under Margin's top frame, as one window's does: no band.
+// - Each pane a card of its own: its corners where it meets another pane masked in the theme's ground, the page card's
+//   own corners left to it (`--m-pane-clip`, `maskClip`).
 // - A pane whose window is opening beside the panes shown (Margin.app's `paneLoading`: its item): `<m-pane m-loading>`
 //   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
 //   stay shown and usable (never the page card's loader over the whole page area).
@@ -28,17 +35,19 @@
 //   display's edge, under the sidebar or under the pane beside it, docs/PEEK-SPLIT.md §4b) opens to fit its app
 //   (docs/FLEX-SPLIT.md step 1): after the pointer rests on it EXPAND_DWELL (Margin.app's `paneHover`, said as the
 //   pointer enters and leaves a cut pane), or at once when it's pressed (it becomes the focused pane); Settings'
-//   `splitExpand` 'click': on a press only. It gets its app's minimum along the axis (`expandSizes`), the others fold
-//   (`m-pane[m-folded]`, each with Margin's `<m-pane-card>`: `<m-pane-icon>` and `<m-pane-name>`, over the app's window
-//   blurred behind it by Margin.app), moving there over EXPAND_TIME through the drag's own path (`split.resizing`). A
-//   folded card takes the pointer (`hitRects`): resting on one opens it, pressing one opens and focuses it. The pointer
-//   resting on Margin's own UI outside the page EXPAND_LEAVE puts the split back (hover only); a press on a pane that
-//   fits puts it back (click only); a divider dragged keeps the sizes shown. The ratios are never saved for it.
-// - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
-//   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
-//   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
-//   (`floor`, behaviors/resize.ts).
+//   `splitExpand` 'click': on a press only. In each node on its way from the root, its kid gets its app's minimum along
+//   that node's axis (`expandSizes`), the others fold (`m-pane[m-folded]`, each with Margin's `<m-pane-card>`:
+//   `<m-pane-icon>` and `<m-pane-name>`, over the app's window blurred behind it by Margin.app), moving there over
+//   EXPAND_TIME through the drag's own path (`split.resizing`). A folded card takes the pointer (`hitRects`): resting on
+//   one opens it, pressing one opens and focuses it. The pointer resting on Margin's own UI outside the page
+//   EXPAND_LEAVE puts the split back (hover only); a press on a pane that fits puts it back (click only); a divider
+//   dragged keeps the sizes shown. The ratios are never saved for it.
+// - Adding a pane that can't fit (every pane's least size and the gaps, bands counted, more than the page area, either
+//   way): refused with a toast before anything is opened (`refusesAdd`, `refusesDrop`, runtime.ts dispatch); so is
+//   turning the split (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit (`floor`,
+//   behaviors/resize.ts).
 import { frontItemOf } from '../../../../extension/shared/front-item.ts';
+import { besideLeaf, mapLeaves, MAX_SPLIT_PANES, treeOf, turned, type SplitKid, type SplitNode, type SplitSide } from '../../../../extension/shared/split-tree.ts';
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { checkIconUrl } from '../sanitize.ts';
@@ -46,7 +55,7 @@ import { checkIconUrl } from '../sanitize.ts';
 /** The smallest a pane is laid out (Margin's points): Arc's split view's `minimumPaneWidth`, 220, its least height
  *  stacked too (read from Arc 1.174.0's binary, 2026-11-21). */
 export const PANE_FLOOR = Object.freeze({ width: 220, height: 220 });
-/** A folded pane's least size along the split's axis while another pane is opened to fit its app (pt): room for its
+/** A folded pane's least size along its node's axis while another pane is opened to fit its app (pt): room for its
  *  card's icon and a short name (docs/FLEX-SPLIT.md step 1). */
 export const PANE_FOLD = 64;
 /** How long the pointer rests on a cut pane (or a folded one) before it opens (ms; the prototype's, Arc's kind of
@@ -56,7 +65,7 @@ export const EXPAND_DWELL = 300;
 export const EXPAND_LEAVE = 450;
 /** A pane's opening or the split's going back, eased out (ms). */
 export const EXPAND_TIME = 200;
-/** A divider dragged within this of an even split of its two panes: even (Arc's, pt). */
+/** A divider dragged within this of an even split of its two kids: even (Arc's, pt). */
 export const SNAP = 14;
 /** The fastest a drag snaps with the haptic (Arc's, pt/s). */
 export const SNAP_HAPTIC_SPEED = 120;
@@ -72,6 +81,7 @@ type PaneCut = { window: number };
 const BIG_STEP = 0.1;
 
 type Split = NonNullable<ViewModel['split']>;
+type Axis = 'horizontal' | 'vertical';
 
 /** The app a pane's window is of, as Margin.app names its known minimums (`appMin`): an app's bundle id, `web` for a
  *  web page (Safari's, the one browser hosted beside others). */
@@ -87,8 +97,8 @@ export function paneFloors(split: { axis: string, panes: readonly unknown[] }): 
 }
 
 /**
- * The ratios after divider `index` moved `delta` px: the two panes beside it, each kept at its floor at least, the
- * others as they are. `sizes`: every pane's size now (px), `floors` each one's least.
+ * The ratios after divider `index` moved `delta` px: the two kids beside it, each kept at its floor at least, the
+ * others as they are. `sizes`: every kid's size now (px), `floors` each one's least.
  */
 export function dragRatios(sizes: number[], floors: number[], index: number, delta: number, snap = 0): number[] {
   const total = sizes.reduce((a, b) => a + b, 0);
@@ -106,9 +116,9 @@ export function dragRatios(sizes: number[], floors: number[], index: number, del
 }
 
 /**
- * Each pane's size with pane `index` opened to fit its app (docs/FLEX-SPLIT.md step 1): it gets its app's minimum along
- * the axis (`needs`, null: not known), at most the room less PANE_FOLD for each other pane; the others share what's
- * left by their sizes now, none below PANE_FOLD. `sizes`: each pane's size now (px, the gaps not counted). Nothing
+ * Each kid's size with kid `index` opened to fit its app (docs/FLEX-SPLIT.md step 1): it gets its app's minimum along
+ * the axis (`needs`, null: not known), at most the room less PANE_FOLD for each other kid; the others share what's
+ * left by their sizes now, none below PANE_FOLD. `sizes`: each kid's size now (px, the gaps not counted). Nothing
  * changes when it fits already, its need isn't known, or there's nothing to share.
  */
 export function expandSizes(sizes: number[], needs: (number | null | undefined)[], index: number, fold = PANE_FOLD): number[] {
@@ -135,74 +145,66 @@ export function expandSizes(sizes: number[], needs: (number | null | undefined)[
   }
 }
 
-/** A pane's part at each end along the split's axis where a row dropped goes beside it (the rest: in its place). */
+/** A pane's part at each edge where a row dropped goes beside it (the rest: in its place). */
 export const DROP_EDGE = 0.25;
-/** The thickness of the mark where a row dropped goes between two panes (px). */
-export const DROP_BAR = 6;
 export type DropBox = { left: number, top: number, width: number, height: number };
+export type DropSide = SplitSide | 'middle';
 /**
- * Where a row dropped at `x`, `y` goes (docs/FLEX-SPLIT.md step 2), from the boxes shown (page pixels) and the split's
- * axis: null, one page alone (`boxes` its box): beside it on its nearest edge (`side`: a new split, its axis, the
- * dropped one first for the left or top, `rect` the half it takes); a split's panes in order: a pane's ends
- * (DROP_EDGE each) and the gap between two are `between` (`at`, its place among the panes; `rect` a DROP_BAR mark on
- * that edge, within the panes), its middle is `replace` (`at` that pane; `rect` its box). `canAdd` false (a split that
- * can't take one more): every place in a pane its `replace`, the gaps none. Null: not over the boxes.
+ * Where a row dropped at `x`, `y` goes (docs/FLEX-SPLIT.md steps 2, 3), from the panes' boxes (page pixels, in order):
+ * one page alone (`alone`): beside it on its nearest edge (`side`: a new split, the half it takes); a split's panes: a
+ * pane's edges (DROP_EDGE each, the nearest) are `beside` it on that side (`rect` the half of it the dropped one
+ * takes), its middle is `replace` (`side` 'middle'; `rect` its box); in a gap between panes, beside the nearest pane on
+ * the side facing the point. `canAdd` false (a split that can't take one more): every place in a pane its `replace`,
+ * the gaps none. Null: not over the boxes.
  */
-export function dropPlace(boxes: DropBox[], axis: 'horizontal' | 'vertical' | null, x: number, y: number, canAdd = true): { kind: 'side' | 'between' | 'replace', at: number, axis: 'horizontal' | 'vertical', rect: DropBox } | null {
+export function dropPlace(boxes: DropBox[], alone: boolean, x: number, y: number, canAdd = true): { kind: 'side' | 'beside' | 'replace', pane: number, side: DropSide, rect: DropBox } | null {
   if (!boxes.length) return null;
   const inside = (b: DropBox) => x >= b.left && x <= b.left + b.width && y >= b.top && y <= b.top + b.height;
-  if (axis == null) {
+  const half = (b: DropBox, side: SplitSide): DropBox => side === 'left' ? { ...b, width: b.width / 2 }
+    : side === 'right' ? { ...b, left: b.left + b.width / 2, width: b.width / 2 }
+      : side === 'top' ? { ...b, height: b.height / 2 } : { ...b, top: b.top + b.height / 2, height: b.height / 2 };
+  const nearest = (b: DropBox): { side: SplitSide, d: number } => {
+    const fx = b.width > 0 ? (x - b.left) / b.width : 0.5;
+    const fy = b.height > 0 ? (y - b.top) / b.height : 0.5;
+    const all: [SplitSide, number][] = [['left', fx], ['right', 1 - fx], ['top', fy], ['bottom', 1 - fy]];
+    const [side, d] = all.reduce((m, e) => (e[1] < m[1] ? e : m));
+    return { side, d };
+  };
+  if (alone) {
     const b = boxes[0];
     if (!inside(b) || !(b.width > 0) || !(b.height > 0)) return null;
-    const fx = (x - b.left) / b.width;
-    const fy = (y - b.top) / b.height;
-    const edges = [fx, 1 - fx, fy, 1 - fy];
-    const e = edges.indexOf(Math.min(...edges));
-    const across = e < 2;
-    const half = across ? { width: b.width / 2, height: b.height } : { width: b.width, height: b.height / 2 };
-    const first = e % 2 === 0;
-    const rect = { left: across && !first ? b.left + b.width / 2 : b.left, top: !across && !first ? b.top + b.height / 2 : b.top, ...half };
-    return { kind: 'side', at: first ? 0 : 1, axis: across ? 'horizontal' : 'vertical', rect };
+    const { side } = nearest(b);
+    return { kind: 'side', pane: 0, side, rect: half(b, side) };
   }
-  const along = axis !== 'vertical';
-  const start = (b: DropBox) => (along ? b.left : b.top);
-  const size = (b: DropBox) => (along ? b.width : b.height);
-  const end = (b: DropBox) => start(b) + size(b);
-  const c = along ? x : y;
-  const across = along ? y : x;
-  // (The panes' span across the axis: the union of theirs.)
-  const lo = Math.min(...boxes.map((b) => (along ? b.top : b.left)));
-  const hi = Math.max(...boxes.map((b) => (along ? b.top + b.height : b.left + b.width)));
-  const first = start(boxes[0]);
-  const last = end(boxes[boxes.length - 1]);
-  if (across < lo || across > hi || c < first || c > last) return null;
-  const between = (at: number) => {
-    const edge = at === 0 ? first : at === boxes.length ? last : (end(boxes[at - 1]) + start(boxes[at])) / 2;
-    const s = Math.max(first, Math.min(last - DROP_BAR, edge - DROP_BAR / 2));
-    const rect = along ? { left: s, top: lo, width: DROP_BAR, height: hi - lo } : { left: lo, top: s, width: hi - lo, height: DROP_BAR };
-    return { kind: 'between' as const, at, axis, rect };
-  };
-  for (let i = 0; i < boxes.length; i++) {
+  const i = boxes.findIndex(inside);
+  if (i >= 0) {
     const b = boxes[i];
-    if (c < start(b) || c > end(b)) continue;
-    const f = size(b) > 0 ? (c - start(b)) / size(b) : 0.5;
-    if (canAdd && f < DROP_EDGE) return between(i);
-    if (canAdd && f > 1 - DROP_EDGE) return between(i + 1);
-    return { kind: 'replace', at: i, axis, rect: { ...b } };
+    const { side, d } = nearest(b);
+    if (canAdd && d < DROP_EDGE) return { kind: 'beside', pane: i, side, rect: half(b, side) };
+    return { kind: 'replace', pane: i, side: 'middle', rect: { ...b } };
   }
-  // (In a gap between two.)
+  // (In a gap: within the panes' bounds, beside the nearest one on the side facing the point.)
   if (!canAdd) return null;
-  const next = boxes.findIndex((b) => start(b) > c);
-  return next > 0 ? between(next) : null;
+  const left = Math.min(...boxes.map((b) => b.left));
+  const top = Math.min(...boxes.map((b) => b.top));
+  const right = Math.max(...boxes.map((b) => b.left + b.width));
+  const bottom = Math.max(...boxes.map((b) => b.top + b.height));
+  if (x < left || x > right || y < top || y > bottom) return null;
+  const away = (b: DropBox) => Math.hypot(Math.max(b.left - x, 0, x - (b.left + b.width)), Math.max(b.top - y, 0, y - (b.top + b.height)));
+  let j = 0;
+  boxes.forEach((b, k) => { if (away(b) < away(boxes[j])) j = k; });
+  const b = boxes[j];
+  const side: SplitSide = x < b.left ? 'left' : x > b.left + b.width ? 'right' : y < b.top ? 'top' : 'bottom';
+  return { kind: 'beside', pane: j, side, rect: half(b, side) };
 }
 
-/** Equal ratios for `n` panes. */
+/** Equal ratios for `n` kids. */
 export const equalRatios = (n: number) => Array.from({ length: n }, () => 1 / n);
 
 /** A pane hosted in a Safari window: a web item's (not a Mac app's, nor one of Margin's own pages). */
 export const inSafari = (pane: { url?: string | null }) => { const u = String(pane?.url ?? ''); return u !== '' && !/^(app|margin):/i.test(u); };
-/** Each divider's size along the axis (px): stacked, the band above a pane in Safari (its toolbar's height, or the gap
- *  if that's more), else the gap. */
+/** Each divider's size along the axis (px) of a flat split: stacked, the band above a pane in Safari (its toolbar's
+ *  height, or the gap if that's more), else the gap. */
 export function dividerSizes(split: { axis: string, panes: { url?: string | null }[] }, gap = SPLIT_GAP, band = SAFARI_TOOLBAR): number[] {
   const column = split.axis === 'vertical';
   return split.panes.slice(1).map((p) => (column && inSafari(p) ? Math.max(gap, band) : gap));
@@ -213,6 +215,70 @@ export function dividerSizes(split: { axis: string, panes: { url?: string | null
 export function panesFit(floors: number[], room: number, gap: number | number[] = SPLIT_GAP) {
   const gaps = Array.isArray(gap) ? gap.reduce((a, b) => a + b, 0) : gap * Math.max(0, floors.length - 1);
   return floors.reduce((a, b) => a + b, 0) + gaps <= room + 0.5;
+}
+
+/** The panes along a kid's top edge (a leaf itself; a row's every kid's; a column's first kid's). */
+export function topPanes(k: SplitKid): string[] {
+  if (typeof k === 'string') return [k];
+  return k.axis === 'horizontal' ? k.kids.flatMap(topPanes) : topPanes(k.kids[0]);
+}
+
+/** Each divider's size in node `n` (px): in a column, a band above a kid with a Safari pane at its top, else the gap. */
+export function nodeDividers(n: SplitNode, safari: (id: string) => boolean, gap = SPLIT_GAP, band = SAFARI_TOOLBAR): number[] {
+  return n.kids.slice(1).map((k) => (n.axis === 'vertical' && topPanes(k).some(safari) ? Math.max(gap, band) : gap));
+}
+
+/**
+ * The least size of `k` along `axis` (px): a pane's PANE_FLOOR; a node running that way its kids' and its dividers'
+ * together, one across it its largest kid's.
+ */
+export function treeMin(k: SplitKid, axis: Axis, safari: (id: string) => boolean = () => false, gap = SPLIT_GAP): number {
+  if (typeof k === 'string') return axis === 'horizontal' ? PANE_FLOOR.width : PANE_FLOOR.height;
+  const kids = k.kids.map((c) => treeMin(c, axis, safari, gap));
+  if (k.axis !== axis) return Math.max(...kids);
+  return kids.reduce((a, b) => a + b, 0) + nodeDividers(k, safari, gap).reduce((a, b) => a + b, 0);
+}
+
+/** Which of the page's edges each pane touches, by its id. */
+export function paneEdges(tree: SplitNode): Map<string, { top: boolean, right: boolean, bottom: boolean, left: boolean }> {
+  const out = new Map<string, { top: boolean, right: boolean, bottom: boolean, left: boolean }>();
+  const walk = (k: SplitKid, e: { top: boolean, right: boolean, bottom: boolean, left: boolean }) => {
+    if (typeof k === 'string') { out.set(k, e); return; }
+    const last = k.kids.length - 1;
+    k.kids.forEach((kid, i) => walk(kid, k.axis === 'horizontal'
+      ? { ...e, left: e.left && i === 0, right: e.right && i === last }
+      : { ...e, top: e.top && i === 0, bottom: e.bottom && i === last }));
+  };
+  walk(tree, { top: true, right: true, bottom: true, left: true });
+  return out;
+}
+
+/**
+ * A pane's mask's clip (its `::before`, the theme's ground painted outside its rounded corners): the corners where it
+ * meets another pane, never the page card's own (a corner on two of the page's edges). Each part on a whole CSS pixel
+ * (round()): on a fraction of a device pixel WebKit drew one column of the ground down the whole pane (2026-11-28,
+ * tests/theme/pane-mask-seam).
+ */
+export function maskClip(e: { top: boolean, right: boolean, bottom: boolean, left: boolean }): string {
+  const H = 'round(up,50%,1px)';
+  const masked = { tl: !(e.top && e.left), tr: !(e.top && e.right), br: !(e.bottom && e.right), bl: !(e.bottom && e.left) };
+  const n = Object.values(masked).filter(Boolean).length;
+  if (n === 4) return 'inset(0)';
+  if (n === 2) {
+    if (masked.tr && masked.br) return `inset(0 0 0 ${H})`;
+    if (masked.tl && masked.bl) return `inset(0 ${H} 0 0)`;
+    if (masked.bl && masked.br) return `inset(${H} 0 0 0)`;
+    if (masked.tl && masked.tr) return `inset(0 0 ${H} 0)`;
+  }
+  // (Three corners: all but the one on the page card's corner.)
+  const keep = !masked.tl ? 'tl' : !masked.tr ? 'tr' : !masked.br ? 'br' : 'bl';
+  const corners: Record<string, string> = {
+    tl: `polygon(${H} 0,100% 0,100% 100%,0 100%,0 ${H},${H} ${H})`,
+    tr: `polygon(0 0,${H} 0,${H} ${H},100% ${H},100% 100%,0 100%)`,
+    br: `polygon(0 0,100% 0,100% ${H},${H} ${H},${H} 100%,0 100%)`,
+    bl: `polygon(0 0,100% 0,100% 100%,${H} 100%,${H} ${H},0 ${H})`,
+  };
+  return corners[keep];
 }
 
 /**
@@ -231,20 +297,23 @@ export function nextSplitPane(state: any, vm: ViewModel | null): number | string
 
 const round4 = (v: number) => Math.round(v * 10000) / 10000;
 const sameRatios = (a: number[] | null | undefined, b: number[] | null | undefined) => !!a && !!b && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.002);
+const keyOf = (path: readonly number[]) => path.join('.');
 
 export function installSplit(rt: Rt) {
   const { view, doc } = rt;
-  let drag: { el: Element, pointerId: number, index: number, start: number, sizes: number[], floors: number[], ratios: number[], told: boolean, split: string, snapped: boolean, at: number, pos: number, speed: number } | null = null;
+  // A divider dragged: its node (`key`, its path dotted), the index of the kid before it, the kids' sizes and floors.
+  let drag: { el: Element, pointerId: number, key: string, path: number[], axis: 'row' | 'column', index: number, start: number, sizes: number[], floors: number[], ratios: number[], told: boolean, split: string, snapped: boolean, at: number, pos: number, speed: number } | null = null;
   // The ratios drawn ahead of the state: a drag's, then the ones just saved until the state has them (or 2 s).
-  let held: { split: string, ratios: number[], until: number } | null = null;
+  let held: { split: string, key: string, ratios: number[], until: number } | null = null;
   let frame = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
+  let shape = '';
   // A pane opened to fit its app (docs/FLEX-SPLIT.md step 1): the split's id and the pane's item; null: none.
   let opened: { split: string, item: string } | null = null;
-  // The move to or from it under way: each pane's size along the axis from and to (px), the panes folded at its end,
-  // when it began (the page's clock, ms).
-  let motion: { split: string, from: number[], to: number[], folded: boolean[], t0: number, frame: number, timer: ReturnType<typeof setTimeout> | null } | null = null;
+  // The move to or from it under way: each node's kids' sizes from and to (px, by the node's key), the panes folded at
+  // its end, when it began (the page's clock, ms).
+  let motion: { split: string, from: Map<string, number[]>, to: Map<string, number[]>, folded: Set<string>, t0: number, frame: number, timer: ReturnType<typeof setTimeout> | null } | null = null;
   // The pane the pointer rests on, waiting EXPAND_DWELL to open; the wait to fold back once it's on Margin's own UI.
   let dwell: { item: string, timer: ReturnType<typeof setTimeout> } | null = null;
   let leave: ReturnType<typeof setTimeout> | null = null;
@@ -256,7 +325,6 @@ export function installSplit(rt: Rt) {
   let hoverSeen: number | null = null;
 
   const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, paneCuts?: Record<string, PaneCut>, paneHover?: number | null, note?: (text: string) => void };
-  const floorsOf = (split: { axis: string, panes: readonly unknown[] }) => paneFloors(split);
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
   const shown = (vm: ViewModel | null = rt.vm): Split | null => {
@@ -264,27 +332,68 @@ export function installSplit(rt: Rt) {
     if (!h.appWindow || !h.pageHosted || !vm?.split || vm.window?.pageOutside) return null;
     return vm.split.panes.length >= 2 ? vm.split : null;
   };
-  const panesOf = (el: HTMLElement) => [...el.children].filter((c) => c.localName === 'm-pane') as HTMLElement[];
-  const dividersOf = (el: HTMLElement) => [...el.children].filter((c) => c.localName === 'm-divider') as HTMLElement[];
-  const row = (split: Split) => split.axis !== 'vertical';
+  // Its tree (a flat split's: one node of its panes).
+  const treeOfSplit = (split: Split): SplitNode => split.tree ?? { axis: split.axis, kids: split.panes.map((p) => String(p.id)), ratios: split.panes.map((p) => p.ratio) };
+  const paneById = (split: Split, id: string) => split.panes.find((p) => String(p.id) === id) ?? null;
+  const safariOf = (split: Split) => (id: string) => { const p = paneById(split, id); return !!p && inSafari(p); };
+
+  // ---- the drawn tree: a node's element, its kids', its dividers' ----
+
+  const groupEl = (key: string): HTMLElement | null => {
+    const el = page();
+    if (!el || key === '') return el;
+    return el.querySelector(`m-split-group[m-path="${key}"]`) as HTMLElement | null;
+  };
+  const kidsOf = (g: Element) => [...g.children].filter((c) => c.localName === 'm-pane' || c.localName === 'm-split-group') as HTMLElement[];
+  const dividersOf = (g: Element) => [...g.children].filter((c) => c.localName === 'm-divider') as HTMLElement[];
+  const allPanes = (el: Element) => [...el.querySelectorAll('m-pane')] as HTMLElement[];
+  const paneEl = (id: string) => { const el = page(); return el ? allPanes(el).find((p) => p.getAttribute('m-pane-id') === id) ?? null : null; };
+  // The nodes in order (root first), each with its path.
+  function nodesOf(tree: SplitNode): { path: number[], key: string, node: SplitNode }[] {
+    const out: { path: number[], key: string, node: SplitNode }[] = [];
+    const walk = (n: SplitNode, path: number[]) => {
+      out.push({ path, key: keyOf(path), node: n });
+      n.kids.forEach((k, i) => { if (typeof k !== 'string') walk(k, [...path, i]); });
+    };
+    walk(tree, []);
+    return out;
+  }
+  // The nodes from the root down to pane `id`, each with the index of its kid on the way; null: not a pane of it.
+  function chainTo(tree: SplitNode, id: string): { key: string, node: SplitNode, index: number }[] | null {
+    const walk = (n: SplitNode, path: number[]): { key: string, node: SplitNode, index: number }[] | null => {
+      for (let i = 0; i < n.kids.length; i++) {
+        const k = n.kids[i];
+        if (k === id) return [{ key: keyOf(path), node: n, index: i }];
+        if (typeof k !== 'string') { const rest = walk(k, [...path, i]); if (rest) return [{ key: keyOf(path), node: n, index: i }, ...rest]; }
+      }
+      return null;
+    };
+    return walk(tree, []);
+  }
+  const leavesIn = (k: SplitKid): string[] => (typeof k === 'string' ? [k] : k.kids.flatMap(leavesIn));
+  const along = (axis: Axis) => (axis === 'horizontal' ? 'row' : 'column');
   // The theme's gap: a plain divider's size (a band is the toolbar's), else its `--m-split-gap`.
   const gapOf = (el: HTMLElement) => {
-    const d = dividersOf(el).find((x) => !x.hasAttribute('m-band'));
+    const d = [...el.querySelectorAll('m-divider')].find((x) => !x.hasAttribute('m-band')) as HTMLElement | undefined;
     if (!d) {
       const v = parseFloat(rt.win.getComputedStyle(el).getPropertyValue('--m-split-gap'));
       return Number.isFinite(v) && v > 0 ? v : SPLIT_GAP;
     }
     const b = d.getBoundingClientRect();
-    return el.getAttribute('m-split') === 'column' ? b.height : b.width;
+    return d.getAttribute('m-axis') === 'column' ? b.height : b.width;
   };
+  // A kid's least size along its node's axis (px).
+  const floorOf = (split: Split, kid: SplitKid, axis: Axis, gap: number) => treeMin(kid, axis, safariOf(split), gap);
+  // Each kid's size along a node's axis now (px), in order.
+  const sizesOf = (key: string, axis: Axis) => { const g = groupEl(key); return g ? kidsOf(g).map((k) => { const b = k.getBoundingClientRect(); return axis === 'horizontal' ? b.width : b.height; }) : []; };
 
-  function ratiosFor(split: Split): number[] {
-    if (drag && drag.split === split.id) return drag.ratios;
-    if (held && held.split === split.id) {
-      if (Date.now() < held.until && !sameRatios(held.ratios, split.panes.map((p) => p.ratio))) return held.ratios;
+  function ratiosFor(split: Split, key: string, node: SplitNode): number[] {
+    if (drag && drag.split === split.id && drag.key === key) return drag.ratios;
+    if (held && held.split === split.id && held.key === key) {
+      if (Date.now() < held.until && !sameRatios(held.ratios, node.ratios)) return held.ratios;
       held = null;
     }
-    return split.panes.map((p) => p.ratio);
+    return node.ratios;
   }
 
   // A pane's own loader while its window opens (`name`: what's opening; null: none): Margin's elements, its words.
@@ -308,8 +417,8 @@ export function installSplit(rt: Rt) {
     if (label.textContent !== text) label.textContent = text;
   }
 
-  // A divider as the band above a Safari pane (stacked): `m-band`, at least the toolbar's height, the pane's name in it
-  // (Margin's own text, never markup); `pane` null: a plain divider again.
+  // A divider as the band above a Safari pane (in a column): `m-band`, at least the toolbar's height, the pane's name in
+  // it (Margin's own text, never markup); `pane` null: a plain divider again.
   function band(d: HTMLElement, pane: Split['panes'][number] | null) {
     let title = [...d.children].find((c) => c.localName === 'm-band-title') as HTMLElement | undefined;
     if (!pane) {
@@ -331,35 +440,46 @@ export function installSplit(rt: Rt) {
   // How a pane opens: on the pointer's rest (the default) or on a press only (Settings' `splitExpand`).
   const mode = () => ((rt.state as any)?.settings?.splitExpand === 'click' ? 'click' : 'hover');
   const clock = () => rt.win.performance?.now?.() ?? Date.now();
-  // Each pane's app minimum along the axis (Margin.app's `paneMin`, by its item), null: not known.
-  const needsOf = (split: Split) => split.panes.map((p) => { const m = host().paneMinimums?.[String(p.id)]; return m ? (row(split) ? m[0] : m[1]) : null; });
-  // Each pane's size at the split's own ratios in the room the panes have now (px).
-  const restOf = (split: Split, el: HTMLElement) => {
-    const room = sizes(el, split).reduce((a, b) => a + b, 0);
-    const r = ratiosFor(split);
+  // A pane's app minimum along `axis` (Margin.app's `paneMin`, by its item), null: not known.
+  const needOf = (id: string, axis: Axis) => { const m = host().paneMinimums?.[id]; return m ? (axis === 'horizontal' ? m[0] : m[1]) : null; };
+  // A node's kids' sizes at its own ratios in the room they have now (px).
+  const restOf = (split: Split, key: string, node: SplitNode) => {
+    const room = sizesOf(key, node.axis).reduce((a, b) => a + b, 0);
+    const r = ratiosFor(split, key, node);
     const sum = r.reduce((a, b) => a + b, 0) || 1;
-    return split.panes.map((_, i) => room * (r[i] ?? 0) / sum);
+    return node.kids.map((_, i) => room * (r[i] ?? 0) / sum);
   };
-  // The sizes with `item` opened, and the panes folded (smaller than their app needs, beside it); null: it can't be
-  // opened (not a pane, its need not known, or it fits already).
-  function openedSizes(split: Split, el: HTMLElement, item: string): { sizes: number[], folded: boolean[] } | null {
-    const index = split.panes.findIndex((p) => String(p.id) === item);
-    if (index < 0) return null;
-    const rest = restOf(split, el);
-    const needs = needsOf(split);
-    const to = expandSizes(rest, needs, index);
-    if (to.every((v, i) => Math.abs(v - rest[i]) < 0.5)) return null;
-    return { sizes: to, folded: to.map((v, i) => i !== index && needs[i] != null && v < (needs[i] as number) - 1) };
+  // The sizes with `item` opened, by node (those that change), and the panes folded (smaller than their app needs along
+  // a node's axis, beside it); null: it can't be opened (not a pane, its need not known, or it fits already).
+  function openedSizes(split: Split, item: string): { sizes: Map<string, number[]>, folded: Set<string> } | null {
+    const tree = treeOfSplit(split);
+    const chain = chainTo(tree, item);
+    if (!chain) return null;
+    const sizes = new Map<string, number[]>();
+    const folded = new Set<string>();
+    for (const { key, node, index } of chain) {
+      const rest = restOf(split, key, node);
+      const to = expandSizes(rest, node.kids.map((_, i) => (i === index ? needOf(item, node.axis) : null)), index);
+      if (to.every((v, i) => Math.abs(v - rest[i]) < 0.5)) continue;
+      sizes.set(key, to);
+      node.kids.forEach((k, i) => {
+        if (i === index) return;
+        for (const q of leavesIn(k)) { const n = needOf(q, node.axis); if (n != null && to[i] < n - 1) folded.add(q); }
+      });
+    }
+    return sizes.size ? { sizes, folded } : null;
   }
   // What's drawn now instead of the ratios: the move's frame, else the opened pane's sizes; null: the ratios.
-  function openView(split: Split, el: HTMLElement): { sizes: number[], folded: boolean[] } | null {
-    if (motion && motion.split === split.id && motion.from.length === split.panes.length && motion.to.length === split.panes.length) {
+  function openView(split: Split): { sizes: Map<string, number[]>, folded: Set<string> } | null {
+    if (motion && motion.split === split.id) {
       const k = Math.min(1, Math.max(0, (clock() - motion.t0) / EXPAND_TIME));
       const e = 1 - Math.pow(1 - k, 3);
-      return { sizes: motion.from.map((f, i) => f + (motion!.to[i] - f) * e), folded: motion.folded };
+      const sizes = new Map<string, number[]>();
+      for (const [key, to] of motion.to) { const from = motion.from.get(key) ?? to; sizes.set(key, from.map((f, i) => f + ((to[i] ?? f) - f) * e)); }
+      return { sizes, folded: motion.folded };
     }
     if (!opened || opened.split !== split.id || drag) return null;
-    const o = openedSizes(split, el, opened.item);
+    const o = openedSizes(split, opened.item);
     if (!o) opened = null;
     return o;
   }
@@ -367,21 +487,31 @@ export function installSplit(rt: Rt) {
   function openPane(item: string | null) {
     cancelDwell();
     const split = shown();
-    const el = page();
-    if (!split || !el || drag) return;
+    if (!split || !page() || drag) return;
     const was = opened && opened.split === split.id ? opened.item : null;
     if (item === was) return;
-    const target = item ? openedSizes(split, el, item) : null;
+    const target = item ? openedSizes(split, item) : null;
     if (item && !target) return;
-    const from = sizes(el, split);
+    const tree = treeOfSplit(split);
+    // (Every node that moves: those the target changes, and those the one open now had changed.)
+    const nodes = nodesOf(tree);
+    const before = motion?.to ?? (was ? openedSizes(split, was)?.sizes : null) ?? new Map<string, number[]>();
+    const keys = new Set([...(target?.sizes.keys() ?? []), ...before.keys()]);
+    const from = new Map<string, number[]>();
+    const to = new Map<string, number[]>();
+    for (const { key, node } of nodes) {
+      if (!keys.has(key)) continue;
+      from.set(key, sizesOf(key, node.axis));
+      to.set(key, target?.sizes.get(key) ?? restOf(split, key, node));
+    }
     opened = item ? { split: split.id, item } : null;
-    const to = target ? target.sizes : restOf(split, el);
-    const folded = target ? target.folded : split.panes.map(() => false);
+    const folded = target ? target.folded : new Set<string>();
     if (motion) { rt.win.cancelAnimationFrame(motion.frame); rt.cancel(motion.timer); }
     const told = !!motion;
     motion = { split: split.id, from, to, folded, t0: clock(), frame: 0, timer: null };
     if (!told) tell(true);
-    host().note?.(`split: ${item ? `${item} opened to fit its app` : 'back at its sizes'} (${from.map(Math.round).join('/')} → ${to.map(Math.round).join('/')})`);
+    const said = [...to.entries()].map(([key, t]) => `${key || 'root'} ${(from.get(key) ?? []).map(Math.round).join('/')} → ${t.map(Math.round).join('/')}`).join('; ');
+    host().note?.(`split: ${item ? `${item} opened to fit its app` : 'back at its sizes'} (${said})`);
     step();
   }
   // One frame of the move: drawn and measured (the windows follow it); its last puts the windows in place.
@@ -410,8 +540,8 @@ export function installSplit(rt: Rt) {
   const lit = (e: Element) => e.hasAttribute('m-hover') || (!!realOver && e.contains(realOver));
   // Where the pointer is as the page sees it: a folded pane's card (its item), the page's place, Margin's own UI
   // elsewhere ('ui'), else null (through a hole into an app, or out of the window).
-  function pointerPlace(split: Split, el: HTMLElement): string | null {
-    for (const p of panesOf(el)) if (p.hasAttribute('m-folded') && lit(p)) return p.getAttribute('m-pane-id');
+  function pointerPlace(el: HTMLElement): string | null {
+    for (const p of allPanes(el)) if (p.hasAttribute('m-folded') && lit(p)) return p.getAttribute('m-pane-id');
     if (lit(el)) return 'page';
     // (Over the page's place, whatever is under it there: its panes and the page take no pointer, so the element a real
     // move names is the theme's under them. Chromium names one under a still pointer as a pane opens beneath it.)
@@ -430,10 +560,10 @@ export function installSplit(rt: Rt) {
     // (The cut pane Margin.app says the pointer is over, a folded one too: the window server's word, over the page's.)
     const hover = host().paneHover ?? null;
     const cutItem = hover == null ? null : Object.entries(host().paneCuts ?? {}).find(([, c]) => c.window === hover)?.[0] ?? null;
-    const place = cutItem != null ? null : pointerPlace(split, el);
+    const place = cutItem != null ? null : pointerPlace(el);
     const want = cutItem ?? (place && place !== 'page' && place !== 'ui' ? place : null);
     // (What resting there does: opens it; a folded pane that fits at the split's own sizes, the split back to them.)
-    const to = want && want !== (isOpen ? opened!.item : null) ? goesTo(split, el, want) : undefined;
+    const to = want && want !== (isOpen ? opened!.item : null) ? goesTo(split, want) : undefined;
     if (to !== undefined) {
       const key = to ?? '';
       if (dwell?.item !== key) { cancelDwell(); dwell = { item: key, timer: rt.later(() => { dwell = null; openPane(to); }, EXPAND_DWELL) }; }
@@ -479,23 +609,54 @@ export function installSplit(rt: Rt) {
     if (!focusedSeen || focusedSeen.split !== split.id) { focusedSeen = { split: split.id, item: id }; return; }
     if (focusedSeen.item === id) return;
     focusedSeen.item = id;
-    const el = page();
-    if (!id || !el || drag) return;
-    const to = goesTo(split, el, id);
+    if (!id || !page() || drag) return;
+    const to = goesTo(split, id);
     // (After this render: the move draws through sync.)
     if (to !== undefined) queueMicrotask(() => openPane(to));
     else if (mode() === 'click' && opened?.split === split.id) queueMicrotask(() => openPane(null));
   }
   // What a pane the pointer rests on or a press focuses does: opens (its item), or, folded now and fitting at the split's
   // own sizes, puts the split back to them (null); undefined: nothing (it fits, and isn't folded).
-  function goesTo(split: Split, el: HTMLElement, item: string): string | null | undefined {
-    if (openedSizes(split, el, item)) return item;
-    const p = panesOf(el).find((x) => x.getAttribute('m-pane-id') === item);
-    return opened?.split === split.id && p?.hasAttribute('m-folded') ? null : undefined;
+  function goesTo(split: Split, item: string): string | null | undefined {
+    if (openedSizes(split, item)) return item;
+    return opened?.split === split.id && paneEl(item)?.hasAttribute('m-folded') ? null : undefined;
   }
 
-  // The page's place drawn as the split now: its panes, their order, ratios and minimums, the focused one; nothing new
-  // written when nothing changed.
+  // ---- drawn ----
+
+  // The tree's shape (its axes and its panes, in order): its elements made again when it changes.
+  const shapeOf = (k: SplitKid): unknown => (typeof k === 'string' ? k : [k.axis, k.kids.map(shapeOf)]);
+  // A node's elements made in `into`: its kids (each pane, each node's group) with a divider between each two.
+  function build(into: HTMLElement, node: SplitNode, path: number[], panes: { n: number }) {
+    const key = keyOf(path);
+    node.kids.forEach((k, i) => {
+      if (i > 0) {
+        const d = doc.createElement('m-divider');
+        d.setAttribute('m-index', String(i - 1));
+        d.setAttribute('m-path', key);
+        d.setAttribute('m-axis', along(node.axis));
+        d.setAttribute('role', 'separator');
+        d.setAttribute('tabindex', '0');
+        d.setAttribute('aria-label', 'Resize panes');
+        into.appendChild(d);
+      }
+      if (typeof k === 'string') {
+        const p = doc.createElement('m-pane');
+        p.setAttribute('m-index', String(panes.n++));
+        into.appendChild(p);
+      } else {
+        const g = doc.createElement('m-split-group');
+        g.setAttribute('m-path', keyOf([...path, i]));
+        g.setAttribute('m-split', along(k.axis));
+        into.appendChild(g);
+        build(g, k, [...path, i], panes);
+      }
+    });
+  }
+  const clear = (el: HTMLElement) => { for (const c of [...el.children]) if (c.localName === 'm-pane' || c.localName === 'm-divider' || c.localName === 'm-split-group') c.remove(); };
+
+  // The page's place drawn as the split now: its tree, its panes, their order, ratios and least sizes, the focused one;
+  // nothing new written when nothing changed.
   function sync(vm: ViewModel | null) {
     const el = page();
     if (!el) return;
@@ -507,8 +668,9 @@ export function installSplit(rt: Rt) {
       if (el.hasAttribute('m-split')) {
         el.removeAttribute('m-split');
         el.removeAttribute('m-split-id');
-        for (const c of [...el.children]) if (c.localName === 'm-pane' || c.localName === 'm-divider') c.remove();
+        clear(el);
         laidOut = '';
+        shape = '';
         view.scheduleLayout();
       }
       return;
@@ -517,102 +679,115 @@ export function installSplit(rt: Rt) {
     focusChanged(split);
     const hover = host().paneHover ?? null;
     if (hover !== hoverSeen) { hoverSeen = hover; queueMicrotask(consider); }
-    const ratios = ratiosFor(split);
-    const floors = floorsOf(split);
+    const tree = treeOfSplit(split);
+    const nodes = nodesOf(tree);
     const opening = host().paneLoading ?? null;
-    const open = panesOf(el).length === split.panes.length ? openView(split, el) : null;
-    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host, p.icon, p.letter]), ratios, floors, opening, open]);
-    if (key === laidOut) return;
+    const treeShape = JSON.stringify(shapeOf(tree));
+    const sameShape = treeShape === shape && !!el.querySelector('m-pane');
+    const open = sameShape ? openView(split) : null;
+    const ratios = new Map(nodes.map(({ key, node }) => [key, ratiosFor(split, key, node)]));
+    const key = JSON.stringify([split.id, treeShape, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host, p.icon, p.letter]), [...ratios], opening,
+      open ? [[...open.sizes], [...open.folded]] : null]);
+    if (key === laidOut && sameShape) return;
     laidOut = key;
-    const axis = row(split) ? 'row' : 'column';
+    const axis = along(tree.axis);
     if (el.getAttribute('m-split') !== axis) el.setAttribute('m-split', axis);
     if (el.getAttribute('m-split-id') !== split.id) el.setAttribute('m-split-id', split.id);
-    let panes = panesOf(el);
-    let dividers = dividersOf(el);
-    const n = split.panes.length;
-    if (panes.length !== n || dividers.length !== n - 1) {
-      for (const c of [...panes, ...dividers]) c.remove();
-      panes = [];
-      dividers = [];
-      for (let i = 0; i < n; i++) {
-        if (i > 0) {
-          const d = doc.createElement('m-divider');
-          d.setAttribute('m-index', String(i - 1));
-          d.setAttribute('role', 'separator');
-          d.setAttribute('tabindex', '0');
-          d.setAttribute('aria-label', 'Resize panes');
-          dividers.push(d);
-          el.appendChild(d);
-        }
-        const p = doc.createElement('m-pane');
-        p.setAttribute('m-index', String(i));
-        panes.push(p);
-        el.appendChild(p);
-      }
+    if (!sameShape) {
+      clear(el);
+      build(el, tree, [], { n: 0 });
+      shape = treeShape;
     }
-    let acc = 0;
-    split.panes.forEach((pane, i) => {
-      const p = panes[i];
-      const id = String(pane.id);
+    const gap = gapOf(el);
+    const edges = paneEdges(tree);
+    for (const { key: k, node } of nodes) {
+      const g = groupEl(k);
+      if (!g) continue;
+      const kids = kidsOf(g);
+      const dividers = dividersOf(g);
+      const r = ratios.get(k) ?? node.ratios;
+      const sizes = open?.sizes.get(k) ?? null;
+      const [on, off] = node.axis === 'horizontal' ? ['min-width', 'min-height'] : ['min-height', 'min-width'];
+      let acc = 0;
+      node.kids.forEach((kid, i) => {
+        const e = kids[i];
+        if (!e) return;
+        const s = e.style;
+        // (Opened, or moving: each kid's size as a weight of the room, none held at its floor; else the ratios.)
+        const grow = String(sizes ? Math.round(Math.max(0, sizes[i] ?? 0) * 100) / 100 : round4(r[i] ?? 1 / node.kids.length));
+        if (s.flexGrow !== grow) s.flexGrow = grow;
+        const min = open ? '0px' : `${floorOf(split, kid, node.axis, gap)}px`;
+        if (s.getPropertyValue(on) !== min) s.setProperty(on, min);
+        if (s.getPropertyValue(off)) s.removeProperty(off);
+        if (i < node.kids.length - 1) {
+          acc += r[i] ?? 1 / node.kids.length;
+          const d = dividers[i];
+          if (!d) return;
+          // (In a column: a band above a Safari pane at the top of the kid below.)
+          const below = node.axis === 'vertical' ? topPanes(node.kids[i + 1]).map((id) => paneById(split, id)).find((p) => !!p && inSafari(p)) ?? null : null;
+          band(d, below);
+          const orient = node.axis === 'horizontal' ? 'vertical' : 'horizontal';
+          if (d.getAttribute('aria-orientation') !== orient) d.setAttribute('aria-orientation', orient);
+          const now = String(Math.round(acc * 100));
+          if (d.getAttribute('aria-valuenow') !== now) { d.setAttribute('aria-valuenow', now); d.setAttribute('aria-valuemin', '0'); d.setAttribute('aria-valuemax', '100'); }
+        }
+      });
+    }
+    const leaves = leavesIn(tree);
+    for (const p of allPanes(el)) {
+      // (Its pane by its place among them: the tree's leaves in order.)
+      const id = leaves[Number(p.getAttribute('m-index'))];
+      const pane = id == null ? null : paneById(split, id);
+      if (!pane || id == null) continue;
       if (p.getAttribute('m-pane-id') !== id) p.setAttribute('m-pane-id', id);
       if (pane.active) { if (!p.hasAttribute('m-focused')) p.setAttribute('m-focused', ''); } else if (p.hasAttribute('m-focused')) p.removeAttribute('m-focused');
       loader(p, opening && opening.item === id ? opening.name : null);
-      card(p, pane, !!open?.folded[i]);
-      const s = p.style;
-      // (Opened, or moving: each pane's size as a weight of the room, none held at its floor; else the ratios.)
-      const grow = String(open ? Math.round(Math.max(0, open.sizes[i] ?? 0) * 100) / 100 : round4(ratios[i] ?? 1 / n));
-      if (s.flexGrow !== grow) s.flexGrow = grow;
-      const min = open ? '0px' : `${floors[i]}px`;
-      const [on, off] = axis === 'row' ? ['min-width', 'min-height'] : ['min-height', 'min-width'];
-      if (s.getPropertyValue(on) !== min) s.setProperty(on, min);
-      if (s.getPropertyValue(off)) s.removeProperty(off);
-      if (i < n - 1) {
-        acc += ratios[i] ?? 1 / n;
-        const d = dividers[i];
-        band(d, axis === 'column' && inSafari(split.panes[i + 1]) ? split.panes[i + 1] : null);
-        const orient = axis === 'row' ? 'vertical' : 'horizontal';
-        if (d.getAttribute('aria-orientation') !== orient) d.setAttribute('aria-orientation', orient);
-        const now = String(Math.round(acc * 100));
-        if (d.getAttribute('aria-valuenow') !== now) { d.setAttribute('aria-valuenow', now); d.setAttribute('aria-valuemin', '0'); d.setAttribute('aria-valuemax', '100'); }
-      }
-    });
+      card(p, pane, !!open?.folded.has(id));
+      const clip = maskClip(edges.get(id) ?? { top: true, right: true, bottom: true, left: true });
+      if (p.style.getPropertyValue('--m-pane-clip') !== clip) p.style.setProperty('--m-pane-clip', clip);
+    }
     view.scheduleLayout();
   }
 
-  // Each pane's size along the axis now (px), in order.
-  const sizes = (el: HTMLElement, split: Split) => panesOf(el).map((p) => { const b = p.getBoundingClientRect(); return row(split) ? b.width : b.height; });
   const tell = (on: boolean) => { if (!on) view.flushLayout?.(); rt.host.perform?.('split.resizing', { on }); };
-  const save = (split: Split, ratios: number[]) => {
+  const save = (split: Split, path: number[], ratios: number[]) => {
     const norm = ratios.map(round4);
-    held = { split: split.id, ratios: norm, until: Date.now() + 2000 };
-    rt.dispatch('split.resize', { split: split.id, ratios: norm }, 'behavior');
+    held = { split: split.id, key: keyOf(path), ratios: norm, until: Date.now() + 2000 };
+    rt.dispatch('split.resize', { split: split.id, ratios: norm, path }, 'behavior');
   };
-  // New ratios drawn now (a key, a double-click: no drag), measured and saved.
-  const set = (split: Split, ratios: number[]) => {
-    held = { split: split.id, ratios: ratios.map(round4), until: Date.now() + 2000 };
+  // New ratios for a node drawn now (a key, a double-click: no drag), measured and saved.
+  const set = (split: Split, path: number[], ratios: number[]) => {
+    held = { split: split.id, key: keyOf(path), ratios: ratios.map(round4), until: Date.now() + 2000 };
     sync(rt.vm);
     view.flushLayout?.();
-    save(split, ratios);
+    save(split, path, ratios);
   };
 
+  // A divider of the split shown (the page's or a group's in it), with its node.
   const dividerAt = (target: EventTarget | null) => {
     const el = page();
-    const d = (target as Element | null)?.closest?.('m-divider');
-    return el && d && d.parentElement === el ? d : null;
+    const d = (target as Element | null)?.closest?.('m-divider') as HTMLElement | null;
+    if (!el || !d || !el.contains(d)) return null;
+    const g = d.parentElement;
+    if (!g || (g !== el && g.localName !== 'm-split-group')) return null;
+    const key = d.getAttribute('m-path') ?? '';
+    const path = key === '' ? [] : key.split('.').map(Number);
+    return { d, key, path };
   };
+  const nodeOf = (split: Split, path: number[]) => nodesOf(treeOfSplit(split)).find((n) => n.key === keyOf(path))?.node ?? null;
 
   // A folded pane's card pressed: it opens now and its pane is focused (`split.focus`, its tab).
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
     const c = (e.target as Element | null)?.closest?.('m-pane-card');
     const p = c?.parentElement;
     const split = shown();
-    if (e.button !== 0 || !c || !p || p.localName !== 'm-pane' || p.parentElement !== page() || !p.hasAttribute('m-folded') || !split) return;
+    if (e.button !== 0 || !c || !p || p.localName !== 'm-pane' || !page()?.contains(p) || !p.hasAttribute('m-folded') || !split) return;
     e.preventDefault();
     e.stopPropagation();
     const item = p.getAttribute('m-pane-id') ?? '';
-    const pane = split.panes.find((x) => String(x.id) === item);
+    const pane = paneById(split, item);
     if (!pane) return;
-    const to = goesTo(split, page()!, item);
+    const to = goesTo(split, item);
     if (to !== undefined) openPane(to);
     rt.dispatch('split.focus', pane.tabId, 'behavior');
   }, true);
@@ -624,23 +799,27 @@ export function installSplit(rt: Rt) {
   marks?.observe(rt.container, { subtree: true, attributes: true, attributeFilter: ['m-hover'] });
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
     if (e.button !== 0 || drag) return;
-    const d = dividerAt(e.target);
+    const at = dividerAt(e.target);
     const split = shown();
     const el = page();
-    if (!d || !split || !el) return;
+    if (!at || !split || !el) return;
+    const node = nodeOf(split, at.path);
+    if (!node) return;
     e.preventDefault();
     e.stopPropagation();
-    try { d.setPointerCapture(e.pointerId); } catch {}
+    try { at.d.setPointerCapture(e.pointerId); } catch {}
     // (A pane opened: the drag starts from the sizes shown, and those are what it saves.)
     if (motion) { rt.win.cancelAnimationFrame(motion.frame); rt.cancel(motion.timer); motion = null; }
     opened = null;
     cancelDwell();
     cancelLeave();
-    const index = Number(d.getAttribute('m-index'));
-    const now = sizes(el, split);
+    const index = Number(at.d.getAttribute('m-index'));
+    const now = sizesOf(at.key, node.axis);
     const total = now.reduce((a, b) => a + b, 0) || 1;
-    drag = { el: d, pointerId: e.pointerId, index, start: row(split) ? e.clientX : e.clientY, sizes: now, floors: floorsOf(split), ratios: now.map((s) => s / total), told: false, split: split.id, snapped: false, at: e.timeStamp, pos: row(split) ? e.clientX : e.clientY, speed: 0 };
-    d.setAttribute('m-dragging', '');
+    const gap = gapOf(el);
+    const axis = along(node.axis);
+    drag = { el: at.d, pointerId: e.pointerId, key: at.key, path: at.path, axis, index, start: axis === 'row' ? e.clientX : e.clientY, sizes: now, floors: node.kids.map((k) => floorOf(split, k, node.axis, gap)), ratios: now.map((s) => s / total), told: false, split: split.id, snapped: false, at: e.timeStamp, pos: axis === 'row' ? e.clientX : e.clientY, speed: 0 };
+    at.d.setAttribute('m-dragging', '');
     view.rootElement()?.classList.add('m-split-resizing');
   }, true);
   rt.listen(rt.container, 'pointermove', (e: PointerEvent) => {
@@ -648,7 +827,7 @@ export function installSplit(rt: Rt) {
     const split = shown();
     if (!split || split.id !== drag.split) return;
     const k = rt.scale?.() || 1;
-    const pos = row(split) ? e.clientX : e.clientY;
+    const pos = drag.axis === 'row' ? e.clientX : e.clientY;
     const delta = (pos - drag.start) * k;
     // (Its speed (pt/s) from the move before: the snap's haptic only for a slow drag, Arc's.)
     const dt = (e.timeStamp - drag.at) / 1000;
@@ -679,53 +858,57 @@ export function installSplit(rt: Rt) {
   });
   const end = (e: PointerEvent) => {
     if (!drag || (e?.pointerId != null && e.pointerId !== drag.pointerId)) return;
-    const { el, told, ratios, split: id } = drag;
+    const { el, told, ratios, split: id, key, path } = drag;
     try { el.releasePointerCapture(e.pointerId); } catch {}
     el.removeAttribute('m-dragging');
     view.rootElement()?.classList.remove('m-split-resizing');
     if (frame) { rt.win.cancelAnimationFrame(frame); rt.cancel(timer); frame = 0; }
     drag = null;
     if (!told) return;
-    held = { split: id, ratios: ratios.map(round4), until: Date.now() + 2000 };
+    held = { split: id, key, ratios: ratios.map(round4), until: Date.now() + 2000 };
     sync(rt.vm);
     tell(false);
     const split = shown();
-    if (split && split.id === id) save(split, ratios);
+    if (split && split.id === id) save(split, path, ratios);
   };
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) rt.listen(rt.container, type, end);
   rt.listen(rt.container, 'dblclick', (e: MouseEvent) => {
     const split = shown();
-    if (!dividerAt(e.target) || !split) return;
+    const at = dividerAt(e.target);
+    const node = at && split ? nodeOf(split, at.path) : null;
+    if (!at || !split || !node) return;
     e.preventDefault();
     e.stopPropagation();
-    set(split, equalRatios(split.panes.length));
+    set(split, at.path, equalRatios(node.kids.length));
   });
   rt.listen(rt.container, 'keydown', (e: KeyboardEvent) => {
-    const d = dividerAt(e.target);
+    const at = dividerAt(e.target);
     const split = shown();
     const el = page();
-    if (!d || !split || !el || drag) return;
-    const index = Number(d.getAttribute('m-index'));
-    const now = sizes(el, split);
+    const node = at && split ? nodeOf(split, at.path) : null;
+    if (!at || !split || !el || !node || drag) return;
+    const index = Number(at.d.getAttribute('m-index'));
+    const now = sizesOf(at.key, node.axis);
     const total = now.reduce((a, b) => a + b, 0) || 1;
-    const floors = floorsOf(split);
-    const back = row(split) ? 'ArrowLeft' : 'ArrowUp';
-    const on = row(split) ? 'ArrowRight' : 'ArrowDown';
+    const gap = gapOf(el);
+    const floors = node.kids.map((k) => floorOf(split, k, node.axis, gap));
+    const back = node.axis === 'horizontal' ? 'ArrowLeft' : 'ArrowUp';
+    const on = node.axis === 'horizontal' ? 'ArrowRight' : 'ArrowDown';
     let delta: number | null = null;
     if (e.key === back) delta = -(e.shiftKey ? BIG_STEP : STEP) * total;
     else if (e.key === on) delta = (e.shiftKey ? BIG_STEP : STEP) * total;
     else if (e.key === 'Home') delta = -total;
     else if (e.key === 'End') delta = total;
-    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); return set(split, equalRatios(split.panes.length)); }
+    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); return set(split, at.path, equalRatios(node.kids.length)); }
     if (delta == null) return;
     e.preventDefault();
     e.stopPropagation();
-    set(split, dragRatios(now, floors, index, delta));
+    set(split, at.path, dragRatios(now, floors, index, delta));
   });
 
-  // ---- a sidebar row dropped on the page (docs/FLEX-SPLIT.md step 2) ----
+  // ---- a sidebar row dropped on the page (docs/FLEX-SPLIT.md steps 2, 3) ----
 
-  // The mark of where it goes: Margin's own element over the page (`m-kind`: side, between, replace), drawn by the
+  // The mark of where it goes: Margin's own element over the page (`m-kind`: side, beside, replace), drawn by the
   // theme's CSS (themes/README.md `m-drop-zone`); none: null.
   let dropMark: HTMLElement | null = null;
   // The dragged row's item: its id (an open one's UI number, else a kept item's id), its item's id, its address.
@@ -754,16 +937,20 @@ export function installSplit(rt: Rt) {
     const split = shown();
     if (split) {
       if (split.panes.some((p) => p.tabId === it.id || String(p.id) === it.item)) return null;
-      const place = dropPlace(panesOf(el).map(boxOf), split.axis === 'vertical' ? 'vertical' : 'horizontal', x, y, split.panes.length < 4);
+      // (Every pane's box, in the tree's order, and its pane's place in the split's: what the drop names.)
+      const leaves = leavesIn(treeOfSplit(split));
+      const panes = allPanes(el).sort((a, b) => Number(a.getAttribute('m-index')) - Number(b.getAttribute('m-index')));
+      const place = dropPlace(panes.map(boxOf), false, x, y, split.panes.length < MAX_SPLIT_PANES);
       if (!place) return null;
-      const replace = place.kind === 'replace' ? place.at : null;
-      return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: split.id, nextTo: null, at: replace == null ? place.at : split.panes.length, replace, axis: place.axis } };
+      const pane = split.panes.findIndex((p) => String(p.id) === leaves[place.pane]);
+      if (pane < 0) return null;
+      return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: split.id, nextTo: null, pane, side: place.side } };
     }
     const front = vm.tab;
     if (front?.id == null || front.id === it.id || (rt.state as any)?.tabs?.[front.id]?.mid === it.item || /^margin:/i.test(front.url ?? '')) return null;
-    const place = dropPlace([boxOf(el)], null, x, y);
+    const place = dropPlace([boxOf(el)], true, x, y);
     if (!place) return null;
-    return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: null, nextTo: front.id, at: place.at, replace: null, axis: place.axis } };
+    return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: null, nextTo: front.id, pane: null, side: place.side } };
   }
   // Whether `x`, `y` is over the page area where a row may drop (Margin's own window, a window hosted there).
   function onPage(x: number, y: number) {
@@ -788,32 +975,32 @@ export function installSplit(rt: Rt) {
     dropMark.setAttribute('m-kind', place.kind);
     Object.assign(dropMark.style, { left: `${r.left * k}px`, top: `${r.top * k}px`, width: `${r.width * k}px`, height: `${r.height * k}px` });
   }
-  // Why a drop's panes (`split.drop`'s argument) can't be laid out, null: they can: each at its least size along the
-  // axis, as an add's (refusesAdd), with the dropped one at its place or in the pane it replaces.
+  // Why a drop's panes (`split.drop`'s argument) can't be laid out, null: they can: the tree it would make, each pane at
+  // its least size, as an add's (refusesAdd).
   function refusesDrop(arg: any): string | null {
     const h = host();
     const vm = rt.vm;
     if (!h.appWindow || !vm || !h.layout || !arg) return null;
     const it = rowItem(arg.tab);
     if (!it) return null;
-    const added = { id: it.item, url: it.url };
-    let panes: { id: string, url: string }[];
-    let axis: string;
+    const urls: Record<string, string> = { [it.item]: it.url };
+    let tree: SplitKid | null;
     if (arg.split != null) {
       const split = vm.split;
       if (!split || split.id !== arg.split) return null;
-      axis = split.axis;
-      panes = split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' }));
-      if (arg.replace != null) panes[arg.replace] = added;
-      else panes.splice(Math.min(arg.at ?? panes.length, panes.length), 0, added);
+      for (const p of split.panes) urls[String(p.id)] = p.url ?? '';
+      const target = String(split.panes[arg.pane]?.id ?? '');
+      const t = treeOfSplit(split);
+      tree = arg.side === 'middle' ? mapLeaves(t, (l) => (l === target ? it.item : l)) : besideLeaf(t, target, arg.side, it.item);
     } else {
       const front = vm.tab;
       if (!front) return null;
-      axis = arg.axis;
-      const shownOne = { id: String((rt.state as any)?.tabs?.[front.id as number]?.mid ?? front.id), url: front.url ?? '' };
-      panes = arg.at === 0 ? [added, shownOne] : [shownOne, added];
+      const shownOne = String((rt.state as any)?.tabs?.[front.id as number]?.mid ?? front.id);
+      urls[shownOne] = front.url ?? '';
+      tree = besideLeaf({ axis: 'horizontal', kids: [shownOne], ratios: [1] }, shownOne, arg.side, it.item);
     }
-    return fits(axis, panes, true) ? null : arg.replace != null ? 'Not enough room for this pane' : 'Not enough room for another pane';
+    if (!tree || typeof tree === 'string') return null;
+    return fits(tree, urls, true) ? null : arg.side === 'middle' ? 'Not enough room for this pane' : 'Not enough room for another pane';
   }
 
   return {
@@ -823,19 +1010,18 @@ export function installSplit(rt: Rt) {
     markDrop,
     refusesDrop,
     busy: () => drag != null,
-    /** The page area's least width while a split is shown side by side (each pane's floor and the gaps): the sidebar's
-     *  edge stops there (behaviors/resize.ts). 0: none. */
+    /** The page area's least width while a split is shown (each pane's floor and the gaps): the sidebar's edge stops
+     *  there (behaviors/resize.ts). 0: none. */
     floor() {
       const split = shown();
       const el = page();
       if (!split || !el) return 0;
-      const floors = floorsOf(split);
-      return row(split) ? floors.reduce((a, b) => a + b, 0) + gapOf(el) * (floors.length - 1) : Math.max(...floors);
+      return treeMin(treeOfSplit(split), 'horizontal', safariOf(split), gapOf(el));
     },
     /**
      * Why `tabId` can't be added to the split shown (or split with the item in front), null: it can. Said as a toast.
-     * Only in Margin's own window, where the panes are laid out; the library refuses the rest (4 panes, one space, an
-     * app once).
+     * Only in Margin's own window, where the panes are laid out; the library refuses the rest (MAX_SPLIT_PANES, one
+     * space, an app once).
      */
     refusesAdd(tabId: unknown): string | null {
       const h = host();
@@ -855,45 +1041,47 @@ export function installSplit(rt: Rt) {
       // (Its item: by its id, or, open in Margin's window, by its row's number (the menu names it so): that row's `mid`.)
       const mid = typeof tabId === 'string' ? tabId : typeof tabId === 'number' ? st?.tabs?.[tabId]?.mid : null;
       const item = typeof mid === 'string' ? items[mid] ?? null : null;
-      let axis = 'horizontal';
-      let panes: { id: string, url: string }[];
+      const full = `A split view has ${MAX_SPLIT_PANES} panes at most`;
+      // (Added last among its root's kids, as the library adds it.)
+      const added = (t: SplitNode, id: string): SplitNode => ({ ...t, kids: [...t.kids, id], ratios: [...t.kids, id].map(() => 1) });
+      let tree: SplitNode;
+      const urls: Record<string, string> = {};
       if (item) {
         // (A library item, Margin.app's: what the library makes of it, `addToSplit`: added to the split of the item used
         // last in its space (not itself), or a new split of that one and it, in that order. Each pane's address names its
         // app for its known minimum (`appMin`, known before its window exists) and its band, stacked.)
         const partner = frontItemOf(Object.values(items), item.spaceId, item.id);
         if (!partner) return null; // (the library's to refuse: no second item)
-        const group = ((st?.splits ?? []) as { panes: string[], axis?: string }[]).find((g) => g.panes.includes(partner.id)) ?? null;
+        const group = ((st?.splits ?? []) as { panes: string[], axis?: string, ratios?: number[], tree?: unknown }[]).find((x) => x.panes.includes(partner.id)) ?? null;
         if (group?.panes.includes(item.id)) return null;
-        if (group && group.panes.length >= 4) return 'A split view has 4 panes at most';
-        axis = group?.axis === 'vertical' ? 'vertical' : 'horizontal';
-        panes = [...(group ? group.panes : [partner.id]).map((id) => ({ id: String(id), url: items[id]?.url ?? '' })), { id: item.id, url: item.url }];
+        if (group && group.panes.length >= MAX_SPLIT_PANES) return full;
+        for (const id of group ? group.panes : [partner.id]) urls[String(id)] = items[id]?.url ?? '';
+        urls[item.id] = item.url;
+        tree = added(group ? treeOf(group) : { axis: 'horizontal', kids: [partner.id], ratios: [1] }, item.id);
       } else {
         // (A browser's tab: the split shown, or the tab in front, and it.)
         const split = vm.split;
-        axis = split?.axis ?? 'horizontal';
         if (split && split.panes.some((p) => p.tabId === tabId || String(p.id) === String(tabId))) return null;
-        if (split && split.panes.length >= 4) return 'A split view has 4 panes at most';
-        const url = typeof tabId === 'number' ? st?.tabs?.[tabId]?.url ?? '' : '';
-        panes = [
-          ...(split ? split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' })) : [{ id: String(vm.tab?.id ?? 'front'), url: vm.tab?.url ?? '' }]),
-          { id: String(tabId), url },
-        ];
+        if (split && split.panes.length >= MAX_SPLIT_PANES) return full;
+        urls[String(tabId)] = typeof tabId === 'number' ? st?.tabs?.[tabId]?.url ?? '' : '';
+        if (split) for (const p of split.panes) urls[String(p.id)] = p.url ?? '';
+        else urls[String(vm.tab?.id ?? 'front')] = vm.tab?.url ?? '';
+        tree = added(split ? treeOfSplit(split) : { axis: 'horizontal', kids: [String(vm.tab?.id ?? 'front')], ratios: [1] }, String(tabId));
       }
-      const ok = fits(axis, panes, true);
-      return ok ? null : 'Not enough room for another pane';
+      return fits(tree, urls, true) ? null : 'Not enough room for another pane';
     },
     /**
-     * Why the split shown can't be stacked (or put side by side) now, null: it can: its panes along the other axis,
-     * each at its minimum, wouldn't fit the page area. Said as a toast.
+     * Why the split shown can't be turned now (stacked, or put side by side), null: it can: its panes turned, each at
+     * its least size, wouldn't fit the page area. Said as a toast.
      */
     refusesAxis(splitId: unknown): string | null {
       const h = host();
       const split = rt.vm?.split;
       if (!h.appWindow || !split || !h.layout || (splitId != null && String(splitId) !== split.id)) return null;
-      const axis = split.axis === 'vertical' ? 'horizontal' : 'vertical';
-      return fits(axis, split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' }))) ? null
-        : axis === 'vertical' ? 'Not enough room to stack these panes' : 'Not enough room for these panes side by side';
+      const urls = Object.fromEntries(split.panes.map((p) => [String(p.id), p.url ?? '']));
+      const tree = turned(treeOfSplit(split)) as SplitNode;
+      return fits(tree, urls) ? null
+        : tree.axis === 'vertical' ? 'Not enough room to stack these panes' : 'Not enough room for these panes side by side';
     },
     destroy() {
       if (frame) { rt.win.cancelAnimationFrame(frame); rt.cancel(timer); }
@@ -905,19 +1093,23 @@ export function installSplit(rt: Rt) {
     },
   };
 
-  // Whether these panes (in order), each at its floor, fit the page area along `axis` with the gaps between them (bands
-  // above Safari panes counted, stacked).
-  // `said`: the check told to Margin.app's log (an add: each pane's app and floor, the room, the answer), to read the
-  // real screen's inputs back (2026-11-21 19:32: Notes let in beside a Safari tab where they couldn't fit).
-  function fits(axis: string, panes: { id: string, url: string }[], said = false) {
+  // Whether a tree of these panes (`urls`: each pane's address, by its id), each at its least size, fits the page area
+  // both ways with the gaps between them (bands above Safari panes counted, in columns).
+  // `said`: the check told to Margin.app's log (an add: each pane's app, the room, the answer), to read the real
+  // screen's inputs back (2026-11-21 19:32: Notes let in beside a Safari tab where they couldn't fit).
+  function fits(tree: SplitNode, urls: Record<string, string>, said = false) {
     const g = host().layout;
+    const panes = leavesIn(tree);
     if (!g) { if (said) host().note?.(`split add: no layout from Margin.app yet: let through (${panes.length} panes)`); return true; }
-    const floors = floorsOf({ axis, panes });
-    const room = axis === 'vertical' ? g.container.height - g.insets.top - g.insets.bottom : g.container.width - g.insets.left - g.insets.right;
+    const width = g.container.width - g.insets.left - g.insets.right;
+    const height = g.container.height - g.insets.top - g.insets.bottom;
     const el = page();
-    const gaps = dividerSizes({ axis, panes }, el ? gapOf(el) : SPLIT_GAP);
-    const ok = panesFit(floors, room, gaps);
-    if (said) host().note?.(`split add: ${panes.map((p, i) => `${appKeyOf(p.url)}${p.url ? '' : ' (no address)'} ${floors[i]}`).join(' + ')} + gaps ${(Array.isArray(gaps) ? gaps : [gaps]).join('/')} in ${Math.round(room)} (${axis}): ${ok ? 'fits' : 'refused'}; apps known: ${Object.keys(host().appMinimums ?? {}).join(', ') || 'none'}`);
+    const gap = el ? gapOf(el) : SPLIT_GAP;
+    const safari = (id: string) => inSafari({ url: urls[id] ?? '' });
+    const needW = treeMin(tree, 'horizontal', safari, gap);
+    const needH = treeMin(tree, 'vertical', safari, gap);
+    const ok = needW <= width + 0.5 && needH <= height + 0.5;
+    if (said) host().note?.(`split add: ${panes.map((id) => `${appKeyOf(urls[id])}${urls[id] ? '' : ' (no address)'}`).join(' + ')} need ${Math.round(needW)}×${Math.round(needH)} in ${Math.round(width)}×${Math.round(height)} (${tree.axis}): ${ok ? 'fits' : 'refused'}; apps known: ${Object.keys(host().appMinimums ?? {}).join(', ') || 'none'}`);
     return ok;
   }
 }

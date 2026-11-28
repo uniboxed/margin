@@ -1541,10 +1541,10 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
 .arcadia m-pane { border-radius: var(--card-radius); box-shadow: var(--pane-shadow); --m-pane-ground: var(--frame); }
 .arcadia m-divider { background: var(--frame); }
 .arcadia m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 36px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 22%, transparent); transition: background-color .12s, transform .12s; }
-.arcadia m-page[m-split="column"] > m-divider::after { width: 36px; height: 4px; }
+.arcadia m-divider[m-axis="column"]::after { width: 36px; height: 4px; }
 .arcadia m-divider:hover::after, .arcadia m-divider:focus-visible::after { background: color-mix(in srgb, var(--accent) 70%, transparent); }
-.arcadia m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.55); }
-.arcadia m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.55); }
+.arcadia m-divider[m-axis="row"]:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.55); }
+.arcadia m-divider[m-axis="column"]:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.55); }
 .arcadia m-divider[m-dragging]::after { background: var(--accent); }
 .arcadia m-pane[m-focused] { box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px var(--fg), var(--pane-shadow); }
 @media (prefers-reduced-motion: reduce) { .arcadia m-divider::after { transition: none; } }

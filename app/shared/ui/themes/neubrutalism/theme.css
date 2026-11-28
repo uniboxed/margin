@@ -727,7 +727,7 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 .nb[m-background] m-pane { --m-pane-ground: var(--m-bg); }
 .nb m-divider { background: var(--space); }
 .nb m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; box-sizing: border-box; width: 8px; height: 44px; border: 2px solid var(--ink); border-radius: 4px; transform: translate(-50%, -50%); background: var(--paper); }
-.nb m-page[m-split="column"] > m-divider::after { width: 44px; height: 8px; }
+.nb m-divider[m-axis="column"]::after { width: 44px; height: 8px; }
 .nb m-divider:is(:hover, :focus-visible)::after { background: var(--yellow); }
 .nb m-divider[m-dragging]::after { background: var(--ink); }
 .nb m-pane[m-focused] { box-shadow: 0 0 0 var(--edge) var(--ink), 0 0 0 calc(var(--edge) + 2px) var(--m-pane-ground), 0 0 0 calc(var(--edge) + 4px) var(--ink), var(--pane-drop); }

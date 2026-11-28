@@ -16,6 +16,7 @@
 // list, the space, the whole model) IS `prev`'s object. The renderer skips a
 // row whose item is the same object (ui/render.ts), so this is what keeps an
 // update down to the rows that changed. Pure: no browser APIs, runs in Node.
+import { canonical, mapLeaves, MAX_SPLIT_PANES, storedTree, type SplitNode } from '../../../extension/shared/split-tree.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from './space-theme.ts';
 import type { SpaceBackground, State } from '../../../types/margin';
 import * as V from '../../../extension/shared/view.ts';
@@ -154,10 +155,15 @@ export type SplitPaneView = Face & {
 export type SplitRow = {
   kind: 'split', isSplit: true, id: string, axis: 'horizontal' | 'vertical',
   active: boolean, panes: SplitPaneView[], ratios: number[], count: number, title: string,
+  /** How its panes are laid out (docs/FLEX-SPLIT.md step 3): nodes of pane ids (each a pane's `id`), rows inside columns
+   *  inside rows; a flat split one node of its panes. */
+  tree: SplitNode,
 };
 export type ActiveSplitView = {
   id: string, axis: 'horizontal' | 'vertical', isHorizontal: boolean, isVertical: boolean,
   panes: SplitPaneView[], dividers: { index: number, percent: number }[], canAddPane: boolean,
+  /** As the split row's `tree`. */
+  tree: SplitNode,
   labels: { swap: string, breakOut: string, closePane: string, toggleAxis: string },
 };
 export type SpaceChip = {
@@ -620,6 +626,12 @@ function fresh(input: ViewModelInput): ViewModel {
     });
     if (panes.length < 2) continue;
     for (const p of panes) { splitMemberIds.add(String(p.id)); splitMemberIds.add(String(p.tabId)); }
+    // (Its tree with the panes drawn only: one whose item is gone out of it, as out of `panes`.)
+    const drawn = new Set(panes.map((p) => String(p.id)));
+    const nested = storedTree((g as { tree?: unknown }).tree, g.panes);
+    const tree: SplitNode = nested
+      ? (canonical(mapLeaves(nested, (l) => (drawn.has(l) ? l : null))) as SplitNode | string | null) as SplitNode
+      : { axis: g.axis === 'vertical' ? 'vertical' : 'horizontal', kids: panes.map((p) => String(p.id)), ratios: panes.map((p) => p.ratio) };
     splits.push({
       kind: 'split',
       isSplit: true,
@@ -630,6 +642,7 @@ function fresh(input: ViewModelInput): ViewModel {
       ratios: panes.map((p) => p.ratio),
       count: panes.length,
       title: panes.map((p) => p.title).join(' · '),
+      tree: tree && typeof tree === 'object' ? tree : { axis: g.axis === 'vertical' ? 'vertical' : 'horizontal', kids: panes.map((p) => String(p.id)), ratios: panes.map((p) => p.ratio) },
     });
   }
   const today = rawToday.filter((t) => !splitMemberIds.has(String(t.id)));
@@ -956,8 +969,12 @@ function fresh(input: ViewModelInput): ViewModel {
   if (activeSplitRow) {
     let acc = 0;
     const dividers: { index: number, percent: number }[] = [];
-    for (let i = 0; i < activeSplitRow.panes.length - 1; i++) {
-      acc += activeSplitRow.panes[i].percent;
+    // (Between the root's kids: a flat split's panes; a nested one's rows or columns.)
+    const root = activeSplitRow.tree;
+    const nestedRoot = root.kids.some((k) => typeof k !== 'string');
+    const shares = nestedRoot ? root.ratios.map((r) => Math.round(r * 1000) / 10) : activeSplitRow.panes.map((p) => p.percent);
+    for (let i = 0; i < shares.length - 1; i++) {
+      acc += shares[i];
       dividers.push({ index: i, percent: Math.round(acc * 10) / 10 });
     }
     split = {
@@ -967,7 +984,8 @@ function fresh(input: ViewModelInput): ViewModel {
       isVertical: activeSplitRow.axis === 'vertical',
       panes: activeSplitRow.panes,
       dividers,
-      canAddPane: activeSplitRow.panes.length < 4,
+      canAddPane: activeSplitRow.panes.length < MAX_SPLIT_PANES,
+      tree: activeSplitRow.tree,
       labels: { swap: 'Swap Panes', breakOut: 'Break Out', closePane: 'Close Pane', toggleAxis: activeSplitRow.axis === 'horizontal' ? 'Stack Vertically' : 'Place Side by Side' },
     };
   }
