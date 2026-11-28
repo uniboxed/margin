@@ -6,29 +6,9 @@
 //! without harm.
 
 use margin_core::host::api::HostCore;
-use margin_core::host::model::{Handle, HostModel, Side, Slide};
+use margin_core::host::model::{Handle, HostModel};
 
 use crate::{MarginPlacement, MarginRect};
-
-/// A cut pane's slide (host/model.rs `Slide`): its pane, its alignment along each axis (0 its start at the pane's, 1
-/// its end, -1 away from the other panes).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MarginSlide {
-    pub pane: MarginRect,
-    pub end_x: i8,
-    pub end_y: i8,
-}
-
-fn align(v: Option<bool>) -> i8 {
-    v.map_or(-1, i8::from)
-}
-
-impl From<Slide> for MarginSlide {
-    fn from(s: Slide) -> Self {
-        MarginSlide { pane: s.pane.into(), end_x: align(s.end_x), end_y: align(s.end_y) }
-    }
-}
 
 /// The model of a live core (None: null), its noted versions forgotten when `fresh`.
 ///
@@ -181,35 +161,6 @@ pub unsafe extern "C" fn margin_model_is_cut(core: *mut HostCore, h: Handle) -> 
     unsafe { model(core, true) }.is_some_and(|m| m.is_cut(h))
 }
 
-/// A cut pane's sides its arrows slide to (bits: 1 left, 2 right, 4 up, 8 down); -1: not cut.
-///
-/// # Safety
-/// `core` null or a live core (one thread at a time).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_model_cut(core: *mut HostCore, h: Handle) -> i8 {
-    // SAFETY: the contract above.
-    unsafe { model(core, true) }.and_then(|m| m.cut_of(h)).map_or(-1, |b| b as i8)
-}
-
-/// A cut pane's alignment that shows `side` (0 left, 1 right, 2 up, 3 down) into `out`; false: none (no rect).
-///
-/// # Safety
-/// `core` null or a live core (one thread at a time); `out` null or writable.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_model_slide_for(
-    core: *mut HostCore,
-    h: Handle,
-    side: u8,
-    out: *mut MarginSlide,
-) -> bool {
-    // SAFETY: the contract above.
-    let (Some(m), Some(side)) = (unsafe { model(core, true) }, Side::from_u8(side)) else { return false };
-    let Some(s) = m.slide_for(h, side) else { return false };
-    // SAFETY: the contract above.
-    unsafe { put(out, s.into()) };
-    true
-}
-
 /// The visible panes a cut pane's window (at `at`, null: its frame) lies under, back to front, into `out`; how many.
 ///
 /// # Safety
@@ -249,35 +200,6 @@ pub unsafe extern "C" fn margin_model_over_under(core: *mut HostCore, h: Handle,
     unsafe { model(core, true) }.is_some_and(|m| m.over_under(h, unsafe { slice(list, n) }))
 }
 
-/// One frame of a slide `elapsed` seconds in of `time`: its page rect into `page`, its tile's rect from Margin's own
-/// tile (`home` null: none) into `tile`. Bits: 1 the last frame, 2 a tile's rect written.
-///
-/// # Safety
-/// `core` null or a live core (one thread at a time); `home` null or readable; `page`, `tile` null or writable.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_model_slide_step(
-    core: *mut HostCore,
-    from: MarginRect,
-    to: MarginRect,
-    elapsed: f64,
-    time: f64,
-    home: *const MarginRect,
-    page: *mut MarginRect,
-    tile: *mut MarginRect,
-) -> u8 {
-    // SAFETY: the contract above.
-    let Some(m) = (unsafe { model(core, false) }) else { return 1 };
-    // SAFETY: the contract above.
-    let s = m.slide_step(&from.into(), &to.into(), elapsed, time, unsafe { rect(home) }.as_ref());
-    // SAFETY: the contract above.
-    unsafe { put(page, s.page.into()) };
-    if let Some(t) = s.tile {
-        // SAFETY: the contract above.
-        unsafe { put(tile, t.into()) };
-    }
-    u8::from(s.last) | if s.tile.is_some() { 2 } else { 0 }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,12 +234,7 @@ mod tests {
             margin_model_frame(core, hs[1], std::ptr::null(), &mut f);
             assert_eq!(f, MarginRect { x: 894.0, width: 700.0, ..page });
             assert!(margin_model_is_cut(core, hs[1]));
-            assert_eq!(margin_model_cut(core, hs[1]), 2);
-            assert_eq!(margin_model_cut(core, hs[0]), -1);
-            let mut s = MarginSlide::default();
-            assert!(margin_model_slide_for(core, hs[1], 1, &mut s));
-            assert_eq!((s.pane, s.end_x, s.end_y), (right, 1, -1));
-            assert!(!margin_model_slide_for(core, hs[1], 9, &mut s));
+            assert!(!margin_model_is_cut(core, hs[0]));
             assert!(!margin_model_tucked(core, hs[1], std::ptr::null()));
             let mut out = [0u32; 4];
             assert_eq!(
@@ -338,13 +255,10 @@ mod tests {
             assert!(margin_model_tile_rect(core, hs[1], std::ptr::null(), p.display, &mut f));
             margin_model_set_live_page(core, &left);
             margin_model_set_live_page(core, std::ptr::null());
-            let (mut pg, mut tile) = (MarginRect::default(), MarginRect::default());
-            assert_eq!(margin_model_slide_step(core, right, left, 1.0, 0.15, &p.display, &mut pg, &mut tile), 3);
-            assert_eq!(pg, left);
             assert_eq!(margin_model_versions_wanted(core, out.as_mut_ptr(), 4), 0);
             // A null core: nothing, no harm.
             margin_model_frame(std::ptr::null_mut(), 0, std::ptr::null(), std::ptr::null_mut());
-            assert_eq!(margin_model_cut(std::ptr::null_mut(), 0), -1);
+            assert!(!margin_model_is_cut(std::ptr::null_mut(), 0));
             margin_host_free(core);
         }
     }

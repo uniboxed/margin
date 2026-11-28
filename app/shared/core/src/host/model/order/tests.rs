@@ -126,9 +126,8 @@ fn a_cut_pane_lying_under_another_is_kept_behind_it_and_given_the_keys() {
     let edit = host(&mut m, "edit", Some(LEFT), Role::Main, 0);
     let notes = host(&mut m, "notes", Some(RIGHT), Role::Pane, 1);
     m.set_rect(notes, Field::MinSize, Some(Rect::new(0.0, 0.0, 700.0, 400.0)));
-    // Slid to its right: it lies under the left pane.
-    m.set_rect(notes, Field::SlidPane, Some(RIGHT));
-    m.set_int(notes, Field::SlidEndX, 1);
+    // Not a tile: held within the display, it lies under the left pane.
+    m.set_int(notes, Field::Tiled, 0);
     m.set_shown(Some("notes"), 1.0);
     let mut out = [0; 4];
     assert_eq!(m.front_wanted(&mut out), 2);
@@ -181,8 +180,8 @@ fn two_cut_panes_out_of_order_raised_both() {
     let maps = host(&mut m, "maps", Some(c), Role::Pane, 2);
     m.set_rect(notes, Field::MinSize, Some(Rect::new(0.0, 0.0, 700.0, 400.0)));
     m.set_rect(maps, Field::MinSize, Some(Rect::new(0.0, 0.0, 600.0, 400.0)));
-    m.set_rect(maps, Field::SlidPane, Some(c));
-    m.set_int(maps, Field::SlidEndX, 1);
+    // The last one not a tile: held within the display, under the middle one.
+    m.set_int(maps, Field::Tiled, 0);
     m.set_shown(Some("edit"), 1.0);
     let wanted = m.front_plan(&[None, None, None], None, &[]).wanted;
     assert_eq!(wanted, vec![maps, notes, first], "a chain: the last under the middle one, under the first");

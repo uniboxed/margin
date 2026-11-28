@@ -73,9 +73,10 @@ nonisolated final class HostCore: @unchecked Sendable {
     // A field's number (host/model.rs `Field`): whole numbers and flags, times (nil: none), rects, lists of times.
     enum Field: UInt32 {
         case window = 0, pid, role, phase, mode, resizable, member, tiled, noTiles, unread, strays, offScreenReads, offPageReads,
-             offSaid, reentrySaid, fullScreenFailures, retryFullScreen, gone, freshFront, slidEndX, slidEndY, minUnreadSaid
+             offSaid, reentrySaid, fullScreenFailures, retryFullScreen, gone, freshFront
+        case minUnreadSaid = 21 // (19, 20: a cut pane's slide, removed)
         case visibleAt = 32, goneAt, offActedFor, offInPlaceSaid, narrowestHeld
-        case rect = 64, placedPage, minSize, slidPane
+        case rect = 64, placedPage, minSize
         case returns = 96, offTries, reentries
     }
 
@@ -536,22 +537,6 @@ nonisolated final class HostCore: @unchecked Sendable {
         }
     }
     func isCut(_ h: UInt32) -> (Bool, wanted: Bool) { locked { (margin_model_is_cut(core, h), wanted) } }
-    // A cut pane's sides its arrows slide to (nil: not cut).
-    func cut(_ h: UInt32) -> (PaneCut?, wanted: Bool) {
-        locked {
-            let bits = margin_model_cut(core, h)
-            guard bits >= 0 else { return (nil, wanted) }
-            return (PaneCut(sides: Set(PaneSide.allCases.filter { bits & $0.bit != 0 })), wanted)
-        }
-    }
-    func slideFor(_ h: UInt32, _ side: PaneSide) -> (PaneSlide?, wanted: Bool) {
-        var out = MarginSlide()
-        return locked {
-            guard margin_model_slide_for(core, h, side.index, &out) else { return (nil, wanted) }
-            func end(_ v: Int8) -> Bool? { v < 0 ? nil : v == 1 }
-            return (PaneSlide(pane: CGRect(out.pane), endX: end(out.end_x), endY: end(out.end_y)), wanted)
-        }
-    }
     // The visible panes a cut pane's window (at `at`, nil: its frame) lies under, back to front.
     func lyingUnder(_ h: UInt32, at: CGRect? = nil) -> ([UInt32], wanted: Bool) {
         locked {
@@ -569,14 +554,6 @@ nonisolated final class HostCore: @unchecked Sendable {
             return (list.withUnsafeBufferPointer { margin_model_over_under(core, h, $0.baseAddress, $0.count) }, wanted)
         }
     }
-    // One frame of a slide `elapsed` seconds in: its page rect, its tile's rect from Margin's own tile `home` in Margin's
-    // placement (nil: none), whether it's the last.
-    func slideStep(from: CGRect, to: CGRect, elapsed: Double, time: Double, home: CGRect?) -> (page: CGRect, tile: CGRect?, last: Bool) {
-        var page = MarginRect(), tile = MarginRect()
-        let a = locked { withRect(home) { margin_model_slide_step(core, from.marginRect, to.marginRect, elapsed, time, $0, &page, &tile) } }
-        return (CGRect(page), a & 2 != 0 ? CGRect(tile) : nil, a & 1 != 0)
-    }
-
     // ---- the visible windows' order (host/model/order.rs: docs/CORE-REFACTOR.md step 2 part 2): the order wanted (to
     // read each window's bounds), then the plan (JSON, once a fronting: what to raise in what order, each over the cut
     // pane it lies over or not, the keys, the confirm), the window server's order and the focused one's check typed
@@ -768,19 +745,6 @@ nonisolated final class HostCore: @unchecked Sendable {
         let t = margin_guard_held_until(core, now)
         return t.isNaN ? nil : t
     }
-}
-
-// As the core numbers a cut pane's sides (host/model/panes.rs `Side`).
-nonisolated extension PaneSide {
-    var index: UInt8 {
-        switch self {
-        case .left: return 0
-        case .right: return 1
-        case .up: return 2
-        case .down: return 3
-        }
-    }
-    var bit: Int8 { Int8(1 << index) }
 }
 
 nonisolated extension HostVisible {

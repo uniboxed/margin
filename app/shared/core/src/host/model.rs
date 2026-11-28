@@ -5,7 +5,7 @@
 //!
 //! The state (part 1a), and the decisions that read it as they move in: each app's kept minimum and each host's own
 //! (part 5, `minimums`); the engine's layout of Margin's page area, the one shown, and the layout's decisions (part 1b,
-//! `visible`); where each window goes, cut panes and a slide's frames (part 3, `panes`); the visible windows' order
+//! `visible`); where each window goes and cut panes (part 3, `panes`); the visible windows' order
 //! (part 2, `order`); the budgets of Margin's own corrections that outlive a show and the full-screen ladder (part 4,
 //! `budget`); the live-resize pump's scheduling (part 6, `live`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
 //! keeps at most `returnsMax` + 1, 4).
@@ -25,7 +25,6 @@ mod watch;
 pub use budget::{CUT_LIMIT, CUT_WITHIN, CutRepair, CutRepairs, Kind as BudgetKind, Limits, Spend};
 pub use live::{LIVE_ROOM, LiveEvent, LiveSend, LiveTick, LiveTiming};
 pub use order::{Confirm, FrontPlan, server_order, top_behind};
-pub use panes::{Side, SlideStep, slide_rect};
 pub use visible::{
     BringIn, BringInFacts, BringInPoint, Hold, HoldKind, LayoutBegun, LayoutExtra, ModelOptions, Refusal, ShownSet,
     Visible,
@@ -60,15 +59,6 @@ pub enum Mode {
     Window,
 }
 
-/// A cut pane's window slid by its arrow: the pane it was slid in, its alignment along each axis (true: its end at
-/// the pane's end; None: away from the other panes).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Slide {
-    pub pane: Rect,
-    pub end_x: Option<bool>,
-    pub end_y: Option<bool>,
-}
-
 /// How much room each list of times has from the start.
 pub const TIMES_ROOM: usize = 8;
 
@@ -85,7 +75,6 @@ pub struct HostState {
     pub pid: i64,
     pub role: Role,
     pub rect: Option<Rect>,
-    pub slid: Option<Slide>,
     pub phase: Phase,
     pub mode: Mode,
     pub resizable: bool,
@@ -128,7 +117,6 @@ impl HostState {
             pid,
             role: Role::Main,
             rect: None,
-            slid: None,
             phase: Phase::Preparing,
             mode: Mode::FullScreen,
             resizable: true,
@@ -165,7 +153,7 @@ impl HostState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Field {
-    // Whole numbers and flags (as i64: a flag 0 or 1; an enum its index; an alignment -1 none, 0 start, 1 end).
+    // Whole numbers and flags (as i64: a flag 0 or 1; an enum its index).
     Window = 0,
     Pid = 1,
     Role = 2,
@@ -185,8 +173,7 @@ pub enum Field {
     RetryFullScreen = 16,
     Gone = 17,
     FreshFront = 18,
-    SlidEndX = 19,
-    SlidEndY = 20,
+    // (19, 20: a cut pane's slide, removed 2026-11-28; the numbers left unused.)
     MinUnreadSaid = 21,
     // Times and lengths (f64; NaN: none).
     VisibleAt = 32,
@@ -194,11 +181,10 @@ pub enum Field {
     OffActedFor = 34,
     OffInPlaceSaid = 35,
     NarrowestHeld = 36,
-    // Rects (none: not set). A minimum size as a rect at 0,0; the slide by its pane (none: not slid).
+    // Rects (none: not set). A minimum size as a rect at 0,0.
     Rect = 64,
     PlacedPage = 65,
     MinSize = 66,
-    SlidPane = 67,
     // Lists of times.
     Returns = 96,
     OffTries = 97,
@@ -228,8 +214,6 @@ impl Field {
             16 => RetryFullScreen,
             17 => Gone,
             18 => FreshFront,
-            19 => SlidEndX,
-            20 => SlidEndY,
             21 => MinUnreadSaid,
             32 => VisibleAt,
             33 => GoneAt,
@@ -239,7 +223,6 @@ impl Field {
             64 => Rect,
             65 => PlacedPage,
             66 => MinSize,
-            67 => SlidPane,
             96 => Returns,
             97 => OffTries,
             98 => Reentries,
@@ -250,16 +233,6 @@ impl Field {
 
 fn flag(b: bool) -> i64 {
     i64::from(b)
-}
-fn align(a: Option<bool>) -> i64 {
-    a.map_or(-1, i64::from)
-}
-fn from_align(v: i64) -> Option<bool> {
-    match v {
-        0 => Some(false),
-        1 => Some(true),
-        _ => None,
-    }
 }
 
 /// Every host of one engine, by handle. A handle is never given to two hosts at once; a removed one's is used again.
@@ -481,15 +454,12 @@ impl HostModel {
             Field::RetryFullScreen => flag(s.retry_full_screen),
             Field::Gone => flag(s.gone),
             Field::FreshFront => flag(s.fresh_front),
-            Field::SlidEndX => s.slid.map_or(-1, |x| align(x.end_x)),
-            Field::SlidEndY => s.slid.map_or(-1, |x| align(x.end_y)),
             Field::MinUnreadSaid => flag(s.min_unread_said),
             _ => 0,
         }
     }
 
-    /// Sets a whole number or a flag (a flag: anything but 0 is true; an enum out of range: its first). An alignment
-    /// with no slide: nothing (the slide is made by its pane).
+    /// Sets a whole number or a flag (a flag: anything but 0 is true; an enum out of range: its first).
     pub fn set_int(&mut self, h: Handle, f: Field, v: i64) {
         let Some(s) = self.get_mut(h) else { return };
         let on = v != 0;
@@ -526,16 +496,6 @@ impl HostModel {
             Field::Gone => s.gone = on,
             Field::FreshFront => s.fresh_front = on,
             Field::MinUnreadSaid => s.min_unread_said = on,
-            Field::SlidEndX => {
-                if let Some(x) = s.slid.as_mut() {
-                    x.end_x = from_align(v)
-                }
-            }
-            Field::SlidEndY => {
-                if let Some(x) = s.slid.as_mut() {
-                    x.end_y = from_align(v)
-                }
-            }
             _ => {}
         }
     }
@@ -577,25 +537,17 @@ impl HostModel {
             Field::Rect => s.rect,
             Field::PlacedPage => s.placed_page,
             Field::MinSize => s.min_size.map(|(w, h)| Rect::new(0.0, 0.0, w, h)),
-            Field::SlidPane => s.slid.map(|x| x.pane),
             _ => None,
         }
     }
 
-    /// Sets a rect (None: unset). The slide's pane: a new slide (no alignment) when there was none, else its pane
-    /// moved (its alignment kept); None: not slid.
+    /// Sets a rect (None: unset).
     pub fn set_rect(&mut self, h: Handle, f: Field, v: Option<Rect>) {
         let Some(s) = self.get_mut(h) else { return };
         match f {
             Field::Rect => s.rect = v,
             Field::PlacedPage => s.placed_page = v,
             Field::MinSize => s.min_size = v.map(|r| (r.width, r.height)),
-            Field::SlidPane => {
-                s.slid = v.map(|pane| match s.slid {
-                    Some(was) => Slide { pane, ..was },
-                    None => Slide { pane, end_x: None, end_y: None },
-                })
-            }
             _ => {}
         }
     }
@@ -734,28 +686,6 @@ mod tests {
         assert_eq!(m.rect(h, Field::Window), None);
         m.set_int(h, Field::Returns, 3);
         assert!(m.times(h, Field::Returns).is_empty());
-    }
-
-    #[test]
-    fn a_slide_by_its_pane_and_its_alignments() {
-        let mut m = HostModel::new();
-        let h = m.add("a", "x", 1, 1);
-        m.set_int(h, Field::SlidEndX, 1);
-        assert_eq!(m.get(h).unwrap().slid, None, "no slide: an alignment alone makes none");
-        assert_eq!(m.int(h, Field::SlidEndX), -1);
-        let pane = Rect::new(876.0, 41.0, 628.0, 933.0);
-        m.set_rect(h, Field::SlidPane, Some(pane));
-        assert_eq!(m.get(h).unwrap().slid, Some(Slide { pane, end_x: None, end_y: None }));
-        m.set_int(h, Field::SlidEndX, 1);
-        m.set_int(h, Field::SlidEndY, 0);
-        assert_eq!((m.int(h, Field::SlidEndX), m.int(h, Field::SlidEndY)), (1, 0));
-        let moved = Rect::new(800.0, 41.0, 700.0, 933.0);
-        m.set_rect(h, Field::SlidPane, Some(moved));
-        assert_eq!(m.get(h).unwrap().slid, Some(Slide { pane: moved, end_x: Some(true), end_y: Some(false) }), "kept");
-        m.set_int(h, Field::SlidEndY, -1);
-        assert_eq!(m.get(h).unwrap().slid.unwrap().end_y, None);
-        m.set_rect(h, Field::SlidPane, None);
-        assert_eq!(m.get(h).unwrap().slid, None);
     }
 
     #[test]

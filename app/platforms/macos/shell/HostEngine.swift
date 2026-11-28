@@ -250,8 +250,6 @@ final class HostEngine {
         var tileWait = 0.3
         var tileLimitWait = 0.5
         var tileEvery = 0.002
-        // A cut pane's slide (docs/PEEK-SPLIT.md §4b): its window's move between its two alignments, eased.
-        var slideTime = 0.15
         var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
@@ -361,23 +359,6 @@ final class HostEngine {
         // (nil) unless a layout gave it a card's or a pane's rect (`setLayout`).
         var role: HostRole { get { HostRole(model: model.int(handle, .role)) } set { model.setInt(handle, .role, newValue.model) } }
         var rect: CGRect? { get { model.rect(handle, .rect) } set { model.setRect(handle, .rect, newValue) } }
-        // A split pane whose window can't be as small as its pane (docs/PEEK-SPLIT.md §4b): its window at its own minimum
-        // (`frame`: HostLayout.cut), the rest away from the other panes; after an arrow's slide, where the slide put it
-        // (its pane then, its alignment along each axis: true its end at the pane's end), as long as its pane stays that
-        // rect (a divider's drag, a new layout: away from the other panes again). Nil when it leaves a split.
-        var slid: PaneSlide? {
-            get {
-                guard let pane = model.rect(handle, .slidPane) else { return nil }
-                func end(_ v: Int64) -> Bool? { v < 0 ? nil : v == 1 }
-                return PaneSlide(pane: pane, endX: end(model.int(handle, .slidEndX)), endY: end(model.int(handle, .slidEndY)))
-            }
-            set {
-                model.setRect(handle, .slidPane, newValue?.pane)
-                guard let s = newValue else { return }
-                model.setInt(handle, .slidEndX, s.endX.map { $0 ? 1 : 0 } ?? -1)
-                model.setInt(handle, .slidEndY, s.endY.map { $0 ? 1 : 0 } ?? -1)
-            }
-        }
         // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
         // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
         // whether giving up was said (reset when it's newly visible). Its tries, a stray's returns and the re-entries into
@@ -2401,7 +2382,7 @@ final class HostEngine {
             let under = tucked(h, at: window)
             let placed = core.layout(h.id)
             return HostShownWindow(window: h.window, rect: rect, role: placed?.role ?? h.role, z: placed?.z ?? 0, focused: h.id == shown,
-                                   frame: window, tucked: under, cut: live == nil ? cutOf(h) : nil)
+                                   frame: window, tucked: under, cut: live == nil && isCut(h))
         } : []
         guard now != hostedWindowsSaid else { return }
         hostedWindowsSaid = now
@@ -4726,14 +4707,6 @@ final class HostEngine {
     // Its placement as its own full-screen Space reserves it (its window entering, a member placed): a cut pane's frame
     // held within the display, whatever its tile's would be.
     private func entryFitted(_ host: Host) -> HostPlacement { versioned { core.entryFitted(host.handle) } }
-    // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
-    // pane (its other alignment along that axis: never held within the display). None that would put its window over
-    // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
-    // cut.
-    func cutOf(_ host: Host) -> PaneCut? { versioned { core.cut(host.handle) } }
-    // A cut pane's alignment that shows `side` (its window's start at the pane's for its left or top, its end at the
-    // pane's for its right or bottom), the other axis as it is now.
-    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? { versioned { core.slideFor(host.handle, side) } }
     // The visible panes a cut pane's window lies under (it passes its own pane into theirs): it's kept behind them. None
     // for one that isn't cut, or whose rest is past the display's edge or under Margin's window.
     private func lyingUnder(_ h: Host) -> [Host] { versioned { core.lyingUnder(h.handle) }.compactMap { byHandle[$0] } }
@@ -5866,43 +5839,6 @@ final class HostEngine {
         host.phase = .parked
         if shown == host.id { shown = nil }
         saveMarker()
-    }
-
-    // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b) ----
-
-    // `side` of a cut pane's window shown: its window slid to its other alignment along that axis (`slideFor`: past the
-    // display's edge too), its tile's rect moved there over `slideTime`, eased, one rect a frame (~0.2 ms each, the window
-    // a frame behind at most, measured 2026-11-21 with Safari). Coming in under a pane it will lie under: ordered behind
-    // it first, so it never shows over it on its way. A member (no tile) moves at once. False: not a side its arrow shows
-    // (`cutOf`), or not shown.
-    @discardableResult func slide(_ id: HostID, side: PaneSide) async -> Bool {
-        await serial(planned: true) {
-            guard let h = self.hosts[id], h.phase == .shown, self.isVisible(id), let cut = self.cutOf(h), cut.sides.contains(side), let to = self.slideFor(h, side) else { return false }
-            let from = self.frame(h)
-            let wasUnder = self.tucked(h)
-            h.slid = to
-            let target = self.frame(h)
-            if self.tucked(h), !wasUnder { await self.frontVisible() }
-            if let tile = h.tile, !h.noTiles, let home = self.tileHome {
-                let t0 = self.sys.now()
-                var steps = 0
-                while true {
-                    // (This frame's rect from the time it is, the core's: eased out, one a frame; its tile's sent here.)
-                    let step = self.core.slideStep(from: from, to: target, elapsed: self.sys.now() - t0, time: self.options.slideTime, home: home)
-                    if let rect = step.tile { self.sendTileRect(h, tile, rect) }
-                    steps += 1
-                    if step.last { break }
-                    await self.sys.sleep(self.options.liveFrame)
-                }
-                Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) in \(self.ms(since: t0)) ms (\(steps) rects)\(self.tucked(h) ? ", under the pane beside it" : "")")
-            } else {
-                _ = await self.place(h)
-                Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) (no tile: at once)")
-            }
-            if !self.tucked(h) { self.cutOrderRight(h) }
-            self.sayHostedWindows()
-            return true
-        }
     }
 
     // ---- closing ----

@@ -258,26 +258,28 @@ func multiHostTests() {
               "\(r) \(b) want \(want)")
     }
 
-    // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b): its sides, slides both ways (past the display's edge), kept behind
-    // a pane only while it lies under it ----
+    // ---- a cut pane (docs/PEEK-SPLIT.md §4b): under no pane at the page's end (past the display's edge), kept behind a
+    // pane while it lies under it (the middle of three) ----
     do {
         let (w, e) = world()
         w.byRaise = true // (the window server's order: the raise order)
         w.minSize["com.apple.Notes"] = CGSize(width: 700, height: 400)
+        let maps = HostTarget.app("com.apple.Maps") // (a third app that goes full screen in the stand-in; no minimum: never cut)
+        w.installed.insert("com.apple.Maps")
         var told: [[HostShownWindow]] = []
         e.hostedWindows = { told.append($0) }
         _ = open(e, notes)
+        _ = open(e, maps)
         _ = open(e, textEdit)
         let n = window(w, "com.apple.Notes"), edit = window(w, "com.apple.TextEdit")
         _ = layout(e, textEdit, left, [HostExtra(target: notes, role: .pane, rect: right)])
         let h = e.hosts[notes.id]
-        let start = CGRect(x: 894, y: 41, width: 700, height: 933), end = CGRect(x: 804, y: 41, width: 700, height: 933)
-        let cut = h.flatMap { e.cutOf($0) }
-        check("cut pane: at the page's end: its rest past the display's edge, its right its one side (a slide)",
-              cut?.sides == [.right] && w.bounds(window: n) == start, "\(String(describing: cut)) \(String(describing: w.bounds(window: n)))")
+        let start = CGRect(x: 894, y: 41, width: 700, height: 933)
+        check("cut pane: at the page's end: cut, its rest past the display's edge",
+              h.map { e.isCut($0) } == true && w.bounds(window: n) == start, "\(String(describing: w.bounds(window: n)))")
         let first = told.last?.first { $0.window == n }
-        check("cut pane: …told with its pane the hole, its window's frame apart, under no pane (not tucked), its side",
-              first?.rect == right && first?.frame == start && first?.tucked == false && first?.cut?.sides == [.right], "\(String(describing: first))")
+        check("cut pane: …told with its pane the hole, its window's frame apart, under no pane (not tucked), cut",
+              first?.rect == right && first?.frame == start && first?.tucked == false && first?.cut == true, "\(String(describing: first))")
         let calls0 = w.activeCalls.count
         _ = hostRun { await e.focus(notes.id, fronted: false) }
         check("cut pane: under no pane, focused: as any pane (no focus without a raise)",
@@ -289,21 +291,19 @@ func multiHostTests() {
         pollOnly(2)
         check("cut pane: under no pane: the poll puts nothing back", !w.calls.dropFirst(callsP).contains { $0.hasPrefix("activate ") }, "\(w.calls.dropFirst(callsP))")
         _ = hostRun { await e.focus(textEdit.id, fronted: true) }
-        let mark = w.calls.count
-        let slid = hostRun { await e.slide(notes.id, side: .right) } ?? false
-        let rects = w.calls.dropFirst(mark).filter { $0.hasPrefix("tileRect \(w.tileOf(n) ?? 0) ") }.count
+        // The middle of three: its rest under the first pane (392…1092), tucked, ordered behind it.
+        let a = CGRect(x: 276, y: 41, width: 404, height: 933), b = CGRect(x: 688, y: 41, width: 404, height: 933), c = CGRect(x: 1100, y: 41, width: 404, height: 933)
+        _ = layout(e, textEdit, a, [HostExtra(target: notes, role: .pane, rect: b), HostExtra(target: maps, role: .pane, rect: c)])
+        let under = CGRect(x: 392, y: 41, width: 700, height: 933)
         let second = told.last?.first { $0.window == n }
-        check("cut pane: a slide to its right: its window at its end alignment (804…1504) by several rects (eased, one a frame), its left its side now, under the left pane (tucked), ordered behind it",
-              slid && w.bounds(window: n) == end && rects >= 3 && h.flatMap { e.cutOf($0) }?.sides == [.left] && second?.tucked == true && w.inFront(n, of: edit) == false,
-              "\(slid) \(String(describing: w.bounds(window: n))) \(rects) \(String(describing: second)) \(w.raised)")
+        check("cut pane: the middle of three: its window's rest under the first pane (392…1092), told tucked, ordered behind it",
+              w.bounds(window: n) == under && second?.tucked == true && second?.cut == true && w.inFront(n, of: edit) == false,
+              "\(String(describing: w.bounds(window: n))) \(String(describing: second)) \(w.raised)")
         let calls1 = w.activeCalls.count
         _ = hostRun { await e.focus(notes.id, fronted: false) }
         check("cut pane: under the left pane, focused: its app given the keys without a raise, never made front by a raising call",
               w.activeCalls.dropFirst(calls1).contains { $0.hasPrefix("focusWithoutRaise ") && $0.hasSuffix(" \(n)") } && !w.activeCalls.dropFirst(calls1).contains { $0.hasPrefix("makeFront ") && $0.hasSuffix(" \(n)") }
               && w.inFront(n, of: edit) == false, "\(w.activeCalls.dropFirst(calls1)) \(w.raised)")
-        let none = hostRun { await e.slide(textEdit.id, side: .left) } ?? true
-        let wrong = hostRun { await e.slide(notes.id, side: .right) } ?? true
-        check("cut pane: no slide for a pane that isn't cut, nor to a side it doesn't hide", !none && !wrong)
         // Its app brought in front some other way (⌘-Tab): macOS raised its window over the left pane; put back under it.
         w.raised.removeAll { $0 == n }
         w.raised.insert(n, at: 0)
@@ -352,21 +352,20 @@ func multiHostTests() {
         let tries2 = tries()
         pollOnly(1)
         check("cut pane: …its window seen behind again, then over again: put back again", tries() > tries2 && (w.raised.firstIndex(of: edit) ?? 99) < (w.raised.firstIndex(of: n) ?? -1), "\(tries() - tries2) \(w.raised)")
-        // Slid back: its rest past the display's edge again, under no pane.
-        let back = hostRun { await e.slide(notes.id, side: .left) } ?? false
+        // Two panes again, it at the page's end: its rest past the display's edge again, under no pane.
+        _ = layout(e, textEdit, left, [HostExtra(target: notes, role: .pane, rect: right)])
         let third = told.last?.first { $0.window == n }
-        check("cut pane: slid back to its left: its window's start at its pane's again (past the display's edge), its right its side, under no pane",
-              back && w.bounds(window: n) == start && h.flatMap { e.cutOf($0) }?.sides == [.right] && third?.tucked == false, "\(back) \(String(describing: w.bounds(window: n))) \(String(describing: third))")
-        // A new layout (a divider moved): the pane's new rect, away from the other panes again, whatever it was slid to.
-        _ = hostRun { await e.slide(notes.id, side: .right) }
+        check("cut pane: at the page's end again: its window's start at its pane's (past the display's edge), under no pane",
+              w.bounds(window: n) == start && third?.cut == true && third?.tucked == false, "\(String(describing: w.bounds(window: n))) \(String(describing: third))")
+        // A new layout (a divider moved): the pane's new rect, away from the other panes.
         let narrower = CGRect(x: 914, y: 41, width: 590, height: 933)
         _ = layout(e, textEdit, CGRect(x: 276, y: 41, width: 630, height: 933), [HostExtra(target: notes, role: .pane, rect: narrower)])
         check("cut pane: its pane's rect changed (a divider moved): away from the other panes again, past the display's edge",
               w.bounds(window: n) == CGRect(x: 914, y: 41, width: 700, height: 933), "\(String(describing: w.bounds(window: n)))")
     }
 
-    // ---- three panes, two cut: the middle one's rest under the pane before it, each kept behind the ones it lies under
-    // (a chain), never a slide that would put two cut panes over each other's ----
+    // ---- three panes, two cut: the middle one's rest under the pane before it, the last one's past the display's edge,
+    // each kept behind the ones it lies under (a chain) ----
     do {
         let (w, e) = world()
         w.byRaise = true
@@ -383,17 +382,10 @@ func multiHostTests() {
         let hn = e.hosts[notes.id], hf = e.hosts[maps.id]
         check("three panes: the middle one's rest under the first (392…1092), the last one's past the display's edge (1100…1700); the middle one behind the first",
               w.bounds(window: n) == CGRect(x: 392, y: 41, width: 700, height: 933) && w.bounds(window: f) == CGRect(x: 1100, y: 41, width: 600, height: 933)
-              && hn.flatMap { e.cutOf($0) }?.sides == [.left] && hf.flatMap { e.cutOf($0) }?.sides == [.right] && w.inFront(n, of: edit) == false,
+              && hn.map { e.isCut($0) } == true && hf.map { e.isCut($0) } == true && w.inFront(n, of: edit) == false,
               "\(String(describing: w.bounds(window: n))) \(String(describing: w.bounds(window: f))) \(w.raised)")
-        let slid = hostRun { await e.slide(maps.id, side: .right) } ?? false
-        check("three panes: the last one slid to its right (904…1504): under the middle one, which is under the first: back to front last, middle, first",
-              slid && w.bounds(window: f) == CGRect(x: 904, y: 41, width: 600, height: 933) && w.inFront(f, of: n) == false && w.inFront(n, of: edit) == false,
-              "\(slid) \(String(describing: w.bounds(window: f))) \(w.raised)")
-        let crossing = hostRun { await e.slide(notes.id, side: .left) } ?? true
-        check("three panes: the middle one's left no longer offered (slid, it would lie over the last one's pane while the last one lies over its own)",
-              !crossing && hn.flatMap { e.cutOf($0) }?.sides == [] && w.bounds(window: n) == CGRect(x: 392, y: 41, width: 700, height: 933), "\(crossing) \(String(describing: hn.flatMap { e.cutOf($0) }))")
         _ = hostRun { await e.focus(notes.id, fronted: false) }
-        check("three panes: the middle one focused: still behind the first, in front of the last", w.inFront(n, of: edit) == false && w.inFront(f, of: n) == false, "\(w.raised)")
+        check("three panes: the middle one focused: still behind the first", w.inFront(n, of: edit) == false, "\(w.raised)")
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----

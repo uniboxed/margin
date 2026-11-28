@@ -190,20 +190,13 @@ bool margin_layout_at_page_area(MarginRect bounds, MarginRect area, double toler
 // Where each visible host's window goes and cut panes (host/model/panes.rs, ffi panes.rs): typed (`frame` per follower
 // per frame of a drag). A placement NULL: the host's own. Each reading call notes the hosts whose minimum it read as
 // their app's kept one with their process's version unread (margin_model_versions_wanted, right after it: read each
-// one's version, set it, ask again). Sides: 0 left, 1 right, 2 up, 3 down; as bits 1, 2, 4, 8.
-typedef struct MarginSlide {
-    MarginRect pane;
-    int8_t end_x; // 0 its start at the pane's, 1 its end, -1 away from the other panes
-    int8_t end_y;
-} MarginSlide;
+// one's version, set it, ask again).
 void margin_model_set_live_page(MarginHostCore *core, const MarginRect *page); // a drag's page area; NULL: none (the drag's own: margin_live_follow)
 size_t margin_model_versions_wanted(MarginHostCore *core, uint32_t *out, size_t cap);
 void margin_model_frame(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, MarginRect *out);
 void margin_model_fitted(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, bool entry, MarginPlacement *out); // entry: as its own Space reserves it
 bool margin_model_tile_rect(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, MarginRect home, MarginRect *out);
 bool margin_model_is_cut(MarginHostCore *core, uint32_t handle);
-int8_t margin_model_cut(MarginHostCore *core, uint32_t handle); // -1 not cut, else its sides' bits
-bool margin_model_slide_for(MarginHostCore *core, uint32_t handle, uint8_t side, MarginSlide *out);
 size_t margin_model_lying_under(MarginHostCore *core, uint32_t handle, const MarginRect *at, uint32_t *out, size_t cap); // at NULL: its frame
 bool margin_model_tucked(MarginHostCore *core, uint32_t handle, const MarginRect *at);
 bool margin_model_over_under(MarginHostCore *core, uint32_t handle, const int64_t *front_to_back, size_t n);
@@ -213,7 +206,6 @@ bool margin_model_over_under(MarginHostCore *core, uint32_t handle, const int64_
 size_t margin_model_front_wanted(MarginHostCore *core, uint32_t *out, size_t cap);
 int64_t margin_order_server(const int64_t *windows, size_t n, const int64_t *screen, size_t m, int64_t *out, size_t cap); // -1: unread
 bool margin_order_top_behind(const int64_t *windows, size_t n, const uint32_t *below, size_t k, const int64_t *screen, size_t m);
-uint8_t margin_model_slide_step(MarginHostCore *core, MarginRect from, MarginRect to, double elapsed, double time, const MarginRect *home, MarginRect *page, MarginRect *tile); // bits: 1 last, 2 tile written
 
 // Margin's own window's page (core/page/, passthrough.rs PagePointer, ffi page.rs; docs/CORE-REFACTOR.md step 3 parts
 // 11-12): one object per Margin window, the main thread's. Its pointer: the slot and catch region (placed from its own
@@ -748,7 +740,7 @@ ptrdiff_t margin_page_text(const MarginPage *page, uint8_t which, uint8_t *buf, 
 // What the page said (core/page/said.rs): an op and its body's JSON (a layout's: its report) → its route (`kind`: 0
 // nothing, 1 ready, 2 layout (flag taken, flag2 panes changed), 3 the card's rect (has_rect, rect), 4 hits (flag all;
 // `rects` of them), 5 chrome (has_rect: controls; drags as rects), 6 focus (flag; flag2: one wanted the keys before), 7 counts (a, b), 8 the pointer's
-// wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic (flag: a level's change), 12 slide (a side; text item), 13 ask (text
+// wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic (flag: a level's change), 12 unused (was a cut pane's slide), 13 ask (text
 // `{ name, arg }`), 14 log (flag warn; text)); `text` freed with margin_buffer_free. `said_rects`: the rects it read.
 // The hello: its JSON text (freed with margin_buffer_free).
 typedef struct MarginSaid { uint8_t kind; bool flag; bool flag2; bool has_rect; int64_t a; int64_t b; MarginRect rect; size_t rects; uint8_t *text; size_t text_len; } MarginSaid;

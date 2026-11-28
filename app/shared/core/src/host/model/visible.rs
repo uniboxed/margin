@@ -289,7 +289,6 @@ impl HostModel {
             if let Some(s) = self.listed_mut(&id) {
                 s.rect = None;
                 s.role = Role::Main;
-                s.slid = None;
             }
         } else if let Some(was) = was {
             self.layout_set(was, None);
@@ -656,7 +655,7 @@ impl HostModel {
     }
 
     /// A layout's end: no longer applied; the layout what's visible of it; one left of several asked: it alone, at
-    /// the page area (its host to place there again; its slide forgotten).
+    /// the page area (its host to place there again).
     pub fn layout_end_alone(&mut self) -> Option<Handle> {
         self.applying = false;
         self.held.clear();
@@ -679,7 +678,6 @@ impl HostModel {
         let s = self.get_mut(h)?;
         s.rect = None;
         s.role = Role::Main;
-        s.slid = None;
         Some(h)
     }
 

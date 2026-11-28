@@ -12269,3 +12269,19 @@ Tirth's ask after the flexible split prototype, step 1 of docs/FLEX-SPLIT.md: re
   - Idle cost is 0.41% CPU.
   - The picture shows the folded pane's app blurred under its icon and name.
 - **The arrows** are gone from the page and themes. The engine's slide (`HostEngine.slide`, `slide_for`, `slide_step`) is unused now and is removed in a cleanup.
+
+## The cut pane's slide removed (`refactor/remove-pane-slide`, 2026-11-28)
+
+The cleanup docs/FLEX-SPLIT.md step 1 promised, now that a pane opens to fit its app instead of sliding.
+
+- **Removed, end to end:**
+  - margin-core's `Slide`, a host's `slid` alignment and its fields, `slide_for`, `slid_frame`, `slide_step`, `slide_rect`, a cut pane's sides (`cut_of`, `Side`) and the page's `split.slide` (`Said::Slide`).
+  - The FFI's `MarginSlide`, `margin_model_slide_for`, `margin_model_slide_step` and `margin_model_cut` (sides). `margin_model_is_cut` says whether a pane is cut.
+  - Margin.app's `HostEngine.slide`, `slideTime`, `PaneSide`, `PaneSlide`, `PaneCut`, the session's `slidePane` and the window's `onPaneSlide`.
+- **Numbers kept stable:**
+  - The model's field numbers 19, 20 and 67 and the page's said kind 12 are left unused rather than renumbered.
+  - `HostShownWindow.cut` is now a flag. The page's `paneCut` push carries only each cut pane's window (the page read nothing else since step 1).
+- **Kept:** `layout::cut` keeps its alignment arguments. It is a pure rule with its own tests, and Swift reaches it through `margin_layout_cut` (always with none now). A pane's frame is always laid out away from the other panes.
+- **Tests:** the tucked-pane checks (keys without a raise, the ⌘-Tab and poll repairs, the raise retries) no longer use a slide to get a pane under another.
+  - margin-core and the order rules use a pane held within the display (not a tile).
+  - The engine's multi-host test uses the middle of three panes.

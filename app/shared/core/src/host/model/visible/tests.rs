@@ -258,10 +258,9 @@ fn one_left_alone_at_the_page_area_and_the_focus_falls_back() {
     m.layout_begin("app:a", Some(LEFT), &[extra("app:n", Role::Pane, RIGHT)]);
     // The newcomer failed: out of the layout; main alone at the page area.
     m.layout_set("app:n", None);
-    m.set_rect(a, Field::SlidPane, Some(LEFT));
     assert_eq!(m.layout_end_alone(), Some(a));
     let s = m.get(a).unwrap();
-    assert_eq!((s.rect, s.role, s.slid), (None, Role::Main, None));
+    assert_eq!((s.rect, s.role), (None, Role::Main));
     assert_eq!(m.layout_get("app:a"), Some(Visible::MAIN));
     assert_eq!(m.layout_focus(Some("app:n"), "app:a"), ShownSet::Keep, "the focus asked gone: main, shown");
     assert_eq!(m.focus_wanted(), None, "one visible: none asked");

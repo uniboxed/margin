@@ -88,7 +88,6 @@ final class PageCore {
         case focus(Bool, was: Bool) // a field of Margin's wants the keys (kept by the core), and whether one did before
         case counts(spaces: Int, items: Int)
         case resizing(on: Bool, divider: Bool)
-        case slide(item: String, side: PaneSide)
         case ask(String, JSONObject)
         case log(warn: Bool, String)
     }
@@ -123,7 +122,6 @@ final class PageCore {
         case 9: return .fullScreen
         case 10: return .resizing(on: out.flag, divider: out.flag2)
         case 11: return .haptic(level: out.flag)
-        case 12: return .slide(item: text ?? "", side: [PaneSide.left, .right, .up, .down][Int(out.a) & 3])
         case 13:
             let o = text.flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject } ?? [:]
             return .ask(o["name"] as? String ?? "", o["arg"] as? JSONObject ?? [:])

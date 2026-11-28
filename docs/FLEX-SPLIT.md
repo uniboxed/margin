@@ -93,8 +93,9 @@ The pane click tap and the core's `hover_cut` skip folded panes, since they're M
 ### The arrows go
 
 `<m-pane-arrow>`, `m-cut-hover` and their CSS are removed from the page and themes, and `split.slide` from the
-page's API. The engine's slide stays until the on-screen check passes, then a cleanup commit removes it
-(`HostEngine.slide`, `slideFor`, `slide_step`, `Slide`).
+page's API. The engine's slide was removed once the on-screen check passed (2026-11-28, refactor/remove-pane-slide:
+`HostEngine.slide`, `slideFor`, `slide_step`, `Slide`, the cut pane's sides). The page is told only which panes are
+cut, each by its window.
 
 ### Tests, written to fail first
 

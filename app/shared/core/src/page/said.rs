@@ -42,8 +42,6 @@ pub enum Said {
     /// The trackpad's tick: its alignment (a detent, a step), or a level's change (`level`: Edit Theme Color's texture,
     /// M2.9 step 6).
     Haptic { level: bool },
-    /// A cut pane's arrow: its item, the side (0 left, 1 right, 2 up, 3 down).
-    Slide { item: String, side: u8 },
     /// A request of the window's source: its name and argument (an object).
     Ask { name: String, arg: Object },
     /// A line for the app's log (`warn`: the page's warning or error).
@@ -169,20 +167,6 @@ impl Page {
                     }
                     "haptic.alignment" => Said::Haptic { level: false },
                     "haptic.level" => Said::Haptic { level: true },
-                    "split.slide" => {
-                        let item = arg.and_then(|a| json::string(a.get("item")));
-                        let side = arg.and_then(|a| json::string(a.get("side"))).and_then(|s| match s {
-                            "left" => Some(0),
-                            "right" => Some(1),
-                            "up" => Some(2),
-                            "down" => Some(3),
-                            _ => None,
-                        });
-                        match (item, side) {
-                            (Some(item), Some(side)) => Said::Slide { item: item.to_string(), side },
-                            _ => Said::None,
-                        }
-                    }
                     "" => Said::None,
                     _ => Said::Ask { name: name.to_string(), arg: arg.cloned().unwrap_or_default() },
                 }
@@ -262,14 +246,6 @@ mod tests {
         assert_eq!(
             said(&mut p, "perform", json!({ "name": "sidebar.resizing" })),
             Said::Resizing { on: false, divider: false }
-        );
-        assert_eq!(
-            said(&mut p, "perform", json!({ "name": "split.slide", "arg": { "item": "a", "side": "up" } })),
-            Said::Slide { item: "a".into(), side: 2 }
-        );
-        assert_eq!(
-            said(&mut p, "perform", json!({ "name": "split.slide", "arg": { "item": "a", "side": "in" } })),
-            Said::None
         );
         assert_eq!(said(&mut p, "perform", json!({ "name": "" })), Said::None);
         assert_eq!(
