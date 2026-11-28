@@ -12053,3 +12053,15 @@ A click in the sidebar closes the bar and goes on to what it's on (a tab shown):
 other four themes' scrims cover the window, so nothing there is outside). At the click, not the press: the double-click
 on the sidebar's empty part (ui/behaviors/empty.ts) checks at its first press that the bar wasn't open, so a
 double-click there with the bar open closes it and never opens it again (tests/theme/empty-dblclick.test.ts).
+
+## Only a press begun with the command bar open closes it (review of `fix/arcadia-clear`, 2026-11-27)
+
+`fix/arcadia-clear`'s second commit closed the command bar at any click outside its layer (the sidebar's, now live under
+it). Margin.app's end-to-end checks then failed every run (two of 409: ⌘T's bar never kept the keys, "a field of
+Margin's with the keys…", and the theme-swap timing beside it); the same checks passed on main and with `palette.ts` as
+main's. The click that ended a press begun before the bar opened (one still under way as ⌘T opened it, or the press that
+opened it) closed it again at once. Now `palette.ts` notes at each press (capture) whether the bar was open, and only a
+click (or right-click) whose press began with it open closes it. Test first: Arcadia's "a click whose press began before
+the bar opened never closes it; one begun with it open does" failed in WebKit and Chromium, passes now; the app's
+end-to-end checks pass (409, twice).
+

@@ -706,6 +706,32 @@ for (const [engineName, engine] of ENGINES) {
         await away();
       });
 
+      // Only a press that begins with the bar open closes it at its click (a click outside it): the click that ends a press
+      // begun before it opened (the press that opened it, or one still under way as ⌘T opens it) never does (2026-11-27:
+      // Margin.app's ⌘T bar closed again at once in the app's end-to-end check, its field never keeping the keys).
+      await t.test('the command bar: a click whose press began before the bar opened never closes it; one begun with it open does', async () => {
+        await away();
+        const spot = await ev(() => {
+          const s = document.querySelector('.margin-sidebar')!.getBoundingClientRect();
+          for (let y = s.bottom - 70; y > s.top + 40; y -= 6) {
+            const el = document.elementFromPoint(s.left + 30, y);
+            if (el && el.closest('.margin-sidebar') && !el.closest('[m-action], button, a, input, .tab, .pin, .folder')) return { x: s.left + 30, y };
+          }
+          return null;
+        });
+        assert.ok(spot, 'an empty point in the sidebar');
+        await page.mouse.move(spot!.x, spot!.y);
+        await page.mouse.down();
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.waitForFunction(() => !!document.querySelector('.palette'), null, { timeout: 2000 });
+        await page.mouse.up();
+        await page.waitForTimeout(60);
+        assert.equal((await ev(() => T.rtUi())).palette.open, true, 'the click of a press begun before it opened: still open');
+        await page.mouse.click(spot!.x, spot!.y);
+        await page.waitForFunction(() => !(window as any).__rt.runtime.ui.palette.open, null, { timeout: 2000 });
+        await away();
+      });
+
       await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {
         await ev(() => {
           const rt = (window as any).__rt;
