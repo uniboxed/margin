@@ -1077,6 +1077,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         setIgnoring(out.pass)
         hover(at, inside: out.inside, buttonsDown: buttonsDown)
         if let over = out.hover { sayHover(over) }
+        barAtEdge(at, buttonsDown: buttonsDown)
         switch out.push {
         case .at(let x, let y): push(#"{"type":"pointer","x":\#(x),"y":\#(y)}"#)
         case .left(let x, let y): push(#"{"type":"pointerLeft","x":\#(x),"y":\#(y)}"#)
@@ -1356,6 +1357,52 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
         RunLoop.main.add(t, forMode: .common)
         barWatch = t
+    }
+
+    // ---- macOS's menu bar over an app with a Dock icon ----
+
+    // An app shown with a Dock icon (one that goes full screen only with it: the hosting core's docked.rs; one the person
+    // opened) is its Space's front app, not Margin, so macOS shows the bar of an app that registered none (Margin starts
+    // hosted apps with `-NSMenuEnableMenuBarAgent NO`): nothing comes down at the top edge (MenuBarAgent, 2026-11-28:
+    // `frontApp=Music appState=missing mode=nil`, its top edge not tracked). Margin's bar for every app (Tirth): with the
+    // pointer at the display's top edge, such an app shown, no button held, no field of Margin's wanting the keys and
+    // Margin not in front already, Margin is made the active app: its Space's front app again, so macOS brings Margin's
+    // bar down as for any other app, and the watch above gives the keys back once the bar is up (`becameActive`). Once
+    // per visit to the top: again only after the pointer has left the band.
+    nonisolated static let barEdge: CGFloat = 2 // points from the display's top: the pointer pushing at the edge
+    // The decision, on its own (tests/margin-window-tests.swift). Top-left coordinates (the pointer watch's).
+    nonisolated static func takesBarAtEdge(fullScreen: Bool, appShown: Bool, dockApp: Bool, fieldWantsKeys: Bool, marginFront: Bool,
+                                           buttonsDown: Bool, pointer: CGPoint, screen: CGRect) -> Bool {
+        fullScreen && appShown && dockApp && !fieldWantsKeys && !marginFront && !buttonsDown
+            && pointer.y >= screen.minY && pointer.y <= screen.minY + barEdge && pointer.x >= screen.minX && pointer.x <= screen.maxX
+    }
+    // Whether an app has a Dock icon (a regular one).
+    var isDockApp: (pid_t) -> Bool = { NSRunningApplication(processIdentifier: $0)?.activationPolicy == .regular }
+    private var barTaken = false
+    private(set) var barTakes = 0 // the bar taken at the top edge (the tests read it)
+    private func barAtEdge(_ at: CGPoint, buttonsDown: Bool) {
+        guard isFullScreen, options.harness || window.isOnActiveSpace, let frame = (window.screen ?? NSScreen.main)?.frame else { return }
+        let screen = ScreenGeometry.appKitRect(frame) // (top left, as the pointer watch's points)
+        // (Out of the band: armed again. In it: the window's app read only now, never per move elsewhere.)
+        guard at.y <= screen.minY + Self.barBand, at.x >= screen.minX, at.x <= screen.maxX else { barTaken = false; return }
+        guard !barTaken, let hosted, pageState == .shown, let pid = hostedPid(hosted) else { return }
+        guard Self.takesBarAtEdge(fullScreen: isFullScreen, appShown: true, dockApp: isDockApp(pid), fieldWantsKeys: pageWantsKeyboard,
+                                  marginFront: appActive(), buttonsDown: buttonsDown, pointer: at, screen: screen) else { return }
+        barTaken = true
+        barTakes += 1
+        // (The window server's front process, as a click would make it: AppKit's own activation is refused here, Margin
+        // not being the active app, seen on screen 2026-11-28; it's the fallback. MenuBarAgent then brings Margin's bar
+        // down at the pointer's next move, as a hand pushing at the edge makes.)
+        let why = "the pointer at the top edge over an app with a Dock icon: macOS brings Margin's menu bar down (the keys back to it once the bar is up)"
+        activations.append(why)
+        if activations.count > 50 { activations.removeFirst(activations.count - 50) }
+        guard !options.harness else { return }
+        if owner?.takeFront(window.windowNumber) == true {
+            Diagnostics.note("Margin's window \(id): Margin made the front app: \(why)")
+        } else {
+            activate(why + " (AppKit's activation: the window server's not taken)")
+            activations.removeLast() // (counted once)
+        }
     }
 
     // Margin's own menu item run while it's the front app (clicked from its Dock icon, ⌘-Tab): the app shown gets
@@ -2167,6 +2214,9 @@ final class MarginWindows {
     // (Run while Margin is the active app, its menu bar's: the app shown gets the activation back after, `menuItemRan`.)
     // Margin's own menu items held (the start screen up, HostedSession `startupShown`): none of them runs.
     var holdsMenu: () -> Bool = { false }
+    // Margin made the window server's front process, `window` its window, as a click would (the shell's: the host
+    // engine's private call); false: not taken (AppKit's activation tried then).
+    var takeFront: (Int) -> Bool = { _ in false }
     func perform(_ action: MarginMenuAction) {
         if holdsMenu() { return Diagnostics.note("Margin's menu: \(action.rawValue) not now, the start screen is up") }
         if action == .newWindow { open(); return }

@@ -778,6 +778,38 @@ func glueScenario() async {
     try? await Task.sleep(for: .milliseconds(700))
     check("its Space shown again with the app shown already the active one: nothing", c.returnHandBacks == returnsBefore + 1 && c.handBacks.count == backsBefore + 1)
   }
+  // ---- Margin's menu bar over an app with a Dock icon (2026-11-28): Margin made active at the top edge, so macOS brings
+  // Margin's bar down (its Space's front app again); once per visit to the top ----
+  do {
+    let wasActive = c.appActive, wasDock = c.isDockApp
+    let takes = c.barTakes, acts = c.activations.count
+    let top = (c.window.screen ?? NSScreen.main).map { ScreenGeometry.appKitRect($0.frame) } ?? display
+    c.appActive = { false }
+    c.isDockApp = { _ in true }
+    c.pointerMoved(CGPoint(x: top.minX + 400, y: top.minY), buttonsDown: false)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 1), buttonsDown: false)
+    check("menu bar over an app with a Dock icon (Calculator stood in): the pointer at the display's top edge makes Margin the active app, once while it stays at the top",
+          c.barTakes == takes + 1 && c.activations.count == acts + 1 && c.activations.last?.contains("top edge") == true, "\(c.barTakes - takes) \(c.activations.suffix(2))")
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 300), buttonsDown: false)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 10), buttonsDown: false)
+    check("menu bar over an app with a Dock icon: the pointer back near the top but not at the edge: nothing", c.barTakes == takes + 1)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY), buttonsDown: true)
+    check("menu bar over an app with a Dock icon: a button held at the edge (a drag): nothing", c.barTakes == takes + 1)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 300), buttonsDown: false)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY), buttonsDown: false)
+    check("menu bar over an app with a Dock icon: left the band and back to the edge: once more", c.barTakes == takes + 2 && c.activations.count == acts + 2)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 300), buttonsDown: false)
+    c.isDockApp = { _ in false }
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY), buttonsDown: false)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 300), buttonsDown: false)
+    c.isDockApp = { _ in true }
+    c.appActive = { true }
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY), buttonsDown: false)
+    check("menu bar: an app with no Dock icon shown (macOS's bar already Margin's), or Margin in front already: nothing", c.barTakes == takes + 2 && c.activations.count == acts + 2)
+    c.pointerMoved(CGPoint(x: top.minX + 500, y: top.minY + 300), buttonsDown: false)
+    c.appActive = wasActive
+    c.isDockApp = wasDock
+  }
   if let spot = await emptySidebarSpot(c.webView) {
     let handsBefore = c.handBacks.count
     let pressesBefore = c.panel.presses, marginBefore = c.activations.count, asksBefore = c.keyAsks, backBefore = c.keysGivenBack

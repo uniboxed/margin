@@ -294,6 +294,7 @@ extension Shell {
         windows.onDisplay = { [weak self] controller, display in self?.host?.displayChanged(display, marginWindow: controller.window.windowNumber) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
         windows.holdsMenu = { [weak session] in session?.startupShown == true }
+        windows.takeFront = { [weak self] window in self?.host?.makeMarginFront(window: window) ?? false }
     }
 
     // The installed app's name as the catalog read it (Finder's).

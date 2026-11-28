@@ -3097,18 +3097,27 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let (w, e, marker) = world()
         w.dockFullScreen = ["com.apple.Notes"]
         w.appVersions["com.apple.Notes"] = "4.12 (2700)"
+        // (As Reminders on the real Mac, 2026-11-28: its window opens in Margin's Space, the current one, and macOS takes
+        // its full-screen ask only on a Desktop.)
+        w.launchInCurrent = true
+        w.desktopOnlyFullScreen = ["com.apple.Notes"]
+        var notes1: [HostEvent] = []
+        e.onEvent = { notes1.append($0) }
         let r = open(e, notes)
         let p = pid(w, "com.apple.Notes"), n = window(w, "com.apple.Notes")
         check("dock for full screen: started with no Dock icon, its window refused full screen, given its Dock icon in place (the same process), shown full screen",
               r == .shown(notes.id, placed: true) && e.mode(of: notes.id) == .fullScreen && w.apps[p]?.policy == .regular
               && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 1 && at(w, "launch com.apple.Notes") < at(w, "dock com.apple.Notes")
               && at(w, "dock com.apple.Notes") < (w.calls.firstIndex { $0.hasPrefix("fullScreen true") } ?? -1) && clean(w), "\(String(describing: r)) \(w.calls)")
+        let toDesk = w.calls.firstIndex(of: "move \(n) \(FakeHostWorld.desktop)") ?? -1
+        check("dock for full screen: asked once, from its Desktop (never the refused ask's slow path)", w.calls.filter { $0 == "fullScreen true \(n)" }.count == 1, "\(w.calls)")
+        check("dock for full screen: its window moved onto its Desktop after its Dock icon, before the full-screen ask (an ask from Margin's Space isn't taken)",
+              at(w, "dock com.apple.Notes") < toDesk && toDesk < (w.calls.firstIndex { $0.hasPrefix("fullScreen true") } ?? -1), "\(w.calls)")
         check("dock for full screen: its app's arguments kept (its title strip, automatic termination)", w.lastArguments == ["-NSMenuEnableMenuBarAgent", "NO", "-NSDisableAutomaticTermination", "YES"], "\(w.lastArguments)")
         let docked = marker.deletingLastPathComponent().appendingPathComponent("docked.json")
         let saved = (try? Data(contentsOf: docked)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String: Any]] }
         check("dock for full screen: remembered for its version (docked.json)", saved?["com.apple.Notes"]?["version"] as? String == "4.12 (2700)" && saved?["com.apple.Notes"]?["needs"] as? Bool == true, "\(String(describing: saved))")
         hostRun { await e.close(notes.id) }
-        _ = n
         // Its next start: with its Dock icon from the start, full screen with no switch in place.
         w.calls.removeAll()
         let again = open(e, notes)

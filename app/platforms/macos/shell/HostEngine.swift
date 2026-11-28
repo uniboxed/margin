@@ -3308,6 +3308,15 @@ final class HostEngine {
         if can {
             host.mode = .fullScreen
             if let now { host.resizable = now.resizable }
+            // (Its window opened in Margin's Space, the current one, as an app with no Dock icon's do; a full-screen ask
+            // from there isn't taken (Reminders, 2026-11-28: no Space of its own within 1.5 s, the slow path's move to its
+            // Desktop seen). Onto its Desktop first, where an app started with its Dock icon has its window: the early path
+            // asks from there. Out of sight: the current Space stays Margin's.)
+            if sys.spaces(window: host.window)?.contains(marginSpace) == true, let desk = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desk) {
+                let there = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: host.window) == [desk] }
+                host.away = true
+                Diagnostics.note("host: \(host.id): given its Dock icon in Margin's Space: its window moved onto its Desktop for the full-screen ask\(there ? "" : " (not seen there)")")
+            }
             saveMarker()
         }
         if core.dockedResult(bundle, version: version, needs: can), let dockedURL { core.saveDocked(to: dockedURL) }
@@ -6489,6 +6498,10 @@ final class HostEngine {
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
     var paneFronting: PaneFronting? { sys.paneFronting }
     var paneDelivery: PaneFronting? { sys.paneDelivery }
+    // Margin itself made the window server's front process, `window` its window, as a person's click would (the menu bar
+    // over an app with a Dock icon: MarginWindowController `barAtEdge`). AppKit's own activation is refused then (macOS's
+    // cooperative activation: Margin isn't the active app, the person didn't act in it; 2026-11-28 on screen). True: taken.
+    func makeMarginFront(window: Int) -> Bool { sys.makeFront(pid: ProcessInfo.processInfo.processIdentifier, window: window) }
 
     private func queueActives() {
         guard sys.keepsPanesActive || !actives.kept.isEmpty else { return } // (off with nothing kept: nothing at all)

@@ -12195,3 +12195,41 @@ Tirth's call: such an app gets its Dock icon, and opens as fast as any app that 
   launch for hosting goes through `launchForHosting`) is started with its Dock icon. Applies to apps started from then on
   (a running app's Dock icon can't be taken back). Tests: settings-form "Settings › Apps", docked.rs, host-tests "apps
   not hidden from the Dock".
+
+## After Tirth's first try of the Dock icons (`fix/dock-icon-followups`, 2026-11-28)
+
+From his session's log (Margin, MenuBarAgent):
+- **A blank page area while the first Safari tabs were picked.** Safari's window was prepared out of sight at launch;
+  the first picks found it there, asked its copy for the tab first (Safari's background paused: the first `hostShow`
+  4.2 s) and showed the window only after. The page draws its loader only while its window hosts, and that window
+  wasn't hosting yet (nothing shown since launch: no last item, the test runs had removed theirs), so it stayed blank
+  until an app's pick. Now (`show_web`, margin-core session/requests.rs): such a pick tells the window's page it hosts
+  before the ask (as a resumed item does), and lets go again if nothing comes (refused, overtaken, moved, no window).
+  Tests: requests_tests `a_web_item_of_a_prepared_window_*` (failing first).
+- **Reminders' first open slid part-way.** Given its Dock icon in place, its window was in Margin's Space (an app with no
+  Dock icon opens its window in the current Space) and the full-screen ask from there wasn't taken: 1.5 s, then the slow
+  path's move to its Desktop and a second ask (the slide). An app started with its Dock icon has its window on the
+  Desktop (its next open: the early path, 764 ms). Now `dockForFullScreen` moves the window onto its Desktop, out of
+  sight, before the ask. Test: host-tests "dock for full screen" with `launchInCurrent` + `desktopOnlyFullScreen`
+  (failing first).
+- **No menu bar at the top edge while Music or Reminders is shown.** MenuBarAgent: with Margin the front app of its Space
+  (any app with no Dock icon shown) `mode=autoHide`, the top edge tracked; with Music in front (a Dock app is its
+  Space's front app) `appState=missing, mode=nil`, nothing tracked: Margin starts hosted apps with
+  `-NSMenuEnableMenuBarAgent NO`, so it never registered a bar. Tirth: Margin's bar for every app (the app's own
+  would be inconsistent). Now (MarginWindowController `barAtEdge`, on the pointer watch's moves): the pointer at the
+  display's top edge (within 2 pt), an app with a Dock icon shown in full screen, no button held, no field of Margin's
+  wanting the keys, Margin not in front: Margin made the active app, so it's its Space's front app again and macOS
+  brings Margin's bar down as for any app; the existing watch (`becameActive` → `watchBar` → `keysBack`) gives the keys
+  back once the bar is up. Once per visit to the top band (40 pt). Its app's pid and policy read only in the band.
+  Tests: margin-window-tests (the decision), e2e-glue (once per visit, a drag, a no-Dock app, Margin in front).
+  On screen (2026-11-28, his Mac, Music shown): AppKit's `NSApp.activate()` is refused from there (cooperative
+  activation: Margin not active, the person didn't act in it; Music stayed front, nothing came down), so Margin is made
+  the window server's front process as a click would (`_SLPSSetFrontProcessWithOptions` kCPSUserGenerated, the engine's
+  existing `makeFront`: HostEngine `makeMarginFront`; AppKit's activation only as the fallback). MenuBarAgent then
+  tracks the edge (`reveal blocked: requiresMotionBeforeRevealing` until the pointer moves once more, as a hand pushing
+  at the edge does), dwells ~0.3 s and reveals Margin's bar (screenshot: Apple menu, Margin, File, Edit, View, Window);
+  Margin front 29 ms after the edge, the bar ~0.45 s after; the pointer away, Music front again (`keysBack`).
+- **The screen suite wrote "Error: Could not find key …" into Margin's defaults** (MarginFront, MarginPrepareBrowser,
+  MarginResumeLast, MarginTiles): macOS 27's `defaults read` error for an unset key was recorded as its value and
+  written back. Margin read each as unset (no effect seen); deleted on his Mac, and `defaultsRead` now takes both
+  wordings as unset.
