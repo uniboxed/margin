@@ -51,9 +51,11 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['appSearch', 'blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'themeStore', 'userThemes']);
+  assert.deepEqual(Object.keys(features).sort(), ['appDock', 'appSearch', 'blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'themeStore', 'userThemes']);
   assert.equal(features.haptics, false, 'a browser\'s overlay plays no haptics (Edit Theme Color\'s ticks)');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).haptics, true, 'Margin.app\'s own window on the Mac does');
+  assert.equal(features.appDock, false, 'a browser\'s overlay offers no Settings › Apps');
+  assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).appDock, true, 'Margin.app\'s own window on the Mac does');
   assert.equal(features.spaceThemes, false, 'a browser\'s overlay draws its profile\'s theme');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).spaceThemes, true, 'Margin.app\'s own window draws each space\'s');
   assert.equal(features.importThemes, true, 'Margin.app imports themes');
