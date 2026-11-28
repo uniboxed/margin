@@ -9,7 +9,7 @@ import * as L from '../app/shared/library/library.ts';
 import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
 import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
 import { buildViewModel } from '../app/shared/ui/view-model.ts';
-import { appKeyOf, dividerSizes, dragRatios, equalRatios, expandSizes, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, PANE_FOLD, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../app/shared/ui/behaviors/split.ts';
+import { appKeyOf, dividerSizes, dragRatios, dropPlace, DROP_BAR, equalRatios, expandSizes, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, PANE_FOLD, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../app/shared/ui/behaviors/split.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 import * as M from '../extension/state/model.ts';
 
@@ -67,6 +67,65 @@ test('split view, library: a split made or added to asks the hosting to show it,
   const turned = lib.act('toggleSplitAxis', { splitId: sp, windowId: 1 });
   assert.deepEqual(shows(turned), [{ split: sp, item: null, panes: [b, a, c] }]);
   assert.equal(lib.values.splits[sp].axis, 'vertical');
+});
+
+test('split view, library: a row dropped on the page (docs/FLEX-SPLIT.md step 2): at a place, in a pane\'s place, a new split\'s axis and order', () => {
+  const lib = library();
+  const [a, b, c, d, e] = ['https://a.example/', 'https://b.example/', 'https://c.example/', 'https://d.example/', 'https://e.example/'].map(lib.web);
+  // A new split from the item shown: `at` 0 puts the dropped one first, the axis as asked.
+  const made = lib.act('addToSplit', { tabId: b, nextTo: a, at: 0, axis: 'vertical', windowId: 1 });
+  assert.equal(made.ok, true);
+  const sp = made.result.splitId;
+  assert.deepEqual(shows(made), [{ split: sp, item: b, panes: [b, a] }]);
+  assert.equal(lib.values.splits[sp].axis, 'vertical');
+  // Between two panes: in that place, the ratios equal (as any add).
+  const between = lib.act('addToSplit', { tabId: c, splitId: sp, at: 1, windowId: 1 });
+  assert.deepEqual(shows(between), [{ split: sp, item: c, panes: [b, c, a] }]);
+  assert.deepEqual(lib.values.splits[sp].ratios, [0.3333, 0.3333, 0.3333]);
+  // Not a place in it (out of range, not a whole number, not a number): the end, as before.
+  for (const at of [9, -1, 1.5, '0', null]) {
+    const values = structuredClone(lib.values);
+    const out = L.perform(values, 'addToSplit', { tabId: d, splitId: sp, at, windowId: 1 }, { now: NOW, ids: ['x'] });
+    assert.deepEqual(shows(out), [{ split: sp, item: d, panes: [b, c, a, d] }], `at ${JSON.stringify(at)}`);
+  }
+  // In a pane's place: its ratio kept, the pane it replaces out of the split (still an item).
+  lib.act('resizeSplit', { splitId: sp, ratios: [0.5, 0.3, 0.2] });
+  const replaced = lib.act('addToSplit', { tabId: d, splitId: sp, replace: c, windowId: 1 });
+  assert.equal(replaced.ok, true);
+  assert.deepEqual(shows(replaced), [{ split: sp, item: d, panes: [b, d, a] }]);
+  assert.deepEqual(lib.values.splits[sp].ratios, [0.5, 0.3, 0.2]);
+  assert.ok(lib.values.tabs[c], 'the replaced item is kept');
+  // A replace of a pane not in it, or of the dropped one itself: an add at the end.
+  const values = structuredClone(lib.values);
+  const stray = L.perform(values, 'addToSplit', { tabId: e, splitId: sp, replace: 'nope', windowId: 1 }, { now: NOW, ids: ['x'] });
+  assert.deepEqual(shows(stray), [{ split: sp, item: e, panes: [b, d, a, e] }]);
+  // A split of 4: a replace still goes (the count stays), an add is refused.
+  lib.act('addToSplit', { tabId: e, splitId: sp, windowId: 1 });
+  assert.equal(lib.act('addToSplit', { tabId: c, splitId: sp, at: 0, windowId: 1 }).ok, false);
+  const four = lib.act('addToSplit', { tabId: c, splitId: sp, replace: e, windowId: 1 });
+  assert.deepEqual(shows(four), [{ split: sp, item: c, panes: [b, d, a, c] }]);
+  // An item of another split, dropped in: out of that one first (it dissolves with one left).
+  const [f, g] = ['https://f.example/', 'https://g.example/'].map(lib.web);
+  const other = lib.act('createSplit', { panes: [f, g], windowId: 1 }).result.splitId;
+  const moved = lib.act('addToSplit', { tabId: f, splitId: sp, replace: a, windowId: 1 });
+  assert.deepEqual(shows(moved), [{ split: sp, item: f, panes: [b, d, f, c] }]);
+  assert.equal(lib.values.splits[other], undefined);
+});
+
+test('split view, model: addToSplit at a place, replaceInSplit keeps the ratio', () => {
+  let s = M.defaultState();
+  s = { ...s, keptTabs: { x: { id: 'x' }, y: { id: 'y' }, z: { id: 'z' }, w: { id: 'w' } } as any };
+  s = M.createSplit(s, { id: 'sp', spaceId: s.spaces[0].id, panes: ['x', 'y'], ratios: [0.7, 0.3] });
+  assert.equal(s.splits!.length, 1);
+  assert.deepEqual(M.addToSplit(s, 'sp', 'z', 0).splits![0].panes, ['z', 'x', 'y']);
+  assert.deepEqual(M.addToSplit(s, 'sp', 'z', 2).splits![0].panes, ['x', 'y', 'z']);
+  assert.deepEqual(M.addToSplit(s, 'sp', 'z', 3).splits![0].panes, ['x', 'y', 'z'], 'past the end: the end');
+  const r = M.replaceInSplit(s, 'sp', 'x', 'z');
+  assert.deepEqual(r.splits![0].panes, ['z', 'y']);
+  assert.deepEqual(r.splits![0].ratios, [0.7, 0.3]);
+  assert.equal(M.replaceInSplit(s, 'sp', 'w', 'z'), s, 'not a pane: the state itself');
+  assert.equal(M.replaceInSplit(s, 'sp', 'x', 'y'), s, 'a pane already: the state itself');
+  assert.equal(M.replaceInSplit(s, 'nope', 'x', 'z'), s, 'no such split');
 });
 
 test('split view, library: what can\'t be a pane is refused: a fifth, an app twice, another space\'s item, Margin\'s own page', () => {
@@ -233,6 +292,35 @@ test('split view, UI: a pane opened to fit its app (docs/FLEX-SPLIT.md step 1): 
     assert.ok(Math.abs(out.reduce((a, b) => a + b, 0) - s.reduce((a, b) => a + b, 0)) < 1e-6, `${s} keeps its room`);
     assert.ok(out.every((x, j) => j === i || x >= PANE_FOLD - 1e-6), `${s}: none below the fold`);
   }
+});
+
+test('split view, UI: where a row dropped on the page goes (docs/FLEX-SPLIT.md step 2): a page\'s nearest edge, a pane\'s ends and middle, between', () => {
+  const page = { left: 100, top: 50, width: 800, height: 600 };
+  // One page: its nearest edge, a new split's place and axis, the half the new pane takes.
+  assert.deepEqual(dropPlace([page], null, 150, 350), { kind: 'side', at: 0, axis: 'horizontal', rect: { left: 100, top: 50, width: 400, height: 600 } });
+  assert.deepEqual(dropPlace([page], null, 880, 300), { kind: 'side', at: 1, axis: 'horizontal', rect: { left: 500, top: 50, width: 400, height: 600 } });
+  assert.deepEqual(dropPlace([page], null, 500, 60), { kind: 'side', at: 0, axis: 'vertical', rect: { left: 100, top: 50, width: 800, height: 300 } });
+  assert.deepEqual(dropPlace([page], null, 500, 640), { kind: 'side', at: 1, axis: 'vertical', rect: { left: 100, top: 350, width: 800, height: 300 } });
+  assert.equal(dropPlace([page], null, 99, 300), null, 'outside the page');
+  assert.equal(dropPlace([], null, 150, 300), null);
+  // Side by side, two panes 8 apart: a pane's ends (a quarter each) beside it, its middle in its place, the gap between.
+  const two = [{ left: 100, top: 50, width: 396, height: 600 }, { left: 504, top: 50, width: 396, height: 600 }];
+  const bar = (left: number) => ({ left, top: 50, width: DROP_BAR, height: 600 });
+  assert.deepEqual(dropPlace(two, 'horizontal', 120, 300), { kind: 'between', at: 0, axis: 'horizontal', rect: bar(100) }, 'the first pane\'s start: the page\'s edge');
+  assert.deepEqual(dropPlace(two, 'horizontal', 480, 300), { kind: 'between', at: 1, axis: 'horizontal', rect: bar(500 - DROP_BAR / 2) });
+  assert.deepEqual(dropPlace(two, 'horizontal', 500, 300), { kind: 'between', at: 1, axis: 'horizontal', rect: bar(500 - DROP_BAR / 2) }, 'the gap');
+  assert.deepEqual(dropPlace(two, 'horizontal', 520, 300), { kind: 'between', at: 1, axis: 'horizontal', rect: bar(500 - DROP_BAR / 2) });
+  assert.deepEqual(dropPlace(two, 'horizontal', 890, 300), { kind: 'between', at: 2, axis: 'horizontal', rect: bar(900 - DROP_BAR) }, 'the last pane\'s end');
+  assert.deepEqual(dropPlace(two, 'horizontal', 300, 300), { kind: 'replace', at: 0, axis: 'horizontal', rect: two[0] });
+  assert.deepEqual(dropPlace(two, 'horizontal', 700, 60), { kind: 'replace', at: 1, axis: 'horizontal', rect: two[1] }, 'its top: still its middle along the axis');
+  assert.equal(dropPlace(two, 'horizontal', 300, 660), null, 'below the panes');
+  // Full (no pane can be added): every place in a pane is its place, the gap none.
+  assert.deepEqual(dropPlace(two, 'horizontal', 120, 300, false), { kind: 'replace', at: 0, axis: 'horizontal', rect: two[0] });
+  assert.equal(dropPlace(two, 'horizontal', 500, 300, false), null);
+  // Stacked: along y.
+  const stacked = [{ left: 100, top: 50, width: 800, height: 296 }, { left: 100, top: 354, width: 800, height: 296 }];
+  assert.deepEqual(dropPlace(stacked, 'vertical', 500, 340), { kind: 'between', at: 1, axis: 'vertical', rect: { left: 100, top: 350 - DROP_BAR / 2, width: 800, height: DROP_BAR } });
+  assert.deepEqual(dropPlace(stacked, 'vertical', 500, 500), { kind: 'replace', at: 1, axis: 'vertical', rect: stacked[1] });
 });
 
 test('split view, UI: stacked, the gap above a Safari pane is a band its full-screen toolbar rests in (never over the pane above)', () => {

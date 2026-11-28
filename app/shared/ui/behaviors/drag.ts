@@ -15,6 +15,10 @@
 // page left, it glides back. Near the list's top or bottom edge, the list
 // (`m-scroll="tabs"`) scrolls. A tab drags here once it's the one in front
 // (a press on another switches to it in a page: that page is on its way out).
+// In Margin's own window a tab's row also drops on the page (docs/FLEX-SPLIT.md step 2): the split behavior says
+// where (ui/behaviors/split.ts dropAt: beside the page shown, between two panes, in a pane's place) and draws its mark
+// (`m-drop-zone`); the drop runs `split.drop` and the copy fades into the page. (The pointer stays Margin's over the
+// page's holes while the button is held: Margin.app's pass-through changes nothing then.)
 import type { Rt } from '../runtime.ts';
 import { dropAction, dropTarget } from './drop-rules.ts';
 
@@ -170,28 +174,38 @@ export function installDrag(rt: Rt) {
     return null;
   }
 
+  // On the page: where the split behavior says the row goes (none: not a drop there).
+  function pageAt(x: number, y: number, d: { kind: string, id: any }) {
+    const place = rt.behaviors.split?.dropAt?.(x, y, { kind: d.kind, id: d.id });
+    return place ? { zone: 'page', drop: place.drop, place } : null;
+  }
+
   function move(x: number, y: number) {
     const d = dragging;
     if (!d) return;
     d.x = x;
     d.y = y;
     d.ghost.style.transform = `translate(${(x - d.x0) * d.k}px, ${(y - d.y0) * d.k}px)`;
-    const over = overAt(x, y);
+    const side = overAt(x, y);
+    const over = side ?? pageAt(x, y, d);
     const where = dropTarget({ kind: d.kind, id: d.id }, (over as any), rt.vm?.space);
     d.over = over;
     d.where = where;
     clearMarks();
     // (A drop target only over something: dropTarget says none over nothing.)
     const w = (where as any);
-    if (w?.space || w?.unpin || w?.unfavorite || w?.favoriteAdd) mark(over!.el, 'm-drop-into');
-    else if ('favoriteBefore' in (w ?? {})) mark(over!.rowEl ?? over!.el, 'm-drop-into');
-    else if (w?.into) mark(folderEl(w.into) ?? over!.el, 'm-drop-into');
-    else if (w?.tab != null) mark(over!.rowEl, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
+    // (On the page: its mark is the split behavior's, the list's none.)
+    rt.behaviors.split?.markDrop?.(w?.page ? (over as any).place : null);
+    if (w?.page) return;
+    if (w?.space || w?.unpin || w?.unfavorite || w?.favoriteAdd) mark(side!.el, 'm-drop-into');
+    else if ('favoriteBefore' in (w ?? {})) mark(side!.rowEl ?? side!.el, 'm-drop-into');
+    else if (w?.into) mark(folderEl(w.into) ?? side!.el, 'm-drop-into');
+    else if (w?.tab != null) mark(side!.rowEl, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
     else if (w?.row) {
       // After an open folder: the line under its last pin.
       const el = w.row.kind === 'folder' ? (w.side === 'after' ? lastPinOf(w.row.id) ?? folderEl(w.row.id) : folderEl(w.row.id)) : rowEl('pin', w.row.id);
       mark(el, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
-    } else if (w) mark(over!.el, 'm-drop-end');
+    } else if (w) mark(side!.el, 'm-drop-end');
     autoScroll();
   }
 
@@ -223,6 +237,7 @@ export function installDrag(rt: Rt) {
     dragging = null;
     if (!d) return null;
     clearMarks();
+    rt.behaviors.split?.markDrop?.(null);
     if (scrolling) cancelAnimationFrame(scrolling);
     scrolling = 0;
     d.el.classList.remove('m-dragging');
@@ -254,6 +269,10 @@ export function installDrag(rt: Rt) {
     if (where.space) {
       if (!rt.dispatch(name, arg, 'behavior')) return glideBack(d.ghost, d.kind, d.id);
       return fadeOut(d.ghost); // into another space: not in this list any more
+    }
+    if (where.page) {
+      if (!rt.dispatch(name, arg, 'behavior')) return glideBack(d.ghost, d.kind, d.id);
+      return fadeOut(d.ghost); // into the page: shown there
     }
     if (where.unpin) {
       const tabId = pins.find((p) => p.id === d.id)?.tabId ?? null;

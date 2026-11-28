@@ -962,6 +962,15 @@ const withRuntime = Object.assign(T, {
   },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector: string) { return rt.target.querySelectorAll(selector).length; },
+  // The mark of where a dragged row would drop on the page (docs/FLEX-SPLIT.md step 2): its kind, box and look; none:
+  // null.
+  rtDropZone() {
+    const el = rt.target.querySelector('m-drop-zone');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return { kind: el.getAttribute('m-kind'), left: r.left, top: r.top, width: r.width, height: r.height, background: st.backgroundColor, events: st.pointerEvents, shown: st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0 };
+  },
   // The page's box (<m-page>) and the launcher's, with the launcher's background (Margin.app's empty window).
   rtEmptyPage() {
     const box = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? [r.left, r.top, r.width, r.height] : null; };

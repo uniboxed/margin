@@ -135,6 +135,67 @@ export function expandSizes(sizes: number[], needs: (number | null | undefined)[
   }
 }
 
+/** A pane's part at each end along the split's axis where a row dropped goes beside it (the rest: in its place). */
+export const DROP_EDGE = 0.25;
+/** The thickness of the mark where a row dropped goes between two panes (px). */
+export const DROP_BAR = 6;
+export type DropBox = { left: number, top: number, width: number, height: number };
+/**
+ * Where a row dropped at `x`, `y` goes (docs/FLEX-SPLIT.md step 2), from the boxes shown (page pixels) and the split's
+ * axis: null, one page alone (`boxes` its box): beside it on its nearest edge (`side`: a new split, its axis, the
+ * dropped one first for the left or top, `rect` the half it takes); a split's panes in order: a pane's ends
+ * (DROP_EDGE each) and the gap between two are `between` (`at`, its place among the panes; `rect` a DROP_BAR mark on
+ * that edge, within the panes), its middle is `replace` (`at` that pane; `rect` its box). `canAdd` false (a split that
+ * can't take one more): every place in a pane its `replace`, the gaps none. Null: not over the boxes.
+ */
+export function dropPlace(boxes: DropBox[], axis: 'horizontal' | 'vertical' | null, x: number, y: number, canAdd = true): { kind: 'side' | 'between' | 'replace', at: number, axis: 'horizontal' | 'vertical', rect: DropBox } | null {
+  if (!boxes.length) return null;
+  const inside = (b: DropBox) => x >= b.left && x <= b.left + b.width && y >= b.top && y <= b.top + b.height;
+  if (axis == null) {
+    const b = boxes[0];
+    if (!inside(b) || !(b.width > 0) || !(b.height > 0)) return null;
+    const fx = (x - b.left) / b.width;
+    const fy = (y - b.top) / b.height;
+    const edges = [fx, 1 - fx, fy, 1 - fy];
+    const e = edges.indexOf(Math.min(...edges));
+    const across = e < 2;
+    const half = across ? { width: b.width / 2, height: b.height } : { width: b.width, height: b.height / 2 };
+    const first = e % 2 === 0;
+    const rect = { left: across && !first ? b.left + b.width / 2 : b.left, top: !across && !first ? b.top + b.height / 2 : b.top, ...half };
+    return { kind: 'side', at: first ? 0 : 1, axis: across ? 'horizontal' : 'vertical', rect };
+  }
+  const along = axis !== 'vertical';
+  const start = (b: DropBox) => (along ? b.left : b.top);
+  const size = (b: DropBox) => (along ? b.width : b.height);
+  const end = (b: DropBox) => start(b) + size(b);
+  const c = along ? x : y;
+  const across = along ? y : x;
+  // (The panes' span across the axis: the union of theirs.)
+  const lo = Math.min(...boxes.map((b) => (along ? b.top : b.left)));
+  const hi = Math.max(...boxes.map((b) => (along ? b.top + b.height : b.left + b.width)));
+  const first = start(boxes[0]);
+  const last = end(boxes[boxes.length - 1]);
+  if (across < lo || across > hi || c < first || c > last) return null;
+  const between = (at: number) => {
+    const edge = at === 0 ? first : at === boxes.length ? last : (end(boxes[at - 1]) + start(boxes[at])) / 2;
+    const s = Math.max(first, Math.min(last - DROP_BAR, edge - DROP_BAR / 2));
+    const rect = along ? { left: s, top: lo, width: DROP_BAR, height: hi - lo } : { left: lo, top: s, width: hi - lo, height: DROP_BAR };
+    return { kind: 'between' as const, at, axis, rect };
+  };
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i];
+    if (c < start(b) || c > end(b)) continue;
+    const f = size(b) > 0 ? (c - start(b)) / size(b) : 0.5;
+    if (canAdd && f < DROP_EDGE) return between(i);
+    if (canAdd && f > 1 - DROP_EDGE) return between(i + 1);
+    return { kind: 'replace', at: i, axis, rect: { ...b } };
+  }
+  // (In a gap between two.)
+  if (!canAdd) return null;
+  const next = boxes.findIndex((b) => start(b) > c);
+  return next > 0 ? between(next) : null;
+}
+
 /** Equal ratios for `n` panes. */
 export const equalRatios = (n: number) => Array.from({ length: n }, () => 1 / n);
 
@@ -363,7 +424,8 @@ export function installSplit(rt: Rt) {
   function consider() {
     const split = shown();
     const el = page();
-    if (!split || !el || drag || mode() !== 'hover') { cancelDwell(); cancelLeave(); return; }
+    // (Nor while a sidebar row is dragged over the page: its drop's place is read from the panes as they are.)
+    if (!split || !el || drag || mode() !== 'hover' || rt.behaviors.drag?.active?.()) { cancelDwell(); cancelLeave(); return; }
     const isOpen = !!opened && opened.split === split.id;
     // (The cut pane Margin.app says the pointer is over, a folded one too: the window server's word, over the page's.)
     const hover = host().paneHover ?? null;
@@ -661,8 +723,96 @@ export function installSplit(rt: Rt) {
     set(split, dragRatios(now, floors, index, delta));
   });
 
+  // ---- a sidebar row dropped on the page (docs/FLEX-SPLIT.md step 2) ----
+
+  // The mark of where it goes: Margin's own element over the page (`m-kind`: side, between, replace), drawn by the
+  // theme's CSS (themes/README.md `m-drop-zone`); none: null.
+  let dropMark: HTMLElement | null = null;
+  // The dragged row's item: its id (an open one's UI number, else a kept item's id), its item's id, its address.
+  function rowItem(id: unknown) {
+    const st: any = rt.state;
+    const live = typeof id === 'number' ? st?.tabs?.[id] : null;
+    const kept = typeof id === 'string' ? st?.keptTabs?.[id] : null;
+    if (!live && !kept) return null;
+    return { id: id as number | string, item: String(live?.mid ?? kept?.id ?? id), url: String(live?.url ?? kept?.url ?? '') };
+  }
+  // A box as dropPlace takes it.
+  const boxOf = (e: Element): DropBox => { const b = e.getBoundingClientRect(); return { left: b.left, top: b.top, width: b.width, height: b.height }; };
+  /**
+   * Where a dragged row dropped at `x`, `y` (page pixels) goes: the `split.drop` it runs, with the mark's kind and box;
+   * null: not on the page, or not one a drop takes. Only a tab's row (an open item or a kept one, the rows Add to Split
+   * View is on), only in Margin's own window with a window hosted in the page area, never one of Margin's own pages,
+   * the item shown, or a pane of the split shown.
+   */
+  function dropAt(x: number, y: number, row: { kind: string, id: unknown }) {
+    const h = host();
+    const vm = rt.vm;
+    const el = page();
+    if (row.kind !== 'tab' || !h.appWindow || !h.pageHosted || !vm || !el || vm.window?.pageOutside || drag) return null;
+    const it = rowItem(row.id);
+    if (!it || /^margin:/i.test(it.url)) return null;
+    const split = shown();
+    if (split) {
+      if (split.panes.some((p) => p.tabId === it.id || String(p.id) === it.item)) return null;
+      const place = dropPlace(panesOf(el).map(boxOf), split.axis === 'vertical' ? 'vertical' : 'horizontal', x, y, split.panes.length < 4);
+      if (!place) return null;
+      const replace = place.kind === 'replace' ? place.at : null;
+      return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: split.id, nextTo: null, at: replace == null ? place.at : split.panes.length, replace, axis: place.axis } };
+    }
+    const front = vm.tab;
+    if (front?.id == null || front.id === it.id || (rt.state as any)?.tabs?.[front.id]?.mid === it.item || /^margin:/i.test(front.url ?? '')) return null;
+    const place = dropPlace([boxOf(el)], null, x, y);
+    if (!place) return null;
+    return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: null, nextTo: front.id, at: place.at, replace: null, axis: place.axis } };
+  }
+  // The mark drawn where `place` goes (null: taken away). Its box in Margin's pixels (the page's zoom: rt.scale).
+  function markDrop(place: { kind: string, rect: DropBox } | null) {
+    if (!place) { dropMark?.remove(); dropMark = null; return; }
+    const root = view.rootElement();
+    if (!root) return;
+    if (!dropMark || !dropMark.isConnected) {
+      dropMark = doc.createElement('m-drop-zone');
+      dropMark.setAttribute('aria-hidden', 'true');
+      root.appendChild(dropMark);
+    }
+    const k = rt.scale?.() || 1;
+    const r = place.rect;
+    dropMark.setAttribute('m-kind', place.kind);
+    Object.assign(dropMark.style, { left: `${r.left * k}px`, top: `${r.top * k}px`, width: `${r.width * k}px`, height: `${r.height * k}px` });
+  }
+  // Why a drop's panes (`split.drop`'s argument) can't be laid out, null: they can: each at its least size along the
+  // axis, as an add's (refusesAdd), with the dropped one at its place or in the pane it replaces.
+  function refusesDrop(arg: any): string | null {
+    const h = host();
+    const vm = rt.vm;
+    if (!h.appWindow || !vm || !h.layout || !arg) return null;
+    const it = rowItem(arg.tab);
+    if (!it) return null;
+    const added = { id: it.item, url: it.url };
+    let panes: { id: string, url: string }[];
+    let axis: string;
+    if (arg.split != null) {
+      const split = vm.split;
+      if (!split || split.id !== arg.split) return null;
+      axis = split.axis;
+      panes = split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' }));
+      if (arg.replace != null) panes[arg.replace] = added;
+      else panes.splice(Math.min(arg.at ?? panes.length, panes.length), 0, added);
+    } else {
+      const front = vm.tab;
+      if (!front) return null;
+      axis = arg.axis;
+      const shownOne = { id: String((rt.state as any)?.tabs?.[front.id as number]?.mid ?? front.id), url: front.url ?? '' };
+      panes = arg.at === 0 ? [added, shownOne] : [shownOne, added];
+    }
+    return fits(axis, panes, true) ? null : arg.replace != null ? 'Not enough room for this pane' : 'Not enough room for another pane';
+  }
+
   return {
     afterRender(vm: ViewModel) { if (!drag) sync(vm); },
+    dropAt,
+    markDrop,
+    refusesDrop,
     busy: () => drag != null,
     /** The page area's least width while a split is shown side by side (each pane's floor and the gaps): the sidebar's
      *  edge stops there (behaviors/resize.ts). 0: none. */
@@ -742,6 +892,7 @@ export function installSplit(rt: Rt) {
       cancelDwell();
       cancelLeave();
       marks?.disconnect();
+      markDrop(null);
     },
   };
 
