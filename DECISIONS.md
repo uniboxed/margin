@@ -12309,3 +12309,22 @@ docs/FLEX-SPLIT.md step 2, Tirth's order after the prototype.
   - Margin's log says `sidebar drag: a tab's row` as a drag starts.
   - The `split-drop` screen part passes 9 of 9.
 - **The screen suite** gains a dev hook `say: row` (a tab row's middle on the screen, by its number or its item's id) and the `split-drop` part.
+
+## A split's tree (`feat/split-tree`, 2026-11-28)
+
+docs/FLEX-SPLIT.md step 3: panes split in any direction, up to 16.
+
+- **Stored only when nested.** Flat splits keep their record and their code paths exactly. A nested one adds `tree`, and its `ratios` become each pane's share of the area, so every reader of `panes` and `ratios` is unchanged. The rules are one module, extension/shared/split-tree.ts, for the state, the library and the page.
+- **Why flat paths stay apart:** normalizing ratios to 4 decimals twice isn't the same number (0.3333 ×3 becomes 0.3334), so routing flat splits through the tree would have changed every flat split's stored ratios.
+- **The library:** `addToSplit`'s `beside`/`side` (the two halve that pane's room; across it when its node runs the other way), and `path` on `resizeSplit` and `toggleSplitAxis`. Both copies changed (the Rust port by a parallel agent, reviewed by its vectors), and the vectors were re-recorded.
+  - The generator now stores nested, extra-keyed and broken trees. A stored tree is copied with its axes, kids and ratios only, so both copies keep the same thing.
+  - The known `createSpace` gap is now 16 steps.
+- **The page:** one `<m-split-group>` per nested node.
+  - Drag, keys, opening a pane, least sizes, bands and the drop all work per node.
+  - Corner masks come from each pane's place, as `--m-pane-clip` (a flat split's strings unchanged).
+  - The built-in themes' column-divider rules moved to `m-divider[m-axis]`.
+- **The drop** is now "beside a pane on any side" (or its middle), replacing step 2's flat "between" mark: one rule for flat and nested splits.
+- **The limit is 16 panes.** The native fixed arrays went from 4 to 16 (a parallel agent: report.rs, the FFI structs, Swift's readers, the live room of 32). The room check is the real limit.
+- **Not done: more panes than fit, folded.** A split keeps only what fits at 220 per pane both ways. Middle panes' windows would cross their neighbours'. Tirth asked to finish without more questions, so this is the conservative choice.
+- **The real screen:** split-drop, now with four Chameleon copies, passes 11 of 11 (a row dropped below a pane: the two stacked, each window at its box). cut-panes passes 13 of 13.
+

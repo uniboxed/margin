@@ -173,15 +173,72 @@ So the page sees the drag over the hosted windows' holes. No native code changes
 - **Screen suite (`split-drop`):** real drags from the sidebar: on the page shown alone (a new split), on a pane (in
   its place), on the gap between two (between them). 9 of 9 on the real screen, 2026-11-28.
 
-## Steps 3–4
+## Step 3: a split tree
 
-- **Step 3 (tree):**
-  - The library's `splits` becomes a tree (`{axis, kids, ratios}` with leaf items), with a migration from the flat
-    list.
-  - `expandSizes` runs per node. The page draws nested `<m-split>` boxes. `dropPlace` gains a pane's edges across the
-    axis (a pane split there).
-  - The fixed four goes from every place that holds it: the page report, `PageLayout.swift`, `PageCore.swift`, the
-    model's `ROOM`, `canAddPane`, `MAX_SPLIT_PANES` (both copies), and `split.drop`'s `at`/`replace` lists.
-  - Whether a split may hold more panes than fit at rest (folded at `PANE_FOLD`) is asked then.
-- **Step 4:** presets from the tree, keys to move between panes and move panes, and swapping panes, with a pane
-  dragged within the split (a pane of the split shown takes no drop today).
+Built 2026-11-28 on feat/split-tree.
+
+### The data (extension/shared/split-tree.ts: one copy for the state, the library and the page)
+
+- **Flat splits are stored as before:** `axis`, `panes`, a ratio each. There's no migration, and every flat change
+  runs its old path. Ratios normalized twice at 4 decimals aren't the same (0.3333 ×3 becomes 0.3334), so a flat split
+  never goes through the tree's rules.
+- **A nested split also stores `tree`:** `{ axis, kids, ratios }`, a kid being an item or a node. Its `panes` are its
+  leaves in order, `axis` is its root's, and `ratios` is each pane's share of the whole area (a flat split's ratios are
+  that too). So whatever reads `panes` and `ratios` reads them as before: the sidebar capsule, `splitForItem`, the
+  hosting.
+- **The canonical form:** a node has two kids or more; a kid that's a node runs across its parent; every node's ratios
+  are normalized. A stored tree is read only when it's one for the stored panes (`storedTree`), copied with its axes,
+  kids and ratios only. Otherwise the split reads flat.
+- **The limit is 16 panes** (`MAX_SPLIT_PANES`; the native side's `MAX_PANES`). The page area is the real limit: the
+  room check (`treeMin`) needs every pane at 220 both ways, with the gaps and Safari's bands.
+
+### The library (both copies; the shared vectors re-recorded, the generator storing nested and broken trees)
+
+- **`addToSplit`** gains `beside` (a pane's item) and `side` (left, right, top, bottom). The two share that pane's
+  room, half each: in its node when the node runs that way, else that pane becomes a node across it. `at` and
+  `replace` stay. An add with neither goes last among the root's kids, those made equal.
+- **`resizeSplit` and `toggleSplitAxis`** take a `path`, the node's kid indexes from the root. Turning a node turns
+  everything in it; a node turned to its parent's way merges into it.
+- **The tree is kept canonical** through remove, settle, swap (places traded, sizes kept) and replace.
+
+### The page (ui/behaviors/split.ts)
+
+- **Groups:** each node below the root is an `<m-split-group m-split m-path>`. Every pane and divider sits in its
+  node's group, dividers marked `m-axis`.
+- **Per node:** layout, divider drag and keys (`split.resize` with its `path`), double-click, least sizes (`treeMin`),
+  and bands (a column's divider above a kid with a Safari pane at its top).
+- **Opening a pane** works along each node on its way from the root, the others folding (step 1's rule per node).
+- **The corner masks** come from where the pane sits (`paneEdges`, `maskClip`): a half, an L of three corners, or all
+  four. They're set as `--m-pane-clip` (render.ts `m-pane::before`). A flat split's are the same strings as before
+  (tests/theme/pane-mask-seam).
+- **Dropping a row:** any pane's four edges (DROP_EDGE each) put the row beside it on that side, marked by the half it
+  would take (`m-drop-zone[m-kind="beside"]`). A gap puts it beside the nearest pane. `split.drop` is `{ tab, split,
+  nextTo, pane, side }`.
+- **The built-in themes'** column dividers are styled by `m-divider[m-axis="column"]`. A theme's `m-page[m-split] >
+  m-divider` still matches a flat split's dividers.
+- **The native side** reads up to 16 panes (the page report, the FFI's fixed arrays, Margin.app's lists). It has no
+  new layout code: it places each pane's window at its box, as before.
+
+### Asked, then decided
+
+A split keeps only as many panes as fit at their least sizes. Holding more, with the rest folded, would put a middle
+pane's window over its neighbours'. Tirth asked to finish everything; this is the conservative choice, and changing it
+later is a room-check change.
+
+### Tests
+
+- **Unit (tests/split-tree.test.ts):** the tree rules, the library's nested changes in sequence, settle, the limit.
+  Its calls are recorded into the vectors.
+- **split-view.test.ts:** `dropPlace` for any side, `treeMin`, the bands, the edges and masks.
+- **margin-core:** split_tree_tests.rs, and every vector answered as library.ts answers it.
+- **Theme tests (both engines, every built-in theme):**
+  - tests/theme/split-tree.test.ts: a pane beside a column of two; each box and the report; the cursors; the masks;
+    the column's divider saving its path; a pane opened along the column, its neighbour folded.
+  - split-drop: below a pane, beside the nearer one at a gap.
+- **Screen suite (`split-drop`, four copies):** Chameleon 4's row dropped near Chameleon 2's bottom edge, the two
+  stacked in its place, each window at its pane's box in Margin's Space. 11 of 11 on the real screen.
+
+## Step 4
+
+Presets from the tree, keys to move between panes and move panes, and swapping panes, with a pane dragged within the
+split (a pane of the split shown takes no drop today).
