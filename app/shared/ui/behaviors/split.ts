@@ -765,6 +765,14 @@ export function installSplit(rt: Rt) {
     if (!place) return null;
     return { kind: place.kind, rect: place.rect, drop: { tab: it.id, split: null, nextTo: front.id, at: place.at, replace: null, axis: place.axis } };
   }
+  // Whether `x`, `y` is over the page area where a row may drop (Margin's own window, a window hosted there).
+  function onPage(x: number, y: number) {
+    const h = host();
+    const el = page();
+    if (!h.appWindow || !h.pageHosted || !el || rt.vm?.window?.pageOutside) return false;
+    const b = el.getBoundingClientRect();
+    return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+  }
   // The mark drawn where `place` goes (null: taken away). Its box in Margin's pixels (the page's zoom: rt.scale).
   function markDrop(place: { kind: string, rect: DropBox } | null) {
     if (!place) { dropMark?.remove(); dropMark = null; return; }
@@ -811,6 +819,7 @@ export function installSplit(rt: Rt) {
   return {
     afterRender(vm: ViewModel) { if (!drag) sync(vm); },
     dropAt,
+    onPage,
     markDrop,
     refusesDrop,
     busy: () => drag != null,

@@ -1,7 +1,8 @@
 // A sidebar tab dropped on the page (docs/FLEX-SPLIT.md step 2) in all five built-in themes, in real engines
 // (Playwright's WebKit and Chromium, headless, every network request refused), as Margin.app's own window draws it
 // while a window is hosted: dragged over the page alone, the half it would take on the nearest edge is marked
-// (`m-drop-zone`, Margin's own element) and a drop asks for a new split there; over a split, a pane's ends and the
+// (`m-drop-zone`, Margin's own element) and a drop asks for a new split there (the press's switch to the row's tab
+// undone as it first reaches the page: it goes beside what was shown); over a split, a pane's ends and the
 // gap mark the edge between two panes, its middle the pane it would take the place of, and the drop asks for that;
 // a browser's window (not Margin's own) marks nothing; the mark goes with the drag. `npm run test:theme`.
 import { test } from 'node:test';
@@ -79,6 +80,9 @@ for (const [name, engine] of ENGINES) {
         await frames();
         await page.mouse.up();
         await eventually(async () => assert.deepEqual(await sentAdd(), [{ tabId: tabs[1], windowId: 1, nextTo: tabs[0], axis: 'horizontal', at: 1 }]));
+        // (The press switched to the row's tab, as a press does; over the page, the one shown before asked back, once.)
+        const activated = await ev(() => T.rtSent().filter(([type]) => type === 'activateTab').map(([, p]) => p?.tabId));
+        assert.deepEqual(activated, [tabs[1], tabs[0]], 'pressed: its tab; over the page: the one shown before, once');
         assert.equal(await ev(() => T.rtDropZone()), null, 'the mark gone with the drag');
 
         // A split of two: the gap between them, the edge marked; dropped, the tab between them.

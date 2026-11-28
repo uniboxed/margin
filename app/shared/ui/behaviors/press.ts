@@ -8,6 +8,8 @@
 // While the button is down the row has the class `m-pressed` (a theme can
 // shrink it a little, as Arcadia does), kept through redraws.
 // (themes/arcadia/sidebar.js, "A press switches".)
+// A tab's row pressed and dragged onto the page (docs/FLEX-SPLIT.md step 2) goes beside or into what was shown before
+// the press: the drag asks for that back (`switchBack`) as it first reaches the page.
 import type { Rt } from '../runtime.ts';
 
 // The actions a press runs, and the rows that show `m-pressed`.
@@ -19,6 +21,8 @@ export function installPress(rt: Rt) {
   let pressed: { name: string, arg: any } | null = null; // a press switched: its click is the same switch
   let away = false; // and this page is on its way out (in pages: a drag can't start)
   let pressedEl: Element | null = null;
+  // The tab shown before a press switched to another (null: the press switched nothing).
+  let before: number | string | null = null;
 
   const release = () => {
     pressedEl?.classList.remove('m-pressed');
@@ -29,6 +33,7 @@ export function installPress(rt: Rt) {
     release();
     pressed = null;
     away = false;
+    before = null;
     if (e.button !== 0 || e.ctrlKey || !e.isPrimary || !view.owns(e.target)) return;
     if (rt.behaviors.rename?.editingContains(e.target) || rt.behaviors.drag?.active()) return;
     const hit = view.actionAt(e.target);
@@ -49,6 +54,8 @@ export function installPress(rt: Rt) {
     // A second press on a tab on its way already: nothing more.
     if (tabId != null && rt.ui.switchingTo === tabId) { pressed = { name: hit.name, arg: hit.arg }; return; }
     pressed = { name: hit.name, arg: hit.arg };
+    const shown = vm?.tab?.id ?? null;
+    before = tabId != null && shown != null && shown !== tabId ? shown : null;
     const own = rt.ownTab();
     away = own != null && ((tabId != null && tabId !== own) || (rt.ui.switchingTo != null && rt.ui.switchingTo !== own));
     rt.dispatch(hit.name, hit.arg, 'theme', { element: hit.el, event: e });
@@ -65,5 +72,15 @@ export function installPress(rt: Rt) {
     },
     /** This page is on its way out after a press (a drag can't start). */
     away: () => away,
+    /**
+     * The tab shown before this press switched shown again (a tab's row dragged onto the page: it goes beside or into
+     * what was there); once a press. Whether it asked.
+     */
+    switchBack() {
+      const tab = before;
+      before = null;
+      if (tab == null || !pressed) return false;
+      return !!rt.dispatch('tab.activate', tab, 'behavior');
+    },
   };
 }
