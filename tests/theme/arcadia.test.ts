@@ -802,6 +802,54 @@ for (const [engineName, engine] of ENGINES) {
         await away();
       });
 
+      await t.test('site search as Arc\'s: what\'s typed naming a site offers it with Tab; Tab puts its pill in, the bar its colour; a Backspace on nothing and Escape leave it, Escape then closes', async () => {
+        await away();
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.waitForFunction(() => document.activeElement?.classList.contains('query'), null, { timeout: 2000 });
+        const field = () => ev(() => {
+          const f = document.querySelector<HTMLInputElement>('.palette .query')!;
+          const pill = document.querySelector<HTMLElement>('.palette .site-pill');
+          const hint = document.querySelector<HTMLElement>('.palette .site-hint');
+          const sel = document.querySelector<HTMLElement>('.palette .result[aria-selected="true"]');
+          const r = (window as any).__rt.runtime;
+          return { open: !!r.ui.palette.open, query: r.ui.palette.query, value: f.value, placeholder: f.placeholder, pill: pill ? { text: pill.textContent!.trim(), bg: getComputedStyle(pill).backgroundColor, h: pill.getBoundingClientRect().height, left: pill.getBoundingClientRect().left, fieldLeft: f.getBoundingClientRect().left } : null, hint: hint ? hint.textContent!.replace(/\s+/g, ' ').trim() : null, rows: document.querySelectorAll('.palette .result').length, selBg: sel ? getComputedStyle(sel).backgroundColor : null };
+        });
+        await page.keyboard.type('youtu');
+        await page.waitForFunction(() => !!document.querySelector('.palette .site-hint'), null, { timeout: 2000 });
+        let f = await field();
+        assert.equal(f.hint, 'Search YouTube Tab');
+        assert.equal(f.pill, null);
+        const placeholder = f.placeholder;
+        await page.keyboard.press('Tab');
+        await page.waitForFunction(() => !!document.querySelector('.palette .site-pill'), null, { timeout: 2000 });
+        f = await field();
+        assert.deepEqual([f.open, f.query, f.value, f.placeholder, f.hint, f.rows], [true, '', '', 'Search…', null, 0], 'the field emptied, "Search…", no rows yet (no "No matches")');
+        assert.deepEqual([f.pill!.text, f.pill!.bg, f.pill!.h], ['YouTube', 'rgb(255, 0, 0)', 24], 'the pill: its name in its colour, 24 pt');
+        assert.ok(f.pill!.left < f.pill!.fieldLeft, 'the pill before the field');
+        assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('query')), true, 'the field kept the keys');
+        await page.keyboard.type('lofi');
+        await page.waitForFunction(() => document.querySelectorAll('.palette .result').length === 1, null, { timeout: 2000 });
+        f = await field();
+        assert.deepEqual([f.value, f.selBg], ['lofi', 'rgb(255, 0, 0)'], 'one row, selected in the site\'s colour');
+        assert.deepEqual(await ev(() => { const r = (window as any).__rt.runtime.vm.palette; return [r.rows[0].title, r.completion]; }), ['lofi', '']);
+        for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace');
+        await page.waitForFunction(() => document.querySelector<HTMLInputElement>('.palette .query')!.value === '', null, { timeout: 2000 });
+        assert.ok((await field()).pill, 'emptied: still on the site');
+        await page.keyboard.press('Backspace');
+        await page.waitForFunction(() => !document.querySelector('.palette .site-pill'), null, { timeout: 2000 });
+        f = await field();
+        assert.deepEqual([f.open, f.query, f.value.slice(0, 5), f.placeholder], [true, 'youtu', 'youtu', placeholder], 'a Backspace on nothing: off the site, what was typed back');
+        await page.keyboard.press('Tab');
+        await page.waitForFunction(() => !!document.querySelector('.palette .site-pill'), null, { timeout: 2000 });
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !document.querySelector('.palette .site-pill'), null, { timeout: 2000 });
+        f = await field();
+        assert.deepEqual([f.open, f.query], [true, 'youtu'], 'Escape: off the site first, the bar kept');
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !(window as any).__rt.runtime.ui.palette.open, null, { timeout: 2000 });
+        await away();
+      });
+
       await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {
         await ev(() => {
           const rt = (window as any).__rt;

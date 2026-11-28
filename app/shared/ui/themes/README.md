@@ -479,7 +479,7 @@ host. Immutable: rows that didn't change are the same objects.
   Search…), `emoji`, `isSearch` and `isOpen` (the typed text as a search or
   an address: draw an icon of your own), `isApp` (an installed app, in
   Margin.app: its `icon` is the app's own shape, best drawn without a
-  tile), `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`),
+  tile), `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`, `noMatches` (nothing found, not a site search waiting), `site` and `siteHint` (site search)),
   `menu` (`label`, `items[]`: `id`, `label`, `separator`, `danger`,
   `confirming`), `settingsForm` (`fields[]`, above), `editor` (`name`, `emoji`, `color`, `colors[]`,
   `themes[]` (`id`, `name`, `selected`: each theme the space can have, its own

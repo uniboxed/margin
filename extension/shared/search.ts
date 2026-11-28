@@ -3,6 +3,7 @@ import type { State } from '../../types/margin';
 import * as P from './capabilities.ts';
 import * as V from './view.ts';
 import type { InstalledApp } from './apps.ts';
+import { siteById, siteUrl } from './site-search.ts';
 
 
 // ---- the browser's search engine ------------------------------------------
@@ -364,8 +365,16 @@ function asArc(item: PaletteItem): PaletteItem {
 
 // Ranked palette results for `query`: with nothing typed, Margin's own rows; typed, the order above, its "Open URL"
 // row first when the text is an address.
-function rankPalette(state: State, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; appWindow?: boolean; }, limit = 40) {
+function rankPalette(state: State, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; appWindow?: boolean; site?: string | null; }, limit = 40) {
   const q = (query ?? '').trim();
+  // Searching a site (Arc's site search, shared/site-search.ts): one row, what's typed searched there; none before.
+  const site = siteById(ctx.site);
+  if (site) {
+    const url = siteUrl(site, q);
+    if (!url) return [];
+    const action = ctx.inNewTab ? { local: 'navigate', url } : { type: 'newTab', windowId: ctx.windowId, url };
+    return [asArc({ id: 'site-go', kind: 'go', title: q, subtitle: '', emoji: '⌕', search: true, action })];
+  }
   const items = paletteItems(state, ctx);
   if (!q) {
     return items

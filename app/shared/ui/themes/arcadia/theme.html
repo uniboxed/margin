@@ -397,14 +397,17 @@
   <m-if test="palette.open">
     <div class="palette-layer">
       <button class="backdrop" aria-label="Close the command bar" m-action="palette.close"></button>
-      <div class="palette" role="dialog" aria-label="Margin command palette">
+      <div class="palette" role="dialog" aria-label="Margin command palette" m-style:--site="{{palette.site.color}}">
         <div class="search">
           <!-- The selected row's picture (a site's icon), as Arc's field shows it; else the magnifier. -->
           <m-if test="palette.fieldIcon">
             <img class="field-icon" alt="" m-icon="{{palette.fieldIcon}}">
             <m-else><svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z"></path><path d="M15.6 15.6 19.5 19.5"></path></svg></m-else>
           </m-if>
+          <!-- Site search (Arc's, shared/site-search.ts): the site searched as a pill in its colour; "Search <site>" with Tab while what's typed names one. -->
+          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}">{{palette.site.name}}</span></m-if>
           <input class="query" type="text" m-input="palette" placeholder="Search or Enter URL…" aria-label="Command palette" spellcheck="false" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="margin-results">
+          <m-if test="palette.siteHint"><span class="site-hint">Search {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
         </div>
         <div class="results" id="margin-results" role="listbox">
           <m-for each="palette.rows" as="r">
@@ -434,7 +437,7 @@
                 </m-if>
             </a>
           </m-for>
-          <m-if test="!palette.hasRows">
+          <m-if test="palette.noMatches">
             <div class="result empty">No matches</div>
           </m-if>
         </div>

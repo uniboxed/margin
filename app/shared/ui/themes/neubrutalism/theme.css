@@ -731,3 +731,10 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 .nb m-divider:is(:hover, :focus-visible)::after { background: var(--yellow); }
 .nb m-divider[m-dragging]::after { background: var(--ink); }
 .nb m-pane[m-focused] { box-shadow: 0 0 0 var(--edge) var(--ink), 0 0 0 calc(var(--edge) + 2px) var(--m-pane-ground), 0 0 0 calc(var(--edge) + 4px) var(--ink), var(--pane-drop); }
+
+/* Site search (shared/site-search.ts, as Arc's): the site searched as a pill in its brand colour; "Search <site>" and
+   a Tab key cap while what's typed names one. */
+.site-pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border: 2px solid var(--ink); border-radius: 8px; background: var(--site); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.site-hint { flex: none; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; opacity: .65; white-space: nowrap; }
+.site-hint kbd { padding: 1px 6px; border: 1px solid currentColor; border-radius: 5px; font: inherit; font-size: 11px; }
+.site-line { display: flex; }
