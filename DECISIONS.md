@@ -12215,7 +12215,13 @@ From his session's log (Margin, MenuBarAgent):
 - **No menu bar at the top edge while Music or Reminders is shown.** MenuBarAgent: with Margin the front app of its Space
   (any app with no Dock icon shown) `mode=autoHide`, the top edge tracked; with Music in front (a Dock app is its
   Space's front app) `appState=missing, mode=nil`, nothing tracked: Margin starts hosted apps with
-  `-NSMenuEnableMenuBarAgent NO`, so it never registered a bar. Decision asked of Tirth.
+  `-NSMenuEnableMenuBarAgent NO`, so it never registered a bar. Tirth: Margin's bar for every app (the app's own
+  would be inconsistent). Now (MarginWindowController `barAtEdge`, on the pointer watch's moves): the pointer at the
+  display's top edge (within 2 pt), an app with a Dock icon shown in full screen, no button held, no field of Margin's
+  wanting the keys, Margin not in front: Margin made the active app, so it's its Space's front app again and macOS
+  brings Margin's bar down as for any app; the existing watch (`becameActive` → `watchBar` → `keysBack`) gives the keys
+  back once the bar is up. Once per visit to the top band (40 pt). Its app's pid and policy read only in the band.
+  Tests: margin-window-tests (the decision), e2e-glue (once per visit, a drag, a no-Dock app, Margin in front).
 - **The screen suite wrote "Error: Could not find key …" into Margin's defaults** (MarginFront, MarginPrepareBrowser,
   MarginResumeLast, MarginTiles): macOS 27's `defaults read` error for an unset key was recorded as its value and
   written back. Margin read each as unset (no effect seen); deleted on his Mac, and `defaultsRead` now takes both

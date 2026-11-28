@@ -27,6 +27,14 @@ func marginWindowTests() {
         check("menu bar: up once the pointer's lower, no button held, no menu and no panel open", !down())
         check("menu bar: still down with the pointer at the top, a button held, a menu open, or a panel open (Wi-Fi, Notification Center, a status item's menu)",
               down(y: 960) && down(buttons: 1) && down(menus: 1) && down(panels: true))
+        func takes(full: Bool = true, shown: Bool = true, dock: Bool = true, field: Bool = false, front: Bool = false, down: Bool = false, x: CGFloat = 400, y: CGFloat = 0) -> Bool {
+            MarginWindowController.takesBarAtEdge(fullScreen: full, appShown: shown, dockApp: dock, fieldWantsKeys: field, marginFront: front, buttonsDown: down,
+                                                  pointer: CGPoint(x: x, y: y), screen: screen)
+        }
+        check("menu bar over an app with a Dock icon: the pointer at the top edge (top left, within 2 pt) takes the bar for Margin", takes() && takes(y: 2))
+        check("menu bar over an app with a Dock icon: not lower, not on another display", !takes(y: 3) && !takes(y: 500) && !takes(x: 1600) && !takes(x: -10))
+        check("menu bar at the edge: an app with no Dock icon (its bar is Margin's already), nothing shown, out of full screen, a field of Margin's wanting the keys, Margin in front already, a button held: nothing",
+              !takes(dock: false) && !takes(shown: false) && !takes(full: false) && !takes(field: true) && !takes(front: true) && !takes(down: true))
         check("menu bar: the keys go back once it's been up 0.4 s; the watch gives up after 2 minutes",
               MarginWindowController.barUpFor == 0.4 && MarginWindowController.barWatchMost == 120 && MarginWindowController.barBand == 40)
     }
