@@ -110,17 +110,78 @@ cut, each by its window.
 - **Screen suite:** a two-pane split of test apps, one cut. Hover it: it opens, the other folds (blur view in place,
   windows at their minimums). Leave to the sidebar: the split goes back.
 
-## Steps 2–4
+## Step 2: drag from the sidebar into the page
 
-These are planned once step 1 is on main.
+Built 2026-11-28 on feat/split-drop.
 
-- **Step 2 (drag and drop):** the sidebar's row drag gets drop zones over the page area. Margin's own targets, drawn
-  over the holes while a drag is under way, are the page's. A drop sends `split.add` with a place. The fit check
-  (`refusesAdd`) counts folded panes at `PANE_FOLD`, so a split may hold more than fits at full size.
+### Where a row goes (split.ts `dropPlace`, pure, unit-tested)
+
+`dropPlace(boxes, axis, x, y, canAdd)` takes the boxes shown and the pointer:
+
+- **The page shown alone** (`axis` null, its one box): the nearest of its four edges. The dropped item goes on that
+  side of the item shown, as a new split: left or right side by side, top or bottom stacked. The mark is the half
+  of the page it would take (`side`).
+- **A split's panes** (in order, along its axis): each pane's ends (`DROP_EDGE`, a quarter each) and the gap between
+  two panes put it between them (`between`, its place among the panes; the mark a `DROP_BAR` line on that edge). A
+  pane's middle puts it in that pane's place (`replace`; the mark that pane's box).
+- **A split of four** (`canAdd` false): a pane's whole box is its `replace`, and the gaps take nothing.
+- Only the split's own axis has edges here. A pane split across the axis waits for step 3's tree.
+
+### What a drop runs
+
+- **Which rows:** tab rows only (an open item, or a kept one): the rows Add to Split View is on. Only in Margin's own
+  window with a window hosted in the page area. Never one of Margin's own pages, the item shown, or a pane of the
+  split shown.
+- **The behavior:** the sidebar's drag (drag.ts) asks the split behavior over the page when no sidebar zone is under
+  the pointer (`dropAt`). The behavior draws the mark, `<m-drop-zone m-kind>`: Margin's own element on the theme's
+  root, styled by the theme's CSS. A drop runs `split.drop` (behavior-only). It is refused with a toast when the
+  panes wouldn't fit at their least sizes (`refusesDrop`, the same room check as an add).
+- **The library:** `split.drop` asks the library's `addToSplit` with three more fields, in both copies (library.ts
+  over model.ts, and margin-core's port; the shared vectors re-recorded):
+  - `at`: the place among the panes.
+  - `replace`: the pane's item it takes the place of. That pane's ratio is kept, and that item leaves the split but
+    stays an item. The count stays the same, so a split of four takes it.
+  - `axis`: a new split's axis. `at` 0 puts the dropped one first.
+- **The room check is unchanged.** Folded panes are not counted at `PANE_FOLD`, as planned. With more panes than fit
+  at rest, a middle pane's window would cross its neighbours (only the end panes' windows can pass the page's edge),
+  so that question goes with step 3.
+
+### The pointer over the holes
+
+A drag that starts on Margin's sidebar stays Margin's while the button is held:
+- Margin.app's pass-through changes nothing while a button is held.
+- The press tap delivers a press on Margin's panel, its drags and its release to the panel.
+
+So the page sees the drag over the hosted windows' holes. No native code changes. Two things the real screen showed:
+
+- **A press switches** (Arc's, behaviors/press.ts): pressing a row shows its tab at once, so the page under the drag
+  was the dragged tab itself, with nothing to drop beside. The first time the drag reaches the page, the press's
+  switch is undone (`switchBack`): the tab or split shown before the press comes back, and the row drops beside or
+  into it. A click, and a drag within the sidebar, are as before.
+- **WebKit's `buttons`** reads none on the press tap's moves: it asks the window server, which the tap took the press
+  from. So in Margin's own window the sidebar's drag ends at the release, not at a move with no button. Margin's own
+  window always gets a press's release (from the tap, else from AppKit). Elsewhere the check stays.
+
+### Tests
+
+- **split.ts (unit):** `dropPlace`: a page's four edges and outside it, a pane's ends and middle, the gap, a full
+  split, stacked.
+- **Library (unit, both copies):** a new split's order and axis; between two panes with equal ratios; places that
+  aren't places; a replace keeping the ratio; a replace in a split of four; a pane taken from another split.
+- **Theme tests (both engines, every built-in theme):** the marks drawn where they go, and the requests each drop
+  sends. None outside Margin's own window.
+- **Screen suite (`split-drop`):** real drags from the sidebar: on the page shown alone (a new split), on a pane (in
+  its place), on the gap between two (between them). 9 of 9 on the real screen, 2026-11-28.
+
+## Steps 3–4
+
 - **Step 3 (tree):**
   - The library's `splits` becomes a tree (`{axis, kids, ratios}` with leaf items), with a migration from the flat
     list.
-  - `expandSizes` runs per node. The page draws nested `<m-split>` boxes.
+  - `expandSizes` runs per node. The page draws nested `<m-split>` boxes. `dropPlace` gains a pane's edges across the
+    axis (a pane split there).
   - The fixed four goes from every place that holds it: the page report, `PageLayout.swift`, `PageCore.swift`, the
-    model's `ROOM`, and `canAddPane`.
-- **Step 4:** presets from the tree, the moves and the swap.
+    model's `ROOM`, `canAddPane`, `MAX_SPLIT_PANES` (both copies), and `split.drop`'s `at`/`replace` lists.
+  - Whether a split may hold more panes than fit at rest (folded at `PANE_FOLD`) is asked then.
+- **Step 4:** presets from the tree, keys to move between panes and move panes, and swapping panes, with a pane
+  dragged within the split (a pane of the split shown takes no drop today).
