@@ -61,19 +61,18 @@ m-pane-loader>m-pane-spinner{display:block;flex:none;width:20px;height:20px;box-
 m-pane-loader>m-pane-label{display:block;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.72}
 @keyframes m-pane-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){m-pane-loader>m-pane-spinner{animation-duration:2.4s}}
-m-pane>m-pane-arrow{position:absolute;z-index:1;display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:48px;border-radius:14px;background:color-mix(in srgb,Canvas 84%,transparent);color:CanvasText;color-scheme:light dark;box-shadow:0 1px 3px rgba(0,0,0,.22),0 0 0 .5px color-mix(in srgb,CanvasText 18%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);cursor:pointer;opacity:0;visibility:hidden;pointer-events:none!important;transition:opacity .12s ease,visibility .12s;-webkit-user-select:none;user-select:none}
-m-pane[m-cut-hover]>m-pane-arrow{opacity:1;visibility:visible;pointer-events:auto!important}
-m-pane>m-pane-arrow:hover,m-pane>m-pane-arrow[m-hover]{background:color-mix(in srgb,Canvas 96%,transparent)}
-m-pane>m-pane-arrow[m-side=left]{left:10px;top:50%;transform:translateY(-50%)}
-m-pane>m-pane-arrow[m-side=right]{right:10px;top:50%;transform:translateY(-50%)}
-m-pane>m-pane-arrow[m-side=up]{top:10px;left:50%;transform:translateX(-50%);width:48px;height:28px}
-m-pane>m-pane-arrow[m-side=down]{bottom:10px;left:50%;transform:translateX(-50%);width:48px;height:28px}
-m-pane>m-pane-arrow::before{content:"";display:block;width:7px;height:7px;border:solid currentColor;border-width:0 0 2px 2px;opacity:.8}
-m-pane>m-pane-arrow[m-side=left]::before{transform:translateX(1.5px) rotate(45deg)}
-m-pane>m-pane-arrow[m-side=right]::before{transform:translateX(-1.5px) rotate(-135deg)}
-m-pane>m-pane-arrow[m-side=up]::before{transform:translateY(1.5px) rotate(135deg)}
-m-pane>m-pane-arrow[m-side=down]::before{transform:translateY(-1.5px) rotate(-45deg)}
-@media (prefers-reduced-motion:reduce){m-pane>m-pane-arrow{transition:none}}
+/* A folded pane's card (docs/FLEX-SPLIT.md step 1): over its app's window, which Margin.app blurs behind it. A theme
+   tints the blur (a translucent background, this one's) or covers it (an opaque one). It takes the pointer. */
+m-pane>m-pane-card{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;box-sizing:border-box;padding:12px 6px;overflow:hidden;border-radius:inherit;background:color-mix(in srgb,Canvas 22%,transparent);color:CanvasText;color-scheme:light dark;pointer-events:auto!important;cursor:pointer;font:500 12px/1.25 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;animation:m-pane-fold .18s ease-out both}
+m-pane>m-pane-card:hover,m-pane>m-pane-card[m-hover]{background:color-mix(in srgb,Canvas 34%,transparent)}
+m-pane-card>m-pane-icon{display:flex;flex:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;overflow:hidden;background:var(--m-letter-color,color-mix(in srgb,CanvasText 30%,transparent));color:#fff;font:600 15px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 1px 3px rgb(0 0 0/.25)}
+m-pane-card>m-pane-icon:not([m-letter]){background:none;box-shadow:none}
+m-pane-icon>img{display:block;width:100%;height:100%;object-fit:contain}
+m-pane-card>m-pane-name{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.86}
+m-page[m-split="row"]>m-pane>m-pane-card>m-pane-name{writing-mode:vertical-rl;max-width:none;max-height:calc(100% - 66px)}
+m-page[m-split="column"]>m-pane>m-pane-card{flex-direction:row}
+@keyframes m-pane-fold{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){m-pane>m-pane-card{animation:none}}
 m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview,m-picker{display:block}
 m-preview-page{display:block}
@@ -875,8 +874,9 @@ type Edges ={ left: number, top: number, right: number, bottom: number };
 // Where the page goes (View.measure).
 export type Layout = {
   insets: Edges, radius: number, radii: number[], outer: Edges & { radius: number }, container: { width: number, height: number },
-  /** A split's panes laid out in `<m-page>` (ui/behaviors/split.ts): the split's id, each `<m-pane>`'s box by its item. */
-  split?: string, panes?: { id: string, rect: number[] }[],
+  /** A split's panes laid out in `<m-page>` (ui/behaviors/split.ts): the split's id, each `<m-pane>`'s box by its item,
+   *  `folded` when it's folded beside a pane opened to fit its app (docs/FLEX-SPLIT.md step 1). */
+  split?: string, panes?: { id: string, rect: number[], folded?: true }[],
 };
 
 export type ViewOptions = {
@@ -1146,7 +1146,9 @@ export class View {
         split,
         panes: paneEls.map((p) => {
           const b = p.getBoundingClientRect();
-          return { id: p.getAttribute('m-pane-id') ?? '', rect: [round(b.left - c.left), round(b.top - c.top), round(b.width), round(b.height)] };
+          const rect = [round(b.left - c.left), round(b.top - c.top), round(b.width), round(b.height)];
+          // (Folded beside a pane opened to fit its app: Margin.app blurs its window there, docs/FLEX-SPLIT.md step 1.)
+          return p.hasAttribute('m-folded') ? { id: p.getAttribute('m-pane-id') ?? '', rect, folded: true as const } : { id: p.getAttribute('m-pane-id') ?? '', rect };
         }),
       } : {}),
     };

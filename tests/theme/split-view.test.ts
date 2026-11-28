@@ -148,51 +148,89 @@ for (const [name, engine] of ENGINES) {
         assert.equal(haptics, 0, 'a fast drag: no haptic');
         p = await ev(() => T.rtPanes());
 
-        // A cut pane (docs/PEEK-SPLIT.md §4b): its window wider than its box (Notes' 700 in a 600 pane): an arrow on each
-        // hidden side, hidden and click-through until the pointer is over that pane (Margin.app's `paneHover`), then
-        // shown inside its box; pressed, `split.slide` with its side; the pointer gone: hidden again, nothing sent.
-        const cutId = String(tabs[1]);
-        await ev((c) => T.rtPaneCuts(c), { [cutId]: { window: 20, right: 'slide', left: 'slide' } });
-        await frames();
-        let ar = await ev(() => T.rtPaneArrows());
-        const cutPane = ar.find((x) => x.id === cutId)!;
-        assert.deepEqual(cutPane.arrows.map((a) => [a.side, a.mode]).sort(), [['left', 'slide'], ['right', 'slide']], `one arrow per hidden side: ${JSON.stringify(cutPane.arrows)}`);
-        assert.ok(cutPane.arrows.every((a) => !a.shown && a.pointer === 'none'), `hidden and click-through until hovered: ${JSON.stringify(cutPane.arrows)}`);
-        const inHits = (hits: number[][], a: { x: number, y: number }) => hits.some(([x, y, w, h]) => a.x >= x && a.x <= x + w && a.y >= y && a.y <= y + h);
-        const hitsHidden = await ev(() => T.rtPageHits());
-        assert.ok(cutPane.arrows.every((a) => !inHits(hitsHidden, a)), `hidden arrows never Margin's to take the pointer: ${JSON.stringify(hitsHidden)}`);
-        assert.ok(ar.find((x) => x.id !== cutId)!.arrows.length === 0, 'a pane that isn\'t cut: none');
-        await ev(() => T.rtPaneHover(20));
-        await frames();
-        await page.waitForTimeout(200);
-        ar = await ev(() => T.rtPaneArrows());
-        const lit = ar.find((x) => x.id === cutId)!;
-        assert.ok(lit.lit && lit.arrows.every((a) => a.shown && a.pointer === 'auto' && a.inside), `hovered: shown, taking the pointer, inside its box: ${JSON.stringify(lit.arrows)}`);
-        const rightArrow = lit.arrows.find((a) => a.side === 'right')!, leftArrow = lit.arrows.find((a) => a.side === 'left')!;
-        const hitsShown = await ev(() => T.rtPageHits());
-        assert.ok(inHits(hitsShown, rightArrow) && inHits(hitsShown, leftArrow), `shown arrows are Margin's to take the pointer (Margin.app told them: hitRects): ${JSON.stringify(hitsShown)}`);
-        assert.ok(rightArrow.right < 30 && leftArrow.left < 30, `at its sides: ${JSON.stringify(lit.arrows)}`);
-        assert.ok(rightArrow.color !== rightArrow.background && /Show the right of this pane/.test(rightArrow.label ?? ''), `readable, named: ${rightArrow.color} on ${rightArrow.background}, ${rightArrow.label}`);
+        // A cut pane opens to fit its app (docs/FLEX-SPLIT.md step 1): its window wider than its box. The pointer resting
+        // on it (Margin.app's `paneHover`) opens it after the pause to its app's minimum; the other folds into a card (its
+        // name and icon, readable, Margin's to take the pointer), the move through the drag's path (`split.resizing`),
+        // the folded pane reported. The pointer on the sidebar puts it back; resting on the folded card opens that one;
+        // pressing a folded card opens it at once and focuses it (`split.focus`). Click mode: no opening on hover.
+        const cutId = String(tabs[1]), otherId = String(tabs[0]);
+        await ev((s) => T.rtSettings(s), { splitExpand: 'hover' });
+        p = await ev(() => T.rtPanes());
+        const room = p.panes[0].width + p.panes[1].width;
+        const need = Math.round(room - 120);
+        await ev((m) => T.rtPaneMin(m), { [cutId]: [need, 300], [otherId]: [Math.round(room / 2) + 60, 300] });
+        await ev((c) => T.rtPaneCuts(c), { [cutId]: { window: 20 } });
+        const performedBefore = (await ev(() => T.rtPerformedFull())).length;
         await ev(() => T.rtSentClear());
-        await page.mouse.click(rightArrow.x, rightArrow.y);
         await frames();
-        let slides = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'split.slide').map(([, a]) => a);
-        assert.deepEqual(slides.at(-1), { item: cutId, side: 'right' }, `pressed: split.slide on its side (${JSON.stringify(slides)})`);
-        // Slid (its left its one side now): one arrow; the pointer gone: hidden and click-through again, nothing sent.
-        await ev((c) => T.rtPaneCuts(c), { [cutId]: { window: 20, left: 'slide' } });
+        let folds = await ev(() => T.rtPaneFolds());
+        assert.ok(folds.every((f) => !f.folded && !f.card), `at rest: nothing folded, no card: ${JSON.stringify(folds)}`);
+        assert.ok((await ev(() => T.rtPerformedFull())).every(([n]) => n !== 'split.slide'), 'no arrows, no slides');
+        await ev(() => T.rtPaneHover(20));
+        await page.waitForTimeout(120);
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[1].width, folds[0].width, 3), `not yet: the pause first (${folds.map((f) => f.width)})`);
+        await page.waitForTimeout(600);
         await frames();
-        ar = await ev(() => T.rtPaneArrows());
-        assert.deepEqual(ar.find((x) => x.id === cutId)!.arrows.map((a) => [a.side, a.shown, a.label]), [['left', true, 'Show the left of this pane']], `slid: its other side's arrow: ${JSON.stringify(ar)}`);
-        const slidesBefore = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'split.slide').length;
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[1].width, need, 2), `opened to its app's minimum: ${folds[1].width} of ${need}`);
+        assert.ok(near(folds[0].width, room - need, 2) && folds[0].folded && !folds[1].folded, `the other folded: ${JSON.stringify(folds)}`);
+        const fc = folds[0].card!;
+        assert.ok(fc.shown && fc.pointer === 'auto' && fc.inside, `its card shown in its box, taking the pointer: ${JSON.stringify(fc)}`);
+        assert.ok((fc.img ?? fc.letter ?? '').length > 0 && (fc.name ?? '').length > 0 && /^Open /.test(fc.label ?? ''), `its icon (or letter) and name: ${JSON.stringify(fc)}`);
+        assert.ok(fc.color !== fc.background, `readable: ${fc.color} on ${fc.background}`);
+        const moved = (await ev(() => T.rtPerformedFull())).slice(performedBefore).filter(([n]) => n === 'split.resizing').map(([, a]) => (a as { on: boolean }).on);
+        assert.deepEqual([moved[0], moved.at(-1)], [true, false], `the move through the drag's path: ${JSON.stringify(moved)}`);
+        let lay = (await ev(() => T.rtPanes())).layout!;
+        assert.deepEqual(lay.map((x: any) => [x.id, !!x.folded]), [[otherId, true], [cutId, false]], `the folded pane reported: ${JSON.stringify(lay)}`);
+        const inHits = (hits: number[][], a: { x: number, y: number }) => hits.some(([x, y, w, h]) => a.x >= x && a.x <= x + w && a.y >= y && a.y <= y + h);
+        assert.ok(inHits(await ev(() => T.rtPageHits()), fc), 'the folded card is Margin\'s to take the pointer (hitRects)');
+        // The pointer leaves the pane for the sidebar: back at its sizes after a pause.
         await ev(() => T.rtPaneHover(null));
+        await page.mouse.move(40, 400);
+        await page.waitForTimeout(900);
         await frames();
-        await page.waitForTimeout(200);
-        ar = await ev(() => T.rtPaneArrows());
-        slides = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'split.slide').map(([, a]) => a);
-        assert.ok(ar.find((x) => x.id === cutId)!.arrows.every((a) => !a.shown && a.pointer === 'none') && slides.length === slidesBefore, `the pointer gone: hidden, nothing sent: ${JSON.stringify(ar)} ${JSON.stringify(slides)}`);
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[0].width, folds[1].width, 3) && folds.every((f) => !f.folded && !f.card), `the pointer on the sidebar: back at its ratios: ${JSON.stringify(folds)}`);
+        assert.deepEqual((await ev(() => T.rtSent())).filter(([t]) => t === 'resizeSplit').length, 0, 'opening never saves the ratios');
+        // Opened again; the pointer resting on the folded card opens that one (its app's minimum), the first folding.
+        await ev(() => T.rtPaneHover(20));
+        await page.waitForTimeout(800);
+        await ev(() => T.rtPaneHover(null));
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(folds[0].folded, 'opened again');
+        await page.mouse.move(folds[0].card!.x, folds[0].card!.y, { steps: 3 });
+        await page.waitForTimeout(900);
+        await frames();
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[0].width, Math.round(room / 2) + 60, 2) && folds[1].folded, `resting on the folded card: it opens, the other folds: ${JSON.stringify(folds)}`);
+        // A press on the folded card: open at once, its pane focused.
+        await ev(() => T.rtSentClear());
+        const press = folds[1].card!;
+        await page.mouse.move(press.x, press.y);
+        await page.mouse.down();
+        await page.mouse.up();
+        await page.waitForTimeout(400);
+        await frames();
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[1].width, need, 2) && folds[0].folded, `pressed: open at once: ${JSON.stringify(folds)}`);
+        const focused = (await ev(() => T.rtSent())).filter(([t]) => t === 'activateTab').map(([, a]) => a.tabId);
+        assert.deepEqual(focused, [tabs[1]], `and its pane focused (split.focus): ${JSON.stringify(focused)}`);
+        // Click mode: resting doesn't open (a new split shown: at its ratios).
+        await ev((s) => T.rtSettings(s), { splitExpand: 'click' });
+        await ev((t) => T.rtSplit(t, { id: 'spv-click' }), tabs.slice(0, 2));
+        await ev(() => T.rtPaneHover(20));
+        await page.waitForTimeout(700);
+        await frames();
+        folds = await ev(() => T.rtPaneFolds());
+        assert.ok(near(folds[0].width, folds[1].width, 3) && folds.every((f) => !f.folded), `click mode: the pointer's rest opens nothing: ${JSON.stringify(folds)}`);
+        await ev(() => T.rtPaneHover(null));
         await ev((c) => T.rtPaneCuts(c), {});
+        await ev((m) => T.rtPaneMin(m), {});
+        await ev((s) => T.rtSettings(s), { splitExpand: 'hover' });
+        await ev((t) => T.rtSplit(t), tabs.slice(0, 2));
         await frames();
-        assert.ok((await ev(() => T.rtPaneArrows())).every((x) => x.arrows.length === 0 && !x.lit), 'no pane cut: no arrows');
+        assert.equal(errors.length, 0, errors.join('\n'));
 
         // A pane's window opening beside the one shown (Notes added): its loader over its own box only, the other pane
         // drawn as it was (its window shows and takes the pointer); gone when it's in place.

@@ -851,9 +851,10 @@ function fresh(input: ViewModelInput): ViewModel {
   }
   // Settings as its own page: its categories, the one shown.
   let settingsTab: ViewModel['settingsTab'] = null;
-  // (Themes, the theme store, only where Margin.app offers it: `features.themeStore`; Apps only in Margin.app's window on
-  // the Mac: `features.appDock`.)
-  const offered = SETTINGS_CATEGORIES.filter((c) => (c.id !== 'themes' || !!input.platform?.features?.themeStore) && (c.id !== 'apps' || !!input.platform?.features?.appDock));
+  // (Themes, the theme store, only where Margin.app offers it: `features.themeStore`; Apps only in Margin.app's window:
+  // `features.appDock` on the Mac, `features.splitPanes` wherever it lays out a split's panes.)
+  const fx = input.platform?.features;
+  const offered = SETTINGS_CATEGORIES.filter((c) => (c.id !== 'themes' || !!fx?.themeStore) && (c.id !== 'apps' || !!fx?.appDock || !!fx?.splitPanes));
   const named = categoryNamed(ui.settingsCategory);
   const category = offered.some((c) => c.id === named) ? named : offered[0].id;
   if (launcher && ui.settingsPage) {

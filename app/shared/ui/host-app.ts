@@ -186,8 +186,8 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
     for (const child of (el.children as any) as Element[]) {
       if (child.localName === 'template') continue;
       if (child.localName === 'm-page') {
-        // (Nothing of the page's place takes the pointer but a split's dividers and a cut pane's arrows while they're
-        // shown, Margin's own: docs/PEEK-SPLIT.md §4, §4b; none while the preview card is up over it, `m-card-clip`: its
+        // (Nothing of the page's place takes the pointer but a split's dividers and a folded pane's card, Margin's own:
+        // docs/PEEK-SPLIT.md §4, docs/FLEX-SPLIT.md step 1; none while the preview card is up over it, `m-card-clip`: its
         // page is the card's, the dim around it Margin's.)
         if (child.hasAttribute?.('m-card-clip')) continue;
         const add = (b: DOMRect) => { if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom)); };
@@ -195,7 +195,7 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
           if (d.localName === 'm-divider') { add(d.getBoundingClientRect()); continue; }
           if (d.localName !== 'm-pane') continue;
           for (const a of (d.children as any) as Element[]) {
-            if (a.localName !== 'm-pane-arrow') continue;
+            if (a.localName !== 'm-pane-card' || !d.hasAttribute('m-folded')) continue;
             const st = getStyle(a);
             if (st.pointerEvents !== 'none' && st.visibility !== 'hidden') add(a.getBoundingClientRect());
           }
@@ -331,9 +331,7 @@ export function chromeRects(root: Element | null): { controls: number[] | null, 
  * `onNotice({ id, action })`: a button of a notice the overlay put up.
  * */
 /** A split's cut pane (docs/PEEK-SPLIT.md §4b): its window, and its hidden sides its arrows slide into its pane. */
-export type PaneSide = 'left' | 'right' | 'up' | 'down';
-export const PANE_SIDES: readonly PaneSide[] = Object.freeze(['left', 'right', 'up', 'down']);
-export type PaneCut = { window: number } & Partial<Record<PaneSide, 'slide'>>;
+export type PaneCut = { window: number };
 
 export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args), note = (...args) => console.info('[margin]', ...args) }: {
   hello: any,
@@ -394,16 +392,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     return { item: v.item, name: typeof v.label === 'string' ? v.label.slice(0, 120) : '', bundleId: isBundleId(v.bundleId) ? v.bundleId : null };
   };
   let paneLoading = paneLoadingOf(hello?.paneLoading);
-  // A split's cut panes (docs/PEEK-SPLIT.md §4b): each one's window, its sides' arrows (each a slide); at most 4 (a
-  // split's panes), each side checked.
+  // A split's cut panes (docs/PEEK-SPLIT.md §4b): each one's window (the one the pointer rests on opens to fit its app:
+  // behaviors/split.ts, docs/FLEX-SPLIT.md step 1); at most 4 (a split's panes). The sides Margin.app says are left.
   const paneCutsOf = (v: unknown): Record<string, PaneCut> => {
     const out: Record<string, PaneCut> = {};
     if (!appWindow || !v || typeof v !== 'object' || Array.isArray(v)) return out;
     for (const [item, c] of Object.entries(v as Record<string, any>).slice(0, 4)) {
       if (!/^[A-Za-z0-9_.:-]{1,256}$/.test(item) || !c || typeof c !== 'object' || !Number.isInteger(c.window)) continue;
-      const cut: PaneCut = { window: c.window };
-      for (const side of PANE_SIDES) if (c[side] === 'slide') cut[side] = 'slide';
-      out[item] = cut;
+      out[item] = { window: c.window };
     }
     return out;
   };
@@ -467,6 +463,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   (platform.features as any).appSearch = appWindow;
   // Apps opened in Margin.app's window on the Mac hidden from the Dock (Settings › Apps; host/docked.rs).
   (platform.features as any).appDock = appWindow && platform.os === 'mac';
+  // A split's panes laid out in Margin.app's own window (behaviors/split.ts): Settings › Apps offers how a pane opens to
+  // fit its app (docs/FLEX-SPLIT.md step 1).
+  (platform.features as any).splitPanes = appWindow;
   // The window's tabs loading, as the copy last said (`push` `loading`).
   let loading: Set<number> = new Set();
   let failure: { type: string, error: string, at: number } | null = null;
@@ -724,12 +723,6 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'split.resizing':
           if (!appWindow || typeof arg?.on !== 'boolean') return false;
           void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
-          return true;
-        // A cut pane's arrow (behaviors/split.ts, docs/PEEK-SPLIT.md §4b): its window slid to show that side, one it
-        // has; Margin.app's engine does it.
-        case 'split.slide':
-          if (!appWindow || typeof arg?.item !== 'string' || !PANE_SIDES.includes(arg?.side) || paneCuts[arg.item]?.[arg.side as PaneSide] !== 'slide') return false;
-          void post('perform', { name, arg: { item: arg.item, side: arg.side } }).catch(() => {});
           return true;
         // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it; Edit
         // Theme Color's detents too, and its texture a level's change (ui/picker/feedback.ts).

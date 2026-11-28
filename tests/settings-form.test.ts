@@ -234,6 +234,28 @@ test('Settings: Margin.app\'s own keys (⌘L, ⌘D, ⌃1–9, ⌘1–9…) can b
   assert.deepEqual(Array.from({ length: 9 }, (_, i) => none[`space-${i + 1}`]), Array(9).fill([]));
 });
 
+test('Settings › Apps: a split\'s pane opens to fit its app on hover (the default) or on a click; only where panes are laid out', () => {
+  const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
+  const vm = (settings: Record<string, unknown>, features: Record<string, unknown>) => buildViewModel({ state: { ...state, settings: { ...state.settings, ...settings } }, ui: { windowId: W, launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'apps' }, platform: { browser: 'safari', os: 'mac', features } });
+  const app = vm({}, { ...SAFARI, appDock: true, splitPanes: true });
+  const f = app.settingsForm!.fields.find((x) => x.id === 'splitExpand')!;
+  assert.equal(f.kind, 'choice');
+  assert.match(f.label, /split view/i);
+  assert.equal(f.value, 'hover', 'hover by default');
+  assert.deepEqual(f.options.map((o) => [o.id, o.selected]), [['hover', true], ['click', false]]);
+  assert.equal(vm({ splitExpand: 'click' }, { ...SAFARI, appDock: true, splitPanes: true }).settingsForm!.fields.find((x) => x.id === 'splitExpand')!.value, 'click');
+  assert.equal(vm({ splitExpand: 'other' }, { ...SAFARI, appDock: true, splitPanes: true }).settingsForm!.fields.find((x) => x.id === 'splitExpand')!.value, 'hover', 'anything else: hover');
+  assert.deepEqual((saveField(f, 'click', {}) as { payload: { patch: unknown } }).payload.patch, { splitExpand: 'click' });
+  assert.equal(saveField(f, 'sideways', {}), null);
+  assert.equal(categoryOf('splitExpand'), 'apps');
+  // Panes laid out without the Dock setting (Margin.app elsewhere than the Mac): the Apps category still, with it alone.
+  const elsewhere = vm({}, { ...SAFARI, splitPanes: true });
+  assert.ok(elsewhere.settingsTab!.categories.some((c) => c.id === 'apps'));
+  assert.deepEqual(elsewhere.settingsForm!.fields.map((x) => x.id), ['splitExpand']);
+  // A browser's Settings: never.
+  assert.ok(!settingsFields({}, SAFARI).some((x) => x.id === 'splitExpand'));
+});
+
 test('Settings › Apps (Margin.app\'s window on the Mac): hide apps from the Dock, on unless turned off; nowhere else', () => {
   const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
   const vm = (settings: Record<string, unknown>, features: Record<string, unknown>) => buildViewModel({ state: { ...state, settings: { ...state.settings, ...settings } }, ui: { windowId: W, launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'apps' }, platform: { browser: 'safari', os: 'mac', features } });
@@ -245,7 +267,7 @@ test('Settings › Apps (Margin.app\'s window on the Mac): hide apps from the Do
   assert.equal(f.kind, 'toggle');
   assert.equal(f.checked, true, 'on by default');
   assert.match(f.label, /Hide apps from the Dock when Margin opens them \(might not work with some apps\)/);
-  assert.deepEqual(app.settingsForm!.fields.map((x) => x.id), ['hideAppsFromDock'], 'the Apps category: only it');
+  assert.deepEqual(app.settingsForm!.fields.map((x) => x.id), ['hideAppsFromDock'], 'the Apps category: only it (no split panes laid out)');
   assert.equal(vm({ hideAppsFromDock: false }, { ...SAFARI, appDock: true }).settingsForm!.fields.find((x) => x.id === 'hideAppsFromDock')!.checked, false);
   assert.deepEqual((saveField(f, false, {}) as { payload: { patch: unknown } }).payload.patch, { hideAppsFromDock: false });
   // Not offered (a browser's Settings): no Apps category, asked for it: Appearance; never a field.
