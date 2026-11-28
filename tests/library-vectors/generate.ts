@@ -138,6 +138,14 @@ export function library(r: Rand) {
       ...(r.chance(0.6) ? { ratios: panes.map(() => r.pick([1, 2, 0.5, 0, -1, 'x'])) } : {}),
       ...(r.chance(0.2) ? { pinned: true } : {}), ...(r.chance(0.2) && folderIds.length ? { folderId: r.pick(folderIds) } : {}), ...(r.chance(0.3) ? { pos: r.pick([0, 1.5, 'x']) } : {}),
     };
+    // (Now and then nested (docs/FLEX-SPLIT.md step 3): its last two panes across the rest, or a tree that isn't one
+    // for its panes.)
+    if (panes.length >= 3 && r.chance(0.35)) {
+      const g = splits[Object.keys(splits).at(-1)!];
+      const across = g.axis === 'vertical' ? 'horizontal' : 'vertical';
+      const good = { axis: g.axis, kids: [...panes.slice(0, -2), { axis: across, kids: panes.slice(-2), ratios: [1, r.pick([1, 3])] }], ratios: [...panes.slice(0, -2).map(() => 1), 1] };
+      g.tree = r.pick([good, good, good, { ...good, extra: 1 }, { ...good, axis: across }, { axis: g.axis, kids: panes, ratios: panes.map(() => 1) }, 'x']);
+    }
   }
   const archive: Record<string, any> = {};
   const sameClosed = 900 + r.int(2);
@@ -192,14 +200,14 @@ export const FIELDS: Record<string, string[]> = {
   toggleAirTrafficRule: ['ruleId', 'enabled'],
   routeUrl: ['url'],
   createSplit: ['panes', 'spaceId', 'axis', 'ratios', 'focus', 'windowId'],
-  addToSplit: ['tabId', 'nextTo', 'splitId', 'windowId', 'at', 'replace', 'axis'],
+  addToSplit: ['tabId', 'nextTo', 'splitId', 'windowId', 'at', 'replace', 'axis', 'beside', 'side'],
   openSplit: ['splitId', 'focus', 'windowId'],
   breakOutSplit: ['tabId', 'windowId'],
   removeFromSplit: ['tabId', 'focus', 'windowId'],
   closeSplitPane: ['tabId'],
   swapSplit: ['splitId', 'a', 'b'],
-  resizeSplit: ['splitId', 'ratios'],
-  toggleSplitAxis: ['splitId'],
+  resizeSplit: ['splitId', 'ratios', 'path'],
+  toggleSplitAxis: ['splitId', 'path'],
   createFolder: ['tabId', 'parentId', 'spaceId', 'pinIds', 'beforeId', 'name', 'windowId'],
   renameFolder: ['folderId', 'name'],
   setFolderOpen: ['folderId', 'open'],
@@ -241,7 +249,7 @@ export function field(r: Rand, values: any, name: string): unknown {
     case 'panes': { const l = keysOf(values, 'tabs'); return Array.from({ length: r.int(6) }, () => (l.length && r.chance(0.9) ? r.pick(l) : 't-gone')); }
     case 'ratios': return r.pick([[1, 1], [2, 1, 1], [0.5, 0.25, 0.25], [1, 0], [-1, 2], ['a', 1], [1, 1, 1, 1, 1], 5]);
     case 'axis': return r.pick(['vertical', 'horizontal', 'diagonal']);
-    case 'side': return r.pick(['before', 'after', 'above']);
+    case 'side': return r.pick(['before', 'after', 'above', 'left', 'right', 'top', 'bottom', 'bottom']);
     case 'command': return r.pick(['toggle', 'prev', 'next', 'focus', 'mute', 'stop']);
     case 'page': return r.pick(['settings', 'settings', 'nope', 'constructor']);
     case 'favoritesScope': return r.pick(['global', 'profile', 'x']);
@@ -249,7 +257,8 @@ export function field(r: Rand, values: any, name: string): unknown {
     case 'enabled': case 'open': case 'front': return r.pick([true, false, true, 1, 0]);
     case 'a': case 'b': return r.pick([0, 1, 2, 3, 1.5, -1, '1']);
     case 'at': return r.pick([0, 1, 2, 3, 4, 1.5, -1, '0', null]);
-    case 'replace': return some('tabs', 't');
+    case 'replace': case 'beside': return some('tabs', 't');
+    case 'path': return r.pick([[], [0], [1], [1, 0], [0, 1, 0], [-1], [0.5], '0', null]);
     default: return null;
   }
 }

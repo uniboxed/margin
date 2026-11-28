@@ -20,6 +20,7 @@
 // action returns a request (`requests`) for the hosting (in the core, the library object gives each to the session,
 // its sink), with the item and its target resolved.
 import * as M from '../../../extension/state/model.ts';
+import { copyTree, pathOf, storedTree } from '../../../extension/shared/split-tree.ts';
 import { frontItemOf } from '../../../extension/shared/front-item.ts';
 import { matchAirTrafficRule } from '../../../extension/shared/air-traffic.ts';
 import { fingerprint } from '../../../extension/shared/data-set.ts';
@@ -104,7 +105,8 @@ export function stateOf(values: Values): LibState {
     .map(([id, r], i) => ({ id, pattern: str(r.pattern, 200), spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }));
   // A split's panes as stored: item ids (strings), each once, at most MAX_SPLIT_PANES, each with the ratio stored at its
   // own place (one per pane: the ratios of those left kept relative to each other); fewer than 2: no split. (Panes whose
-  // item is gone leave in perform: state/model.ts settleSplits.)
+  // item is gone leave in perform: state/model.ts settleSplits.) A nested one's tree (docs/FLEX-SPLIT.md step 3) as
+  // stored when it's one for those panes (shared/split-tree.ts storedTree), else none: flat.
   const splits = sorted(values?.splits).filter(([, g]) => typeof g.spaceId === 'string' && Array.isArray(g.panes)).flatMap(([id, g]) => {
     const given: unknown[] = g.panes;
     const at = given.flatMap((x, i) => (typeof x === 'string' && x && given.indexOf(x) === i ? [i] : [])).slice(0, M.MAX_SPLIT_PANES);
@@ -115,6 +117,7 @@ export function stateOf(values: Values): LibState {
       id, spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' as const : 'horizontal' as const,
       panes: at.map((i) => given[i] as string),
       ratios: ratios.map((r) => Math.round((r / sum) * 10000) / 10000),
+      ...(storedTree(g.tree, at.map((i) => given[i] as string)) ? { tree: copyTree(g.tree) } : {}),
       ...(g.pinned ? { pinned: true } : {}),
       ...(typeof g.folderId === 'string' && g.folderId ? { folderId: g.folderId } : {}),
       ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}),
@@ -149,7 +152,7 @@ export function valuesOf(state: LibState, imports: Record<string, any> = {}): Va
   state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', ...(p.customTitle ? { customTitle: p.customTitle } : {}), folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
   (state.favorites ?? []).forEach((f: any, i) => { out.favorites[f.id] = { scope: f.scope || 'global', url: f.url, title: f.title ?? '', ...(f.customTitle ? { customTitle: f.customTitle } : {}), pos: finite(f.pos, i), target: targetOf(f.target) ?? webTarget('safari', null) }; });
   (state.airTraffic ?? []).forEach((r: any, i) => { out.airTraffic[r.id] = { pattern: r.pattern, spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }; });
-  (state.splits ?? []).forEach((g: any) => { out.splits[g.id] = { spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' : 'horizontal', panes: g.panes, ratios: g.ratios, ...(g.pinned ? { pinned: true } : {}), ...(g.folderId ? { folderId: g.folderId } : {}), ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}) }; });
+  (state.splits ?? []).forEach((g: any) => { out.splits[g.id] = { spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' : 'horizontal', panes: g.panes, ratios: g.ratios, ...(g.tree ? { tree: g.tree } : {}), ...(g.pinned ? { pinned: true } : {}), ...(g.folderId ? { folderId: g.folderId } : {}), ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}) }; });
   (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i), ...(f.parentId ? { parentId: f.parentId } : {}) }; });
   for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
     out.tabs[k.id] = {
@@ -251,7 +254,7 @@ type Handler = (ctx: Ctx) => { s: LibState, result?: any, error?: string };
 const fail = (s: LibState, error: string) => ({ s, error });
 
 // ---- split view's rules (docs/PEEK-SPLIT.md §4) ----
-// Why `adding` can't join a split of `panes` in `spaceId` (null: it can): 4 panes at most, one space, never Margin's own
+// Why `adding` can't join a split of `panes` in `spaceId` (null: it can): MAX_SPLIT_PANES at most, one space, never Margin's own
 // pages, a Mac app once (its one window is one pane).
 function splitRefusal(s: LibState, panes: string[], adding: string[], spaceId: string): string | null {
   const all = [...panes, ...adding.filter((id) => !panes.includes(id))];
@@ -672,7 +675,7 @@ const ACTIONS: Record<string, Handler> = {
     if (!rule) return { s, result: null };
     return { s, result: { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId, target: spaceTarget(s, rule.spaceId) } };
   },
-  // ---- split view (2–4 panes, docs/PEEK-SPLIT.md §4) ----
+  // ---- split view (2 to MAX_SPLIT_PANES panes, docs/PEEK-SPLIT.md §4; a tree when nested: docs/FLEX-SPLIT.md step 3) ----
   // A split's panes are items of one space: web pages (any profile) and Mac apps, each app once (its one window can be
   // one pane only); never one of Margin's own pages. Each change the hosting must show asks for it as `showSplit` with
   // the pane to focus (`item`; null: the one the window shows, if it's a pane, else the first): the hosting shows the
@@ -696,8 +699,9 @@ const ACTIONS: Record<string, Handler> = {
   // split of the two: Arc's Add to Split View on a row. Refused: a split of 4 already, an app that's in it already, an
   // item of another space, one of Margin's own pages. Already a pane of it: the split shown, that pane focused.
   // A row dropped on the page (docs/FLEX-SPLIT.md step 2): `at`, its place among the panes (a new split: 0 first, else
-  // after); `replace`, a pane it takes the place of (its ratio, that item out of the split; the count stays, so a split
-  // of 4 takes it); `axis`, a new split's.
+  // after); `replace`, a pane it takes the place of (its ratio, that item out of the split; the count stays, so a full
+  // split takes it); `axis`, a new split's. `beside` and `side` (step 3): beside that pane on that side, the two sharing
+  // its room (shared/split-tree.ts besideLeaf), across it when its node runs the other way.
   addToSplit({ s, p, ids, now, requests }) {
     const k = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
@@ -712,9 +716,10 @@ const ACTIONS: Record<string, Handler> = {
         return { s: used(s, k.id, w, now), result: { splitId: existing.id } };
       }
       const out = typeof p?.replace === 'string' && existing.panes.includes(p.replace) ? p.replace : null;
+      const beside = !out && typeof p?.beside === 'string' && existing.panes.includes(p.beside) && ['left', 'right', 'top', 'bottom'].includes(p?.side) ? p.beside : null;
       const why = splitRefusal(s, out ? existing.panes.filter((x) => x !== out) : existing.panes, [k.id], existing.spaceId);
       if (why) return fail(s, why);
-      const next = (out ? M.replaceInSplit(s, existing.id, out, k.id) : M.addToSplit(s, existing.id, k.id, p?.at)) as LibState;
+      const next = (out ? M.replaceInSplit(s, existing.id, out, k.id) : beside ? M.besideInSplit(s, existing.id, beside, p.side, k.id) : M.addToSplit(s, existing.id, k.id, p?.at)) as LibState;
       const group = (next.splits ?? []).find((g) => g.id === existing.id);
       if (!group || !group.panes.includes(k.id)) return fail(s, 'not added');
       requests.push(splitShown(next, group, k.id, p));
@@ -776,12 +781,12 @@ const ACTIONS: Record<string, Handler> = {
   resizeSplit({ s, p }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
     if (!group) return fail(s, 'no such split');
-    return { s: M.resizeSplit(s, group.id, p?.ratios) as LibState };
+    return { s: M.resizeSplit(s, group.id, p?.ratios, pathOf(p?.path)) as LibState };
   },
   toggleSplitAxis({ s, p, requests }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
     if (!group) return fail(s, 'no such split');
-    const next = M.toggleSplitAxis(s, group.id) as LibState;
+    const next = M.toggleSplitAxis(s, group.id, pathOf(p?.path)) as LibState;
     const after = (next.splits ?? []).find((g) => g.id === group.id);
     if (after) requests.push(splitShown(next, after, null, p));
     return { s: next };

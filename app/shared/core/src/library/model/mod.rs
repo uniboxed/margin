@@ -37,6 +37,7 @@ pub mod kept;
 pub mod links;
 pub mod order;
 pub mod spaces;
+pub mod split_tree;
 pub mod splits;
 
 pub use arg::Arg;

@@ -26,7 +26,7 @@ use serde_json::{Map, Value, json};
 use super::js::{self, Ids, LocaleCompare};
 use super::model::favorites::{self, NewFavorite};
 use super::model::kept::{self, ForWhom, Side};
-use super::model::{Arg, bound_elsewhere, has_space, links, order, spaces, splits};
+use super::model::{Arg, bound_elsewhere, has_space, links, order, spaces, split_tree, splits};
 use super::state::{
     ArchiveEntry, Axis, BROWSERS, Favorite, ICON_MAX, Item, LibState, LibTarget, MAX_SPLIT_PANES, Pin, Space, Split,
     Str, TEXT_MAX, TargetView, margin_page_title, place_of, str_of, target_of, theme_id_ok,
@@ -1428,6 +1428,14 @@ fn add_to_split(s: &LibState, cx: &mut Cx) -> Done {
         }
         // (LT `addToSplit`'s drop on the page: `replace`, a pane of it that the item takes the place of; else `at`.)
         let out = cx.str("replace").filter(|r| existing.panes.iter().any(|x| **x == **r));
+        // (`!out && typeof p?.beside === 'string' && existing.panes.includes(p.beside) && ['left', 'right', 'top',
+        // 'bottom'].includes(p?.side)`: beside that pane on that side.)
+        let beside = match (out, split_tree::Side::of(cx.get("side"))) {
+            (None, Some(side)) => {
+                cx.str("beside").filter(|b| existing.panes.iter().any(|x| **x == **b)).map(|b| (b.to_owned(), side))
+            }
+            _ => None,
+        };
         let refusal = match out {
             Some(out) => {
                 let left: Vec<Str> = existing.panes.iter().filter(|x| ***x != *out).cloned().collect();
@@ -1438,9 +1446,10 @@ fn add_to_split(s: &LibState, cx: &mut Cx) -> Done {
         if let Some(why) = refusal {
             return Err(Fail::Refused(why));
         }
-        let next = match out {
-            Some(out) => splits::replace_in_split(s, &existing.id, out, &k.id),
-            None => splits::add_to_split_at(s, &existing.id, &k.id, cx.get("at")),
+        let next = match (out, &beside) {
+            (Some(out), _) => splits::replace_in_split(s, &existing.id, out, &k.id),
+            (None, Some((target, side))) => splits::beside_in_split(s, &existing.id, target, *side, &k.id),
+            (None, None) => splits::add_to_split_at(s, &existing.id, &k.id, cx.get("at")),
         };
         let group = next.splits.iter().find(|g| *g.id == *existing.id).cloned();
         let Some(group) = group.filter(|g| g.panes.iter().any(|x| *x == k.id)) else { return refuse("not added") };
@@ -1529,13 +1538,20 @@ fn swap_split(s: &LibState, cx: &mut Cx) -> Done {
 /// LT:765 `resizeSplit`: the panes' ratios as dragged (nothing asked: the page placed them).
 fn resize_split(s: &LibState, cx: &mut Cx) -> Done {
     let Some(group) = split_given(s, cx) else { return refuse("no such split") };
-    done(splits::resize_split(s, &group.id, cx.get("ratios").and_then(Value::as_array).map(Vec::as_slice)))
+    let path = split_tree::path_of(cx.get("path"));
+    done(splits::resize_split(
+        s,
+        &group.id,
+        cx.get("ratios").and_then(Value::as_array).map(Vec::as_slice),
+        path.as_deref(),
+    ))
 }
 
 /// LT:770 `toggleSplitAxis`: side by side ↔ stacked, shown again.
 fn toggle_split_axis(s: &LibState, cx: &mut Cx) -> Done {
     let Some(group) = split_given(s, cx) else { return refuse("no such split") };
-    let next = splits::toggle_split_axis(s, &group.id);
+    let path = split_tree::path_of(cx.get("path"));
+    let next = splits::toggle_split_axis(s, &group.id, path.as_deref());
     if let Some(after) = next.splits.iter().find(|g| *g.id == *group.id) {
         let request = split_shown(&next, after, None, cx);
         cx.push(request);

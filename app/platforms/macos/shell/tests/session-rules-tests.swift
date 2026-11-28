@@ -447,7 +447,7 @@ private func pageLayoutReportTests() {
     check("layout report: a split of two panes, each its item and box", two?.split == "sp-1" && two?.panes == [PagePane(item: "a", rect: CGRect(x: 260, y: 8, width: 600, height: 900)), PagePane(item: "b:c.d_e-f", rect: CGRect(x: 870, y: 8, width: 600, height: 900))])
     let refused: [JSONObject] = [
         ["split": "sp-1", "panes": [pane("a", [0, 0, 1, 1])]],
-        ["split": "sp-1", "panes": (0..<5).map { pane("p\($0)", [0, 0, 1, 1]) }],
+        ["split": "sp-1", "panes": (0..<17).map { pane("p\($0)", [0, 0, 1, 1]) }],
         ["split": "sp-1", "panes": [pane("a", [0, 0, 1, 1]), pane("a", [2, 0, 1, 1])]],
         ["split": "sp-1", "panes": [pane("a", [0, 0, 1, 1]), pane("b", [2, 0, 0, 1])]],
         ["split": "sp-1", "panes": [pane("a", [0, 0, 1, 1]), pane("b", [2, 0, 1])]],
@@ -461,7 +461,12 @@ private func pageLayoutReportTests() {
         ["split": "sp-1", "panes": "a"],
     ]
     let said = refused.map { layout($0).map { $0.split == nil && $0.panes.isEmpty } ?? false }
-    check("layout report: not a split (one pane or five, an item twice, an empty box, three numbers, a bool, an id with a space, non-ASCII, empty, past 256, a bad split id): none, the layout kept",
+    // (A split tree, docs/FLEX-SPLIT.md step 3: up to 16 panes, read through the core's typed struct in order.)
+    let most = layout(["split": "sp-1", "panes": (0..<16).map { pane("p\($0)", [$0 * 10, 0, 9, 9]) }])
+    check("layout report: a split of sixteen panes (the most), each its item and box in order",
+          most?.panes.count == 16 && most?.panes.last == PagePane(item: "p15", rect: CGRect(x: 150, y: 0, width: 9, height: 9))
+          && most?.panes.map(\.item) == (0..<16).map { "p\($0)" }, "\(String(describing: most?.panes.count))")
+    check("layout report: not a split (one pane or seventeen, an item twice, an empty box, three numbers, a bool, an id with a space, non-ASCII, empty, past 256, a bad split id): none, the layout kept",
           said.allSatisfy { $0 }, "\(said)")
     check("layout report: a 256-character item id is one", layout(["split": "s", "panes": [pane(String(repeating: "x", count: 256), [0, 0, 1, 1]), pane("b", [2, 0, 1, 1])]])?.panes.count == 2)
     check("layout report: not a report: a negative size, insets that aren't numbers", layout(["container": ["width": -1, "height": 10]]) == nil && layout(["insets": ["left": "0", "top": 0, "right": 0, "bottom": 0]]) == nil)

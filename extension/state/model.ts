@@ -13,6 +13,7 @@ import { FAVORITES_CAP, MAX_FOLDER_DEPTH, boundElsewhere, favoriteScopeOf, folde
 import { backgroundOf } from '../shared/space-background.ts';
 export { BG_APPEARANCES, BG_FITS, BG_TEXTURES, BG_WHEELS, backgroundOf } from '../shared/space-background.ts';
 import type { AirTrafficRule, ArchiveEntry, KeptTab, SplitGroup, State, TabRecord } from '../../types/margin';
+import { MAX_SPLIT_PANES, besideLeaf, mapLeaves, normalizeRatios, storedOf, storedTree, turned, withNodeAt, type SplitKid, type SplitNode, type SplitSide } from '../shared/split-tree.ts';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
 
@@ -1632,13 +1633,12 @@ function toggleAirTrafficRule(state: State, ruleId: string, enabled?: boolean) {
   return { ...state, airTraffic: list.map((r) => (r.id === ruleId ? { ...r, enabled: nextEnabled } : r)) };
 }
 
-// ---- split view (2–4 panes) -----------------------------------------------
+// ---- split view (2 to MAX_SPLIT_PANES panes; a tree when nested: shared/split-tree.ts) ----
 // A split's panes are Margin tabs, by their own lasting ids (`t-…`: an open tab's `mid`, a kept tab's id; the library's
 // item ids), never the browser's tab ids, which change at a restart and as Margin updates ("Margin's tabs" above): a
 // pane outlives its tab sleeping, its window closing and coming back, the browser renumbering its tabs, as pins' and
 // kept tabs' bindings do. A pane whose Margin tab is gone (closed, archived, forgotten) leaves its split
 // (settleSplits, after every change); fewer than 2 left: no split.
-const MAX_SPLIT_PANES = 4;
 
 function normalizeSplitRatios(ratios: number[] | undefined, count: number): number[] {
   if (count <= 0) return [];
@@ -1699,6 +1699,24 @@ function createSplit(state: State, { id, spaceId, panes, axis = 'horizontal', ra
   return { ...next, splits: [...(next.splits ?? []), group] };
 }
 
+// A split nested (docs/FLEX-SPLIT.md step 3): its tree, checked; null: flat (its own rules, as before).
+const nestedTree = (g: SplitGroup): SplitNode | null => storedTree((g as { tree?: unknown }).tree, g.panes);
+
+// The split remade from tree `k` (shared/split-tree.ts storedOf: flat, no `tree`; nested, `tree` with each pane's share
+// of the area as its ratio); null: fewer than 2 panes (it goes).
+function fromTree(g: SplitGroup, k: SplitKid | null): SplitGroup | null {
+  const s = storedOf(k);
+  if (!s) return null;
+  const { tree: _old, ...rest } = g as SplitGroup & { tree?: SplitNode };
+  return { ...rest, axis: s.axis, panes: s.panes, ratios: s.ratios, ...(s.tree ? { tree: s.tree } : {}) } as SplitGroup;
+}
+
+// The state with split `splitId` as `next` makes it (null: it goes).
+function remadeSplit(state: State, splitId: string, next: SplitGroup | null): State {
+  const list = state.splits ?? [];
+  return { ...state, splits: next ? list.map((g) => (g.id === splitId ? next : g)) : list.filter((g) => g.id !== splitId) };
+}
+
 // `at`: its place among the panes (0 first; a whole number up to the count), else the end (a row dropped between two
 // panes, docs/FLEX-SPLIT.md step 2). The ratios made equal.
 function addToSplit(state: State, splitId: string, paneId: string | number, at?: unknown) {
@@ -1709,6 +1727,14 @@ function addToSplit(state: State, splitId: string, paneId: string | number, at?:
   let next = state;
   const other = splitForItem(next, key);
   if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
+  // (Nested: among its root's kids, theirs made equal.)
+  const tree = nestedTree(group);
+  if (tree) {
+    const place = typeof at === 'number' && Number.isInteger(at) && at >= 0 && at <= tree.kids.length ? at : tree.kids.length;
+    const kids = [...tree.kids.slice(0, place), key, ...tree.kids.slice(place)];
+    const fresh = (next.splits ?? []).find((g) => g.id === splitId) ?? group;
+    return remadeSplit(next, splitId, fromTree(fresh, { axis: tree.axis, kids, ratios: kids.map(() => 1) }));
+  }
   const place = typeof at === 'number' && Number.isInteger(at) && at >= 0 && at <= group.panes.length ? at : group.panes.length;
   const panes = [...group.panes.slice(0, place), key, ...group.panes.slice(place)];
   const ratios = normalizeSplitRatios(undefined, panes.length);
@@ -1725,8 +1751,26 @@ function replaceInSplit(state: State, splitId: string, outId: string, paneId: st
   let next = state;
   const other = splitForItem(next, key);
   if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
+  const tree = nestedTree(group);
+  if (tree) return remadeSplit(next, splitId, fromTree(group, mapLeaves(tree, (l) => (l === outId ? key : l))));
   const panes = group.panes.map((p) => (p === outId ? key : p));
   return { ...next, splits: (next.splits ?? []).map((g) => (g.id === splitId ? { ...g, panes } : g)) };
+}
+
+// `paneId` beside the split's pane `targetId` on `side` (a row dropped on a pane's edge, docs/FLEX-SPLIT.md step 3:
+// shared/split-tree.ts besideLeaf, the two sharing the target's room), out of any other split first. The state itself
+// for no such split, `targetId` not a pane of it, `paneId` no item or a pane of it already, or a split full.
+function besideInSplit(state: State, splitId: string, targetId: string, side: SplitSide, paneId: string | number) {
+  const key = paneKey(state, paneId);
+  const group = (state.splits ?? []).find((g) => g.id === splitId);
+  if (!group || !key || !hasMarginTab(state, key) || group.panes.includes(key) || !group.panes.includes(targetId) || group.panes.length >= MAX_SPLIT_PANES) return state;
+  if (side !== 'left' && side !== 'right' && side !== 'top' && side !== 'bottom') return state;
+  let next = state;
+  const other = splitForItem(next, key);
+  if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
+  const tree = nestedTree(group) ?? { axis: group.axis === 'vertical' ? 'vertical' as const : 'horizontal' as const, kids: [...group.panes], ratios: normalizeRatios(group.ratios, group.panes.length) };
+  const placed = besideLeaf(tree, targetId, side, key);
+  return placed ? remadeSplit(next, splitId, fromTree(group, placed)) : state;
 }
 
 function removeFromSplit(state: State, splitId: string, paneId: string | number) {
@@ -1734,6 +1778,8 @@ function removeFromSplit(state: State, splitId: string, paneId: string | number)
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
   if (!group || !key || !group.panes.includes(key)) return state;
+  const tree = nestedTree(group);
+  if (tree) return remadeSplit(state, splitId, fromTree(group, mapLeaves(tree, (l) => (l === key ? null : l))));
   // Fewer than 2 panes remaining: dissolve the split group automatically.
   const left = withPanes(group, group.panes.filter((p) => p !== key));
   return { ...state, splits: left ? list.map((g) => (g.id === splitId ? left : g)) : list.filter((g) => g.id !== splitId) };
@@ -1760,7 +1806,18 @@ function settleSplits(state: State) {
       panes.push(k);
       ratios.push(old[i]);
     });
-    const same = panes.length === raw.length && panes.every((p, i) => p === raw[i]) && Array.isArray(g.ratios) && g.ratios.length === raw.length;
+    // (Nested: its tree's leaves that stay; a tree that isn't one for its panes any more: dropped, the split flat.)
+    const stored = (g as { tree?: unknown }).tree;
+    const tree = stored === undefined ? null : storedTree(stored, raw as string[]);
+    if (tree) {
+      const kept = new Set(panes);
+      const left = panes.length === raw.length && panes.every((p, i) => p === raw[i]) ? null : fromTree(g, mapLeaves(tree, (l) => (kept.has(l) ? l : null)));
+      if (!left && panes.length === raw.length) { panes.forEach((p) => seen.add(p)); splits.push(g); continue; }
+      changed = true;
+      if (left) { left.panes.forEach((p) => seen.add(p)); splits.push(left); }
+      continue;
+    }
+    const same = stored === undefined && panes.length === raw.length && panes.every((p, i) => p === raw[i]) && Array.isArray(g.ratios) && g.ratios.length === raw.length;
     if (same && panes.length >= 2) {
       panes.forEach((p) => seen.add(p));
       splits.push(g);
@@ -1769,7 +1826,8 @@ function settleSplits(state: State) {
     changed = true;
     if (panes.length < 2) continue;
     panes.forEach((p) => seen.add(p));
-    splits.push({ ...g, panes, ratios: normalizeSplitRatios(ratios, panes.length) });
+    const { tree: _bad, ...flat } = g as SplitGroup & { tree?: unknown };
+    splits.push({ ...flat, panes, ratios: normalizeSplitRatios(ratios, panes.length) });
   }
   return changed ? { ...state, splits } : state;
 }
@@ -1778,6 +1836,12 @@ function swapSplitPanes(state: State, splitId: string, indexA: number, indexB: n
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
   if (!group || indexA === indexB || indexA < 0 || indexB < 0 || indexA >= group.panes.length || indexB >= group.panes.length) return state;
+  // (Nested: the two leaves trade places, each place keeping its size.)
+  const tree = nestedTree(group);
+  if (tree) {
+    const [a, b] = [group.panes[indexA], group.panes[indexB]];
+    return remadeSplit(state, splitId, fromTree(group, mapLeaves(tree, (l) => (l === a ? b : l === b ? a : l))));
+  }
   const panes = [...group.panes];
   const ratios = [...normalizeSplitRatios(group.ratios, panes.length)];
   [panes[indexA], panes[indexB]] = [panes[indexB], panes[indexA]];
@@ -1785,18 +1849,34 @@ function swapSplitPanes(state: State, splitId: string, indexA: number, indexB: n
   return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, panes, ratios } : g)) };
 }
 
-function resizeSplit(state: State, splitId: string, ratios: number[]) {
+// `path`: the node resized in a nested split (each a kid's index from its root; none: the root), `ratios` one a kid of it.
+function resizeSplit(state: State, splitId: string, ratios: number[], path?: number[] | null) {
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
-  if (!group || !Array.isArray(ratios) || ratios.length !== group.panes.length) return state;
+  if (!group) return state;
+  const tree = nestedTree(group);
+  if (tree) {
+    const at = path ?? [];
+    const resized = withNodeAt(tree, at, (n) => (Array.isArray(ratios) && ratios.length === n.kids.length ? { ...n, ratios: normalizeRatios(ratios, n.kids.length) } : n));
+    return resized ? remadeSplit(state, splitId, fromTree(group, resized)) : state;
+  }
+  if (path != null && path.length > 0) return state;
+  if (!Array.isArray(ratios) || ratios.length !== group.panes.length) return state;
   const norm = normalizeSplitRatios(ratios, group.panes.length);
   return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, ratios: norm } : g)) };
 }
 
-function toggleSplitAxis(state: State, splitId: string) {
+// `path`: the node turned in a nested split (with all that's in it; none: the whole split).
+function toggleSplitAxis(state: State, splitId: string, path?: number[] | null) {
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
   if (!group) return state;
+  const tree = nestedTree(group);
+  if (tree) {
+    const done = withNodeAt(tree, path ?? [], (n) => turned(n) as SplitNode);
+    return done ? remadeSplit(state, splitId, fromTree(group, done)) : state;
+  }
+  if (path != null && path.length > 0) return state;
   const axis: 'horizontal' | 'vertical' = group.axis === 'vertical' ? 'horizontal' : 'vertical';
   return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, axis } : g)) };
 }
@@ -1943,6 +2023,7 @@ export {
   createSplit,
   addToSplit,
   replaceInSplit,
+  besideInSplit,
   removeFromSplit,
   swapSplitPanes,
   resizeSplit,

@@ -854,15 +854,28 @@ const withRuntime = Object.assign(T, {
   // Split View (split-view.test.ts): a split of these tabs (the browser's ids, as a pane can be named), the first in
   // front; what Margin laid out in <m-page> (its panes, by id, with their boxes; the dividers) and the last layout's
   // panes as the host was told them; the panes' windows' minimums as Margin.app says them (`paneMin`).
-  rtSplit(tabs: number[], { axis = 'horizontal', ratios = null as number[] | null, id = 'spv-1' } = {}) {
+  rtSplit(tabs: number[], { axis = 'horizontal', ratios = null as number[] | null, id = 'spv-1', tree = null as unknown } = {}) {
     const front = tabs[0];
     rt.mock.state = {
       ...rt.mock.state,
       tabs: Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([k, t]) => [k, { ...t, active: Number(k) === front ? true : (t.windowId === 1 ? false : t.active) }])),
-      splits: [{ id, spaceId: rt.mock.state.tabSpace[front], axis, panes: tabs.map(String), ratios: ratios ?? tabs.map(() => 1 / tabs.length) }],
+      splits: [{ id, spaceId: rt.mock.state.tabSpace[front], axis, panes: tabs.map(String), ratios: ratios ?? tabs.map(() => 1 / tabs.length), ...(tree ? { tree } : {}) }],
     } as typeof rt.mock.state;
     rt.host.setState(rt.mock.state);
     return rt.runtime!.vm!.split ? { id: rt.runtime!.vm!.split.id, panes: rt.runtime!.vm!.split.panes.map((p) => p.id) } : null;
+  },
+  // A split's tree as drawn (docs/FLEX-SPLIT.md step 3): its groups (each node below the root), dividers and panes, each
+  // with its box; the layout last sent.
+  rtSplitTree() {
+    const page = rt.target.querySelector('m-page');
+    const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    return {
+      axis: page?.getAttribute('m-split') ?? null,
+      groups: [...(page?.querySelectorAll('m-split-group') ?? [])].map((g) => ({ path: g.getAttribute('m-path'), axis: g.getAttribute('m-split'), parent: g.parentElement?.localName ?? null, ...box(g) })),
+      dividers: [...(page?.querySelectorAll('m-divider') ?? [])].map((d) => ({ path: d.getAttribute('m-path'), axis: d.getAttribute('m-axis'), index: d.getAttribute('m-index'), cursor: getComputedStyle(d).cursor, band: d.hasAttribute('m-band'), ...box(d) })),
+      panes: [...(page?.querySelectorAll('m-pane') ?? [])].map((p) => ({ id: p.getAttribute('m-pane-id'), index: p.getAttribute('m-index'), clip: getComputedStyle(p, '::before').clipPath, ...box(p) })),
+      layout: (rt.host.layouts.at(-1) as { split?: string, panes?: { id: string, rect: number[] }[] } | undefined)?.panes ?? null,
+    };
   },
   rtNoSplit() { rt.mock.state = { ...rt.mock.state, splits: [] } as typeof rt.mock.state; rt.host.setState(rt.mock.state); },
   rtPanes() {
@@ -912,7 +925,7 @@ const withRuntime = Object.assign(T, {
   // Each pane: its box, whether it's folded (docs/FLEX-SPLIT.md step 1), and its card: shown, taking the pointer, inside
   // its box, its icon (an image's source, else the letter), its name, label and colours.
   rtPaneFolds() {
-    return [...rt.target.querySelectorAll('m-page > m-pane')].map((p) => {
+    return [...rt.target.querySelectorAll('m-page m-pane')].map((p) => {
       const pb = p.getBoundingClientRect();
       const c = p.querySelector(':scope > m-pane-card');
       const card = c ? (() => {
@@ -922,7 +935,7 @@ const withRuntime = Object.assign(T, {
           x: b.left + b.width / 2, y: b.top + b.height / 2, img: icon?.querySelector('img')?.getAttribute('src') ?? null, letter: icon?.hasAttribute('m-letter') ? icon.textContent : null,
           name: c.querySelector('m-pane-name')?.textContent ?? null, label: c.getAttribute('aria-label'), color: st.color, background: st.backgroundColor };
       })() : null;
-      return { id: p.getAttribute('m-pane-id'), folded: p.hasAttribute('m-folded'), left: pb.left, width: pb.width, height: pb.height, card };
+      return { id: p.getAttribute('m-pane-id'), folded: p.hasAttribute('m-folded'), left: pb.left, top: pb.top, width: pb.width, height: pb.height, card };
     });
   },
   rtPaneLoading(pane: { item: string, name: string } | null) { Object.assign(rt.host, { paneLoading: pane ? { ...pane, bundleId: null } : null }); rt.host.setState(rt.mock.state); },

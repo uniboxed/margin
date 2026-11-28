@@ -14,6 +14,9 @@ import MarginCore
 
 nonisolated final class HostCore: @unchecked Sendable {
     static let shared = HostCore()
+    // The lists' room on the stack (the most hosts a drag moves, the visible ones read: margin_ffi.h's MARGIN_LIVE_ROOM,
+    // the core's LIVE_ROOM, twice the most panes a split has).
+    static let liveRoom = Int(MARGIN_LIVE_ROOM)
 
     private let core: OpaquePointer
     private let lock = NSLock()
@@ -317,9 +320,9 @@ nonisolated final class HostCore: @unchecked Sendable {
     // The visible hosts back to front, by handle.
     func visible() -> [UInt32] {
         locked {
-            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
-                let n = margin_model_visible(core, buf.baseAddress, 16)
-                if n <= 16 { return Array(buf.prefix(n)) }
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: Self.liveRoom) { buf in
+                let n = margin_model_visible(core, buf.baseAddress, Self.liveRoom)
+                if n <= Self.liveRoom { return Array(buf.prefix(n)) }
                 return [UInt32](unsafeUninitializedCapacity: n) { out, count in count = margin_model_visible(core, out.baseAddress, n) }
             }
         }
@@ -439,16 +442,16 @@ nonisolated final class HostCore: @unchecked Sendable {
 
     // ---- the live-resize pump's scheduling (host/model/live.rs, docs/CORE-REFACTOR.md step 2 part 6): a drag's start
     // and end, each page frame, each tick of the pump, each send. Typed (every frame and tick of a drag), the lists in
-    // buffers on the stack (16: the most hosts a drag moves); the bounds read outside the lock. ----
+    // buffers on the stack (MARGIN_LIVE_ROOM: the most hosts a drag moves); the bounds read outside the lock. ----
 
     var liveOn: Bool { locked { margin_live_on(core) } }
     // A drag begins at `now`: the visible hosts other than the one shown that follow it (back to front); nil: not
     // followed.
     func liveStart(now: Double, quitting: Bool) -> [UInt32]? {
         locked {
-            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
-                let n = Int(margin_live_start(core, now, quitting, buf.baseAddress, 16))
-                return n < 0 ? nil : Array(buf.prefix(min(n, 16)))
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: Self.liveRoom) { buf in
+                let n = Int(margin_live_start(core, now, quitting, buf.baseAddress, Self.liveRoom))
+                return n < 0 ? nil : Array(buf.prefix(min(n, Self.liveRoom)))
             }
         }
     }
@@ -477,20 +480,20 @@ nonisolated final class HostCore: @unchecked Sendable {
         var sends: [UInt32] = []
     }
     func liveTick(now: Double, timing: MarginLiveTiming, busy: Bool, quitting: Bool, bounds: (Int) -> CGRect?, ended: (UInt32, Double?) -> Void) -> LiveTick {
-        withUnsafeTemporaryAllocation(of: MarginLiveRead.self, capacity: 16) { reads in
-            withUnsafeTemporaryAllocation(of: MarginLiveBounds.self, capacity: 16) { read in
-                withUnsafeTemporaryAllocation(of: MarginLiveEvent.self, capacity: 16) { events in
-                    withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { sends in
-                        let n = min(locked { margin_live_reads(core, reads.baseAddress, 16) }, 16)
+        withUnsafeTemporaryAllocation(of: MarginLiveRead.self, capacity: Self.liveRoom) { reads in
+            withUnsafeTemporaryAllocation(of: MarginLiveBounds.self, capacity: Self.liveRoom) { read in
+                withUnsafeTemporaryAllocation(of: MarginLiveEvent.self, capacity: Self.liveRoom) { events in
+                    withUnsafeTemporaryAllocation(of: UInt32.self, capacity: Self.liveRoom) { sends in
+                        let n = min(locked { margin_live_reads(core, reads.baseAddress, Self.liveRoom) }, Self.liveRoom)
                         for i in 0..<n {
                             let b = bounds(Int(reads[i].window))
                             read[i] = MarginLiveBounds(host: reads[i].host, read: b != nil, bounds: b?.marginRect ?? MarginRect())
                         }
                         var t = timing, out = MarginLiveTick()
-                        locked { margin_live_tick(core, now, &t, read.baseAddress, n, busy, quitting, events.baseAddress, 16, sends.baseAddress, 16, &out) }
-                        for i in 0..<min(out.events, 16) { ended(events[i].host, events[i].landed ? events[i].elapsed : nil) }
+                        locked { margin_live_tick(core, now, &t, read.baseAddress, n, busy, quitting, events.baseAddress, Self.liveRoom, sends.baseAddress, Self.liveRoom, &out) }
+                        for i in 0..<min(out.events, Self.liveRoom) { ended(events[i].host, events[i].landed ? events[i].elapsed : nil) }
                         return LiveTick(go: out.go, held: out.held, stop: out.stop, owedEmpty: out.owed_empty, shown: out.shown, frame: placement(out.frame),
-                                        sends: out.go && out.sends > 0 ? Array(sends.prefix(min(out.sends, 16))) : [])
+                                        sends: out.go && out.sends > 0 ? Array(sends.prefix(min(out.sends, Self.liveRoom))) : [])
                     }
                 }
             }
@@ -540,9 +543,9 @@ nonisolated final class HostCore: @unchecked Sendable {
     // The visible panes a cut pane's window (at `at`, nil: its frame) lies under, back to front.
     func lyingUnder(_ h: UInt32, at: CGRect? = nil) -> ([UInt32], wanted: Bool) {
         locked {
-            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
-                let n = withRect(at) { margin_model_lying_under(core, h, $0, buf.baseAddress, 16) }
-                return (Array(buf.prefix(min(n, 16))), wanted)
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: Self.liveRoom) { buf in
+                let n = withRect(at) { margin_model_lying_under(core, h, $0, buf.baseAddress, Self.liveRoom) }
+                return (Array(buf.prefix(min(n, Self.liveRoom))), wanted)
             }
         }
     }
@@ -561,9 +564,9 @@ nonisolated final class HostCore: @unchecked Sendable {
 
     func frontWanted() -> ([UInt32], wanted: Bool) {
         locked {
-            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
-                let n = margin_model_front_wanted(core, buf.baseAddress, 16)
-                if n <= 16 { return (Array(buf.prefix(n)), wanted) }
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: Self.liveRoom) { buf in
+                let n = margin_model_front_wanted(core, buf.baseAddress, Self.liveRoom)
+                if n <= Self.liveRoom { return (Array(buf.prefix(n)), wanted) }
                 return ([UInt32](unsafeUninitializedCapacity: n) { out, count in count = margin_model_front_wanted(core, out.baseAddress, n) }, wanted)
             }
         }

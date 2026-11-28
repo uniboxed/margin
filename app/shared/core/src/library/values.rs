@@ -19,7 +19,10 @@ use serde_json::{Map, Value};
 
 use super::import::COLLECTIONS;
 use super::js;
-use super::state::{Background, Imported, Item, LibState, Str, TargetView, js_key_order, theme_id_ok};
+use super::model::split_tree;
+use super::state::{
+    Background, Imported, Item, LibState, SplitKid, SplitNode, Str, TargetView, js_key_order, theme_id_ok,
+};
 
 /// One change for the store (LT:32 `Change`): a record's new value, or its deletion. Untimed: the store times it.
 #[derive(Clone, Debug, PartialEq)]
@@ -88,6 +91,25 @@ impl Num {
 /// `JSON.stringify` writes NaN and ∞).
 fn number(n: f64) -> Value {
     crate::protocol::number(n).unwrap_or(Value::Null)
+}
+
+/// Two trees compared as `JSON.stringify` compares them (axes, kids, ratios as numbers).
+fn same_tree(a: Option<&SplitNode>, b: Option<&SplitNode>) -> bool {
+    fn same(a: &SplitNode, b: &SplitNode) -> bool {
+        a.axis == b.axis
+            && same_numbers(&a.ratios, &b.ratios)
+            && a.kids.len() == b.kids.len()
+            && a.kids.iter().zip(&b.kids).all(|(x, y)| match (x, y) {
+                (SplitKid::Leaf(x), SplitKid::Leaf(y)) => x == y,
+                (SplitKid::Node(x), SplitKid::Node(y)) => same(x, y),
+                _ => false,
+            })
+    }
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => same(a, b),
+        _ => false,
+    }
 }
 
 /// A list of numbers compared as `JSON.stringify` compares them.
@@ -215,12 +237,13 @@ impl Row for RuleRow<'_> {
     }
 }
 
-/// LT:145: `{ spaceId, axis, panes, ratios, pinned?, folderId?, pos? }`.
+/// LT:145: `{ spaceId, axis, panes, ratios, tree?, pinned?, folderId?, pos? }`.
 struct SplitRow<'a> {
     space_id: &'a str,
     axis: &'static str,
     panes: &'a [Str],
     ratios: &'a [f64],
+    tree: Option<&'a SplitNode>,
     pinned: bool,
     folder_id: Option<&'a str>,
     pos: Option<Num>,
@@ -232,6 +255,7 @@ impl PartialEq for SplitRow<'_> {
             && self.axis == other.axis
             && self.panes == other.panes
             && same_numbers(self.ratios, other.ratios)
+            && same_tree(self.tree, other.tree)
             && self.pinned == other.pinned
             && self.folder_id == other.folder_id
             && self.pos == other.pos
@@ -245,6 +269,9 @@ impl Row for SplitRow<'_> {
         o.insert("axis".into(), self.axis.into());
         o.insert("panes".into(), Value::Array(self.panes.iter().map(|p| Value::from(&**p)).collect()));
         o.insert("ratios".into(), Value::Array(self.ratios.iter().map(|r| number(*r)).collect()));
+        if let Some(tree) = self.tree {
+            o.insert("tree".into(), split_tree::tree_value(tree, &number));
+        }
         if self.pinned {
             o.insert("pinned".into(), Value::Bool(true));
         }
@@ -452,6 +479,7 @@ fn split_rows(s: &LibState) -> Rows<'_, SplitRow<'_>> {
                     axis: g.axis.as_str(),
                     panes: &g.panes,
                     ratios: &g.ratios,
+                    tree: g.tree.as_deref(),
                     pinned: g.pinned,
                     folder_id: truthy(&g.folder_id),
                     pos: g.pos.filter(|p| p.is_finite()).map(Num),

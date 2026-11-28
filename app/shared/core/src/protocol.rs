@@ -106,11 +106,15 @@ impl PagePane {
     }
 }
 
+/// The most panes a page's split reports (docs/FLEX-SPLIT.md step 3: a split tree, no limit of four): a split of
+/// more is no split.
+pub const MAX_PANES: usize = 16;
+
 impl PageLayout {
     /// `init?(geometry:)`: from the page's report (`{ insets, radius, radii, container, mode, pageOutside, pageHosted,
     /// fills, split, panes }`); `None` if it isn't one (insets and a positive size needed). What's past the box is
     /// read as the Swift read it: a bool as `as? Bool` (a number 1 is one), at most four fills each a string of at
-    /// most 80 Unicode scalars (else ""; the Swift counted characters), a split only with 2 to 4 panes, each a finite
+    /// most 80 Unicode scalars (else ""; the Swift counted characters), a split only with 2 to [`MAX_PANES`] panes, each a finite
     /// box with a size and an item of its own.
     pub fn from_geometry(g: &Object) -> Option<Self> {
         let insets = json::object(g.get("insets"))?;
@@ -160,7 +164,9 @@ impl PageLayout {
 
     fn with_split(mut self, g: &Object) -> Self {
         let Some(id) = json::string(g.get("split")).filter(|s| PagePane::id_ok(s)) else { return self };
-        let Some(list) = json::array(g.get("panes")).filter(|l| (2..=4).contains(&l.len())) else { return self };
+        let Some(list) = json::array(g.get("panes")).filter(|l| (2..=MAX_PANES).contains(&l.len())) else {
+            return self;
+        };
         let parsed: Vec<PagePane> = list.iter().filter_map(PagePane::from_json).collect();
         let unique = parsed.iter().enumerate().all(|(i, p)| parsed[..i].iter().all(|q| q.item != p.item));
         if parsed.len() == list.len() && unique {
@@ -1679,7 +1685,7 @@ mod tests {
         );
         let refused = [
             json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1]))]}),
-            json!({"split":"sp-1","panes":(0..5).map(|i| pane(json!(format!("p{i}")), json!([0,0,1,1]))).collect::<Vec<_>>()}),
+            json!({"split":"sp-1","panes":(0..=MAX_PANES).map(|i| pane(json!(format!("p{i}")), json!([0,0,1,1]))).collect::<Vec<_>>()}),
             json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("a"), json!([2,0,1,1]))]}),
             json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,0,1]))]}),
             json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1]))]}),
@@ -1700,6 +1706,12 @@ mod tests {
             json!({"split":"s","panes":[pane(json!("x".repeat(256)), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
         );
         assert_eq!(wide.map(|l| l.panes.len()), Some(2), "a 256-character id is one");
+        // (A split tree, docs/FLEX-SPLIT.md step 3: up to MAX_PANES panes, in order; one more is no split.)
+        let most: Vec<Value> = (0..MAX_PANES).map(|i| pane(json!(format!("p{i}")), json!([i * 10, 0, 9, 9]))).collect();
+        let most = layout(json!({"split":"sp-1","panes":most})).expect("a layout");
+        assert_eq!(most.panes.len(), MAX_PANES);
+        assert_eq!(most.panes[MAX_PANES - 1].item, format!("p{}", MAX_PANES - 1));
+        assert_eq!(most.panes[MAX_PANES - 1].rect, Rect::new((MAX_PANES as f64 - 1.0) * 10.0, 0.0, 9.0, 9.0));
         // (What's past the box isn't what's sent, nor what's compared before sending again.)
         let Some(full) = layout(json!({"pageHosted":true,"fills":["a","b","c","d"]})) else { panic!() };
         assert_eq!(full.rounded(), bare.rounded());

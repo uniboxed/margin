@@ -86,15 +86,14 @@ fn lifecycle_as_split_model_test_runs_it() {
     assert_eq!(shape(&s), vec![("sp-1".into(), vec!["t-1".into(), "t-2".into()], vec![0.5, 0.5], "horizontal")]);
     s = add_to_split(&s, "sp-1", "t-3");
     s = add_to_split(&s, "sp-1", "t-4");
-    let four = add_to_split(&s, "sp-1", "t-5");
-    assert!(four.same(&s), "a 5th pane is refused: the same state");
+    // (The limit, MAX_SPLIT_PANES: split_tree_tests.rs and tests/split-tree.test.ts.)
     assert_eq!(panes(&s, "sp-1"), ["t-1", "t-2", "t-3", "t-4"]);
     assert_eq!(ratios(&s, "sp-1"), vec![0.25; 4]);
     s = swap_split_panes(&s, "sp-1", 0.0, 1.0);
     assert_eq!(panes(&s, "sp-1"), ["t-2", "t-1", "t-3", "t-4"]);
-    s = toggle_split_axis(&s, "sp-1");
+    s = toggle_split_axis(&s, "sp-1", None);
     assert_eq!(s.splits[0].axis, Axis::Vertical);
-    s = resize_split(&s, "sp-1", Some(&[json!(0.4), json!(0.2), json!(0.2), json!(0.2)]));
+    s = resize_split(&s, "sp-1", Some(&[json!(0.4), json!(0.2), json!(0.2), json!(0.2)]), None);
     assert_eq!(ratios(&s, "sp-1"), vec![0.4, 0.2, 0.2, 0.2]);
     s = remove_from_split(&s, "sp-1", "t-4");
     assert_eq!(ratios(&s, "sp-1"), vec![0.5, 0.25, 0.25], "the others' ratios kept relative to each other");
@@ -114,7 +113,12 @@ fn create_takes_items_once_and_moves_them() {
     let g = create_split(&s, "g", "a", &all, Axis::Vertical, Some(&r));
     assert_eq!(
         shape(&g),
-        vec![("g".into(), vec!["t-1".into(), "t-2".into(), "t-3".into(), "t-4".into()], vec![0.25; 4], "vertical")]
+        vec![(
+            "g".into(),
+            vec!["t-1".into(), "t-2".into(), "t-3".into(), "t-4".into(), "t-5".into()],
+            vec![0.2; 5],
+            "vertical"
+        )]
     );
     let r = [json!(1), json!(2), json!(3)];
     assert_eq!(
@@ -162,7 +166,7 @@ fn add_and_remove_refuse_as_model_ts() {
 #[test]
 fn swap_resize_toggle_refuse_as_model_ts() {
     let s = split(&add_to_split(&split(&lib(), "g", &["t-1", "t-2"]), "g", "t-3"), "h", &["t-4", "t-5"]);
-    let s = resize_split(&s, "g", Some(&[json!(1), json!(2), json!(1)]));
+    let s = resize_split(&s, "g", Some(&[json!(1), json!(2), json!(1)]), None);
     for (a, b) in [(0.0, 0.0), (-1.0, 0.0), (0.0, 3.0), (3.0, 1.0), (0.0, -0.0), (0.5, 1.0)] {
         assert!(swap_split_panes(&s, "g", a, b).same(&s), "swap {a} {b}");
     }
@@ -173,20 +177,20 @@ fn swap_resize_toggle_refuse_as_model_ts() {
         (vec!["t-3".to_string(), "t-2".into(), "t-1".into()], vec![0.25, 0.5, 0.25])
     );
     assert!(Rc::ptr_eq(&swapped.splits[1], &s.splits[1]), "the other split the same");
-    assert!(resize_split(&s, "g", Some(&[json!(1)])).same(&s));
-    assert!(resize_split(&s, "g", None).same(&s));
-    assert!(resize_split(&s, "nope", Some(&[json!(1), json!(1), json!(1)])).same(&s));
-    let same_ratios = resize_split(&s, "g", Some(&[json!(1), json!(2), json!(1)]));
+    assert!(resize_split(&s, "g", Some(&[json!(1)]), None).same(&s));
+    assert!(resize_split(&s, "g", None, None).same(&s));
+    assert!(resize_split(&s, "nope", Some(&[json!(1), json!(1), json!(1)]), None).same(&s));
+    let same_ratios = resize_split(&s, "g", Some(&[json!(1), json!(2), json!(1)]), None);
     assert!(!same_ratios.same(&s), "a resize is a new state even when equal (M spreads)");
-    assert_eq!(ratios(&resize_split(&s, "g", Some(&[json!(1), json!("x"), json!(-2)])), "g"), vec![0.3333; 3]);
-    assert!(toggle_split_axis(&s, "nope").same(&s));
-    assert_eq!(toggle_split_axis(&toggle_split_axis(&s, "h"), "h").splits[1].axis, Axis::Horizontal);
+    assert_eq!(ratios(&resize_split(&s, "g", Some(&[json!(1), json!("x"), json!(-2)]), None), "g"), vec![0.3333; 3]);
+    assert!(toggle_split_axis(&s, "nope", None).same(&s));
+    assert_eq!(toggle_split_axis(&toggle_split_axis(&s, "h", None), "h", None).splits[1].axis, Axis::Horizontal);
 }
 
 #[test]
 fn settle_keeps_what_holds_and_the_same_state() {
     let s = split(&add_to_split(&split(&lib(), "g", &["t-1", "t-2"]), "g", "t-3"), "h", &["t-4", "t-5"]);
-    let s = resize_split(&s, "g", Some(&[json!(1), json!(2), json!(1)]));
+    let s = resize_split(&s, "g", Some(&[json!(1), json!(2), json!(1)]), None);
     let settled = settle_splits(&s);
     assert!(settled.same(&s), "every split holds: the state itself");
     let none = lib();
@@ -231,7 +235,7 @@ fn add_at_a_place_and_replace_keeping_the_ratio() {
     for v in [json!(3), json!(-1), json!(1.5), json!("0"), json!(null), json!(true)] {
         assert_eq!(at(v.clone()), ["t-1", "t-2", "t-3"], "{v}: the end");
     }
-    let s = resize_split(&s, "g", Some(&[json!(0.7), json!(0.3)]));
+    let s = resize_split(&s, "g", Some(&[json!(0.7), json!(0.3)]), None);
     let r = replace_in_split(&s, "g", "t-1", "t-3");
     assert_eq!(panes(&r, "g"), ["t-3", "t-2"]);
     assert_eq!(ratios(&r, "g"), vec![0.7, 0.3]);

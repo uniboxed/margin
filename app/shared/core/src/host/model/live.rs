@@ -9,15 +9,16 @@
 //! The pump's own state (the frame being sent, who's owed it, each one's flight and last send) lives one run of the
 //! OS side's pump, as its locals did: `live_pump_begin` starts it afresh. It's kept per host by handle, and follows
 //! the engine's hosts by id as the Swift's dictionaries by id did: a host held again as the same id takes its place
-//! (`relisted`). Nothing allocated per frame or tick: the list has room for 16 hosts from the pump's first run (a
-//! layout has at most four visible).
+//! (`relisted`). Nothing allocated per frame or tick: the list has room for [`LIVE_ROOM`] hosts from the pump's first
+//! run (a layout has at most `MAX_PANES` panes and a card visible).
 
 use super::{Handle, HostModel, Mode, Phase};
 use crate::geometry::{Rect, cg};
 use crate::host::layout::{self, Placement};
 
-/// The most hosts a drag moves (a layout has at most four visible): the lists' room, nothing allocated.
-pub const LIVE_ROOM: usize = 16;
+/// The most hosts a drag moves (a layout has at most `MAX_PANES` panes and a card visible, with room to spare): the
+/// lists' room, nothing allocated. margin_ffi.h's `MARGIN_LIVE_ROOM` is this.
+pub const LIVE_ROOM: usize = 2 * crate::protocol::MAX_PANES;
 const ROOM: usize = LIVE_ROOM;
 
 /// A change sent and not landed yet: where its window should land, when it was sent, and whether its landing is read

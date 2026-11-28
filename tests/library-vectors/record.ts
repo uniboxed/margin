@@ -33,7 +33,7 @@ import { edges } from './edges.ts';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const OUT = join(ROOT, 'tests/fixtures/library');
-const TEST_FILES = ['library', 'arc-data', 'arc-qol', 'favorites', 'sticky-pins', 'nested-folders', 'split-model', 'split-view', 'media-player', 'air-traffic'];
+const TEST_FILES = ['library', 'arc-data', 'arc-qol', 'favorites', 'sticky-pins', 'nested-folders', 'split-model', 'split-view', 'split-tree', 'media-player', 'air-traffic'];
 const SEQUENCES = 300;
 const STEPS = 30;
 const SEED = 0x11b7a5e;

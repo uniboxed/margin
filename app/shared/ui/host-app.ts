@@ -191,15 +191,20 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
         // page is the card's, the dim around it Margin's.)
         if (child.hasAttribute?.('m-card-clip')) continue;
         const add = (b: DOMRect) => { if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom)); };
-        for (const d of (child.children as any) as Element[]) {
-          if (d.localName === 'm-divider') { add(d.getBoundingClientRect()); continue; }
-          if (d.localName !== 'm-pane') continue;
-          for (const a of (d.children as any) as Element[]) {
-            if (a.localName !== 'm-pane-card' || !d.hasAttribute('m-folded')) continue;
-            const st = getStyle(a);
-            if (st.pointerEvents !== 'none' && st.visibility !== 'hidden') add(a.getBoundingClientRect());
+        // (Through a split's groups too: its tree, docs/FLEX-SPLIT.md step 3.)
+        const inSplit = (g: Element) => {
+          for (const d of (g.children as any) as Element[]) {
+            if (d.localName === 'm-divider') { add(d.getBoundingClientRect()); continue; }
+            if (d.localName === 'm-split-group') { inSplit(d); continue; }
+            if (d.localName !== 'm-pane') continue;
+            for (const a of (d.children as any) as Element[]) {
+              if (a.localName !== 'm-pane-card' || !d.hasAttribute('m-folded')) continue;
+              const st = getStyle(a);
+              if (st.pointerEvents !== 'none' && st.visibility !== 'hidden') add(a.getBoundingClientRect());
+            }
           }
-        }
+        };
+        inSplit(child);
         continue;
       }
       const st = once(() => getStyle(child));

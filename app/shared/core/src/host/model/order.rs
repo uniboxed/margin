@@ -11,8 +11,8 @@
 use super::{Handle, HostModel, Mode, Phase};
 use crate::geometry::{Rect, cg};
 
-/// The most visible hosts ordered without an allocation (a layout has at most four).
-const ROOM: usize = 16;
+/// The most visible hosts ordered without an allocation (a layout has at most `MAX_PANES` panes and a card).
+const ROOM: usize = super::LIVE_ROOM;
 
 /// How the focused one's place in front is confirmed after the raises (`FrontPlan`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

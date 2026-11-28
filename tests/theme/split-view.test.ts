@@ -284,19 +284,19 @@ for (const [name, engine] of ENGINES) {
         await ev(() => T.rtKept('t-web', 'https://maps.example/', { lastActive: 2000, wasActive: true, row: 901 }));
         const ownRowRoomy = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 1264 });
         assert.deepEqual(ownRowRoomy.sent, ['addToSplit'], 'the front tab\'s own row beside Notes in 1264: added (Notes shown cut)');
-        assert.match(ownRowRoomy.note ?? '', /^split add: com\.apple\.Notes 220 \+ web 220 \+ gaps \d+ in 1264 \(horizontal\): fits;/, `the check said: ${ownRowRoomy.note}`);
+        assert.match(ownRowRoomy.note ?? '', /^split add: com\.apple\.Notes \+ web need \d+×220 in 1264×\d+ \(horizontal\): fits;/, `the check said: ${ownRowRoomy.note}`);
         const ownRow = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 440 });
         assert.deepEqual(ownRow.sent, [], 'in 440: nothing asked of the library');
         assert.equal(ownRow.toast, 'Not enough room for another pane');
-        assert.match(ownRow.note ?? '', /^split add: com\.apple\.Notes 220 \+ web 220 \+ gaps \d+ in 440 \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${ownRow.note}`);
+        assert.match(ownRow.note ?? '', /^split add: com\.apple\.Notes \+ web need \d+×220 in 440×\d+ \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${ownRow.note}`);
         const notesRow = await ev(({ w }) => T.rtSplitAdd(902, w), { w: 440 });
         assert.deepEqual(notesRow.sent, [], 'Notes\' row beside the front tab in 440: refused');
-        assert.match(notesRow.note ?? '', /^split add: web 220 \+ com\.apple\.Notes 220 \+ gaps \d+ in 440 \(horizontal\): refused;/, `the check said: ${notesRow.note}`);
+        assert.match(notesRow.note ?? '', /^split add: web \+ com\.apple\.Notes need \d+×220 in 440×\d+ \(horizontal\): refused;/, `the check said: ${notesRow.note}`);
         // Notes closed (a kept item, by its id), the tab open: the same pair.
         await ev(() => T.rtKept('t-notes2', 'app://com.apple.Notes', { lastActive: 1500, name: 'Notes' }));
         const closedNotes = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 440 });
         assert.deepEqual(closedNotes.sent, [], 'beside a closed Notes item used before it, in 440: refused');
-        assert.match(closedNotes.note ?? '', /^split add: com\.apple\.Notes 220 \+ web 220 /, `the check said: ${closedNotes.note}`);
+        assert.match(closedNotes.note ?? '', /^split add: com\.apple\.Notes \+ web need /, `the check said: ${closedNotes.note}`);
         await ev((t) => T.rtSplit(t), tabs.slice(0, 2));
         await ev((m) => T.rtAppMin(m), {});
         const roomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1200 });
