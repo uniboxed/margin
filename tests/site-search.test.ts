@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
-import { SITES, siteById, siteFor, siteUrl } from '../extension/shared/site-search.ts';
+import { SITES, siteById, siteFor, siteInk, siteUrl, siteVerb } from '../extension/shared/site-search.ts';
 import { rankPalette } from '../extension/shared/search.ts';
 import { buildViewModel, type UiState } from '../app/shared/ui/view-model.ts';
 import type { State } from '../types/margin.d.ts';
@@ -14,6 +14,8 @@ test('the sites: unique ids, each address with one %s, https, a #RRGGBB colour',
     assert.equal(s.url.split('%s').length, 2, s.id);
     assert.match(s.url, /^https:\/\//, s.id);
     assert.match(s.color, /^#[0-9A-F]{6}$/i, s.id);
+    assert.match(siteInk(s), /^#[0-9A-F]{6}$/i, s.id);
+    assert.ok(['Search', 'Ask'].includes(siteVerb(s)), s.id);
   }
   assert.ok(Object.isFrozen(SITES));
 });
@@ -26,6 +28,8 @@ test('siteFor: the start of a site\'s domain or name, two characters or more, on
   assert.equal(siteFor('googlem')?.id, 'maps', 'its name, spaces left out');
   assert.equal(siteFor('  spot ')?.id, 'spotify', 'trimmed');
   assert.equal(siteFor('go')?.id, 'google', 'the first in the table');
+  // The engines and AI answers Arc offers besides its own table.
+  assert.deepEqual(['bin', 'duck', 'yah', 'eco', 'perp', 'chat', 'ChatGPT'].map((t) => siteFor(t)?.id), ['bing', 'duckduckgo', 'yahoo', 'ecosia', 'perplexity', 'chatgpt', 'chatgpt']);
   for (const none of ['', 'y', 'you tube', 'example', 'youtube.com/watch', null as unknown as string]) assert.equal(siteFor(none), null, String(none));
 });
 
@@ -33,6 +37,10 @@ test('siteUrl: the query encoded into the site\'s address; nothing for an empty 
   const yt = siteById('youtube')!;
   assert.equal(siteUrl(yt, ' lofi & beats '), 'https://www.youtube.com/results?search_query=lofi%20%26%20beats');
   assert.equal(siteUrl(yt, '   '), null);
+  assert.equal(siteUrl(siteById('chatgpt')!, 'what is 2+2?'), 'https://chatgpt.com/?q=what%20is%202%2B2%3F');
+  assert.equal(siteUrl(siteById('yahoo')!, 'news'), 'https://search.yahoo.com/search?p=news');
+  assert.equal(siteUrl(siteById('duckduckgo')!, 'a b'), 'https://duckduckgo.com/?q=a%20b');
+  assert.deepEqual(['youtube', 'chatgpt', 'ecosia'].map((id) => [siteVerb(siteById(id)!), siteInk(siteById(id)!)]), [['Search', '#FFFFFF'], ['Ask', '#FFFFFF'], ['Search', '#39401C']], 'ChatGPT asked; Ecosia\'s dark green on its lime');
   assert.equal(siteById('nope'), null);
   assert.equal(siteById(undefined), null);
 });
@@ -60,9 +68,11 @@ const vm = (palette: NonNullable<UiState['palette']>) =>
 
 test('the view: the hint while what\'s typed names a site; the pill (name, colour) once chosen, no hint; neither closed', () => {
   const hint = vm({ open: true, query: 'youtu', selected: 0 });
-  assert.deepEqual([hint.site, hint.siteHint], [null, { name: 'YouTube' }]);
+  assert.deepEqual([hint.site, hint.siteHint], [null, { name: 'YouTube', verb: 'Search' }]);
+  assert.deepEqual(vm({ open: true, query: 'chat', selected: 0 }).siteHint, { name: 'ChatGPT', verb: 'Ask' });
+  assert.deepEqual(vm({ open: true, query: '', selected: 0, site: 'chatgpt' }).site, { name: 'ChatGPT', color: '#10A37F', ink: '#FFFFFF', verb: 'Ask' });
   const on = vm({ open: true, query: 'lofi', selected: 0, site: 'youtube' });
-  assert.deepEqual([on.site, on.siteHint], [{ name: 'YouTube', color: '#FF0000' }, null]);
+  assert.deepEqual([on.site, on.siteHint], [{ name: 'YouTube', color: '#FF0000', ink: '#FFFFFF', verb: 'Search' }, null]);
   assert.deepEqual(on.rows.map((r) => [r.id, r.title]), [['site-go', 'lofi']]);
   assert.deepEqual([on.completion, on.fieldIcon], ['', null], 'no completion on a site search');
   const waiting = vm({ open: true, query: '', selected: 0, site: 'youtube' });

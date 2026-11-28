@@ -902,6 +902,6 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 
 /* Site search (shared/site-search.ts, as Arc's): the site searched as a pill in its brand colour; "Search <site>" and
    a Tab key cap while what's typed names one. */
-.site-pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--site); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.site-pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--site); color: var(--site-ink, #fff); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .site-hint { flex: none; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; opacity: .65; white-space: nowrap; }
 .site-hint kbd { padding: 1px 6px; border: 1px solid currentColor; border-radius: 5px; font: inherit; font-size: 11px; }

@@ -278,9 +278,9 @@
         <div class="palette-field">
           <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6.25"></circle><path d="M15.4 15.4 20 20"></path></svg>
           <!-- Site search (Arc's, shared/site-search.ts): the site searched as a pill in its colour; "Search <site>" with Tab while what's typed names one. -->
-          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}">{{palette.site.name}}</span></m-if>
+          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}" m-style:--site-ink="{{palette.site.ink}}">{{palette.site.name}}</span></m-if>
           <input class="palette-input" m-input="palette" placeholder="Search or enter address" aria-label="Search or enter address" autocomplete="off" spellcheck="false">
-          <m-if test="palette.siteHint"><span class="site-hint">Search {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
+          <m-if test="palette.siteHint"><span class="site-hint">{{palette.siteHint.verb}} {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
         </div>
         <!-- At most eight rows show; the rest scroll (Margin keeps the selected one in view). -->
         <div class="palette-rows" m-scroll="palette">
