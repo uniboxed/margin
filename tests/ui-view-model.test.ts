@@ -114,7 +114,7 @@ test('the palette: shared/search.ts ranks its rows; ids, the selection, no actio
   assert.equal(vm.palette.selected, items[0].id);
   assert.equal(vm.palette.rows.filter((r) => r.selected).length, 1);
   assert.ok(vm.palette.rows.every((r) => !('action' in r)), 'what a row does stays in Margin');
-  assert.equal(vm.palette.rows.find((r) => r.id === 'go')!.title, 'Search for “docs”');
+  assert.equal(vm.palette.rows.find((r) => r.id === 'go')!.title, 'docs', 'the search: what\'s typed, as Arc\'s');
   const last = build(state, { ...ui, palette: { ...ui.palette, selected: 99 } });
   assert.equal(last.palette.rows.at(-1)!.selected, true, 'the selection stays on a row');
   // Opened for a new tab: "+ New Tab" is the row highlighted.

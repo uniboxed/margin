@@ -103,7 +103,7 @@ test('an address opens in a new tab: a local address with a port, and a site typ
   const local = `127.0.0.1:${m.site.port}/`;
   let p = await type(local);
   assert.equal(p.rows[0].id, 'go');
-  assert.equal(p.rows[0].title, `Open http://${local}`);
+  assert.equal(p.rows[0].title, local, 'the address as typed (Arc\'s)');
   const before = (await m.tabs()).length;
   await ui.keyboard.press('Enter');
   await m.until(async () => (await m.front())?.url === `http://${local}`, { what: 'the local address in front' });
@@ -112,10 +112,10 @@ test('an address opens in a new tab: a local address with a port, and a site typ
   // A name with a dot and no scheme is taken as https (the .test hosts have none): typed with http://.
   await openPalette();
   p = await type(`harbor.test:${m.site.port}/`);
-  assert.equal(p.rows[0].title, `Open https://harbor.test:${m.site.port}/`);
+  assert.equal(p.rows[0].title, `harbor.test:${m.site.port}/`);
   await ui.keyboard.press('Meta+A');
   p = await type(m.url('harbor.test', '/'));
-  assert.equal(p.rows[0].title, `Open ${m.url('harbor.test', '/')}`);
+  assert.equal(p.rows[0].title, m.url('harbor.test', '/'));
   await ui.keyboard.press('Enter');
   await m.until(async () => (await m.front())?.url === m.url('harbor.test', '/'), { what: 'the travel site in front' });
 });
@@ -124,7 +124,7 @@ test('a search from the extension\'s own palette goes to Google with Safari\'s p
   await openPalette();
   const p = await type('tide tables');
   const go = p.rows.find((r) => r.id === 'go');
-  assert.equal(go!.title, 'Search for “tide tables”');
+  assert.equal(go!.title, 'tide tables', 'the search: what\'s typed (Arc\'s)');
   await ui.click('.palette .result[data-id="go"]');
   const tab = await m.until(async () => { const f = await m.front(); return f?.url.startsWith('https://www.google.com/') && f; }, { what: 'the search in front' });
   assert.equal(tab.url, 'https://www.google.com/search?client=safari&rls=en&q=tide%20tables&ie=UTF-8&oe=UTF-8');

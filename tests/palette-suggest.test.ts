@@ -44,7 +44,7 @@ test('the app host: each change typed asks the app; a known answer is drawn at o
   // Its rows: "Search for" first (the engine's name), the suggestions after it as searches.
   const vm = buildViewModel({ state: host.getState() as State, now: 0, ui: { windowId: W, mode: 'fullscreen', palette: { open: true, query: 'weat', selected: 0 } } as UiState, platform: { browser: 'safari', os: 'mac' } }, null);
   assert.deepEqual(vm.palette.rows.slice(0, 3).map((r) => [r.kind, r.title, r.subtitle, r.isSearch]), [
-    ['go', 'Search for “weat”', 'DuckDuckGo', true], ['suggestion', 'weather', '', true], ['suggestion', 'weather nyc', '', true],
+    ['go', 'weat', '', true], ['suggestion', 'weather', '', true], ['suggestion', 'weather nyc', '', true],
   ]);
 });
 

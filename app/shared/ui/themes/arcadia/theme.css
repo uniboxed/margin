@@ -989,6 +989,7 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
   --bar-outer: rgba(0, 0, 0, 0.25);
   --bar-inner: rgba(255, 255, 255, 0.7);
   --bar-box: rgba(0, 0, 0, 0.06);
+  --bar-selection: rgba(0, 0, 0, 0.15);
 }
 @media (prefers-color-scheme: dark) {
   .arcadia {
@@ -1000,6 +1001,7 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
     --bar-outer: rgba(0, 0, 0, 0.95);
     --bar-inner: rgba(255, 255, 255, 0.24);
     --bar-box: rgba(255, 255, 255, 0.1);
+    --bar-selection: rgba(255, 255, 255, 0.42);
   }
 }
 @media (prefers-contrast: more) { .arcadia { --bar-muted: rgba(0, 0, 0, 0.72); --bar-outer: rgba(0, 0, 0, 0.6); } }
@@ -1056,6 +1058,8 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
   border-bottom: 0.5px solid var(--bar-divider);
 }
 .palette .search-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--bar-muted); stroke-width: 2.2; stroke-linecap: round; }
+/* The selected row's site icon in its place (Arc's): 16 pt, the text where it was (55 pt in). */
+.palette .field-icon { flex: none; width: 16px; height: 16px; margin: 0 -2px 0 -1px; border-radius: 3px; }
 .palette .query {
   flex: 1;
   min-width: 0;
@@ -1070,6 +1074,12 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
   outline: none;
 }
 .palette .query::placeholder { color: var(--bar-muted); }
+/* The completion after what's typed (and any selected text): Arc's soft highlight, not the system's blue. */
+.palette .query::selection { background: var(--bar-selection); color: var(--bar-fg); }
+/* A search's row: Arc's magnifier, 12 pt in its 24 pt slot. */
+.palette .avatar.search-glyph { display: inline-flex; align-items: center; justify-content: center; color: var(--bar-muted); }
+.palette .avatar.search-glyph svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.palette [aria-selected="true"] .avatar.search-glyph { color: #fff; }
 .palette .results {
   margin: 0;
   padding: 6px 10px 10px;

@@ -131,6 +131,13 @@ export type PaletteItem = {
   spaceColor?: string, boost?: number, recency?: number, section?: string, sectionStart?: boolean, action: any,
   /** a row's emoji (a space's, an action's); `search`: the typed text as a search (the go row) */
   emoji?: string, search?: boolean,
+  /**
+   * As Arc's command bar shows a row (docs/ARC-COMMAND-BAR.md): `detail`, what follows its title (" — weather.com": a
+   * past page's address; none on a tab, a pin, a search); `completion`, the text the field completes what's typed to
+   * while it's the selected row (a site's domain, a suggestion's words, an app's name; none: no completion).
+   * `subtitle` stays what the typed words are matched against (a page's whole address).
+   */
+  detail?: string, completion?: string,
   [extra: string]: unknown,
 };
 
@@ -153,7 +160,8 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
       subtitle: t.url,
       url: t.url,
       favIconUrl: V.iconFor(state, t),
-      badge: space?.name ?? '', // Arc-style: the row shows which space it's in
+      // (Arc's: "Switch to Tab" in this space, the space's name in another.)
+      badge: space?.id === spaceId ? SWITCH_TO_TAB : space?.name ?? '',
       spaceColor: space?.color ?? '',
       boost: (space?.id === spaceId ? 30 : 10) + (t.id === ctx.tabId ? -25 : 0),
       recency: t.lastActive ?? 0,
@@ -171,7 +179,7 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
       subtitle: k.url,
       url: k.url,
       favIconUrl: V.iconFor(state, k),
-      badge: space?.name ?? '',
+      badge: space?.id === spaceId ? SWITCH_TO_TAB : space?.name ?? '',
       spaceColor: space?.color ?? '',
       boost: space?.id === spaceId ? 25 : 8,
       recency: k.lastActive ?? 0,
@@ -202,7 +210,7 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
       subtitle: a.url,
       url: a.url,
       favIconUrl: V.iconFor(state, a),
-      badge: 'Archived',
+      badge: '',
       boost: 0,
       recency: a.closedAt ?? 0,
       action: { type: 'restoreArchive', archiveId: a.id, windowId: ctx.windowId },
@@ -330,10 +338,28 @@ function suggestionsFor(state: State, q: string): string[] {
     .slice(0, SUGGEST_MAX);
 }
 
-// The engine a search goes to, for its row: the one Margin.app named, else the copy's own.
-function engineName(state: State) {
-  const named = (state as { search?: SearchSuggestions | null }).search?.engine?.name;
-  return typeof named === 'string' && named ? named : engineLabel();
+// What a tab's row says on its right in its own space (Arc's), its space's name in another.
+const SWITCH_TO_TAB = 'Switch to Tab';
+// A page's address as Arc's rows show it: no scheme, no www., no trailing slash ("youtube.com/watch?v=…").
+function humanUrl(url: string | undefined) {
+  if (!url || !/^https?:/i.test(url)) return '';
+  return url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+}
+// A page's site, its domain with no www.
+function siteOf(url: string | undefined) {
+  try { return url && /^https?:/i.test(url) ? new URL(url).hostname.replace(/^www\./i, '') : ''; } catch { return ''; }
+}
+// A row as Arc's command bar shows it (docs/ARC-COMMAND-BAR.md Part 1): a tab's, a pin's or a search's title alone; a
+// past page's with its address after it; each its completion for the field.
+function asArc(item: PaletteItem): PaletteItem {
+  switch (item.kind) {
+    case 'tab': case 'pin': return { ...item, detail: '', completion: siteOf(item.url) };
+    case 'archive': return { ...item, detail: humanUrl(item.url), completion: siteOf(item.url) };
+    case 'suggestion': return { ...item, detail: '', completion: item.title };
+    case 'app': return { ...item, detail: '', completion: item.title };
+    case 'go': return { ...item, detail: '' };
+    default: return { ...item, detail: item.subtitle ?? '' };
+  }
 }
 
 // Ranked palette results for `query`: with nothing typed, Margin's own rows; typed, the order above, its "Open URL"
@@ -345,9 +371,10 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
     return items
       .filter((i) => i.kind !== 'archive' && i.id !== `tab:${ctx.tabId}`)
       .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.boost - a.boost || (b.recency ?? 0) - (a.recency ?? 0))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(asArc);
   }
-  if (/^margin:\/\/settings\/?$/i.test(q)) return items.filter((i) => i.id === 'action:settings');
+  if (/^margin:\/\/settings\/?$/i.test(q)) return items.filter((i) => i.id === 'action:settings').map(asArc);
   const scored = [...items.map((item) => ({ item, score: matchScore(q, item) })).filter((r) => r.score > -Infinity), ...appMatches(state, q)]
     // (A search page below the person's other things.)
     .map((r) => ({ ...r, score: r.score + r.item.boost - (isSearchPage(r.item.url) ? 60 : 0) }))
@@ -362,9 +389,10 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
   const go: PaletteItem | null = target ? {
     id: 'go',
     kind: 'go',
-    title: isUrl ? `Open ${(target as { url: string }).url}` : `Search for “${q}”`,
-    badge: isUrl ? 'Open' : 'Search',
-    subtitle: isUrl ? '' : engineName(state),
+    // (Arc's: what's typed, as it's typed: a search's words, an address.)
+    title: q,
+    badge: '',
+    subtitle: '',
     emoji: isUrl ? '↗' : '⌕',
     search: !isUrl,
     action: isUrl
@@ -375,7 +403,7 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
     id: `suggest:${i}`, kind: 'suggestion', title: text, subtitle: '', emoji: '⌕', search: true, action: searchAction(text),
   }));
   const rest = own.filter((i) => i !== top).slice(0, OWN_MAX - (top ? 1 : 0)); // (the top hit one of them)
-  return [...(top ? [top] : []), ...(go ? [go] : []), ...suggested, ...rest, ...archived].slice(0, limit);
+  return [...(top ? [top] : []), ...(go ? [go] : []), ...suggested, ...rest, ...archived].slice(0, limit).map(asArc);
 }
 
 export {

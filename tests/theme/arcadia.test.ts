@@ -779,6 +779,29 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
       });
 
+      // The field completes what's typed with the selected row's site, selected after it (Arc's); a Backspace takes the
+      // completion and none comes back until the next character; → takes it; the field's icon the row's.
+      await t.test('the command bar\'s field: what\'s typed completed with the selected row\'s site, a Backspace taking it, → keeping it', async () => {
+        await away();
+        await ev(() => T.rtDispatch('palette.open'));
+        await page.waitForFunction(() => document.activeElement?.classList.contains('query'), null, { timeout: 2000 });
+        await page.keyboard.type('thel');
+        await page.waitForFunction(() => { const f = document.querySelector<HTMLInputElement>('.palette .query')!; return f.value.length > 4; }, null, { timeout: 2000 });
+        const f1 = await ev(() => { const f = document.querySelector<HTMLInputElement>('.palette .query')!; return { value: f.value, start: f.selectionStart, end: f.selectionEnd, icon: !!document.querySelector('.palette .field-icon'), vmIcon: (window as any).__rt.runtime.vm.palette.fieldIcon }; });
+        assert.ok(f1.value.toLowerCase().startsWith('thelantern'), `completed (${f1.value})`);
+        assert.deepEqual([f1.start, f1.end], [4, f1.value.length], 'the completion selected after what\'s typed');
+        assert.equal(f1.icon, !!f1.vmIcon, 'the field\'s icon the selected row\'s');
+        await page.keyboard.press('Backspace');
+        await page.waitForFunction(() => document.querySelector<HTMLInputElement>('.palette .query')!.value === 'thel', null, { timeout: 2000 });
+        assert.equal((await ev(() => (window as any).__rt.runtime.vm.palette.completion)), '', 'none after a Backspace');
+        await page.keyboard.type('a');
+        await page.waitForFunction(() => { const f = document.querySelector<HTMLInputElement>('.palette .query')!; return f.value.length > 5 && f.selectionStart === 5; }, null, { timeout: 2000 });
+        await page.keyboard.press('ArrowRight');
+        await page.waitForFunction(() => { const r = (window as any).__rt.runtime; return r.ui.palette.query.toLowerCase().startsWith('thelantern') && r.vm.palette.completion === ''; }, null, { timeout: 2000 });
+        await ev(() => T.rtDispatch('palette.close'));
+        await away();
+      });
+
       await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {
         await ev(() => {
           const rt = (window as any).__rt;

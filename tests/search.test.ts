@@ -161,7 +161,7 @@ test('palette: past searches never crowd the top; "Search for" first, then the e
   const withSearch = { ...s, search: { query: 'hello', items: ['hello neighbor', 'Hello', 'hello song'], engine: { id: 'duckduckgo', name: 'DuckDuckGo' } } };
   const rows = rankPalette(withSearch as typeof s, 'hello', ctx);
   assert.deepEqual(rows.map((r) => r.id), ['go', 'suggest:0', 'suggest:1', 'tab:9'], 'the old search pages archived aren\'t offered; an open one comes after');
-  assert.equal(rows[0].subtitle, 'DuckDuckGo', 'the engine Margin.app named');
+  assert.deepEqual([rows[0].title, rows[0].detail, rows[0].badge], ['hello', '', ''], 'the search: what\'s typed alone, as Arc\'s');
   assert.deepEqual(rows.slice(1, 3).map((r) => [r.kind, r.title, r.search]), [['suggestion', 'hello neighbor', true], ['suggestion', 'hello song', true]], 'never the typed text itself');
   assert.deepEqual(rows[1].action, { type: 'search', query: 'hello neighbor', windowId: 1 });
   assert.deepEqual(rankPalette(withSearch as typeof s, 'hello', { ...ctx, inNewTab: true })[1].action, { local: 'search', query: 'hello neighbor' });

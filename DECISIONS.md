@@ -12084,3 +12084,25 @@ Arc's). From Arc 1.174 measured on screen (docs/ARC-COMMAND-BAR.md Part 1):
   373, 305.6, 766 × 326 (Arc's 373, 305.5, 766). The other themes' checks: their top at 32.2%.
 - Next (step 3): rows as Arc's: a site's row "— domain", none on tabs and favourites.
 
+## The command bar's rows and field as Arc's (`feat/command-bar-rows`, 2026-11-27; docs/ARC-COMMAND-BAR.md steps 2 and 3)
+
+From Arc 1.174 on screen (docs/ARC-COMMAND-BAR.md Part 1):
+- **Inline completion** (every theme: `ui/behaviors/palette.ts`, the view model's `palette.completion`): the field shows
+  what's typed and, selected after it, the rest of the selected row's completion (`PaletteItem.completion`: a tab's,
+  pin's or past page's site, no www.; a suggestion's words; an app's name), only when that starts with what's typed
+  (any case): "thel" → "thel|antern.example"; a tab found by its title completes nothing. ↑/↓ change it with the row.
+  A character typed over it goes on with it; a Backspace takes it and none comes back until the next character
+  (`palette.noComplete`); → or End with it shown takes it (what's typed is then the whole text).
+- **The field's icon** (`palette.fieldIcon`): the selected row's picture (a site's icon), else the magnifier (Arcadia;
+  the other themes keep their own field).
+- **Rows** (`shared/search.ts asArc`; `detail` is what a row shows after its title, `subtitle` still what the words are
+  matched against): a tab's or pin's title alone, "Switch to Tab" on the right for a tab of this space, its space's
+  name for one in another (and a pin's place as before), with the arrow box; a past page's (archived) "— youtube.com/watch?v=…"
+  (no scheme, no www.), no badge, no arrow; the search what's typed alone ("weath", was "Search for "weath"" with the
+  engine's name), no arrow; an address as typed. The arrow box only on rows that switch to something (a tab, a pin, an
+  app). Arcadia: the completion's highlight Arc's soft white (42% over the dark fill; 15% black in light), not the
+  system's blue; a search row's icon a 12 pt magnifier.
+- Tests: `command-bar-rows.test.ts`, Arcadia's "the command bar's field" (typing, Backspace, →; WebKit and Chromium),
+  the palette tests' titles; rendered at Arc's size, "thel" completes to "thelantern.example" with its icon, the search
+  row "thel" with the magnifier.
+
