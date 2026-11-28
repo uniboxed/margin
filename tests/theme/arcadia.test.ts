@@ -847,6 +847,25 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual([f.open, f.query], [true, 'youtu'], 'Escape: off the site first, the bar kept');
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => !(window as any).__rt.runtime.ui.palette.open, null, { timeout: 2000 });
+        // ChatGPT asked, not searched ("Ask ChatGPT", "Ask…"); Ecosia's pill its dark green on its lime.
+        for (const [typed, hintText, placeholderText, bg, ink] of [['chat', 'Ask ChatGPT Tab', 'Ask…', 'rgb(16, 163, 127)', 'rgb(255, 255, 255)'], ['eco', 'Search Ecosia Tab', 'Search…', 'rgb(215, 235, 128)', 'rgb(57, 64, 28)']]) {
+          await ev(() => T.rtDispatch('palette.open'));
+          await page.waitForFunction(() => document.activeElement?.classList.contains('query'), null, { timeout: 2000 });
+          await page.keyboard.type(typed);
+          await page.waitForFunction(() => !!document.querySelector('.palette .site-hint'), null, { timeout: 2000 });
+          assert.equal((await field()).hint, hintText);
+          await page.keyboard.press('Tab');
+          await page.waitForFunction(() => !!document.querySelector('.palette .site-pill'), null, { timeout: 2000 });
+          const g = await field();
+          assert.deepEqual([g.placeholder, g.pill!.bg], [placeholderText, bg], typed);
+          assert.equal(await ev(() => getComputedStyle(document.querySelector('.palette .site-pill')!).color), ink, `${typed}: the pill's text`);
+          await page.keyboard.type('x');
+          await page.waitForFunction(() => document.querySelectorAll('.palette .result').length === 1, null, { timeout: 2000 });
+          assert.equal(await ev(() => getComputedStyle(document.querySelector('.palette .result[aria-selected="true"]')!).color), ink, `${typed}: the selected row's text`);
+          await page.keyboard.press('Escape');
+          await page.keyboard.press('Escape');
+          await page.waitForFunction(() => !(window as any).__rt.runtime.ui.palette.open, null, { timeout: 2000 });
+        }
         await away();
       });
 

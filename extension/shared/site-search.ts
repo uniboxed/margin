@@ -1,10 +1,15 @@
 // Site search in the command bar, as Arc's (docs/ARC-COMMAND-BAR.md, Part 2 "Site search"): typing a site's name or
 // domain offers "Search <site>" with Tab; Tab puts the site's pill in the field, its colour on the bar, and what's
 // typed then is searched on that site. Arc's built-in sites (its `ADK.Engine` table: keyword, search address, brand
-// colour) and Google, Chromium's own default. Each address has `%s` for the encoded query. Pure: the view model and the
-// palette's behaviour use it.
+// colour), then the engines Arc offers from Chromium's own list (Google, Bing, DuckDuckGo, Yahoo, Ecosia) and the AI
+// answers whose address takes a question (Perplexity; ChatGPT, Claude and Grok, asked rather than searched: "Ask ChatGPT"). Each address has `%s` for the
+// encoded query. Pure: the view model and the palette's behaviour use it.
 
-export type Site = { id: string, name: string, keyword: string, url: string, color: string };
+/**
+ * A site to search: `color` its brand colour (the pill, the bar's selected row), `ink` the text on it (white unless
+ * the colour is too light for it), `verb` what the bar says ("Search YouTube", "Ask ChatGPT").
+ */
+export type Site = { id: string, name: string, keyword: string, url: string, color: string, ink?: string, verb?: 'Search' | 'Ask' };
 
 export const SITES: readonly Site[] = Object.freeze([
   { id: 'google', name: 'Google', keyword: 'google.com', url: 'https://www.google.com/search?q=%s', color: '#4285F4' },
@@ -27,7 +32,23 @@ export const SITES: readonly Site[] = Object.freeze([
   { id: 'linkedin', name: 'LinkedIn', keyword: 'linkedin.com', url: 'https://linkedin.com/search/results/all/?keywords=%s', color: '#0B66C2' },
   { id: 'applemusic', name: 'Apple Music', keyword: 'music.apple.com', url: 'https://music.apple.com/us/search?term=%s', color: '#FA2A44' },
   { id: 'spotify', name: 'Spotify', keyword: 'spotify.com', url: 'https://open.spotify.com/search/%s', color: '#1DB954' },
+  // Search engines and AI answers (colours from each one's own icon or brand; Ecosia's lime too light for white text,
+  // its tree's dark green on it, as its icon).
+  { id: 'bing', name: 'Bing', keyword: 'bing.com', url: 'https://www.bing.com/search?q=%s', color: '#106EBE' },
+  { id: 'duckduckgo', name: 'DuckDuckGo', keyword: 'duckduckgo.com', url: 'https://duckduckgo.com/?q=%s', color: '#DE5833' },
+  { id: 'yahoo', name: 'Yahoo', keyword: 'yahoo.com', url: 'https://search.yahoo.com/search?p=%s', color: '#6001D2' },
+  { id: 'ecosia', name: 'Ecosia', keyword: 'ecosia.org', url: 'https://www.ecosia.org/search?q=%s', color: '#D7EB80', ink: '#39401C' },
+  { id: 'perplexity', name: 'Perplexity', keyword: 'perplexity.ai', url: 'https://www.perplexity.ai/search?q=%s', color: '#20808D' },
+  { id: 'chatgpt', name: 'ChatGPT', keyword: 'chatgpt.com', url: 'https://chatgpt.com/?q=%s', color: '#10A37F', verb: 'Ask' },
+  // Claude's address fills its box (the person presses Return there); Grok's asks. Gemini, Copilot and Meta AI take no
+  // question in their address (2026-11-27: Gemini tested, it ignores ?q= and ?prompt=), so they aren't here.
+  { id: 'claude', name: 'Claude', keyword: 'claude.ai', url: 'https://claude.ai/new?q=%s', color: '#D97757', verb: 'Ask' },
+  { id: 'grok', name: 'Grok', keyword: 'grok.com', url: 'https://grok.com/?q=%s', color: '#000000', verb: 'Ask' },
 ]);
+
+/** What the bar says for a site ("Search", "Ask") and the text colour on its pill. */
+export const siteVerb = (site: Site) => site.verb ?? 'Search';
+export const siteInk = (site: Site) => site.ink ?? '#FFFFFF';
 
 /** A site by its id (null: none such). */
 export const siteById = (id: unknown) => SITES.find((s) => s.id === id) ?? null;

@@ -269,9 +269,9 @@
         <div class="palette-field">
           <span class="chevron" aria-hidden="true">&gt;</span>
           <!-- Site search (Arc's, shared/site-search.ts): the site searched as a pill in its colour; "Search <site>" with Tab while what's typed names one. -->
-          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}">{{palette.site.name}}</span></m-if>
+          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}" m-style:--site-ink="{{palette.site.ink}}">{{palette.site.name}}</span></m-if>
           <input id="palette-input" class="palette-input" m-input="palette" placeholder="search or type a url…" autocomplete="off" spellcheck="false">
-          <m-if test="palette.siteHint"><span class="site-hint">Search {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
+          <m-if test="palette.siteHint"><span class="site-hint">{{palette.siteHint.verb}} {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
         </div>
         <div class="palette-rows" m-scroll="palette">
           <m-for each="palette.rows" as="r">

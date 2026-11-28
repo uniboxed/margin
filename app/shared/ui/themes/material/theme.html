@@ -253,9 +253,9 @@
         <div class="search">
           <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z"></path><path d="M15.6 15.6 19.5 19.5"></path></svg>
           <!-- Site search (Arc's, shared/site-search.ts): the site searched as a pill in its colour; "Search <site>" with Tab while what's typed names one. -->
-          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}">{{palette.site.name}}</span></m-if>
+          <m-if test="palette.site"><span class="site-pill" m-style:--site="{{palette.site.color}}" m-style:--site-ink="{{palette.site.ink}}">{{palette.site.name}}</span></m-if>
           <input class="query" type="text" m-input="palette" placeholder="Search or Enter URL…" aria-label="Command palette" spellcheck="false" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="margin-results">
-          <m-if test="palette.siteHint"><span class="site-hint">Search {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
+          <m-if test="palette.siteHint"><span class="site-hint">{{palette.siteHint.verb}} {{palette.siteHint.name}} <kbd>Tab</kbd></span></m-if>
         </div>
         <div class="results" id="margin-results" role="listbox">
           <m-for each="palette.rows" as="r">

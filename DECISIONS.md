@@ -12130,3 +12130,20 @@ From Arc 1.174 on screen and its `ADK.Engine` table (docs/ARC-COMMAND-BAR.md Par
 - Not built yet (Part 3's step 4 lists them): Space as the key (Arc's setting) and the person's own sites; both need
   a setting, left for when Settings gets the command bar's pane.
 - Next (step 5): commands with aliases ("Focus on <space>" and Arc's other actions).
+
+## More sites for site search: search engines and AI answers (`feat/command-bar-more-sites`, 2026-11-27)
+
+Tirth asked for the engines Arc offers beyond its own table. Arc takes these from Chromium's search engine list
+(docs/ARC-COMMAND-BAR.md Part 2 "Site search"); Margin lists them in `shared/site-search.ts` after Arc's 19:
+- Bing, DuckDuckGo, Yahoo, Ecosia, Perplexity, ChatGPT. Each one's own search address with `%s` (ChatGPT's
+  `chatgpt.com/?q=`, which asks the question; Yahoo's `search.yahoo.com/search?p=`).
+- Colours: Bing #106EBE and Ecosia's lime #D7EB80 measured from their icons; DuckDuckGo #DE5833, Yahoo #6001D2,
+  Perplexity #20808D (its turquoise), ChatGPT #10A37F (its green: its icon is black, which would vanish on a dark bar).
+- `Site.ink`: the text on a site's colour, white unless set; Ecosia's is its tree's dark green #39401C (white wouldn't read
+  on lime). Every theme's pill and Arcadia's selected row use it (`--site-ink`).
+- `Site.verb`: "Ask" for ChatGPT (Arc's "Ask %@"): the hint "Ask ChatGPT", the field "Ask…"; "Search" for the rest. The
+  view model's `palette.site` / `palette.siteHint` carry `verb` (and `site.ink`); the themes write the hint with it.
+- Claude (`claude.ai/new?q=`: its box filled, the person presses Return; #D97757) and Grok (`grok.com/?q=`, tested;
+  black, as X), both "Ask". Left out, their address taking no question (2026-11-27): Gemini (tested in a browser: it
+  ignores `?q=` and `?prompt=`), Copilot (`?q=` reported broken since 2025), Meta AI and Mistral (nothing confirms one).
+- Not built: sites learned from the person's own searches (Arc's Chromium does it) and a Settings list to manage them.

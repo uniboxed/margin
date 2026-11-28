@@ -22,7 +22,7 @@ import * as V from '../../../extension/shared/view.ts';
 import { NEW_TAB } from '../../../extension/shared/switching.ts';
 import { hostOf } from '../../../extension/shared/dom.ts';
 import { rankPalette } from '../../../extension/shared/search.ts';
-import { siteById, siteFor } from '../../../extension/shared/site-search.ts';
+import { siteById, siteFor, siteInk, siteVerb } from '../../../extension/shared/site-search.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { appIcon, appOfItem, isBundleId } from '../../../extension/shared/apps.ts';
 import { spaceKeyCaps } from '../../../extension/shared/app-keys.ts';
@@ -305,10 +305,10 @@ export type ViewModel = {
      * picture for the field's icon (a site's), null for the magnifier.
      */
     completion: string, fieldIcon: string | null,
-    /** The site searched (Arc's pill: its name, its brand colour), null: none. */
-    site: { name: string, color: string } | null,
-    /** "Search <site>" with Tab, while what's typed names a site and none is searched yet; null: none. */
-    siteHint: { name: string } | null,
+    /** The site searched (Arc's pill: its name, its brand colour, the text on it, "Search" or "Ask"), null: none. */
+    site: { name: string, color: string, ink: string, verb: string } | null,
+    /** "Search <site>" ("Ask ChatGPT") with Tab, while what's typed names a site and none is searched yet; null: none. */
+    siteHint: { name: string, verb: string } | null,
     /** "No matches": open, nothing found, and not a site search waiting for what to search (Arc's: an empty bar). */
     noMatches: boolean,
   },
@@ -1145,9 +1145,9 @@ const GOES = new Set(['tab', 'pin', 'app']);
 // The site searched and the "Search <site>" hint (shared/site-search.ts), for the palette's view.
 function siteOf(p: NonNullable<UiState['palette']>) {
   const site = siteById(p.site);
-  if (site) return { site: { name: site.name, color: site.color }, siteHint: null };
+  if (site) return { site: { name: site.name, color: site.color, ink: siteInk(site), verb: siteVerb(site) }, siteHint: null };
   const named = p.open ? siteFor(p.query ?? '') : null;
-  return { site: null, siteHint: named ? { name: named.name } : null };
+  return { site: null, siteHint: named ? { name: named.name, verb: siteVerb(named) } : null };
 }
 
 /**

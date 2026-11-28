@@ -145,9 +145,10 @@ export function installPalette(rt: Rt) {
         const input = view.input('palette');
         if (input) {
           field = input;
-          // (Searching a site: "Search…", Arc's; else the theme's own words, kept from the first time it's drawn.)
+          // (Searching a site: "Search…" ("Ask…" for ChatGPT), Arc's; else the theme's own words, kept from the first
+          // time it's drawn.)
           if (!input.dataset.mPlaceholder) input.dataset.mPlaceholder = input.placeholder;
-          const placeholder = vm.palette.site ? 'Search…' : input.dataset.mPlaceholder;
+          const placeholder = vm.palette.site ? `${vm.palette.site.verb}…` : input.dataset.mPlaceholder;
           if (input.placeholder !== placeholder) input.placeholder = placeholder;
           // (What's typed, and the selected row's completion after it, selected: Arc's inline completion.)
           const want = vm.palette.query + vm.palette.completion;
