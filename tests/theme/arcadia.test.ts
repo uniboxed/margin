@@ -624,6 +624,45 @@ for (const [engineName, engine] of ENGINES) {
         await away();
       });
 
+      // Clear as Arc's (Tirth's screenshot beside Arcadia's, 2026-11-27: Arcadia's sat on a patch of the space's flat
+      // colour, over the grain, the line running under it): no fill; its words 10 pt in from the rows' right edge; the
+      // line stopping 8 pt before its arrow, the same with Clear shown or hidden; no Clear, the line to 10 pt in.
+      await t.test('"↓ Clear" as Arc\'s: no fill, the line stopping 8 pt before its arrow, never moving; none, the line to 10 pt in', async () => {
+        await ev(() => document.querySelector('.today-split')!.scrollIntoView({ block: 'center' }));
+        const look = () => ev(() => {
+          const rule = document.querySelector('.today-split .rule')!.getBoundingClientRect();
+          const c = document.querySelector('.clear') as HTMLElement | null;
+          const row = document.querySelector('.new-tab-row')!.getBoundingClientRect();
+          if (!c) return { line: [rule.left, rule.right], rowRight: row.right, clear: null };
+          const arrow = c.querySelector('.clear-icon')!.getBoundingClientRect();
+          const words = document.createRange();
+          words.selectNodeContents(c);
+          const end = [...words.getClientRects()].reduce((m, x) => Math.max(m, x.right), 0);
+          return { line: [rule.left, rule.right], rowRight: row.right, clear: { fill: getComputedStyle(c).backgroundColor, gap: arrow.left - rule.right, inset: row.right - end, middle: Math.abs(arrow.top + arrow.height / 2 - (rule.top + rule.height / 2)) } };
+        });
+        await away();
+        const hidden = await look();
+        const title = (await rect('.space-title'))!;
+        await page.mouse.move(title.x, title.y);
+        await page.waitForTimeout(30);
+        const shown = await look();
+        assert.deepEqual(hidden.line, shown.line, 'the line the same, Clear shown or hidden');
+        const c = shown.clear!;
+        assert.equal(c.fill, 'rgba(0, 0, 0, 0)', 'no fill');
+        assert.ok(Math.abs(c.gap - 8) < 0.5, `the line 8 pt before the arrow (${c.gap})`);
+        assert.ok(Math.abs(c.inset - 10) < 1, `its words 10 pt in from the rows' right edge (${c.inset})`);
+        assert.ok(c.middle < 1, `the arrow on the line (${c.middle})`);
+        await away();
+        // No tabs today: no Clear, the line to 10 pt in (the space's tabs put back after).
+        await ev(() => { (window as any).__clearSaved = structuredClone((window as any).__rt.mock.state); });
+        await ev(() => T.rtDispatch('today.clear'));
+        await page.waitForFunction(() => !document.querySelector('.clear'), null, { timeout: 2000 });
+        const none = await look();
+        assert.ok(Math.abs(none.rowRight - none.line[1] - 10) < 0.5, `the line to 10 pt in (${none.rowRight - none.line[1]})`);
+        await ev(() => { const r = (window as any).__rt; r.mock.state = (window as any).__clearSaved; r.host.setState(r.mock.state); });
+        await page.waitForFunction(() => !!document.querySelector('.clear'), null, { timeout: 2000 });
+      });
+
       await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {
         await ev(() => {
           const rt = (window as any).__rt;
