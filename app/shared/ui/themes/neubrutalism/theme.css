@@ -421,8 +421,8 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 /* The command palette */
 .palette-layer { position: absolute; inset: 0; z-index: 10; }
 .scrim { position: absolute; inset: 0; background: rgba(17, 17, 17, .35); cursor: default; }
-/* Its full height (564 px: the label, the field, eight rows) centered in the window, the field staying put as rows come and go. */
-.palette { --top: max(16px, calc((100% - 564px) / 2)); position: absolute; left: 50%; top: var(--top); transform: translateX(-50%); width: min(660px, calc(100% - 64px)); max-height: calc(100% - 2 * var(--top)); border: 3px solid var(--ink); border-radius: 18px; background: var(--cream); box-shadow: 10px 10px 0 var(--ink); padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
+/* Its top where Arc's command bar's is, 32.2% of the window's height, growing down (docs/ARC-COMMAND-BAR.md). */
+.palette { --top: 32.2%; position: absolute; left: 50%; top: var(--top); transform: translateX(-50%); width: min(660px, calc(100% - 64px)); max-height: calc(100% - var(--top) - 16px); border: 3px solid var(--ink); border-radius: 18px; background: var(--cream); box-shadow: 10px 10px 0 var(--ink); padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
 /* The rows: eight at most (46 px and the 10 px gap), then they scroll. */
 .palette-rows { flex: 0 1 auto; min-height: 0; max-height: calc(8 * 46px + 7 * 10px); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: var(--ink) transparent; }
 .palette-label { flex-shrink: 0; font-family: 'Archivo Black', sans-serif; font-size: 13px; }

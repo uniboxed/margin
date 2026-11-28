@@ -894,17 +894,17 @@
   --rows: 5;
 
   /* Five rows (the field, list padding, rows and the gaps between them);
-     more scroll, the selection followed. Its full height centered in the
-     window (the field stays put as rows come and go), 16 px from an edge
-     at least. */
+     more scroll, the selection followed. Its top where Arc's command bar's
+     is, 32.2% of the window's height, growing down (docs/ARC-COMMAND-BAR.md),
+     never so low it leaves the window. */
   --full: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
 
   position: absolute;
-  top: max(16px, calc((100% - var(--full)) / 2));
+  top: 32.2%;
   left: 50%;
   transform: translateX(-50%);
   width: min(680px, calc(100% - 32px));
-  max-height: var(--full);
+  max-height: min(var(--full), calc(67.8% - 16px));
   direction: ltr;
   display: flex;
   flex-direction: column;
@@ -1354,7 +1354,7 @@
 /* ---- The command bar: Material's search view ------------------------------- */
 .palette {
   --full: calc(65px + 8px + var(--rows) * 48px + (var(--rows) - 1) * 2px + 8px);
-  max-height: var(--full);
+  max-height: min(var(--full), calc(67.8% - 16px));
   border-radius: 28px;
   background: var(--sc-high);
   box-shadow: var(--elev-3);

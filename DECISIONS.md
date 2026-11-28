@@ -12065,3 +12065,22 @@ click (or right-click) whose press began with it open closes it. Test first: Arc
 the bar opened never closes it; one begun with it open does" failed in WebKit and Chromium, passes now; the app's
 end-to-end checks pass (409, twice).
 
+## The command bar where Arc's is, Arcadia's as Arc's (`feat/command-bar-arc-look`, 2026-11-27; docs/ARC-COMMAND-BAR.md step 1)
+
+Tirth: the command bar where Arc's is, looking as Arc's (it had been dead centre, his earlier choice, until he chose
+Arc's). From Arc 1.174 measured on screen (docs/ARC-COMMAND-BAR.md Part 1):
+- **Every theme**: its top at 32.2% of the window's height (Arc: 305.5 of 949 pt), growing down with its rows, never so
+  low it leaves the window (its height at most 67.8% less 16 pt); each theme's own look otherwise.
+- **Arcadia as Arc's**: 766 pt wide, centred on the window; corner 12; its edge a 0.5 pt dark line outside and a 1 pt
+  light one inside; a 64 pt header (the icon 26 pt in, an 18 px field 55 pt in, the caret the system's accent colour)
+  over a 0.5 pt hairline; rows 46 pt tall, 4 pt apart, 10 pt in, corner 4, the icon's slot 10 pt in and the title 42;
+  6 pt above the first row, 10 under the last; the selected row the space's colour (no longer mixed with black), its
+  text white, its arrow in a white box in the row's colour; a row's place ("Personal") as words; no motion (none had
+  it). Its colours its own (`--bar-*`, Arc's alphas: text 80–90%, secondary 45%, hover 5%, divider 10%), light and dark
+  and for more contrast; its fill opaque, with 5–10% of the space's colour (Arc's is a material over the page, which
+  Margin's window can't see through to over a hosted page).
+- Checked: Arcadia's new "the command bar as Arc's" (1512 × 949: top 305.6, 766 wide, centred, header 64, rows 46 / 4 / 10,
+  the selected row the space's colour, no motion) in WebKit and Chromium; rendered at Arc's size in dark mode, the panel at
+  373, 305.6, 766 × 326 (Arc's 373, 305.5, 766). The other themes' checks: their top at 32.2%.
+- Next (step 3): rows as Arc's: a site's row "— domain", none on tabs and favourites.
+

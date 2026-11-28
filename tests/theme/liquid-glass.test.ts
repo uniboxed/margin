@@ -180,7 +180,7 @@ for (const [name, engine] of ENGINES) {
           const box = await rect('.palette');
           assert.ok(box.top >= 0 && box.bottom <= height, `${height}: the box stays in the window (${box.top}–${box.bottom})`);
           assert.ok(Math.abs(box.x - 720) <= 1 && box.width === 680, `${height}: centred, 680 wide (${box.left}–${box.right})`);
-          assert.ok(Math.abs(box.top - (height - box.height) / 2) <= 1, `${height}: full, in the middle of the window (${box.top}–${box.bottom})`);
+          assert.ok(Math.abs(box.top - height * 0.322) <= 1, `${height}: its top where Arc's command bar's is, 32.2% down (${box.top}–${box.bottom})`);
           const list = await rect('.palette-rows');
           assert.ok(list.height <= 8 * 40 + 7 * 2 + 12, `${height}: eight rows at most (${list.height} px)`);
         }

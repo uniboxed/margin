@@ -197,7 +197,7 @@ for (const [name, engine] of ENGINES) {
           assert.ok(list.height <= 8 * 46 + 7 * 10 + 1, `${height}: eight rows at most (${list.height} px)`);
           assert.equal(await computed('.palette-rows', 'overflow-y'), 'auto');
           // Full (eight rows and more): in the middle of the window (the field stays put as rows come and go).
-          assert.ok(Math.abs(box.top - (height - (box.bottom - box.top)) / 2) <= 1, `${height}: centered (${box.top}–${box.bottom})`);
+          assert.ok(Math.abs(box.top - height * 0.322) <= 1, `${height}: its top where Arc's command bar's is, 32.2% down (${box.top}–${box.bottom})`);
         }
         await mount();
         await ev(() => T.rtDispatch('palette.open'));
