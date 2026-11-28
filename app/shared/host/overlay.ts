@@ -1124,6 +1124,15 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK
   // DEV-HOOK: an empty point of the sidebar, by the double-click's own rule (ui/empty.ts): DevHooks.swift `say: spot`.
   devEmptySpot: () => { const p = runtime?.emptySpot(); return p ? `${p.x},${p.y}` : 'none'; }, // DEV-HOOK
+  // DEV-HOOK: the middle of a tab's row (its number, as `devState`'s today lists it), as `devEmptySpot` gives a point:
+  // DevHooks.swift `say: row`, the on-screen drop of a row on the page (docs/FLEX-SPLIT.md step 2).
+  devRowSpot: (id: unknown) => { // DEV-HOOK
+    const v = runtime?.view;
+    const el = v?.marked('m-drag', 'tab').find((e) => String(v.subjectOf(e)?.id) === String(id) && !e.classList.contains('m-drag-ghost'));
+    if (!el) return 'none';
+    const r = el.getBoundingClientRect();
+    return `${Math.round(r.left + r.width / 2)},${Math.round(r.top + r.height / 2)}`;
+  },
   devState: () => { // DEV-HOOK
     const vm: any = runtime?.vm;
     if (!vm) return 'no view model';

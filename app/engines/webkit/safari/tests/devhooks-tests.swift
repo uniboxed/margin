@@ -14,7 +14,7 @@ final class FakeDevWorld: DevHookWorld {
     func devSidebar(width: Int) -> String? { hosted.append("sidebar \(width)"); return nil }
     func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) -> String? { hosted.append("drag \(dx),\(frames)"); done("dragged \(frames) frames in 0 ms"); return nil }
     func devFront() -> String { "mechanism level, page shown" }
-    func devPage(_ what: String, done: @escaping (String) -> Void) { done(what == "field" ? "focused true, length 3, palette true" : "at 120,600") }
+    func devPage(_ what: String, row: String?, done: @escaping (String) -> Void) { done(what == "field" ? "focused true, length 3, palette true" : "at 120,600") }
     func devUI(_ action: String, arg: String?, done: @escaping (String) -> Void) { done("dispatched: true") }
     func devState(done: @escaping (String) -> Void) { done("{}") }
     func devLayout() -> String { "one item" }

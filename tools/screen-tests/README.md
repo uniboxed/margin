@@ -120,6 +120,12 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   slide removed, docs/FLEX-SPLIT.md step 1) the pointer resting on it opens it to fit its app, Chameleon 2's pane folded
   and blurred; the sidebar puts the split back; the pointer resting on the folded card opens that one; Margin's idle cost
   with it up. 13 passed on the real screen, 2026-11-28.
+- `split-drop` (docs/FLEX-SPLIT.md step 2: a sidebar row dropped on the page, `suite/SplitDrop.swift`): Chameleon 3, 2
+  and 1 hosted, 1 shown; real presses on a row in Margin's sidebar (its middle from the dev hook `say: row`) dragged over
+  the page area, held a moment and let go: Chameleon 2's on the right edge of 1's page (a new split, 1 then 2), 3's on
+  2's pane (in its place: 1 then 3), 2's on the gap between 1 and 3 (between them: 1, 2, 3); each time Margin's layout
+  in that order and every copy's window in Margin's Space; a picture of each drag held, in the logs. 9 passed on the real
+  screen, 2026-11-28.
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

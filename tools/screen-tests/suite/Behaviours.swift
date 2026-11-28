@@ -68,6 +68,7 @@ extension Runner {
     case .paneOpens(let n, let o, let w): paneOpens(n, other: o, minWidth: w)
     case .paneBack(let n, let o): paneBack(n, other: o)
     case .foldedCardOpens(let n, let o, let w): foldedCardOpens(n, other: o, minWidth: w)
+    case .rowDrop(let n, let k, let e): rowDrop(n, kind: k, expect: e)
     case .panesActive(let a, let b): panesActive(a, b)
     case .panesActiveFlips(let a, let b, let t): panesActiveFlips(a, b, times: t)
     case .panesActiveHidden(let a, let b, let alone): panesActiveHidden(a, b, alone: alone)
