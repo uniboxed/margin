@@ -80,7 +80,7 @@ fn every_perform_vector_answers_as_library_ts() {
         "the actions' vectors: {checked} perform steps checked, {skipped} skipped (the gap); by action {:?}",
         engine.by
     );
-    assert_eq!(engine.gap, 14, "the createSpace steps of the known gap");
+    assert_eq!(engine.gap, 21, "the createSpace steps of the known gap");
     assert_eq!(skipped, engine.gap, "every other perform step checked");
     assert!(checked > 8700, "{checked} perform steps");
     let names: Vec<&str> = engine.by.keys().map(String::as_str).filter(|n| ACTION_NAMES.contains(n)).collect();

@@ -164,6 +164,21 @@ pub fn create_split(
 /// M:1697 `addToSplit(state, splitId, paneId)`: the item last in the split (out of any other first), the ratios made
 /// equal; the state itself for no such split or item, a pane already, or a split of 4.
 pub fn add_to_split(s: &LibState, split_id: &str, pane_id: &str) -> LibState {
+    add_to_split_at(s, split_id, pane_id, None)
+}
+
+/// M `addToSplit(state, splitId, paneId, at)`'s place: `at` a JSON number that's a whole number from 0 to `count`
+/// (`typeof at === 'number' && Number.isInteger(at) && at >= 0 && at <= count`; -0 is 0), else the end.
+pub fn place_of(at: Option<&Value>, count: usize) -> usize {
+    match at.and_then(Value::as_f64) {
+        Some(x) if x.is_finite() && x.fract() == 0.0 && x >= 0.0 && x <= count as f64 => x as usize,
+        _ => count,
+    }
+}
+
+/// M `addToSplit(state, splitId, paneId, at)` (docs/FLEX-SPLIT.md step 2): as [`add_to_split`], the item at `at`
+/// ([`place_of`]) among the panes.
+pub fn add_to_split_at(s: &LibState, split_id: &str, pane_id: &str, at: Option<&Value>) -> LibState {
     let key = pane_key(pane_id);
     let group = split_of(s, split_id);
     let (Some(group), Some(key)) = (group, key) else { return s.clone() };
@@ -176,9 +191,34 @@ pub fn add_to_split(s: &LibState, split_id: &str, pane_id: &str) -> LibState {
         next = remove_from_split(&next, &other, key);
     }
     let mut panes = group.panes.clone();
-    panes.push(s.kept.get(key).map(|k| k.id.clone()).filter(|id| **id == *key).unwrap_or_else(|| Str::from(key)));
+    let place = place_of(at, panes.len());
+    panes.insert(
+        place,
+        s.kept.get(key).map(|k| k.id.clone()).filter(|id| **id == *key).unwrap_or_else(|| Str::from(key)),
+    );
     let ratios = normalize_split_ratios(None, panes.len());
     map_split(&next, split_id, |g| Rc::new(Split { panes: panes.clone(), ratios: ratios.clone(), ..g.clone() }))
+}
+
+/// M `replaceInSplit(state, splitId, outId, paneId)` (docs/FLEX-SPLIT.md step 2): the item in the place of the split's
+/// pane `out_id`, its ratio, the other panes as they are (out of any other split first); `out_id` out of the split. The
+/// state itself for no such split, `out_id` not a pane of it, or the item none or a pane of it already.
+pub fn replace_in_split(s: &LibState, split_id: &str, out_id: &str, pane_id: &str) -> LibState {
+    let key = pane_key(pane_id);
+    let group = split_of(s, split_id);
+    let (Some(group), Some(key)) = (group, key) else { return s.clone() };
+    if !has_margin_tab(s, key) || group.panes.iter().any(|p| **p == *key) || !group.panes.iter().any(|p| **p == *out_id)
+    {
+        return s.clone();
+    }
+    let group = group.clone();
+    let mut next = s.clone();
+    if let Some(other) = split_for_item(&next, key).filter(|o| *o.id != *split_id).map(|o| o.id.clone()) {
+        next = remove_from_split(&next, &other, key);
+    }
+    let id = s.kept.get(key).map(|k| k.id.clone()).filter(|id| **id == *key).unwrap_or_else(|| Str::from(key));
+    let panes: Vec<Str> = group.panes.iter().map(|p| if **p == *out_id { id.clone() } else { p.clone() }).collect();
+    map_split(&next, split_id, |g| Rc::new(Split { panes: panes.clone(), ..g.clone() }))
 }
 
 /// M:1709 `removeFromSplit(state, splitId, paneId)`: the pane out, the others' ratios kept relative to each other; one

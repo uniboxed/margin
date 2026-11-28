@@ -219,3 +219,28 @@ fn settle_keeps_what_holds_and_the_same_state() {
     assert!(!fixed.same(&short), "ratios of another length: remade");
     assert_eq!(ratios(&fixed, "g"), vec![0.3333; 3]);
 }
+
+#[test]
+fn add_at_a_place_and_replace_keeping_the_ratio() {
+    let s = split(&lib(), "g", &["t-1", "t-2"]);
+    let at = |v: Value| panes(&add_to_split_at(&s, "g", "t-3", Some(&v)), "g");
+    assert_eq!(at(json!(0)), ["t-3", "t-1", "t-2"]);
+    assert_eq!(at(json!(1)), ["t-1", "t-3", "t-2"]);
+    assert_eq!(at(json!(2)), ["t-1", "t-2", "t-3"]);
+    assert_eq!(at(json!(-0.0)), ["t-3", "t-1", "t-2"], "-0 is 0");
+    for v in [json!(3), json!(-1), json!(1.5), json!("0"), json!(null), json!(true)] {
+        assert_eq!(at(v.clone()), ["t-1", "t-2", "t-3"], "{v}: the end");
+    }
+    let s = resize_split(&s, "g", Some(&[json!(0.7), json!(0.3)]));
+    let r = replace_in_split(&s, "g", "t-1", "t-3");
+    assert_eq!(panes(&r, "g"), ["t-3", "t-2"]);
+    assert_eq!(ratios(&r, "g"), vec![0.7, 0.3]);
+    assert!(replace_in_split(&s, "g", "t-4", "t-3").same(&s), "not a pane");
+    assert!(replace_in_split(&s, "g", "t-1", "t-2").same(&s), "a pane already");
+    assert!(replace_in_split(&s, "nope", "t-1", "t-3").same(&s), "no such split");
+    // Out of its own split first: that one dissolves with one left.
+    let two = split(&s, "h", &["t-3", "t-4"]);
+    let moved = replace_in_split(&two, "g", "t-2", "t-3");
+    assert_eq!(panes(&moved, "g"), ["t-1", "t-3"]);
+    assert!(moved.splits.iter().all(|g| *g.id != *"h"));
+}

@@ -1699,7 +1699,9 @@ function createSplit(state: State, { id, spaceId, panes, axis = 'horizontal', ra
   return { ...next, splits: [...(next.splits ?? []), group] };
 }
 
-function addToSplit(state: State, splitId: string, paneId: string | number) {
+// `at`: its place among the panes (0 first; a whole number up to the count), else the end (a row dropped between two
+// panes, docs/FLEX-SPLIT.md step 2). The ratios made equal.
+function addToSplit(state: State, splitId: string, paneId: string | number, at?: unknown) {
   const key = paneKey(state, paneId);
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
@@ -1707,9 +1709,24 @@ function addToSplit(state: State, splitId: string, paneId: string | number) {
   let next = state;
   const other = splitForItem(next, key);
   if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
-  const panes = [...group.panes, key];
+  const place = typeof at === 'number' && Number.isInteger(at) && at >= 0 && at <= group.panes.length ? at : group.panes.length;
+  const panes = [...group.panes.slice(0, place), key, ...group.panes.slice(place)];
   const ratios = normalizeSplitRatios(undefined, panes.length);
   return { ...next, splits: (next.splits ?? []).map((g) => (g.id === splitId ? { ...g, panes, ratios } : g)) };
+}
+
+// `paneId` in the place of the split's pane `outId` (a row dropped on a pane's middle, docs/FLEX-SPLIT.md step 2): its
+// ratio, the other panes as they are; `outId` out of the split (still an item). Out of any other split first. The state
+// itself for no such split, `outId` not a pane of it, or `paneId` no item or a pane of it already.
+function replaceInSplit(state: State, splitId: string, outId: string, paneId: string | number) {
+  const key = paneKey(state, paneId);
+  const group = (state.splits ?? []).find((g) => g.id === splitId);
+  if (!group || !key || !hasMarginTab(state, key) || group.panes.includes(key) || !group.panes.includes(outId)) return state;
+  let next = state;
+  const other = splitForItem(next, key);
+  if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
+  const panes = group.panes.map((p) => (p === outId ? key : p));
+  return { ...next, splits: (next.splits ?? []).map((g) => (g.id === splitId ? { ...g, panes } : g)) };
 }
 
 function removeFromSplit(state: State, splitId: string, paneId: string | number) {
@@ -1925,6 +1942,7 @@ export {
   settleSplits,
   createSplit,
   addToSplit,
+  replaceInSplit,
   removeFromSplit,
   swapSplitPanes,
   resizeSplit,

@@ -1,6 +1,6 @@
 {
   "about": "Every place an action of library.ts throws (a TypeError on a payload of the wrong type), caught by perform as `failed: <the engine's words>`: JavaScriptCore's words (Margin.app's, and the core's) and Node's. Vectors name a site (`\"error\": { \"failed\": \"<site>\" }`).",
   "sites": {
-    "createSpace: name?.trim is not a function": {"action":"createSpace","where":"model.ts Module.createSpace","jsc":"name?.trim is not a function. (In 'name?.trim()', 'name?.trim' is undefined)","node":"name?.trim is not a function","payload":{"windowId":"7","name":{},"emoji":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀tail","color":"é","theme":"material","browser":"edge","profile":""}}
+    "createSpace: name?.trim is not a function": {"action":"createSpace","where":"model.ts Module.createSpace","jsc":"name?.trim is not a function. (In 'name?.trim()', 'name?.trim' is undefined)","node":"name?.trim is not a function","payload":{"windowId":7,"name":{},"emoji":"a\tb\nc","color":"﻿BOM﻿","theme":"arcadia","browser":"safari","profile":"s-1234"}}
   }
 }
