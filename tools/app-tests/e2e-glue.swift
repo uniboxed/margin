@@ -1623,6 +1623,36 @@ func multiHoleChecks(_ c: MarginWindowController, page: CGRect, main: Int, bound
         frames.count == 1 && frames.first?.contains(#""role":"main","focused":true"#) == true && frames.first?.contains(#""role":"pane","focused":false"#) == true && seen == "main*,pane",
         "\(frames) \(String(describing: seen))")
 
+  // ---- a folded pane (docs/FLEX-SPLIT.md step 1) ----
+  // The page folds the left pane beside the right one opened to fit its app: its window blurred in its hole (a
+  // behind-window material under the web view, over the ground's hole), none once it's unfolded, none with no split.
+  if let l = c.layout {
+    func geometry(_ panes: [JSONObject]?) -> JSONObject {
+      var g: JSONObject = ["insets": ["left": l.left, "top": l.top, "right": l.right, "bottom": l.bottom], "radius": l.radius, "radii": l.radii,
+                           "container": ["width": l.width, "height": l.height], "mode": l.mode, "pageHosted": l.hosted, "pageOutside": l.outside, "fills": l.fills]
+      if let panes { g["split"] = "s-fold"; g["panes"] = panes }
+      return g
+    }
+    let rel = { (r: CGRect) -> [Double] in [Double(r.minX - content.minX), Double(r.minY - content.minY), Double(r.width), Double(r.height)] }
+    let blursBefore = c.blurs.shown
+    c.pageSaid("layout", ["geometry": geometry([["id": "a", "rect": rel(left), "folded": true], ["id": "b", "rect": rel(right)]])])
+    let leftLocal = left.offsetBy(dx: -content.minX, dy: -content.minY)
+    check("a folded pane: its window blurred in its hole (one blur, its box from the content's top left), none before",
+          blursBefore.isEmpty && c.blurs.shown == [leftLocal], "before \(blursBefore), now \(c.blurs.shown) want \(leftLocal)")
+    let order = c.blurs.superview?.subviews ?? []
+    let at = { (v: NSView) in order.firstIndex { $0 === v } ?? -1 }
+    check("a folded pane: the blur over the ground and under the web view (the theme's card drawn over it), never taking an event",
+          at(c.ground) < at(c.blurs) && at(c.blurs) < at(c.webView) && at(c.ground) >= 0 && c.blurs.hitTest(CGPoint(x: leftLocal.midX, y: leftLocal.midY)) == nil,
+          "ground \(at(c.ground)) blurs \(at(c.blurs)) web \(at(c.webView))")
+    c.pageSaid("layout", ["geometry": geometry([["id": "a", "rect": rel(left)], ["id": "b", "rect": rel(right)]])])
+    check("unfolded: no blur", c.blurs.shown.isEmpty, "\(c.blurs.shown)")
+    c.pageSaid("layout", ["geometry": geometry([["id": "a", "rect": rel(left), "folded": true], ["id": "b", "rect": rel(right)]])])
+    c.pageSaid("layout", ["geometry": geometry(nil)])
+    check("no split laid out: no blur", c.blurs.shown.isEmpty, "\(c.blurs.shown)")
+  } else {
+    check("a folded pane: the page's layout known", false, "no layout")
+  }
+
   // ---- a card over main ----
   // (A still pointer over where the card's bar comes, in main's hole until then: the page's, through to main.)
   let overBar = CGPoint(x: cardRect.midX, y: cardRect.minY - 20)

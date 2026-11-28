@@ -554,7 +554,7 @@ impl<'de> Visitor<'de> for Panes<'_> {
         loop {
             if n < 4 {
                 if panes.len() <= n {
-                    panes.push(PagePane { item: String::new(), rect: Rect::ZERO });
+                    panes.push(PagePane { item: String::new(), rect: Rect::ZERO, folded: false });
                 }
                 match a.next_element_seed(Pane(&mut panes[n]))? {
                     None => break,
@@ -591,7 +591,8 @@ impl<'de> Visitor<'de> for Panes<'_> {
     }
 }
 
-/// One pane (`PagePane::from_json`): `{ id, rect: [x, y, width, height] }`, written into `out`; whether it's one.
+/// One pane (`PagePane::from_json`): `{ id, rect: [x, y, width, height], folded? }`, written into `out`; whether it's
+/// one.
 struct Pane<'a>(&'a mut PagePane);
 
 impl<'de> DeserializeSeed<'de> for Pane<'_> {
@@ -608,10 +609,11 @@ impl<'de> Visitor<'de> for Pane<'_> {
     }
     fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<bool, A::Error> {
         let pane = self.0;
-        let (mut id, mut rect) = (false, None);
+        let (mut id, mut rect, mut folded) = (false, None, false);
         while let Some(k) = a.next_key_seed(KeySeed(|k| match k {
             "id" => 0,
             "rect" => 1,
+            "folded" => 3,
             _ => 2,
         }))? {
             match k {
@@ -620,6 +622,7 @@ impl<'de> Visitor<'de> for Pane<'_> {
                     id = a.next_value_seed(text(|s| PagePane::id_ok(s) && (put(item, s), true).1))?;
                 }
                 1 => rect = a.next_value_seed(Box4)?,
+                3 => folded = a.next_value_seed(ScalarSeed)?.flag() == Some(true),
                 _ => a.next_value_seed(Skip)?,
             }
         }
@@ -628,6 +631,7 @@ impl<'de> Visitor<'de> for Pane<'_> {
             return Ok(false);
         }
         pane.rect = Rect::new(x, y, w, h);
+        pane.folded = folded;
         Ok(true)
     }
     fn visit_bool<E>(self, _: bool) -> Result<bool, E> {
@@ -850,6 +854,10 @@ mod tests {
             }
             if self.chance(0.2) {
                 keys.push(format!("\"extra\":{}", self.value(1)));
+            }
+            if self.chance(0.3) {
+                let f = self.pick(&["true", "false", "1", "0", "2", "\"true\"", "null"]).to_string();
+                keys.push(format!("\"folded\":{f}"));
             }
             if self.chance(0.1) {
                 keys.push("\"id\":\"t4\"".into());

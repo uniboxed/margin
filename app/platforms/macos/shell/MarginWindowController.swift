@@ -208,6 +208,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // as its last placing of the holes left it.
     var pageGround: NSColor? { let r = core.read; return r.has_ground ? NSColor(r.ground) : nil }
     let ground = WindowGroundView(frame: .zero)
+    let blurs = WindowBlurView(frame: .zero) // a split's folded panes' blurs, in the ground's holes (docs/FLEX-SPLIT.md step 1)
     // In front of what it hosts (keepFront, frontRead): how, another app's window it lets in front, and what was done
     // (the tests read the counts). The window server's word on a window's level (the dev hook's line); a test's stand-in
     // answers its own. Whether its window is on the current Space, and the clock (a test's stand-ins for both).
@@ -288,6 +289,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         ground.frame = content.bounds
         ground.autoresizingMask = [.width, .height]
         content.addSubview(ground)
+        blurs.frame = content.bounds
+        blurs.autoresizingMask = [.width, .height]
+        content.addSubview(blurs)
         webView.frame = content.bounds
         webView.autoresizingMask = [.width, .height]
         content.addSubview(webView)
@@ -991,10 +995,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             if panel.backgroundColor != fill { panel.backgroundColor = fill }
             ground.clear()
         }
+        placeBlurs()
         // The pointer's slot: the hole, less what the theme draws over it that takes the pointer (`hits`: the palette, a
         // menu, a notice) and the page card's rounded corners where the hole's are its; several: each one's hole (a
         // card's content alone while one is open). The core's (`PagePointer`).
         return placed(slot: out.slot, region: out.region)
+    }
+    // The folded panes' blurs where the core says (their holes), from the content's top left.
+    private func placeBlurs() {
+        let content = contentFrame
+        blurs.show(core.blurs(content: content).map { $0.offsetBy(dx: -content.minX, dy: -content.minY) })
     }
 
     // Where the hosted window goes while hosting: the page area from its own layout, measured in full screen at its
@@ -1895,6 +1905,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // (A split's panes laid out again with the page area where it was: a divider dragged, the axis or the order
             // changed. The session places the panes' windows, docs/PEEK-SPLIT.md §4.)
             if hosting, panesChanged { owner?.onPanes?(self) }
+            // (A pane folded or unfolded with no hole changed: its blur placed now.)
+            if panesChanged { placeBlurs() }
         case .peekRect(let next):
             // Where the theme draws the preview card page (overlay.ts reportPeekPage), in the window: the card's window goes there.
             guard next != cardRect else { return }

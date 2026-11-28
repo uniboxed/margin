@@ -252,6 +252,53 @@ fn several_hosts_holes() {
 }
 
 #[test]
+fn folded_panes_blurred_in_their_holes() {
+    // docs/FLEX-SPLIT.md step 1: a pane folded beside one opened to fit its app is blurred where its hole is, and
+    // nowhere Margin's ground is drawn.
+    let mut p = hosting();
+    p.set_hosted(Some(1));
+    p.settle(1.0);
+    let report = |folded: &str| {
+        format!(
+            r#"{{"insets":{{"left":248,"top":8,"right":8,"bottom":8}},"radius":10,"radii":[10,10,10,10],"container":{{"width":1512,"height":982}},"mode":"fullscreen","split":"s","panes":[{{"id":"a","rect":[248,8,96,966]{folded}}},{{"id":"b","rect":[352,8,1152,966]}}],"pageHosted":true}}"#
+        )
+        .into_bytes()
+    };
+    let a = Rect::new(248.0, 8.0, 96.0, 966.0);
+    let b = Rect::new(352.0, 8.0, 1152.0, 966.0);
+    assert!(p.set_layout_bytes(&report(r#","folded":true"#)).panes_changed);
+    p.place_hole(C);
+    assert!(p.blurs(C).is_empty(), "one host visible (the panes' windows not placed yet): none");
+    let shown = [
+        Shown { window: 1, rect: a, z: 0, role: role::PANE, focused: false },
+        Shown { window: 2, rect: b, z: 1, role: role::PANE, focused: true },
+    ];
+    p.set_visible(&shown);
+    // (The folded one's window cut at its minimum, the rest past the display's edge.)
+    p.set_frames([(1, Rect::new(-600.0, 8.0, 944.0, 966.0)), (2, b)]);
+    p.place_hole(C);
+    assert_eq!(p.blurs(C), vec![a], "its box, within its hole");
+    // Its window not reaching all of its box (still moving in): only where its hole is.
+    p.set_frames([(1, Rect::new(-600.0, 8.0, 900.0, 966.0)), (2, b)]);
+    p.place_hole(C);
+    assert_eq!(p.blurs(C), vec![Rect::new(248.0, 8.0, 52.0, 966.0)]);
+    // Not folded: none. Folded said otherwise than true: none.
+    for f in ["", r#","folded":false"#, r#","folded":"true""#, r#","folded":2"#] {
+        p.set_layout_bytes(&report(f));
+        p.place_hole(C);
+        assert!(p.blurs(C).is_empty(), "{f}");
+    }
+    p.set_layout_bytes(&report(r#","folded":1"#));
+    p.place_hole(C);
+    assert_eq!(p.blurs(C).len(), 1, "1 is a flag as the page's others are");
+    // Not shown (an item opening, the loader up): none.
+    p.set_loading(Some("Mail"), None);
+    p.settle(2.0);
+    p.place_hole(C);
+    assert!(p.blurs(C).is_empty(), "the loader up: none");
+}
+
+#[test]
 fn layout_reports() {
     let mut p = Page::default();
     assert!(!p.set_layout_bytes(b"{\"insets\":1}").taken);

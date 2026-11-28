@@ -492,6 +492,51 @@ final class WindowGroundView: NSView {
     }
 }
 
+// The blurs behind a split's folded panes' cards (docs/FLEX-SPLIT.md step 1): one behind-window material per rect (the
+// core's `margin_page_blurs`, from the top left of the content), in the ground's holes and under the web view, so the
+// hosted app's window shows through blurred and the theme's card is drawn over it. The window server draws the blur:
+// no permission, nothing private, nothing done per frame here but a frame set.
+final class WindowBlurView: NSView {
+    private(set) var rects: [CGRect] = []
+    private var views: [NSVisualEffectView] = []
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var isFlipped: Bool { true } // (the rects from the top left)
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil } // (under the web view: never the one that takes an event)
+
+    // How many blurs are shown, and where (the tests read it).
+    var shown: [CGRect] { zip(views, rects).filter { !$0.0.isHidden }.map(\.1) }
+
+    func show(_ list: [CGRect]) {
+        guard list != rects else { return }
+        rects = list
+        while views.count < list.count {
+            let v = NSVisualEffectView(frame: .zero)
+            v.blendingMode = .behindWindow
+            v.material = .fullScreenUI
+            v.state = .active
+            addSubview(v)
+            views.append(v)
+        }
+        for (i, v) in views.enumerated() {
+            if i < list.count {
+                if v.frame != list[i] { v.frame = list[i] }
+                if v.isHidden { v.isHidden = false }
+            } else if !v.isHidden {
+                v.isHidden = true
+            }
+        }
+    }
+}
+
 // The colours the page says it draws around the page card's corners (host-app.ts cornerFill, reported with the layout
 // as `fills`): the ground under the page area is the colour most of them have (the theme's frame). The rules are the
 // core's (core/page/fill.rs); here the colours as AppKit's.

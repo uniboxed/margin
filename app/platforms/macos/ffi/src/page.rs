@@ -1421,6 +1421,30 @@ pub unsafe extern "C" fn margin_page_holes(page: *const MarginPage, out: *mut Ma
     list.len()
 }
 
+/// Where folded panes' windows are blurred (`Page::blurs`, docs/FLEX-SPLIT.md step 1), on the screen, into `out` (room
+/// for `cap`): how many there are.
+///
+/// # Safety
+/// `page` null or a live page; `out` null or `cap` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_blurs(
+    page: *const MarginPage,
+    content: MarginRect,
+    out: *mut MarginRect,
+    cap: usize,
+) -> usize {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }) else { return 0 };
+    let list = p.page.blurs(content.into());
+    if !out.is_null() {
+        for (i, r) in list.iter().take(cap).enumerate() {
+            // SAFETY: the contract above.
+            unsafe { *out.add(i) = (*r).into() };
+        }
+    }
+    list.len()
+}
+
 /// The pane click tap's holes into `out` (room for `cap`): how many there are.
 ///
 /// # Safety
