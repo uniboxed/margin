@@ -58,11 +58,11 @@ test('the palette: an app named in full ranks first, above a tab of the same nam
   const rows = rankPalette(withApps(), 'mail', ctx);
   assert.equal(rows[0].id, 'app:com:apple:mail');
   assert.ok(rows.some((r) => r.kind === 'tab' && r.title === 'Mail'), 'the tab is still offered');
-  assert.equal(rows[1].kind, 'go', '"Search for …" right after the top hit');
+  assert.equal(rows[1].kind, 'go', 'the search right after the top hit');
   const { boost: _boost, ...row } = rows[0];
   assert.deepEqual(row, {
     id: 'app:com:apple:mail', kind: 'app', title: 'Mail', subtitle: '', favIconUrl: ICON, badge: 'App',
-    action: { perform: 'app.open', arg: { bundleId: 'com.apple.mail', name: 'Mail' } },
+    action: { perform: 'app.open', arg: { bundleId: 'com.apple.mail', name: 'Mail' } }, detail: '', completion: 'Mail',
   });
   // Case and spaces as typed don't matter.
   assert.equal(rankPalette(withApps(), '  VISUAL   studio code ', ctx)[0].id, 'app:com:microsoft:VSCode');

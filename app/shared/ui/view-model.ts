@@ -44,7 +44,9 @@ export type UiState = {
   mode?: WindowMode,
   focused?: boolean,
   sidebar?: SidebarState | null,
-  palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
+  palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean,
+    /** No completion in the field until the next character typed (a Backspace took it, as Arc's). */
+    noComplete?: boolean },
   toast?: { id: string, text: string } | null,
   /** The background mini player's sources (Margin.app's `media` push: overlay.ts), or one. */
   media?: MediaSource[] | MediaSource | null,
@@ -291,7 +293,16 @@ export type ViewModel = {
   tab: ActiveTab | null,
   archive: ArchiveRow[],
   hasArchive: boolean,
-  palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
+  palette: {
+    open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null,
+    /**
+     * As Arc's command bar (docs/ARC-COMMAND-BAR.md): the rest of the selected row's completion after what's typed (a
+     * site's domain, a suggestion's words), the field showing it selected after the typed text; '' for none (a row
+     * whose text doesn't start with what's typed, a search, just after a Backspace). `fieldIcon`: the selected row's
+     * picture for the field's icon (a site's), null for the magnifier.
+     */
+    completion: string, fieldIcon: string | null,
+  },
   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean, /** Arc's "+" (the theme's `--m-add-menu: arc`). */ arc: boolean } | null,
   picker: PickerVm | null,
   editing: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
@@ -501,7 +512,7 @@ function fresh(input: ViewModelInput): ViewModel {
       version: VM_VERSION, ready: false, window: win,
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', iconless: true, keys: [], hasKeys: false, profile: '', hasProfile: false, pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
-      palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
+      palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null, completion: '', fieldIcon: null },
       menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
       library: libraryView(ui.library, [], Date.now()), newSpace: null,
     };
@@ -722,6 +733,8 @@ function fresh(input: ViewModelInput): ViewModel {
   // The palette's rows: shared/search.ts ranks them, as Arcadia's palette.
   let rows: PaletteRow[] = [];
   let selected: string | null = null;
+  let completion = '';
+  let fieldIcon: string | null = null;
   if (paletteUi.open) {
     const items = rankPalette(state, paletteUi.query ?? '', paletteContext(ui, input.platform));
     const at = items.length ? Math.min(Math.max(0, paletteUi.selected ?? 0), items.length - 1) : -1;
@@ -732,7 +745,7 @@ function fresh(input: ViewModelInput): ViewModel {
         id: item.id,
         kind: item.kind,
         title: item.title ?? '',
-        subtitle: item.subtitle ?? '',
+        subtitle: item.detail ?? item.subtitle ?? '',
         badge: item.badge ?? '',
         // The badge's space's color ('' for Archived, Search…): a tag can match that space's chip.
         spaceColor: item.spaceColor ?? '',
@@ -752,6 +765,12 @@ function fresh(input: ViewModelInput): ViewModel {
       };
     });
     selected = at >= 0 ? items[at].id : null;
+    // (The selected row's completion of what's typed: only a text that starts with it, never just after a Backspace.)
+    const typed = paletteUi.query ?? '';
+    const pick = at >= 0 ? items[at] : null;
+    const whole = typeof pick?.completion === 'string' ? pick.completion : '';
+    if (typed && !paletteUi.noComplete && whole.length > typed.length && whole.toLowerCase().startsWith(typed.toLowerCase())) completion = whole.slice(typed.length);
+    fieldIcon = pick && !pick.search && pick.kind !== 'go' && checkIconUrl(pick.favIconUrl) ? pick.favIconUrl! : null;
   }
 
   // A context menu (ui/behaviors/menus.ts): its rows, from what it's for.
@@ -952,7 +971,7 @@ function fresh(input: ViewModelInput): ViewModel {
     tab,
     archive,
     hasArchive: !ui.settingsPage && archive.length > 0,
-    palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected },
+    palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected, completion, fieldIcon },
     menu,
     picker: ui.picker ? pickerView(ui.picker) : null,
     editing,
@@ -1110,7 +1129,9 @@ const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', favorite: 'Favorite'
 const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', theme: 'Space theme', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).
-const GOES = new Set(['tab', 'pin', 'archive', 'go', 'app']);
+// The rows with Arc's arrow box on the right: those that switch to something (a tab, a pin, an app); none on a past
+// page, a search or a suggestion (Arc's).
+const GOES = new Set(['tab', 'pin', 'app']);
 
 /**
  * What shared/search.ts ranks the palette for: this window and tab.

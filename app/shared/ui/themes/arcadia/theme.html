@@ -399,7 +399,11 @@
       <button class="backdrop" aria-label="Close the command bar" m-action="palette.close"></button>
       <div class="palette" role="dialog" aria-label="Margin command palette">
         <div class="search">
-          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z"></path><path d="M15.6 15.6 19.5 19.5"></path></svg>
+          <!-- The selected row's picture (a site's icon), as Arc's field shows it; else the magnifier. -->
+          <m-if test="palette.fieldIcon">
+            <img class="field-icon" alt="" m-icon="{{palette.fieldIcon}}">
+            <m-else><svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z"></path><path d="M15.6 15.6 19.5 19.5"></path></svg></m-else>
+          </m-if>
           <input class="query" type="text" m-input="palette" placeholder="Search or Enter URL…" aria-label="Command palette" spellcheck="false" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="margin-results">
         </div>
         <div class="results" id="margin-results" role="listbox">
@@ -407,6 +411,9 @@
             <!-- A run of rows from one place (iCloud Tabs: "On Nora's iPhone"): its heading. -->
             <m-if test="r.sectionStart"><div class="result-section" aria-hidden="true">{{r.section}}</div></m-if>
             <a class="result" role="option" data-id="{{r.id}}" title="{{r.title}}" m-attr:aria-selected="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
+                <m-if test="r.isSearch">
+                  <span class="avatar search-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z"></path><path d="M15.6 15.6 19.5 19.5"></path></svg></span>
+                  <m-else>
                 <m-if test="r.emoji">
                   <span class="avatar emoji">{{r.emoji}}</span>
                   <m-else>
@@ -414,6 +421,8 @@
                       <img class="avatar" alt="" m-class:app="{{r.isApp}}" m-icon="{{r.icon}}">
                       <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{r.color}}">{{r.letter}}</span></m-else>
                     </m-if>
+                  </m-else>
+                </m-if>
                   </m-else>
                 </m-if>
                 <span class="title">{{r.title}}</span>

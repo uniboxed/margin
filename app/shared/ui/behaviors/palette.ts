@@ -51,6 +51,15 @@ export function installPalette(rt: Rt) {
 
   rt.listen(container, 'keydown', (e: KeyboardEvent) => {
     if (!isField(e.target) || e.isComposing || !rt.ui.palette.open) return;
+    // → or End with the completion shown: taken, what's typed is the whole text now (the caret to its end, as usual).
+    if ((e.key === 'ArrowRight' || e.key === 'End') && !e.shiftKey && rt.vm?.palette.completion) {
+      const field = e.target as HTMLInputElement;
+      if (field.selectionEnd === field.value.length && field.selectionStart === (rt.ui.palette.query ?? '').length) {
+        rt.setUi({ palette: { ...rt.ui.palette, query: field.value, noComplete: true } });
+        rt.host.suggest?.(field.value);
+      }
+      return;
+    }
     if (e.key === 'ArrowDown' || (e.key === 'n' && e.ctrlKey)) move(1);
     else if (e.key === 'ArrowUp' || (e.key === 'p' && e.ctrlKey)) move(-1);
     else if (e.key === 'Enter') {
@@ -96,7 +105,10 @@ export function installPalette(rt: Rt) {
   return {
     onInput(name: string, value: string) {
       if (name !== 'palette' || !rt.ui.palette.open) return;
-      rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0 } });
+      // (What's typed now: a character typed over the completion replaced it; a Backspace took it, or a character, and
+      // no completion comes back until the next one typed, as Arc's.)
+      const shrank = value.length <= (rt.ui.palette.query ?? '').length;
+      rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0, noComplete: shrank } });
       rt.host.suggest?.(value); // (the engine's suggestions, where the host has them: Margin.app's window)
     },
     afterRender(vm: ViewModel) {
@@ -114,7 +126,12 @@ export function installPalette(rt: Rt) {
         const input = view.input('palette');
         if (input) {
           field = input;
-          if (input.value !== vm.palette.query) input.value = vm.palette.query;
+          // (What's typed, and the selected row's completion after it, selected: Arc's inline completion.)
+          const want = vm.palette.query + vm.palette.completion;
+          if (input.value !== want) {
+            input.value = want;
+            if (vm.palette.completion) input.setSelectionRange(vm.palette.query.length, want.length);
+          }
           if (!wasOpen) {
             const was = active();
             restoreFocus = was && !isField(was) ? was : null;
