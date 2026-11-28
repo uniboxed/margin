@@ -119,6 +119,10 @@ import MarginCore
 final class HostEngine {
     struct Options {
         var launchWait = 10.0 // the app's process after it's asked to start
+        // An app given its Dock icon in place so its window can go full screen (docked.rs): a regular app by then, its
+        // window's AXFullScreen settable by `dockReadWait` after that (each checked every `every`).
+        var dockWait = 1.0
+        var dockReadWait = 1.0
         var windowWait = 12.0 // its first window (Safari restoring windows can take a while)
         var fullScreenWait = 6.0
         var fullScreenAskAgain = 4.0 // a Safari copy's full screen asked once more if no Space came by then (as the kit did)
@@ -296,6 +300,10 @@ final class HostEngine {
         // The page area a member's frame was reserved for.
         var placedPage: CGRect? { get { model.rect(handle, .placedPage) } set { model.setRect(handle, .placedPage, newValue) } }
         var promoted = false
+        // Given its Dock icon by Margin (docked.rs): started with it, or made a regular app in place so its window goes
+        // full screen. Its own open and type change are Margin's, never said as an open from outside or a promotion.
+        var docked = false
+        var dockSaid = false // (why it wasn't given its Dock icon, said once)
         var outsideOpens = 0
         // Polls in a row its window's bounds didn't read.
         var unread: Int { get { Int(model.int(handle, .unread)) } set { model.setInt(handle, .unread, Int64(newValue)) } }
@@ -575,6 +583,12 @@ final class HostEngine {
     private var planned = false
     // The routes held per app (the hosting core's routes.rs), saved beside the marker: routes.json.
     private var routesURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("routes.json") }
+    // The person's "Hide apps from the Dock when Margin opens them" (Settings › Apps; the shell's: on unless turned off),
+    // asked at each start of an app. Off: every app Margin starts has its Dock icon (docked.rs).
+    var hidesFromDock: () -> Bool = { true }
+    static let hideFromDockKey = "hideAppsFromDock"
+    // The apps that go full screen only with their Dock icon (the hosting core's docked.rs), per version: docked.json.
+    private var dockedURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("docked.json") }
     // A host moved to a safer route (the loop guard stopped it, its full screen failed): for the sidebar's note.
     var onRoute: ((HostID, String) -> Void)?
     // Told when an app whose row was closed while it was asking something didn't quit (its sheet or alert holds it):
@@ -649,6 +663,7 @@ final class HostEngine {
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
         if let routesURL { core.loadRoutes(from: routesURL) }
         loadMinimums()
+        if let dockedURL { core.loadDocked(from: dockedURL) }
         // (Margin ending without its quit's steps: every app kept active let go before it does.)
         activeTerminate = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.releaseActivesNow(why: "Margin ends") }
@@ -948,7 +963,7 @@ final class HostEngine {
             _ = await self.awaitExits(of: bundleId)
             if let running = self.liveInstances(of: bundleId).first { return running }
             let arguments = bundleId == self.options.safariBundle ? self.options.safariArguments : self.options.appArguments
-            guard self.sys.launchDockless(bundleId: bundleId, arguments: arguments) else { return nil }
+            guard self.launchForHosting(bundleId, arguments: arguments).asked else { return nil }
             var found: HostApp?
             _ = await self.wait(self.options.launchWait) { found = self.liveInstances(of: bundleId).first; return found != nil }
             guard let found else { return nil }
@@ -994,7 +1009,7 @@ final class HostEngine {
             }
             self.leftSafariWindows.removeAll { $0.pid == pid } // (its windows went with it)
             let quit = self.ms(since: t0)
-            guard self.sys.launchDockless(bundleId: bundle, arguments: self.options.safariArguments) else { return .notRestarted("it quit, and couldn't be started again with no Dock icon") }
+            guard self.launchForHosting(bundle, arguments: self.options.safariArguments).asked else { return .notRestarted("it quit, and couldn't be started again") }
             var found: HostApp?
             _ = await self.wait(self.options.launchWait) { found = self.liveInstances(of: bundle).first; return found != nil }
             guard let found else { return .notRestarted("it quit, and didn't start again within \(Int(self.options.launchWait)) s") }
@@ -1296,7 +1311,7 @@ final class HostEngine {
         for host in hosts.values {
             // (The process gone: its app quit. kill(pid, 0) alone: a running-app lookup is a LaunchServices request a poll.)
             if !sys.processRuns(pid: host.pid) { appQuit(host.pid); continue }
-            if host.launchedByMargin, !host.promoted, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
+            if host.launchedByMargin, !host.promoted, !host.docked, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
             // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that
             // missed. Its unread reads counted by the core: twice in a row gone, one read can miss mid-transition.)
             let read: HostCore.PollRead = closedByItsApp(host) ? .closed : sys.bounds(window: host.window) == nil ? .unread : .read
@@ -2494,7 +2509,10 @@ final class HostEngine {
             Diagnostics.note("host: \(was.id) parked in \(ms(since: t0)) ms for \(id)'s first open")
             previous = was
         }
-        let result = await openNew(target)
+        var result = await openNew(target)
+        // (Given its Dock icon for nothing and quit: opened again at once, with none; docked.rs remembers it, `redocked`
+        // keeps it to once a session.)
+        if case .failed(.redock, _) = result { result = await openNew(target) }
         // (Given up for another item: that one's open is next, so the one before isn't shown again in between.)
         if case .failed(let step, _) = result, step != .superseded, let previous, previous.phase == .parked, shown == nil, hosts[previous.id] != nil {
             Diagnostics.note("host: \(previous.id) shown again after \(id)'s open failed")
@@ -2518,12 +2536,15 @@ final class HostEngine {
         let running = liveInstances(of: bundle)
         var app: HostApp
         var startedNow = false
+        var startedDocked = false
         if let first = running.first {
             // (An app the person opened is hosted as it is: never started again or quit, its Dock icon left.)
             app = first
         } else {
             let arguments = bundle == options.safariBundle ? options.safariArguments : options.appArguments
-            guard sys.launchDockless(bundleId: bundle, arguments: arguments) else { return fail(id, .launch, "\(bundle) couldn't be started with no Dock icon") }
+            let (asked, docked) = launchForHosting(bundle, arguments: arguments)
+            startedDocked = docked
+            guard asked else { return fail(id, .launch, "\(bundle) couldn't be started \(docked ? "with its Dock icon" : "with no Dock icon")") }
             var found: HostApp?
             _ = await wait(options.launchWait) { found = self.liveInstances(of: bundle).first; return found != nil }
             guard let found else { return fail(id, .launch, "\(bundle) didn't start within \(Int(options.launchWait)) s") }
@@ -2532,7 +2553,7 @@ final class HostEngine {
             launched[app.pid] = app
             saveMarker()
             let policy = sys.policy(pid: app.pid)
-            times.append("launch \(ms(since: started)) (\(policy == .accessory ? "no Dock icon" : "policy \(policy.map { "\($0)" } ?? "unknown")"))")
+            times.append("launch \(ms(since: started)) (\(policy == .accessory ? "no Dock icon" : docked ? (hidesFromDock() ? "with its Dock icon: it goes full screen only so" : "with its Dock icon: apps aren't hidden from the Dock") : "policy \(policy.map { "\($0)" } ?? "unknown")"))")
         }
 
         let windowStarted = sys.now()
@@ -2748,6 +2769,7 @@ final class HostEngine {
         let host = Host(model: core, app: appKey(target), id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
         host.bundleId = bundle
         host.appLaunchedAt = app.launchedAt
+        host.docked = startedDocked
         if case .app = target {
             if let info { host.mode = info.canFullScreen ? .fullScreen : .window; host.resizable = info.resizable } else { host.unseen = true }
         }
@@ -3239,6 +3261,61 @@ final class HostEngine {
 
     // How a host is shown: each of its points decided by the core (host/model/visible.rs `bring_in`), in turn, between
     // the same waits as before (a reopen, a take, a tile's sizing).
+    // An app started for hosting: with no Dock icon (the person's default: `hidesFromDock`), or with its Dock icon when
+    // they turned that off or the core knows it goes full screen only so at this version (docked.rs). (asked, docked)
+    private func launchForHosting(_ bundle: String, arguments: [String]) -> (asked: Bool, docked: Bool) {
+        let hide = hidesFromDock()
+        // (Its version on disk read only when it matters: apps hidden from the Dock, the core's memory per version.)
+        let docked = core.startsDocked(bundle, version: hide ? sys.appVersion(bundleId: bundle) : nil, hideFromDock: hide)
+        return (docked ? sys.launchDocked(bundleId: bundle, arguments: arguments) : sys.launchDockless(bundleId: bundle, arguments: arguments), docked)
+    }
+
+    // A window that can't go full screen only because Margin started its app with no Dock icon (the hosting core's
+    // docked.rs: an app's standard, resizable window, its app Margin's and dockless): the app given its Dock icon in
+    // place (LaunchServices' open of the running app), its window read again, full screen from now if it can; what it
+    // did kept for the app's version, so its next start is with its Dock icon (or, still unable, never given it again).
+    // Window mode as before when it doesn't take.
+    enum DockOutcome { case none, fullScreen, useless }
+    // Apps quit and opened again with no Dock icon this session (never given one again before Margin's next launch,
+    // whatever docked.json says: a loop's guard).
+    private var redocked: Set<String> = []
+    private func dockForFullScreen(_ host: Host) async -> DockOutcome {
+        // (Cheap first: a window-mode app's every switch passes here; only one Margin started with no Dock icon is read.)
+        // (Its version read: what it did is remembered, so one given its icon for nothing is never given it again.)
+        guard let bundle = host.bundleId, host.launchedByMargin, !host.docked, !redocked.contains(bundle), sys.policy(pid: host.pid) == .accessory,
+              let version = version(of: host.pid), let read = await sys.window(pid: host.pid, number: host.window) else { return .none }
+        guard core.giveDockIcon(bundle, version: version, launchedByMargin: host.launchedByMargin, dockless: true, window: read) else {
+            // (Said once per host: what the rule read, so a window-mode app that should have had its icon can be told.)
+            if !host.dockSaid {
+                host.dockSaid = true
+                Diagnostics.note("host: \(host.id): window mode with no Dock icon (\(bundle) \(version)): resizable \(read.resizable), green button \(read.zoomable), minimized \(read.minimized), full screen \(read.canFullScreen)")
+            }
+            return .none
+        }
+        let t0 = sys.now()
+        host.docked = true
+        guard sys.launchDocked(bundleId: bundle, arguments: options.appArguments) else {
+            host.docked = false
+            Diagnostics.note("host: \(host.id): its window can't go full screen with no Dock icon, and LaunchServices couldn't be asked to give \(bundle) its Dock icon: window mode")
+            return .none
+        }
+        guard await wait(options.dockWait, { self.sys.policy(pid: host.pid) == .regular }) else {
+            Diagnostics.note("host: \(host.id): \(bundle) asked for its Dock icon, still without it \(ms(since: t0)) ms on: window mode")
+            return .none
+        }
+        var now: HostWindow?
+        let can = await wait(options.dockReadWait, { now = await self.sys.window(pid: host.pid, number: host.window); return now?.canFullScreen == true })
+        if can {
+            host.mode = .fullScreen
+            if let now { host.resizable = now.resizable }
+            saveMarker()
+        }
+        if core.dockedResult(bundle, version: version, needs: can), let dockedURL { core.saveDocked(to: dockedURL) }
+        if !can { redocked.insert(bundle) }
+        Diagnostics.note("host: \(host.id): its window couldn't go full screen with no Dock icon: \(bundle) \(version) given its Dock icon \(ms(since: t0)) ms" + (can ? ", full screen from now (started with its Dock icon from its next start)" : ", still not full screen: quit and opened again with none (never given it again at this version)"))
+        return can ? .fullScreen : .useless
+    }
+
     private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
         jumps = 0
         // (Shown again after a close its prompt held off: Margin's as before, its quit no longer waited on.)
@@ -3272,6 +3349,10 @@ final class HostEngine {
                 return fail(host.id, failed, why)
             }
             return await giveUp(host, isNew: isNew, failed, why, previous: nil)
+        }
+        if isApp, host.mode == .window, await dockForFullScreen(host) == .useless {
+            await closeNow(host.id, why: "given its Dock icon, its window still couldn't go full screen: opened again with none", quiet: true)
+            return .failed(.redock, "its Dock icon didn't let it go full screen")
         }
         switch core.bringIn(host.handle, .route, isNew: isNew, retrying: retrying, preparing: preparing) {
         case .fullScreenAgain:
@@ -5826,7 +5907,8 @@ final class HostEngine {
     // app doesn't quit) but on its Desktop; at Margin's quit what isn't done is kept for the marker (`leftWindows`).
     // `.waited` (a failed open): its exit waited for. Each step's time is in the log line.
     enum CloseExit { case waited, watched, atQuit }
-    private func closeNow(_ id: HostID, why: String, exit: CloseExit = .waited) async {
+    // `quiet`: not said to the session (`closed`): its open goes on (a redock, docked.rs).
+    private func closeNow(_ id: HostID, why: String, exit: CloseExit = .waited, quiet: Bool = false) async {
         guard let host = hosts[id] else { return }
         // A row closed while its app is asking something (a sheet or an alert of its own on screen): a Mac app does nothing
         // else until it's answered (Books, 2026-11-18 23:21: out of full screen not taken for 7 s, its close button
@@ -5926,7 +6008,7 @@ final class HostEngine {
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
         Diagnostics.note("host: \(id) closed (\(why)) in \(ms(since: started)) ms\(times.isEmpty ? "" : " (" + times.joined(separator: ", ") + ")")")
-        emit(.closed(id))
+        if !quiet { emit(.closed(id)) }
     }
 
     // A window's kind as the observed model has it (the tests read it).
@@ -6287,11 +6369,11 @@ final class HostEngine {
     private func heard(_ code: Int32, pid: pid_t) {
         for host in hosts.values where host.pid == pid {
             switch code {
-            case HostCalls.openRequestCode:
+            case HostCalls.openRequestCode where !host.docked:
                 host.outsideOpens += 1
                 Diagnostics.note("host: \(host.id): opened from outside (LaunchServices \(code)): kept hosted")
                 emit(.outsideOpen(host.id))
-            case HostCalls.promotedCode where host.launchedByMargin && !host.promoted:
+            case HostCalls.promotedCode where host.launchedByMargin && !host.promoted && !host.docked:
                 // (LaunchServices' 561 says its type changed, not to what: an iPad app quitting makes itself a background
                 // app first, seen 2026-11-15 with FaceTime, the Dock saying "App background type did not change". A
                 // promotion whose policy reads regular only later is the poll's.)

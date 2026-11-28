@@ -153,6 +153,34 @@ pub enum Request {
     SaveMinimums,
     /// The apps a minimum is kept for (any version).
     MinimumApps,
+    /// The apps that go full screen only with their Dock icon, as read from docked.json (at launch); `SaveDocked`: to write.
+    LoadDocked {
+        docked: Value,
+    },
+    SaveDocked,
+    /// Whether `bundle` (its version on disk, null: unread) is started with its Dock icon (docked.rs); `hideFromDock`:
+    /// the person's setting (on unless said).
+    #[serde(rename_all = "camelCase")]
+    StartsDocked {
+        bundle: String,
+        #[serde(default)]
+        version: Option<String>,
+        #[serde(default = "yes")]
+        hide_from_dock: bool,
+    },
+    /// Whether a window that can't go full screen is worth its app's Dock icon (docked.rs's rule).
+    GiveDockIcon {
+        bundle: String,
+        #[serde(default)]
+        version: Option<String>,
+        facts: super::docked::DockFacts,
+    },
+    /// What its Dock icon did: its window went full screen with it (`needs`), or still couldn't.
+    DockedResult {
+        bundle: String,
+        version: String,
+        needs: bool,
+    },
     /// What the model's decisions read of the engine's options (sent whenever they change).
     #[serde(rename_all = "camelCase")]
     Configure {
@@ -405,6 +433,23 @@ impl HostCore {
             },
             Request::SaveMinimums => json!({ "minimums": self.model.minimums.to_json() }),
             Request::MinimumApps => json!({ "apps": self.model.minimums.by_app.keys().collect::<Vec<_>>() }),
+            Request::LoadDocked { docked } => match super::docked::DockedApps::load(&docked) {
+                Some(d) => {
+                    self.driver.docked = d;
+                    json!({ "loaded": self.driver.docked.by_app.len() })
+                }
+                None => json!({ "loaded": null }),
+            },
+            Request::SaveDocked => json!({ "docked": self.driver.docked.to_json() }),
+            Request::StartsDocked { bundle, version, hide_from_dock } => {
+                json!({ "docked": self.driver.docked.starts_docked(&bundle, version.as_deref(), hide_from_dock) })
+            }
+            Request::GiveDockIcon { bundle, version, facts } => {
+                json!({ "give": self.driver.docked.give_dock_icon(&bundle, version.as_deref(), &facts) })
+            }
+            Request::DockedResult { bundle, version, needs } => {
+                json!({ "remembered": self.driver.docked.remember(&bundle, &version, needs) })
+            }
             Request::Configure { tolerance, toolbar_room, returns_max, returns_within } => {
                 self.model.opts = ModelOptions { tolerance, toolbar_room };
                 self.model.limits = super::model::Limits { returns_max, returns_within };
@@ -626,6 +671,55 @@ mod tests {
         // Not the file's shape: nothing taken, nothing lost.
         assert_eq!(call(&mut fresh, json!({ "type": "loadMinimums", "minimums": [1] }))["loaded"], Value::Null);
         assert_eq!(fresh.model.minimums, core.model.minimums);
+    }
+
+    #[test]
+    fn docked_apps_through_the_api() {
+        let mut core = HostCore::new();
+        let facts = json!({"app": true, "launchedByMargin": true, "dockless": true, "canFullScreen": false, "resizable": true, "zoomable": true, "minimized": false});
+        let give = |core: &mut HostCore, v: &str| {
+            call(core, json!({ "type": "giveDockIcon", "bundle": "com.apple.Music", "version": v, "facts": facts }))["give"].clone()
+        };
+        assert_eq!(give(&mut core, "1.6"), json!(true));
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"],
+            json!(false)
+        );
+        assert_eq!(
+            call(
+                &mut core,
+                json!({ "type": "dockedResult", "bundle": "com.apple.Music", "version": "1.6", "needs": true })
+            )["remembered"],
+            json!(true)
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"],
+            json!(true)
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Music" }))["docked"],
+            json!(false),
+            "version unread"
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "startsDocked", "bundle": "com.apple.Notes", "hideFromDock": false }))["docked"],
+            json!(true),
+            "apps not hidden: every one"
+        );
+        let saved = call(&mut core, json!({ "type": "saveDocked" }));
+        let mut fresh = HostCore::new();
+        assert_eq!(call(&mut fresh, json!({ "type": "loadDocked", "docked": saved["docked"] }))["loaded"], json!(1));
+        assert_eq!(
+            call(&mut fresh, json!({ "type": "startsDocked", "bundle": "com.apple.Music", "version": "1.6" }))["docked"],
+            json!(true)
+        );
+        assert_eq!(call(&mut fresh, json!({ "type": "loadDocked", "docked": [1] }))["loaded"], Value::Null);
+        // Given it and still unable: never again for that version.
+        call(
+            &mut core,
+            json!({ "type": "dockedResult", "bundle": "com.apple.Music", "version": "1.6", "needs": false }),
+        );
+        assert_eq!(give(&mut core, "1.6"), json!(false));
     }
 
     #[test]

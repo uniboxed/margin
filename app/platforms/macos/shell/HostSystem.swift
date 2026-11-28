@@ -26,6 +26,11 @@ protocol HostSystem: AnyObject {
     func policy(pid: pid_t) -> HostPolicy?
     // Started with no Dock icon (only a fresh launch). True: asked; the engine waits for its pid.
     func launchDockless(bundleId: String, arguments: [String]) -> Bool
+    // Opened with its Dock icon (docked.rs): a fresh launch, or a running instance started with no Dock icon made a
+    // regular app in place. True: asked.
+    func launchDocked(bundleId: String, arguments: [String]) -> Bool
+    // An installed app's version on disk ("short (build)", as `appVersion(pid:)`; nil: unread), before it runs.
+    func appVersion(bundleId: String) -> String?
     func terminate(pid: pid_t) -> Bool // a polite quit (the app may ask about unsaved work), never a forced one
     // Whether the app keeps its windows across a quit (reopens them at its next launch): its own
     // NSQuitAlwaysKeepsWindows, else the person's (System Settings › Desktop & Dock › "Close windows when quitting an
@@ -206,6 +211,9 @@ extension HostSystem {
     // (A stand-in that doesn't play it: unread.)
     func launchArguments(pid: pid_t) -> [String]? { nil }
     func appVersion(pid: pid_t) -> String? { nil }
+    func appVersion(bundleId: String) -> String? { nil }
+    // (A stand-in that doesn't play it: never given.)
+    func launchDocked(bundleId: String, arguments: [String]) -> Bool { false }
     func launching(pid: pid_t, for seconds: Double) {}
     // (A stand-in that doesn't play it: not sent.)
     func reopen(pid: pid_t) -> Bool { false }
@@ -283,12 +291,21 @@ nonisolated final class HostAX: @unchecked Sendable {
     }
 
     // A window Margin can host: a standard one, or one whose AXFullScreen is settable. Nil: neither, or gone.
+    // Its green button there and enabled (the zoom button an app with no Dock icon has, or the full-screen one).
+    private func zoomable(_ w: AXUIElement) -> Bool {
+        for name in [kAXZoomButtonAttribute as String, kAXFullScreenButtonAttribute as String] {
+            guard let v = attr(w, name), CFGetTypeID(v) == AXUIElementGetTypeID() else { continue }
+            if (attr(v as! AXUIElement, kAXEnabledAttribute) as? Bool) != false { return true }
+        }
+        return false
+    }
+
     private func describe(_ w: AXUIElement, _ number: Int) -> HostWindow? {
         guard (attr(w, kAXRoleAttribute) as? String) == kAXWindowRole else { return nil }
         let fullScreen = settable(w, "AXFullScreen")
         guard fullScreen || (attr(w, kAXSubroleAttribute) as? String) == kAXStandardWindowSubrole else { return nil }
         return HostWindow(number: number, fullScreen: (attr(w, "AXFullScreen") as? Bool) == true, canFullScreen: fullScreen,
-                          resizable: settable(w, kAXSizeAttribute), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true)
+                          resizable: settable(w, kAXSizeAttribute), zoomable: zoomable(w), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true)
     }
 
     // Any element of the app's whose window number is `number`: its windows, its main and focused ones, its children.
@@ -297,7 +314,7 @@ nonisolated final class HostAX: @unchecked Sendable {
         func loose(_ w: AXUIElement) -> HostWindow {
             let role = [attr(w, kAXRoleAttribute) as? String, attr(w, kAXSubroleAttribute) as? String].compactMap { $0 }.joined(separator: "/")
             return HostWindow(number: number, fullScreen: (attr(w, "AXFullScreen") as? Bool) == true, canFullScreen: settable(w, "AXFullScreen"),
-                              resizable: settable(w, kAXSizeAttribute), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true, role: role.isEmpty ? nil : role)
+                              resizable: settable(w, kAXSizeAttribute), zoomable: zoomable(w), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true, role: role.isEmpty ? nil : role)
         }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, timeout(pid))
@@ -757,6 +774,13 @@ final class RealHostSystem: HostSystem {
         }
     }
 
+    func launchDocked(bundleId: String, arguments: [String]) -> Bool {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return false }
+        return calls.launchDocked(url, arguments: arguments) { ok in
+            if !ok { Task { @MainActor in Diagnostics.note("host: LaunchServices' open of \(bundleId) with its Dock icon answered no (a running instance it made a regular app may answer so)") } }
+        }
+    }
+
     // Whether an instance already running stops a launch: only one whose process still runs. NSWorkspace can still list
     // an app for a moment after its process ended (2026-11-20 12:16:42: Weather's exit heard, its new launch refused
     // 2 ms on, "couldn't be started with no Dock icon"); the engine waits for that exit, then launches.
@@ -801,6 +825,10 @@ final class RealHostSystem: HostSystem {
     func launching(pid: pid_t, for seconds: Double) { ax.launching(pid: pid, for: seconds) }
     func appVersion(pid: pid_t) -> String? {
         guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return nil }
+        return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
+    }
+    func appVersion(bundleId: String) -> String? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId), let info = Bundle(url: url)?.infoDictionary else { return nil }
         return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
     }
     func keepsWindowsAtQuit(pid: pid_t) -> Bool {

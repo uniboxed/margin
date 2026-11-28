@@ -465,6 +465,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   (platform.features as any).newSplit = true;
   // The palette's search in Margin.app's own window (core/session/suggest.rs): the engine macOS names, its suggestions.
   (platform.features as any).appSearch = appWindow;
+  // Apps opened in Margin.app's window on the Mac hidden from the Dock (Settings › Apps; host/docked.rs).
+  (platform.features as any).appDock = appWindow && platform.os === 'mac';
   // The window's tabs loading, as the copy last said (`push` `loading`).
   let loading: Set<number> = new Set();
   let failure: { type: string, error: string, at: number } | null = null;

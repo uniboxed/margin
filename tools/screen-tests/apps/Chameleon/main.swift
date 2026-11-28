@@ -108,7 +108,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
         w.title = "\(copyName) \(kind.rawValue)"
         w.isReleasedWhenClosed = false
         w.delegate = self
-        w.collectionBehavior = switches.noFullScreen ? [.fullScreenNone] : [.fullScreenPrimary]
+        w.collectionBehavior = switches.noFullScreen ? [.fullScreenNone] : switches.implicitFullScreen ? [] : [.fullScreenPrimary]
         let tb = NSToolbar(identifier: "chameleon-\(kind.rawValue)"); tb.delegate = self; tb.displayMode = .iconOnly; w.toolbar = tb; w.toolbarStyle = .unified
         let g = Grid(frame: w.contentView!.bounds); g.label = "\(copyName) \(kind.rawValue)"; g.autoresizingMask = [.width, .height]; w.contentView!.addSubview(g)
         let field = NSTextField(string: ""); field.placeholderString = "type here"; field.frame = NSRect(x: 30, y: 150, width: 320, height: 28); field.delegate = self; g.addSubview(field)

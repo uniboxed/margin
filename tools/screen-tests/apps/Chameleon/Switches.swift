@@ -31,6 +31,9 @@
 //                  settings one: centred 520×420, or 1000×800 at the screen's top left (over Margin's sidebar), or
 //                  that frame (top-left coordinates); at launch or <s> after, for <s> or for good.
 //   noFullScreen   YES                    its windows can't go full screen (no full-screen button).
+//   implicitFullScreen YES                its windows leave full screen to AppKit's implicit rule (no collection
+//                  behaviour of their own: Music, Reminders, App Store): refused while it has no Dock icon, allowed with
+//                  one (Margin gives it its Dock icon: the hosting core's docked.rs).
 //   fixedSize      YES | <w>x<h>          its main window can't be resized (400×300 by default).
 //   minSize        <w>x<h>                its main window's own minimum content size (AppKit's `contentMinSize`; with a
 //                  full-size content view that's its frame's): a full-screen tile narrower than it can't hold it (Weather,
@@ -75,13 +78,14 @@ struct ChameleonSwitches: Equatable {
     var strip: Strip?
     var auxiliary: Auxiliary?
     var noFullScreen = false
+    var implicitFullScreen = false
     var fixedSize: CGSize?
     var minSize: CGSize?
     var extraWindow: Extra?
     var errors: [String] = []
 
     static let names = ["restore", "windowless", "autoTerminate", "dialogMain", "ordersOut", "replacesWindow", "axBusy",
-                        "strip", "auxiliary", "noFullScreen", "fixedSize", "minSize", "extraWindow"]
+                        "strip", "auxiliary", "noFullScreen", "implicitFullScreen", "fixedSize", "minSize", "extraWindow"]
     // The defaults key of a switch: `Chameleon` and its name with a capital (ChameleonAxBusy).
     static func key(_ name: String) -> String { "Chameleon" + name.prefix(1).uppercased() + name.dropFirst() }
     // Keys the suite also sets: the priming launch (`restore` by the system), and where the app logs.
@@ -214,6 +218,9 @@ struct ChameleonSwitches: Equatable {
         case "noFullScreen":
             guard Self.isYes(text) else { return false }
             noFullScreen = true
+        case "implicitFullScreen":
+            guard Self.isYes(text) else { return false }
+            implicitFullScreen = true
         case "fixedSize":
             if Self.isYes(text) { fixedSize = Self.defaultFixedSize; return true }
             guard let sz = Self.size(Substring(text)) else { return false }
@@ -256,6 +263,7 @@ struct ChameleonSwitches: Equatable {
             out.append("auxiliary=" + t)
         }
         if noFullScreen { out.append("noFullScreen=YES") }
+        if implicitFullScreen { out.append("implicitFullScreen=YES") }
         if let f = fixedSize { out.append("fixedSize=\(Int(f.width))x\(Int(f.height))") }
         if let m = minSize { out.append("minSize=\(Int(m.width))x\(Int(m.height))") }
         switch extraWindow { case .menu?: out.append("extraWindow=menu"); case .at(let s)?: out.append("extraWindow=at:\(n(s))"); case nil: break }

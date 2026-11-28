@@ -129,6 +129,10 @@ nonisolated enum HostStep: String, Sendable, Codable {
     case quit
     case windowMode = "window mode" // its window into Margin's Space as a window (one that can't go full screen)
     case superseded // its first open given up while its window was awaited: another item was picked in the meantime
+    // Given its Dock icon for full screen and still unable (docked.rs): quit and opened again with none (an app with a Dock
+    // icon whose window can't go full screen isn't shown in Margin's full-screen Space: seen 2026-11-28). Never said:
+    // the open goes on at once.
+    case redock = "opened again with no Dock icon"
 }
 
 // How a host is shown, Margin's window its whole width below it either way. `fullScreen`: its window full screen in a
@@ -183,6 +187,10 @@ nonisolated struct HostWindow: Equatable, Sendable {
     let fullScreen: Bool
     var canFullScreen = true // AXFullScreen settable (no: shown in window mode)
     var resizable = true // AXSize settable (no: a fixed-size window, only moved)
+    // Its green button there and enabled (AXZoomButton or AXFullScreenButton): a titled window AppKit's own full-screen
+    // rule looks at (a dialog or panel has none). An app with no Dock icon reports its main window as an AXDialog, so
+    // the subrole can't tell (seen 2026-11-28, the real-screen suite's implicitFullScreen).
+    var zoomable = true
     var minimized = false
     var role: String? = nil // its role and subrole, when found by its number (for the log)
 }

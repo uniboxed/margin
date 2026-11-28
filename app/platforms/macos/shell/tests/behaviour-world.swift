@@ -530,7 +530,7 @@ func switchesParsingTests() {
     check("chameleon switches: values that don't parse are off and named", bad.restore == nil && bad.axBusy == nil && bad.ordersOut == nil && bad.strip == nil && bad.fixedSize == nil && bad.autoTerminate == nil && bad.errors.count == 6, "\(bad.errors)")
     check("chameleon switches: read from defaults' types (a bool, a number, a string)", ChameleonSwitches.read { k in ["ChameleonDialogMain": NSNumber(value: true), "ChameleonAxBusy": NSNumber(value: 2.5), "ChameleonOrdersOut": "untilActive"][k] }
           == ChameleonSwitches.parse(["dialogMain": "YES", "axBusy": "2.5", "ordersOut": "untilActive"]))
-    check("chameleon switches: keys", ChameleonSwitches.key("axBusy") == "ChameleonAxBusy" && ChameleonSwitches.names.count == 13)
+    check("chameleon switches: keys", ChameleonSwitches.key("axBusy") == "ChameleonAxBusy" && ChameleonSwitches.names.count == 14 && ChameleonSwitches.key("implicitFullScreen") == "ChameleonImplicitFullScreen")
     let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
     check("chameleon geometry: the strip across the screen's top under the menu bar, 88 tall", ChameleonSwitches.stripFrame(screen: screen, menuBar: 33) == CGRect(x: 0, y: 33, width: 1512, height: 88))
     check("chameleon geometry: the sidebar auxiliary over the screen's left part, the settings one centred", ChameleonSwitches.auxiliaryFrame(.sidebar, screen: screen, menuBar: 33) == CGRect(x: 0, y: 33, width: 1000, height: 800)

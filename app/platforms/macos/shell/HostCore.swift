@@ -217,6 +217,29 @@ nonisolated final class HostCore: @unchecked Sendable {
     }
     // The apps a minimum is kept for (rare: the page told every app's).
     func minimumApps() -> [String] { call(["type": "minimumApps"])["apps"] as? [String] ?? [] }
+    // ---- apps that go full screen only with their Dock icon (host/docked.rs), docked.json beside routes.json ----
+    func loadDocked(from url: URL) {
+        guard let data = try? Data(contentsOf: url), let docked = try? JSONSerialization.jsonObject(with: data) else { return }
+        _ = call(["type": "loadDocked", "docked": docked])
+    }
+    func saveDocked(to url: URL) {
+        guard let docked = call(["type": "saveDocked"])["docked"], JSONSerialization.isValidJSONObject(docked),
+              let data = try? JSONSerialization.data(withJSONObject: docked, options: [.sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+    }
+    func startsDocked(_ bundle: String, version: String?, hideFromDock: Bool) -> Bool {
+        call(["type": "startsDocked", "bundle": bundle, "version": version as Any? ?? NSNull(), "hideFromDock": hideFromDock])["docked"] as? Bool ?? false
+    }
+    func giveDockIcon(_ bundle: String, version: String?, launchedByMargin: Bool, dockless: Bool, window w: HostWindow) -> Bool {
+        let facts: [String: Any] = ["app": true, "launchedByMargin": launchedByMargin, "dockless": dockless, "canFullScreen": w.canFullScreen,
+                                    "resizable": w.resizable, "zoomable": w.zoomable, "minimized": w.minimized]
+        return call(["type": "giveDockIcon", "bundle": bundle, "version": version as Any? ?? NSNull(), "facts": facts])["give"] as? Bool ?? false
+    }
+    func dockedResult(_ bundle: String, version: String, needs: Bool) -> Bool {
+        call(["type": "dockedResult", "bundle": bundle, "version": version, "needs": needs])["remembered"] as? Bool ?? false
+    }
+
     // minimums.json beside routes.json: read at launch, written after a change (as the routes are; the core's JSON).
     func loadMinimums(from url: URL) {
         guard let data = try? Data(contentsOf: url), let minimums = try? JSONSerialization.jsonObject(with: data) else { return }

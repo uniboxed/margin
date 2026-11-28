@@ -35,6 +35,9 @@ final class FakeHostWorld: HostSystem {
     var installed: Set<String> = ["com.apple.TextEdit", "com.apple.Notes", "com.apple.Safari", "com.apple.FaceTime", "com.apple.calculator", "com.apple.mobilephone"]
     // Apps whose windows can't go full screen (started with no Dock icon, as on the real Mac), a fixed size's, limits.
     var notFullScreen: Set<String> = ["com.apple.FaceTime", "com.apple.calculator", "com.apple.mobilephone"]
+    // Apps whose windows go full screen only with their Dock icon (AppKit's implicit rule, docked.rs): refused while the
+    // app is an accessory one, allowed once it's a regular one (started so, or made so by an open: `launchDocked`).
+    var dockFullScreen: Set<String> = []
     var fixedSize: [String: CGSize] = ["com.apple.calculator": CGSize(width: 230, height: 408)]
     var maxSize: [String: CGSize] = [:]
     var minSize: [String: CGSize] = [:]
@@ -247,7 +250,7 @@ final class FakeHostWorld: HostSystem {
             let n = nextWindow
             nextWindow += 1
             var win = Win(pid: pid, spaces: [Self.desktop])
-            win.canFullScreen = !notFullScreen.contains(a.bundle)
+            win.canFullScreen = !notFullScreen.contains(a.bundle) && !(dockFullScreen.contains(a.bundle) && a.policy == .accessory)
             wins[n] = win
             apps[pid]?.windows = [n]
         }
@@ -590,7 +593,7 @@ final class FakeHostWorld: HostSystem {
             let n = nextWindow
             nextWindow += 1
             var win = Win(pid: pid, spaces: [Self.desktop])
-            win.canFullScreen = !notFullScreen.contains(bundle)
+            win.canFullScreen = !notFullScreen.contains(bundle) && !(dockFullScreen.contains(bundle) && policy == .accessory)
             if let size = fixedSize[bundle] { win.resizable = false; win.frame = CGRect(origin: CGPoint(x: 400, y: 300), size: size) }
             win.maxSize = maxSize[bundle]
             win.minSize = minSize[bundle]
@@ -601,6 +604,21 @@ final class FakeHostWorld: HostSystem {
         apps[pid] = App(pid: pid, bundle: bundle, launchedAt: 1_000_000 + Double(pid), policy: policy, windows: list)
         return pid
     }
+    // (Only an app of `dockFullScreen` plays it: any other answers no, as the protocol's default.)
+    func launchDocked(bundleId: String, arguments: [String]) -> Bool {
+        guard !fail.contains("launch"), installed.contains(bundleId), dockFullScreen.contains(bundleId) else { return false }
+        calls.append("dock \(bundleId)")
+        lastArguments = arguments
+        if let running = apps.values.first(where: { $0.bundle == bundleId && !lsGone.contains($0.pid) }) {
+            apps[running.pid]?.policy = .regular
+            for n in running.windows { wins[n]?.canFullScreen = !notFullScreen.contains(bundleId) }
+            return true
+        }
+        let pid = start(bundleId, policy: .regular, windows: launchWindows)
+        argumentsOf[pid] = arguments
+        return true
+    }
+    func appVersion(bundleId: String) -> String? { appVersions[bundleId] }
     func launchDockless(bundleId: String, arguments: [String]) -> Bool {
         calls.append("launch \(bundleId)")
         lastArguments = arguments
@@ -3072,6 +3090,92 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let h = Hooks()
         e.hostedWindow = { h.above.append($0) }
         return h
+    }
+
+    // ---- an app whose window goes full screen only with its Dock icon (AppKit's implicit rule; docked.rs) ----
+    do {
+        let (w, e, marker) = world()
+        w.dockFullScreen = ["com.apple.Notes"]
+        w.appVersions["com.apple.Notes"] = "4.12 (2700)"
+        let r = open(e, notes)
+        let p = pid(w, "com.apple.Notes"), n = window(w, "com.apple.Notes")
+        check("dock for full screen: started with no Dock icon, its window refused full screen, given its Dock icon in place (the same process), shown full screen",
+              r == .shown(notes.id, placed: true) && e.mode(of: notes.id) == .fullScreen && w.apps[p]?.policy == .regular
+              && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 1 && at(w, "launch com.apple.Notes") < at(w, "dock com.apple.Notes")
+              && at(w, "dock com.apple.Notes") < (w.calls.firstIndex { $0.hasPrefix("fullScreen true") } ?? -1) && clean(w), "\(String(describing: r)) \(w.calls)")
+        check("dock for full screen: its app's arguments kept (its title strip, automatic termination)", w.lastArguments == ["-NSMenuEnableMenuBarAgent", "NO", "-NSDisableAutomaticTermination", "YES"], "\(w.lastArguments)")
+        let docked = marker.deletingLastPathComponent().appendingPathComponent("docked.json")
+        let saved = (try? Data(contentsOf: docked)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String: Any]] }
+        check("dock for full screen: remembered for its version (docked.json)", saved?["com.apple.Notes"]?["version"] as? String == "4.12 (2700)" && saved?["com.apple.Notes"]?["needs"] as? Bool == true, "\(String(describing: saved))")
+        hostRun { await e.close(notes.id) }
+        _ = n
+        // Its next start: with its Dock icon from the start, full screen with no switch in place.
+        w.calls.removeAll()
+        let again = open(e, notes)
+        let p2 = pid(w, "com.apple.Notes")
+        check("dock for full screen: its next start is with its Dock icon, full screen at once",
+              again == .shown(notes.id, placed: true) && e.mode(of: notes.id) == .fullScreen && w.apps[p2]?.policy == .regular && p2 != p
+              && !w.calls.contains("launch com.apple.Notes") && w.calls.filter { $0 == "dock com.apple.Notes" }.count == 1, "\(String(describing: again)) \(w.calls)")
+        hostRun { await e.close(notes.id) }
+        // Another version: learnt again (started with no Dock icon).
+        w.appVersions["com.apple.Notes"] = "4.13 (2750)"
+        w.calls.removeAll()
+        _ = open(e, notes)
+        check("dock for full screen: another version learnt again (started with no Dock icon, given it in place)", w.calls.contains("launch com.apple.Notes") && w.calls.contains("dock com.apple.Notes") && e.mode(of: notes.id) == .fullScreen, "\(w.calls)")
+        hostRun { await e.close(notes.id) }
+    }
+    // A window that can't go full screen even with its Dock icon: window mode, never given it again at that version.
+    do {
+        let (w, e, marker) = world()
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        w.dockFullScreen = ["com.apple.Notes"]
+        w.notFullScreen.insert("com.apple.Notes")
+        w.appVersions["com.apple.Notes"] = "4.12 (2700)"
+        let r = open(e, notes)
+        let p = pid(w, "com.apple.Notes")
+        check("dock for full screen, still unable: quit and opened again with no Dock icon, shown in window mode (never said as a failure)",
+              r == .shown(notes.id, placed: true) && e.mode(of: notes.id) == .window && w.apps[p]?.policy == .accessory
+              && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 2 && w.calls.filter { $0 == "dock com.apple.Notes" }.count == 1
+              && at(w, "dock com.apple.Notes") < (w.calls.lastIndex(of: "launch com.apple.Notes") ?? -1), "\(String(describing: r)) \(w.calls)")
+        check("dock for full screen, still unable: its quit never said to the session as a close or a failure", !events.contains(.closed(notes.id)) && !events.contains { if case .failed = $0 { return true }; return false }, "\(events)")
+        let saved = (try? Data(contentsOf: marker.deletingLastPathComponent().appendingPathComponent("docked.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String: Any]] }
+        check("dock for full screen, still unable: remembered as no use", saved?["com.apple.Notes"]?["needs"] as? Bool == false, "\(String(describing: saved))")
+        hostRun { await e.close(notes.id) }
+        w.calls.removeAll()
+        _ = open(e, notes)
+        check("dock for full screen, still unable: its next start with no Dock icon, never given it again", w.calls.contains("launch com.apple.Notes") && !w.calls.contains("dock com.apple.Notes") && e.mode(of: notes.id) == .window, "\(w.calls)")
+        hostRun { await e.close(notes.id) }
+    }
+    // Settings › Apps, "Hide apps from the Dock when Margin opens them" off: every app Margin starts has its Dock icon.
+    do {
+        let (w, e, _) = world()
+        e.hidesFromDock = { false }
+        w.dockFullScreen = ["com.apple.TextEdit"] // (the stand-in plays the docked open for the apps listed)
+        let r = open(e, textEdit)
+        let p = pid(w, "com.apple.TextEdit")
+        check("apps not hidden from the Dock: started with its Dock icon (never the no-Dock launch), shown full screen",
+              r == .shown(textEdit.id, placed: true) && w.apps[p]?.policy == .regular && w.calls.contains("dock com.apple.TextEdit") && !w.calls.contains("launch com.apple.TextEdit")
+              && e.mode(of: textEdit.id) == .fullScreen, "\(String(describing: r)) \(w.calls)")
+        hostRun { await e.close(textEdit.id) }
+        // Turned on again: back to no Dock icon at the next start (an app that goes full screen with none, now).
+        e.hidesFromDock = { true }
+        w.dockFullScreen = []
+        w.calls.removeAll()
+        _ = open(e, textEdit)
+        check("apps hidden from the Dock again: its next start has no Dock icon", w.calls.contains("launch com.apple.TextEdit") && !w.calls.contains("dock com.apple.TextEdit")
+              && w.apps[pid(w, "com.apple.TextEdit")]?.policy == .accessory, "\(w.calls)")
+        hostRun { await e.close(textEdit.id) }
+    }
+
+    // A fixed-size window (Calculator's): never given a Dock icon (AppKit keeps it out of full screen with one too).
+    do {
+        let (w, e, _) = world()
+        w.dockFullScreen = ["com.apple.calculator"]
+        w.appVersions["com.apple.calculator"] = "11.0 (200)"
+        _ = open(e, calculator)
+        check("dock for full screen: a fixed-size window never given its Dock icon", !w.calls.contains("dock com.apple.calculator") && e.mode(of: calculator.id) == .window && w.apps[pid(w, "com.apple.calculator")]?.policy == .accessory, "\(w.calls)")
+        hostRun { await e.close(calculator.id) }
     }
 
     // ---- an app that can't go full screen, started by Margin: window mode ----

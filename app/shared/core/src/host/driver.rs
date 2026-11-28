@@ -81,6 +81,8 @@ fn per_show(key: &str) -> bool {
 pub struct Driver {
     pub guard: LoopGuard,
     pub routes: Routes,
+    /// Apps that go full screen only with their Dock icon (docked.rs), per version.
+    pub docked: super::docked::DockedApps,
     tries: BTreeMap<String, BTreeMap<String, Vec<f64>>>,
 }
 

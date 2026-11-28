@@ -14,10 +14,13 @@ struct Before: Codable {
   var mcCount = 0
   var safariPid: Int32?
   var copyDomains: [String: Data] = [:] // a copy's own defaults, if it had any (exported)
+  var docked: Data?              // Margin's docked.json (the hosting core's docked.rs) as it was (nil: none): a copy given its Dock icon is remembered there
   var realApps: [RealAppRecord] = []
   var startedAt = Date().timeIntervalSince1970
 }
 nonisolated(unsafe) var before = Before()
+// Margin's memory of the apps that go full screen only with their Dock icon (HostEngine's docked.json, beside routes.json).
+let dockedPath = NSHomeDirectory() + "/Library/Application Support/Margin/docked.json"
 nonisolated(unsafe) var statePath = ""
 nonisolated(unsafe) var handoffPath = ""
 func saveState() {
@@ -43,6 +46,7 @@ func recordBefore(part: String, built: String, realApps apps: [RealApp]) {
     if let d = text.data(using: .utf8), let p = try? PropertyListSerialization.propertyList(from: d, format: nil) as? [String: Any], !p.isEmpty { b.copyDomains[c.id] = d }
   }
   b.realApps = apps.map(record)
+  b.docked = FileManager.default.contents(atPath: dockedPath)
   before = b
   saveState()
 }
@@ -85,6 +89,8 @@ func restore(_ why: String) {
   releaseModifiers()
   for c in copies { if let p = app(c.id) { log("  \(c.id) still running: quitting it"); p.terminate(); spin(5) { p.isTerminated }; if !p.isTerminated { p.forceTerminate() } } }
   removeCopies()
+  // (Margin quit by now: its docked.json as it was, so what a copy taught it never outlives the run.)
+  if let d = before.docked { FileManager.default.createFile(atPath: dockedPath, contents: d) } else { try? FileManager.default.removeItem(atPath: dockedPath) }
   for c in copies {
     sh("/usr/bin/defaults", ["delete", c.id])
     if let d = before.copyDomains[c.id] { sh("/usr/bin/defaults", ["import", c.id, "-"], input: d) }

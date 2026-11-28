@@ -60,7 +60,7 @@ Each row was fixed where it hurt, and the next app found the next gap.
    | `main` in its own full-screen Space | place it from there (reserve, move, destroy) |
    | `main` full screen with no Space of its own | take it out, then ask again |
    | `main` not full screen and the app can go full screen | ask, from a Space where macOS takes it |
-   | `main` can't go full screen | window mode: frame it into the page area |
+   | `main` can't go full screen | window mode: frame it into the page area (first, when it refuses only for having no Dock icon: its app given its Dock icon and shown full screen, `host/docked.rs`) |
    | `main` in no Space / another Space while shown | put it back in Margin's Space (after macOS's transition is over) |
    | `main` in Margin's current Space but off screen | bring the app forward (activate, raise), then look again |
    | `main` replaced (a new `main`-kind window appeared, the old one went or is ordered out) | adopt the new one; never fight the app |
