@@ -45,15 +45,17 @@ m-page[m-split="column"]>m-divider{cursor:row-resize}
 m-pane{position:relative}
 /* Each pane a card of its own: painted above the gap (its edge, shadow and ring on every side, the gap's too), the
    grip and band title above it; its inner corners (where it meets another pane) masked in the theme's
-   --m-pane-ground over its window, its outer ones left to the page card's (themes README, Split View). */
+   --m-pane-ground over its window, its outer ones left to the page card's (themes README, Split View). Each mask is
+   clipped to its pane's half facing the other pane, that half's edge on a whole CSS pixel (round()): on a fraction of a
+   device pixel WebKit drew one column of the ground down the whole pane (2026-11-28, tests/theme/pane-mask-seam). */
 m-page[m-split]{isolation:isolate}
 m-pane{z-index:1}
 m-divider::before,m-divider::after,m-divider>m-band-title{z-index:2}
 m-pane::before{content:"";position:absolute;inset:0;z-index:1;border-radius:inherit;box-shadow:0 0 0 100vmax var(--m-pane-ground,transparent);clip-path:inset(0);pointer-events:none}
-m-page[m-split="row"]>m-pane:first-of-type::before{clip-path:inset(0 0 0 50%)}
-m-page[m-split="row"]>m-pane:last-of-type::before{clip-path:inset(0 50% 0 0)}
-m-page[m-split="column"]>m-pane:first-of-type::before{clip-path:inset(50% 0 0 0)}
-m-page[m-split="column"]>m-pane:last-of-type::before{clip-path:inset(0 0 50% 0)}
+m-page[m-split="row"]>m-pane:first-of-type::before{clip-path:inset(0 0 0 round(up,50%,1px))}
+m-page[m-split="row"]>m-pane:last-of-type::before{clip-path:inset(0 round(up,50%,1px) 0 0)}
+m-page[m-split="column"]>m-pane:first-of-type::before{clip-path:inset(round(up,50%,1px) 0 0 0)}
+m-page[m-split="column"]>m-pane:last-of-type::before{clip-path:inset(0 0 round(up,50%,1px) 0)}
 m-pane>m-pane-loader{position:absolute;inset:0;display:flex;background:Canvas;color:CanvasText;color-scheme:light dark;flex-direction:column;align-items:center;justify-content:center;gap:10px;overflow:hidden;pointer-events:none;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
 m-pane-loader>m-pane-spinner{display:block;flex:none;width:20px;height:20px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-pane-spin .9s linear infinite}
 m-pane-loader>m-pane-label{display:block;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.72}

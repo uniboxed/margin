@@ -72,7 +72,8 @@ for (const [name, engine] of ENGINES) {
           assert.ok(p.panes.every((x) => x.radii.every((r) => near(r, p.pageRadius, 0.5))), `the card's corners on each pane: ${JSON.stringify(p.panes.map((x) => x.radii))}, the card's ${p.pageRadius}`);
           assert.ok(p.panes.every((x) => near(x.mask.radius, p.pageRadius, 0.5) && x.mask.shadow !== 'none' && !/rgba\(0, 0, 0, 0\)/.test(x.mask.shadow)), `its corners masked in the theme's ground: ${JSON.stringify(p.panes.map((x) => x.mask))}`);
         }
-        assert.deepEqual(p.panes.map((x) => x.mask.clip), ['inset(0px 0px 0px 50%)', 'inset(0px 50% 0px 0px)'], 'only the inner corners masked (the outer ones are the page card\'s)');
+        // (Each half's edge on a whole CSS pixel: tests/theme/pane-mask-seam.test.ts.)
+        assert.deepEqual(p.panes.map((x) => x.mask.clip), ['inset(0px 0px 0px round(up, 50%, 1px))', 'inset(0px round(up, 50%, 1px) 0px 0px)'], 'only the inner corners masked (the outer ones are the page card\'s)');
         assert.ok(p.dividers[0].grip && !/^rgba\(0, 0, 0, 0\)\|none$/.test(p.dividers[0].grip), `a grip drawn: ${p.dividers[0].grip}`);
         assert.equal(p.layoutSplit, 'spv-1', 'the layout sent says the split');
         assert.deepEqual(p.layout?.map((x) => x.id), tabs.slice(0, 2).map(String), 'and each pane by its item');
