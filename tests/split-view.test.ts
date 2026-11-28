@@ -9,7 +9,7 @@ import * as L from '../app/shared/library/library.ts';
 import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
 import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
 import { buildViewModel } from '../app/shared/ui/view-model.ts';
-import { appKeyOf, dividerSizes, dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../app/shared/ui/behaviors/split.ts';
+import { appKeyOf, dividerSizes, dragRatios, equalRatios, expandSizes, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, PANE_FOLD, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../app/shared/ui/behaviors/split.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 import * as M from '../extension/state/model.ts';
 
@@ -205,6 +205,34 @@ test('split view, UI: a divider moves the two panes beside it, each stopping at 
   assert.deepEqual(equalRatios(3).map((v) => Math.round(v * 300)), [100, 100, 100]);
   assert.equal(panesFit([500, 500], 1008, 8), true);
   assert.equal(panesFit([500, 500], 1000, 8), false);
+});
+
+test('split view, UI: a pane opened to fit its app (docs/FLEX-SPLIT.md step 1): its minimum, the rest folded to 64 at least', () => {
+  assert.equal(PANE_FOLD, 64);
+  const round = (v: number[]) => v.map((x) => Math.round(x));
+  // Two panes of 500 (1000 of room), the left one's app needing 800: it gets 800, the other the 200 left.
+  assert.deepEqual(round(expandSizes([500, 500], [800, 400], 0)), [800, 200]);
+  // Its need more than the room less the others' folds: as much as that leaves (1000 - 64).
+  assert.deepEqual(round(expandSizes([500, 500], [1200, 400], 0)), [936, 64]);
+  // Three panes: the others share what's left by their sizes (300 : 500 of 1100 - 700 = 400 → 150 : 250).
+  assert.deepEqual(round(expandSizes([300, 300, 500], [400, 700, 300], 1)), [150, 700, 250]);
+  // One of them pushed below the fold: held at 64, the rest from the others (400 - 64 = 336 to the third).
+  assert.deepEqual(round(expandSizes([100, 300, 1100], [400, 1100, 300], 1)), [64, 1100, 336]);
+  // Four panes, the last opened, the others each held at the fold.
+  assert.deepEqual(round(expandSizes([300, 300, 300, 300], [500, 500, 500, 1300], 3)), [64, 64, 64, 1008]);
+  // Already as big as its app needs: nothing changes (another pane's cut, but only the opened one is opened).
+  assert.deepEqual(expandSizes([600, 400], [500, 700], 0), [600, 400]);
+  // Its need not known, an index past the panes, a single pane, no room: nothing changes.
+  assert.deepEqual(expandSizes([500, 500], [null, 400], 0), [500, 500]);
+  assert.deepEqual(expandSizes([500, 500], [800, 400], 2), [500, 500]);
+  assert.deepEqual(expandSizes([500], [800], 0), [500]);
+  assert.deepEqual(expandSizes([0, 0], [800, 400], 0), [0, 0]);
+  // The room is kept: the sizes add up to what they were.
+  for (const [s, n, i] of [[[300, 300, 500], [400, 700, 300], 1], [[100, 300, 1100], [400, 1100, 300], 1], [[250, 250, 250, 250], [900, 0, 0, 0], 0]] as [number[], number[], number][]) {
+    const out = expandSizes(s, n, i);
+    assert.ok(Math.abs(out.reduce((a, b) => a + b, 0) - s.reduce((a, b) => a + b, 0)) < 1e-6, `${s} keeps its room`);
+    assert.ok(out.every((x, j) => j === i || x >= PANE_FOLD - 1e-6), `${s}: none below the fold`);
+  }
 });
 
 test('split view, UI: stacked, the gap above a Safari pane is a band its full-screen toolbar rests in (never over the pane above)', () => {

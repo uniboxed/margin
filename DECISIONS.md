@@ -12245,3 +12245,27 @@ a sweep of 48 fractional sizes, rows and columns, 58 of 96 panes in WebKit; none
 a whole CSS pixel (`round(up, 50%, 1px)`); the corner masks pixel for pixel as before, nothing else changed (WebKit:
 only the seams; Chromium: one pixel at a pane's outer edge in the gap, already the gap's colour). Test:
 tests/theme/pane-mask-seam.test.ts (the rules read from render.ts, both engines; failing first), split-view's clip check.
+
+## A split's pane opens to fit its app (`feat/split-expand`, 2026-11-28)
+
+Tirth's ask after the flexible split prototype, step 1 of docs/FLEX-SPLIT.md: replace the cut pane's arrows with the pane opening to its app's size. Hover by default, "on click" a setting (Settings › Apps, `splitExpand`). The folded panes show the app blurred, with its icon and name.
+
+- **The rule** is in the page, next to the split's other sizing rules (`expandSizes`, behaviors/split.ts). The opened pane gets its app's minimum along the axis. The others share the rest by their sizes, none below 64 pt (`PANE_FOLD`). The ratios are never saved for it. A divider dragged while a pane is open saves the sizes shown.
+- **When it opens:**
+  - The pointer resting 0.3 s on a cut pane. Margin.app's `paneHover` covers it at rest; once open, the folded card is Margin's own (in the hits), so the page sees it.
+  - At once on a press: the focused pane changing.
+  - A folded pane that fits at the split's own sizes puts the split back instead.
+  - The pointer resting 0.45 s on Margin's own UI outside the page puts it back (hover mode only).
+  - The 0.3 s is the person's pause, not a wait for state.
+  - The page's place is judged by the pointer's position, not the element under it. Chromium sends a pointer-over for the theme root under a still pointer as a card turns into the opened pane, which read as "the sidebar" and folded it back.
+- **The motion** reuses the divider drag's path (`split.resizing`, each frame measured, the windows following live): 0.2 s eased out. The windows are placed by the existing cut-pane rules: the opened pane's window at its box, the folded ones at their minimums, tucked.
+- **The blur:**
+  - A folded pane is reported (`panes[].folded`). margin-core's `Page::blurs` gives its box within its hole in the ground (never where the ground is drawn).
+  - Margin.app puts one behind-window `NSVisualEffectView` there, under the web view, and the theme's `<m-pane-card>` is drawn over it.
+  - This is the one native drawn piece. No CSS can see another app's pixels, and a window-server blur needs no permission and nothing per frame. A theme tints it or hides it with its card's background.
+  - The FFI adds `margin_page_blurs` rather than widening the fixed pane struct.
+- **On the real screen** (cut-panes part, Chameleon 1 at 800 and 2 at 700 minimums): 13 of 13 checks pass.
+  - The opening, the fold, the blur, the sidebar putting the split back, and a folded card opening its pane all work.
+  - Idle cost is 0.41% CPU.
+  - The picture shows the folded pane's app blurred under its icon and name.
+- **The arrows** are gone from the page and themes. The engine's slide (`HostEngine.slide`, `slide_for`, `slide_step`) is unused now and is removed in a cleanup.

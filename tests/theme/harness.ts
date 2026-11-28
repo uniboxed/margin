@@ -900,7 +900,7 @@ const withRuntime = Object.assign(T, {
   // A split pane's window opening (Margin.app's `paneLoading`): its item (the pane's id) and name; null: none. What each
   // pane draws then: whether it's loading, its loader's box, words and spinner.
   // A split's cut panes as Margin.app says them (`paneCut`: docs/PEEK-SPLIT.md §4b), and the one the pointer is over
-  // (`paneHover`: its window, null: none).
+  // (`paneHover`: its window, null: none): it opens to fit its app (docs/FLEX-SPLIT.md step 1).
   rtPaneCuts(cuts: Record<string, any>) { Object.assign(rt.host, { paneCuts: cuts }); rt.host.setState(rt.mock.state); },
   // What takes the pointer over the page's place, as Margin.app is told it (host-app.ts hitRects over m-page's box).
   rtPageHits() {
@@ -909,17 +909,21 @@ const withRuntime = Object.assign(T, {
     return hitRects(root as Element, { left: p.left, top: p.top, right: p.right, bottom: p.bottom }).rects;
   },
   rtPaneHover(window: number | null) { Object.assign(rt.host, { paneHover: window }); rt.host.setState(rt.mock.state); },
-  // Each pane's arrows: side, mode, label, whether it's shown and takes the pointer, its box and colours.
-  rtPaneArrows() {
-    return [...rt.target.querySelectorAll('m-page > m-pane')].map((p) => ({
-      id: p.getAttribute('m-pane-id'), lit: p.hasAttribute('m-cut-hover'),
-      arrows: [...p.querySelectorAll(':scope > m-pane-arrow')].map((a) => {
-        const st = getComputedStyle(a), b = a.getBoundingClientRect(), pb = p.getBoundingClientRect();
-        return { side: a.getAttribute('m-side'), mode: a.getAttribute('m-mode'), label: a.getAttribute('aria-label'), shown: st.visibility === 'visible' && Number(st.opacity) > 0.5,
-          pointer: st.pointerEvents, inside: b.left >= pb.left && b.right <= pb.right && b.top >= pb.top && b.bottom <= pb.bottom, x: b.left + b.width / 2, y: b.top + b.height / 2,
-          left: b.left - pb.left, right: pb.right - b.right, color: st.color, background: st.backgroundColor };
-      }),
-    }));
+  // Each pane: its box, whether it's folded (docs/FLEX-SPLIT.md step 1), and its card: shown, taking the pointer, inside
+  // its box, its icon (an image's source, else the letter), its name, label and colours.
+  rtPaneFolds() {
+    return [...rt.target.querySelectorAll('m-page > m-pane')].map((p) => {
+      const pb = p.getBoundingClientRect();
+      const c = p.querySelector(':scope > m-pane-card');
+      const card = c ? (() => {
+        const st = getComputedStyle(c), b = c.getBoundingClientRect();
+        const icon = c.querySelector('m-pane-icon');
+        return { shown: st.visibility === 'visible' && b.width > 0, pointer: st.pointerEvents, inside: b.left >= pb.left - 0.5 && b.right <= pb.right + 0.5 && b.top >= pb.top - 0.5 && b.bottom <= pb.bottom + 0.5,
+          x: b.left + b.width / 2, y: b.top + b.height / 2, img: icon?.querySelector('img')?.getAttribute('src') ?? null, letter: icon?.hasAttribute('m-letter') ? icon.textContent : null,
+          name: c.querySelector('m-pane-name')?.textContent ?? null, label: c.getAttribute('aria-label'), color: st.color, background: st.backgroundColor };
+      })() : null;
+      return { id: p.getAttribute('m-pane-id'), folded: p.hasAttribute('m-folded'), left: pb.left, width: pb.width, height: pb.height, card };
+    });
   },
   rtPaneLoading(pane: { item: string, name: string } | null) { Object.assign(rt.host, { paneLoading: pane ? { ...pane, bundleId: null } : null }); rt.host.setState(rt.mock.state); },
   rtPaneLoaders() {

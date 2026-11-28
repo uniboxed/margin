@@ -171,7 +171,8 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   no event says so, so the poll looks, from the on-screen list it shares, only while a cut pane lying under another is
   shown, and puts it back (at most 1.5 s later at rest). A loop's guard: 3 times in 5 s. A cut pane lying under none
   is as any pane: nothing kept, nothing polled.
-- **Arrows** (the page's `<m-pane-arrow m-mode="slide">`, on each hidden side, while the pointer is over that pane:
+- **Arrows: replaced 2026-11-28** by opening the pane to fit its app (docs/FLEX-SPLIT.md step 1); the page draws
+  none, and the engine's slide goes once that's checked on screen. What they were: (the page's `<m-pane-arrow m-mode="slide">`, on each hidden side, while the pointer is over that pane:
   Margin.app's `paneHover`, said as the pointer enters and leaves it): a **slide** to the other alignment along that
   axis, which shows that side whole (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the
   window a frame behind at most, with Safari). Coming in under a pane it will lie under: ordered behind it first, so it

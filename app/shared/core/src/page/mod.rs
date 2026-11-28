@@ -474,6 +474,31 @@ impl Page {
         Some((split, l.panes.iter().map(move |p| (p.item.as_str(), area::pane_rect(&p.rect, &content)))))
     }
 
+    /// Where a folded pane's window is blurred behind its card (docs/FLEX-SPLIT.md step 1): each pane the page folded
+    /// beside one opened to fit its app, its box on the screen within its hole in Margin's ground (never where the
+    /// ground is drawn: a blur there would show what's behind Margin's window). None unless several hosts are visible and
+    /// shown (each pane's own window placed), as the holes were last placed.
+    pub fn blurs(&self, content: Rect) -> Vec<Rect> {
+        let Some(l) =
+            self.layout.as_ref().filter(|_| self.hosting && self.visible.len() > 1 && self.state == PageState::Shown)
+        else {
+            return Vec::new();
+        };
+        if l.split.is_none() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for p in l.panes.iter().filter(|p| p.folded) {
+            let r = area::pane_rect(&p.rect, &content);
+            for h in &self.holes {
+                if let Some(x) = Cg::intersection(&r, h).filter(|x| x.width >= 1.0 && x.height >= 1.0) {
+                    out.push(x);
+                }
+            }
+        }
+        out
+    }
+
     // ---- hosting ----
 
     /// `setHosting`: Some when it changed (with whether several hosts were visible, now none); off, what it hosted

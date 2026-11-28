@@ -764,6 +764,7 @@ uint8_t *margin_page_hello(const MarginPage *page, const MarginHelloFacts *facts
 void margin_page_pointer_want(const uint8_t *body, size_t len, uint8_t *mode, uint8_t *bits, double *zone); // mode 0 none, 1 edges, 2 all
 size_t margin_page_holes(const MarginPage *page, MarginRect *out, size_t cap);
 size_t margin_page_pane_holes(const MarginPage *page, MarginPaneHole *out, size_t cap);
+size_t margin_page_blurs(const MarginPage *page, MarginRect content, MarginRect *out, size_t cap); // folded panes' blurs, on the screen
 bool margin_page_frame(const MarginPage *page, int64_t window, MarginRect *out);
 bool margin_page_set_yielding(MarginPage *page, bool has, int64_t number);
 bool margin_page_set_covering(MarginPage *page, bool has, int64_t number);

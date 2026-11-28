@@ -216,6 +216,15 @@ final class PageCore {
         return (s(o.split), (0..<min(Int(o.count), 4)).map { PagePane(item: s(items[$0]), rect: CGRect(boxes[$0])) })
     }
 
+    // Where folded panes' windows are blurred behind their cards, on the screen (docs/FLEX-SPLIT.md step 1). The core's.
+    func blurs(content: CGRect) -> [CGRect] {
+        let n = margin_page_blurs(page, content.raw, nil, 0)
+        guard n > 0 else { return [] }
+        var out = [MarginRect](repeating: MarginRect(), count: n)
+        let got = out.withUnsafeMutableBufferPointer { margin_page_blurs(page, content.raw, $0.baseAddress, $0.count) }
+        return out.prefix(min(n, got)).map(CGRect.init)
+    }
+
     // ---- what it shows ----
 
     // Hosting, or not: nil, no change; else whether several hosts were visible (none now).

@@ -51,11 +51,13 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['appDock', 'appSearch', 'blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'themeStore', 'userThemes']);
+  assert.deepEqual(Object.keys(features).sort(), ['appDock', 'appSearch', 'blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'splitPanes', 'themeStore', 'userThemes']);
   assert.equal(features.haptics, false, 'a browser\'s overlay plays no haptics (Edit Theme Color\'s ticks)');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).haptics, true, 'Margin.app\'s own window on the Mac does');
   assert.equal(features.appDock, false, 'a browser\'s overlay offers no Settings › Apps');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).appDock, true, 'Margin.app\'s own window on the Mac does');
+  assert.equal(features.splitPanes, false, 'a browser\'s overlay lays out no split panes (no Settings › Apps split option)');
+  assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).splitPanes, true, 'Margin.app\'s own window does');
   assert.equal(features.spaceThemes, false, 'a browser\'s overlay draws its profile\'s theme');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).spaceThemes, true, 'Margin.app\'s own window draws each space\'s');
   assert.equal(features.importThemes, true, 'Margin.app imports themes');
@@ -231,18 +233,19 @@ test("the app host in Margin's own window: a split pane's loader (`paneLoading`)
   over.receive({ type: 'paneLoading', pane: { item: 't-a', label: 'Notes' } });
   assert.equal(over.paneLoading, null, 'over a browser: none');
 });
-test("the app host in Margin's own window: a split's cut panes (`paneCut`): each side a slide, checked; an arrow sent only for a side the pane has", () => {
+test("the app host in Margin's own window: a split's cut panes (`paneCut`): each one's window, checked; the one the pointer is over (`paneHover`); no slide any more", () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
   host.receive({ type: 'paneCut', panes: { 't-notes1': { window: 20, right: 'slide', left: 'reveal', revealed: true }, '<b>': { window: 3, left: 'slide' } } });
-  assert.deepEqual(host.paneCuts, { 't-notes1': { window: 20, right: 'slide' } }, 'only slides, no other word kept; an item id that isn\'t one: none');
-  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'right' }), true);
-  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'left' }), false, 'a side it doesn\'t have');
-  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'back' }), false, 'no reveal to put back');
-  assert.equal(host.perform('split.slide', { item: 't-other', side: 'right' }), false, 'not a cut pane');
-  assert.deepEqual(b.posts.filter((p) => p.op === 'perform').map((p) => [p.name, p.arg]), [['split.slide', { item: 't-notes1', side: 'right' }]]);
+  assert.deepEqual(host.paneCuts, { 't-notes1': { window: 20 } }, 'its window only, no other word kept; an item id that isn\'t one: none');
+  // The arrows' slide is gone (a cut pane opens to fit its app instead: docs/FLEX-SPLIT.md step 1).
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'right' }), false);
+  assert.deepEqual(b.posts.filter((p) => p.op === 'perform').map((p) => [p.name, p.arg]), []);
   host.receive({ type: 'paneHover', window: 20 });
   assert.equal(host.paneHover, 20);
+  host.receive({ type: 'paneHover', window: 21 });
+  assert.equal(host.paneHover, null, 'a window that isn\'t a cut pane\'s: none');
+  host.receive({ type: 'paneHover', window: 20 });
   host.receive({ type: 'paneCut', panes: {} });
   assert.deepEqual([host.paneCuts, host.paneHover], [{}, null], 'none cut: none hovered');
   const over = createAppHost({ hello: hello(), post: b.post });

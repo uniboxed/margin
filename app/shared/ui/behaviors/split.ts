@@ -25,10 +25,15 @@
 //   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
 //   stay shown and usable (never the page card's loader over the whole page area).
 // - A cut pane (Margin.app's `paneCut`: its window wider or taller than its box, at its own minimum, the rest past the
-//   display's edge, under the sidebar or under the pane beside it, docs/PEEK-SPLIT.md §4b): an
-//   `<m-pane-arrow m-side="left|right|up|down" m-mode="slide">` on each side where its window is hidden, shown while the
-//   pointer is over that pane (`m-pane[m-cut-hover]`: Margin.app's `paneHover`, said as the pointer enters and leaves
-//   it); pressed, its window slides to show that side, `split.slide`. Nothing at all while no pane is cut.
+//   display's edge, under the sidebar or under the pane beside it, docs/PEEK-SPLIT.md §4b) opens to fit its app
+//   (docs/FLEX-SPLIT.md step 1): after the pointer rests on it EXPAND_DWELL (Margin.app's `paneHover`, said as the
+//   pointer enters and leaves a cut pane), or at once when it's pressed (it becomes the focused pane); Settings'
+//   `splitExpand` 'click': on a press only. It gets its app's minimum along the axis (`expandSizes`), the others fold
+//   (`m-pane[m-folded]`, each with Margin's `<m-pane-card>`: `<m-pane-icon>` and `<m-pane-name>`, over the app's window
+//   blurred behind it by Margin.app), moving there over EXPAND_TIME through the drag's own path (`split.resizing`). A
+//   folded card takes the pointer (`hitRects`): resting on one opens it, pressing one opens and focuses it. The pointer
+//   resting on Margin's own UI outside the page EXPAND_LEAVE puts the split back (hover only); a press on a pane that
+//   fits puts it back (click only); a divider dragged keeps the sizes shown. The ratios are never saved for it.
 // - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
 //   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
 //   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
@@ -36,10 +41,21 @@
 import { frontItemOf } from '../../../../extension/shared/front-item.ts';
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
+import { checkIconUrl } from '../sanitize.ts';
 
 /** The smallest a pane is laid out (Margin's points): Arc's split view's `minimumPaneWidth`, 220, its least height
  *  stacked too (read from Arc 1.174.0's binary, 2026-11-21). */
 export const PANE_FLOOR = Object.freeze({ width: 220, height: 220 });
+/** A folded pane's least size along the split's axis while another pane is opened to fit its app (pt): room for its
+ *  card's icon and a short name (docs/FLEX-SPLIT.md step 1). */
+export const PANE_FOLD = 64;
+/** How long the pointer rests on a cut pane (or a folded one) before it opens (ms; the prototype's, Arc's kind of
+ *  pause: the person's intent, no state waited on). */
+export const EXPAND_DWELL = 300;
+/** How long the pointer rests on Margin's own UI outside the page before an opened pane folds back (ms). */
+export const EXPAND_LEAVE = 450;
+/** A pane's opening or the split's going back, eased out (ms). */
+export const EXPAND_TIME = 200;
 /** A divider dragged within this of an even split of its two panes: even (Arc's, pt). */
 export const SNAP = 14;
 /** The fastest a drag snaps with the haptic (Arc's, pt/s). */
@@ -52,10 +68,7 @@ export const SPLIT_GAP = 8;
  *  writes the core's constants out for the UI. */
 export const SAFARI_TOOLBAR = 52;
 const STEP = 0.02;
-type PaneSide = 'left' | 'right' | 'up' | 'down';
-type PaneCut = { window: number } & Partial<Record<PaneSide, 'slide'>>;
-const SIDES: readonly PaneSide[] = ['left', 'right', 'up', 'down'];
-const SIDE_WORDS: Record<PaneSide, string> = { left: 'left', right: 'right', up: 'top', down: 'bottom' };
+type PaneCut = { window: number };
 const BIG_STEP = 0.1;
 
 type Split = NonNullable<ViewModel['split']>;
@@ -90,6 +103,36 @@ export function dragRatios(sizes: number[], floors: number[], index: number, del
   next[index] = a;
   next[index + 1] = pair - a;
   return next.map((s) => s / total);
+}
+
+/**
+ * Each pane's size with pane `index` opened to fit its app (docs/FLEX-SPLIT.md step 1): it gets its app's minimum along
+ * the axis (`needs`, null: not known), at most the room less PANE_FOLD for each other pane; the others share what's
+ * left by their sizes now, none below PANE_FOLD. `sizes`: each pane's size now (px, the gaps not counted). Nothing
+ * changes when it fits already, its need isn't known, or there's nothing to share.
+ */
+export function expandSizes(sizes: number[], needs: (number | null | undefined)[], index: number, fold = PANE_FOLD): number[] {
+  const n = sizes.length;
+  const total = sizes.reduce((a, b) => a + b, 0);
+  const need = needs[index];
+  if (n < 2 || index < 0 || index >= n || !(total > 0) || need == null || !(need > 0)) return [...sizes];
+  const want = Math.min(need, total - fold * (n - 1));
+  if (sizes[index] >= want - 0.5) return [...sizes];
+  const out = [...sizes];
+  out[index] = want;
+  // (What's left shared by the others' sizes, any whose share falls below the fold held there and the rest shared again.)
+  let free = sizes.map((_, i) => i).filter((i) => i !== index);
+  let rest = total - want;
+  for (;;) {
+    const weight = free.reduce((a, i) => a + Math.max(0, sizes[i]), 0);
+    const share = (i: number) => (weight > 0 ? rest * Math.max(0, sizes[i]) / weight : rest / free.length);
+    const low = free.filter((i) => share(i) < fold);
+    if (!low.length) { for (const i of free) out[i] = share(i); return out; }
+    for (const i of low) out[i] = fold;
+    rest -= fold * low.length;
+    free = free.filter((i) => !low.includes(i));
+    if (!free.length) return out;
+  }
 }
 
 /** Equal ratios for `n` panes. */
@@ -136,28 +179,22 @@ export function installSplit(rt: Rt) {
   let frame = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
+  // A pane opened to fit its app (docs/FLEX-SPLIT.md step 1): the split's id and the pane's item; null: none.
+  let opened: { split: string, item: string } | null = null;
+  // The move to or from it under way: each pane's size along the axis from and to (px), the panes folded at its end,
+  // when it began (the page's clock, ms).
+  let motion: { split: string, from: number[], to: number[], folded: boolean[], t0: number, frame: number, timer: ReturnType<typeof setTimeout> | null } | null = null;
+  // The pane the pointer rests on, waiting EXPAND_DWELL to open; the wait to fold back once it's on Margin's own UI.
+  let dwell: { item: string, timer: ReturnType<typeof setTimeout> } | null = null;
+  let leave: ReturnType<typeof setTimeout> | null = null;
+  // The split's focused pane as last seen (a change: a press, ⌘-click, a key: it opens when it's cut).
+  let focusedSeen: { split: string, item: string | null } | null = null;
+  // The element WebKit last dispatched a real pointer move over (the panel key: WebKit's own hover), null: none.
+  let realOver: Element | null = null;
+  let realAt: { x: number, y: number } | null = null;
+  let hoverSeen: number | null = null;
 
   const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, paneCuts?: Record<string, PaneCut>, paneHover?: number | null, note?: (text: string) => void };
-  // A cut pane's arrows (its hidden sides), shown while the pointer is over it; nothing for one that isn't cut.
-  function arrows(p: HTMLElement, cut: PaneCut | null, hovered: boolean) {
-    const want = cut ? SIDES.filter((s) => cut[s]) : [];
-    const have = [...p.children].filter((c) => c.localName === 'm-pane-arrow') as HTMLElement[];
-    for (const a of have) if (!want.includes(a.getAttribute('m-side') as PaneSide)) a.remove();
-    for (const side of want) {
-      let a = have.find((x) => x.getAttribute('m-side') === side);
-      if (!a || !a.isConnected) {
-        a = doc.createElement('m-pane-arrow');
-        a.setAttribute('m-side', side);
-        a.setAttribute('role', 'button');
-        p.appendChild(a);
-      }
-      if (a.getAttribute('m-mode') !== 'slide') a.setAttribute('m-mode', 'slide');
-      const label = `Show the ${SIDE_WORDS[side]} of this pane`;
-      if (a.getAttribute('aria-label') !== label) { a.setAttribute('aria-label', label); a.setAttribute('title', label); }
-    }
-    const lit = !!cut && hovered;
-    if (lit !== p.hasAttribute('m-cut-hover')) { if (lit) p.setAttribute('m-cut-hover', ''); else p.removeAttribute('m-cut-hover'); }
-  }
   const floorsOf = (split: { axis: string, panes: readonly unknown[] }) => paneFloors(split);
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
@@ -228,6 +265,173 @@ export function installSplit(rt: Rt) {
     if (title.textContent !== text) title.textContent = text;
   }
 
+  // ---- a pane opened to fit its app (docs/FLEX-SPLIT.md step 1) ----
+
+  // How a pane opens: on the pointer's rest (the default) or on a press only (Settings' `splitExpand`).
+  const mode = () => ((rt.state as any)?.settings?.splitExpand === 'click' ? 'click' : 'hover');
+  const clock = () => rt.win.performance?.now?.() ?? Date.now();
+  // Each pane's app minimum along the axis (Margin.app's `paneMin`, by its item), null: not known.
+  const needsOf = (split: Split) => split.panes.map((p) => { const m = host().paneMinimums?.[String(p.id)]; return m ? (row(split) ? m[0] : m[1]) : null; });
+  // Each pane's size at the split's own ratios in the room the panes have now (px).
+  const restOf = (split: Split, el: HTMLElement) => {
+    const room = sizes(el, split).reduce((a, b) => a + b, 0);
+    const r = ratiosFor(split);
+    const sum = r.reduce((a, b) => a + b, 0) || 1;
+    return split.panes.map((_, i) => room * (r[i] ?? 0) / sum);
+  };
+  // The sizes with `item` opened, and the panes folded (smaller than their app needs, beside it); null: it can't be
+  // opened (not a pane, its need not known, or it fits already).
+  function openedSizes(split: Split, el: HTMLElement, item: string): { sizes: number[], folded: boolean[] } | null {
+    const index = split.panes.findIndex((p) => String(p.id) === item);
+    if (index < 0) return null;
+    const rest = restOf(split, el);
+    const needs = needsOf(split);
+    const to = expandSizes(rest, needs, index);
+    if (to.every((v, i) => Math.abs(v - rest[i]) < 0.5)) return null;
+    return { sizes: to, folded: to.map((v, i) => i !== index && needs[i] != null && v < (needs[i] as number) - 1) };
+  }
+  // What's drawn now instead of the ratios: the move's frame, else the opened pane's sizes; null: the ratios.
+  function openView(split: Split, el: HTMLElement): { sizes: number[], folded: boolean[] } | null {
+    if (motion && motion.split === split.id && motion.from.length === split.panes.length && motion.to.length === split.panes.length) {
+      const k = Math.min(1, Math.max(0, (clock() - motion.t0) / EXPAND_TIME));
+      const e = 1 - Math.pow(1 - k, 3);
+      return { sizes: motion.from.map((f, i) => f + (motion!.to[i] - f) * e), folded: motion.folded };
+    }
+    if (!opened || opened.split !== split.id || drag) return null;
+    const o = openedSizes(split, el, opened.item);
+    if (!o) opened = null;
+    return o;
+  }
+  // Opens `item` (null: the split back at its ratios), moving there over EXPAND_TIME, the windows following each frame.
+  function openPane(item: string | null) {
+    cancelDwell();
+    const split = shown();
+    const el = page();
+    if (!split || !el || drag) return;
+    const was = opened && opened.split === split.id ? opened.item : null;
+    if (item === was) return;
+    const target = item ? openedSizes(split, el, item) : null;
+    if (item && !target) return;
+    const from = sizes(el, split);
+    opened = item ? { split: split.id, item } : null;
+    const to = target ? target.sizes : restOf(split, el);
+    const folded = target ? target.folded : split.panes.map(() => false);
+    if (motion) { rt.win.cancelAnimationFrame(motion.frame); rt.cancel(motion.timer); }
+    const told = !!motion;
+    motion = { split: split.id, from, to, folded, t0: clock(), frame: 0, timer: null };
+    if (!told) tell(true);
+    host().note?.(`split: ${item ? `${item} opened to fit its app` : 'back at its sizes'} (${from.map(Math.round).join('/')} → ${to.map(Math.round).join('/')})`);
+    step();
+  }
+  // One frame of the move: drawn and measured (the windows follow it); its last puts the windows in place.
+  function step() {
+    const m = motion;
+    if (!m) return;
+    m.frame = 0;
+    rt.cancel(m.timer);
+    m.timer = null;
+    sync(rt.vm);
+    view.flushLayout?.();
+    if (clock() - m.t0 >= EXPAND_TIME) {
+      motion = null;
+      sync(rt.vm);
+      tell(false);
+      return;
+    }
+    // (Each frame, and a timer for a window that gets no frames now, whichever comes first.)
+    m.frame = rt.win.requestAnimationFrame(step);
+    m.timer = rt.later(step, 50);
+  }
+  const cancelDwell = () => { if (dwell) { rt.cancel(dwell.timer); dwell = null; } };
+  const cancelLeave = () => { if (leave) { rt.cancel(leave); leave = null; } };
+  // Whether the pointer is over `e`: Margin's hover marks (the panel not key: host/overlay.ts), or WebKit's own real
+  // moves (never WebKit's :hover alone: it stays where it last was once the pointer goes through into a hole).
+  const lit = (e: Element) => e.hasAttribute('m-hover') || (!!realOver && e.contains(realOver));
+  // Where the pointer is as the page sees it: a folded pane's card (its item), the page's place, Margin's own UI
+  // elsewhere ('ui'), else null (through a hole into an app, or out of the window).
+  function pointerPlace(split: Split, el: HTMLElement): string | null {
+    for (const p of panesOf(el)) if (p.hasAttribute('m-folded') && lit(p)) return p.getAttribute('m-pane-id');
+    if (lit(el)) return 'page';
+    // (Over the page's place, whatever is under it there: its panes and the page take no pointer, so the element a real
+    // move names is the theme's under them. Chromium names one under a still pointer as a pane opens beneath it.)
+    if (realOver && realAt) { const b = el.getBoundingClientRect(); if (realAt.x >= b.left && realAt.x < b.right && realAt.y >= b.top && realAt.y < b.bottom) return 'page'; }
+    const over = realOver ?? rt.container.querySelector('[m-hover]');
+    return over && rt.container.contains(over) ? 'ui' : null;
+  }
+  // The pointer's place considered (hover only): resting on a cut or folded pane opens it after EXPAND_DWELL; resting
+  // on Margin's own UI outside the page folds the opened one back after EXPAND_LEAVE.
+  function consider() {
+    const split = shown();
+    const el = page();
+    if (!split || !el || drag || mode() !== 'hover') { cancelDwell(); cancelLeave(); return; }
+    const isOpen = !!opened && opened.split === split.id;
+    // (The cut pane Margin.app says the pointer is over, a folded one too: the window server's word, over the page's.)
+    const hover = host().paneHover ?? null;
+    const cutItem = hover == null ? null : Object.entries(host().paneCuts ?? {}).find(([, c]) => c.window === hover)?.[0] ?? null;
+    const place = cutItem != null ? null : pointerPlace(split, el);
+    const want = cutItem ?? (place && place !== 'page' && place !== 'ui' ? place : null);
+    // (What resting there does: opens it; a folded pane that fits at the split's own sizes, the split back to them.)
+    const to = want && want !== (isOpen ? opened!.item : null) ? goesTo(split, el, want) : undefined;
+    if (to !== undefined) {
+      const key = to ?? '';
+      if (dwell?.item !== key) { cancelDwell(); dwell = { item: key, timer: rt.later(() => { dwell = null; openPane(to); }, EXPAND_DWELL) }; }
+    } else cancelDwell();
+    if (isOpen && place === 'ui' && cutItem == null) { if (!leave) leave = rt.later(() => { leave = null; openPane(null); }, EXPAND_LEAVE); } else cancelLeave();
+  }
+  // A folded pane's card: Margin's own elements (the item's icon, else its letter; its name), never markup of the
+  // item's; `on` false: none.
+  function card(p: HTMLElement, pane: Split['panes'][number], on: boolean) {
+    let c = [...p.children].find((x) => x.localName === 'm-pane-card') as HTMLElement | undefined;
+    if (on !== p.hasAttribute('m-folded')) { if (on) p.setAttribute('m-folded', ''); else p.removeAttribute('m-folded'); }
+    if (!on) { c?.remove(); return; }
+    const name = pane.title || pane.host || '';
+    if (!c) {
+      c = doc.createElement('m-pane-card');
+      c.setAttribute('role', 'button');
+      c.appendChild(doc.createElement('m-pane-icon'));
+      c.appendChild(doc.createElement('m-pane-name'));
+      p.appendChild(c);
+    }
+    const label = name ? `Open ${name}` : 'Open this pane';
+    if (c.getAttribute('aria-label') !== label) { c.setAttribute('aria-label', label); c.setAttribute('title', label); }
+    const icon = c.querySelector('m-pane-icon') as HTMLElement;
+    const src = checkIconUrl(pane.icon) ? pane.icon : null;
+    const img = icon.querySelector('img');
+    if (src) {
+      if (!img || img.getAttribute('src') !== src) { icon.textContent = ''; const i = doc.createElement('img'); i.setAttribute('alt', ''); i.setAttribute('src', src); icon.appendChild(i); }
+      if (icon.hasAttribute('m-letter')) icon.removeAttribute('m-letter');
+    } else {
+      if (img || icon.textContent !== (pane.letter || '?')) icon.textContent = pane.letter || '?';
+      if (!icon.hasAttribute('m-letter')) icon.setAttribute('m-letter', '');
+      const bg = /^#[0-9a-f]{3,8}$/i.test(pane.color ?? '') ? pane.color : '';
+      if (icon.style.getPropertyValue('--m-letter-color') !== bg) { if (bg) icon.style.setProperty('--m-letter-color', bg); else icon.style.removeProperty('--m-letter-color'); }
+    }
+    const n = c.querySelector('m-pane-name')!;
+    if (n.textContent !== name) n.textContent = name;
+  }
+  // The split's focused pane changed (a press on a pane, a key): it opens when it can; in click mode, one that fits
+  // puts the split back.
+  function focusChanged(split: Split) {
+    const item = split.panes.find((p) => p.active)?.id;
+    const id = item == null ? null : String(item);
+    if (!focusedSeen || focusedSeen.split !== split.id) { focusedSeen = { split: split.id, item: id }; return; }
+    if (focusedSeen.item === id) return;
+    focusedSeen.item = id;
+    const el = page();
+    if (!id || !el || drag) return;
+    const to = goesTo(split, el, id);
+    // (After this render: the move draws through sync.)
+    if (to !== undefined) queueMicrotask(() => openPane(to));
+    else if (mode() === 'click' && opened?.split === split.id) queueMicrotask(() => openPane(null));
+  }
+  // What a pane the pointer rests on or a press focuses does: opens (its item), or, folded now and fitting at the split's
+  // own sizes, puts the split back to them (null); undefined: nothing (it fits, and isn't folded).
+  function goesTo(split: Split, el: HTMLElement, item: string): string | null | undefined {
+    if (openedSizes(split, el, item)) return item;
+    const p = panesOf(el).find((x) => x.getAttribute('m-pane-id') === item);
+    return opened?.split === split.id && p?.hasAttribute('m-folded') ? null : undefined;
+  }
+
   // The page's place drawn as the split now: its panes, their order, ratios and minimums, the focused one; nothing new
   // written when nothing changed.
   function sync(vm: ViewModel | null) {
@@ -235,6 +439,9 @@ export function installSplit(rt: Rt) {
     if (!el) return;
     const split = shown(vm);
     if (!split) {
+      if (opened || motion) { if (motion) { rt.win.cancelAnimationFrame(motion.frame); rt.cancel(motion.timer); motion = null; tell(false); } opened = null; }
+      cancelDwell();
+      cancelLeave();
       if (el.hasAttribute('m-split')) {
         el.removeAttribute('m-split');
         el.removeAttribute('m-split-id');
@@ -244,12 +451,15 @@ export function installSplit(rt: Rt) {
       }
       return;
     }
+    if (opened && opened.split !== split.id) opened = null;
+    focusChanged(split);
+    const hover = host().paneHover ?? null;
+    if (hover !== hoverSeen) { hoverSeen = hover; queueMicrotask(consider); }
     const ratios = ratiosFor(split);
     const floors = floorsOf(split);
     const opening = host().paneLoading ?? null;
-    const cuts = host().paneCuts ?? {};
-    const hover = host().paneHover ?? null;
-    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening, cuts, hover]);
+    const open = panesOf(el).length === split.panes.length ? openView(split, el) : null;
+    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host, p.icon, p.letter]), ratios, floors, opening, open]);
     if (key === laidOut) return;
     laidOut = key;
     const axis = row(split) ? 'row' : 'column';
@@ -285,12 +495,12 @@ export function installSplit(rt: Rt) {
       if (p.getAttribute('m-pane-id') !== id) p.setAttribute('m-pane-id', id);
       if (pane.active) { if (!p.hasAttribute('m-focused')) p.setAttribute('m-focused', ''); } else if (p.hasAttribute('m-focused')) p.removeAttribute('m-focused');
       loader(p, opening && opening.item === id ? opening.name : null);
-      const cut = cuts[id] ?? null;
-      arrows(p, cut, !!cut && cut.window === hover);
+      card(p, pane, !!open?.folded[i]);
       const s = p.style;
-      const grow = String(round4(ratios[i] ?? 1 / n));
+      // (Opened, or moving: each pane's size as a weight of the room, none held at its floor; else the ratios.)
+      const grow = String(open ? Math.round(Math.max(0, open.sizes[i] ?? 0) * 100) / 100 : round4(ratios[i] ?? 1 / n));
       if (s.flexGrow !== grow) s.flexGrow = grow;
-      const min = `${floors[i]}px`;
+      const min = open ? '0px' : `${floors[i]}px`;
       const [on, off] = axis === 'row' ? ['min-width', 'min-height'] : ['min-height', 'min-width'];
       if (s.getPropertyValue(on) !== min) s.setProperty(on, min);
       if (s.getPropertyValue(off)) s.removeProperty(off);
@@ -329,18 +539,27 @@ export function installSplit(rt: Rt) {
     return el && d && d.parentElement === el ? d : null;
   };
 
-  // A cut pane's arrow pressed: its window slid to show that side.
+  // A folded pane's card pressed: it opens now and its pane is focused (`split.focus`, its tab).
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
-    const a = (e.target as Element | null)?.closest?.('m-pane-arrow');
-    const p = a?.parentElement;
-    if (e.button !== 0 || !a || !p || p.localName !== 'm-pane' || p.parentElement !== page()) return;
+    const c = (e.target as Element | null)?.closest?.('m-pane-card');
+    const p = c?.parentElement;
+    const split = shown();
+    if (e.button !== 0 || !c || !p || p.localName !== 'm-pane' || p.parentElement !== page() || !p.hasAttribute('m-folded') || !split) return;
     e.preventDefault();
     e.stopPropagation();
     const item = p.getAttribute('m-pane-id') ?? '';
-    const side = a.getAttribute('m-side') as PaneSide | null;
-    if (!side || host().paneCuts?.[item]?.[side] !== 'slide') return;
-    rt.host.perform?.('split.slide', { item, side });
+    const pane = split.panes.find((x) => String(x.id) === item);
+    if (!pane) return;
+    const to = goesTo(split, page()!, item);
+    if (to !== undefined) openPane(to);
+    rt.dispatch('split.focus', pane.tabId, 'behavior');
   }, true);
+  // The pointer's place, as WebKit's own moves say it (the panel key) and as Margin's hover marks change (it isn't).
+  rt.listen(rt.container, 'pointerover', (e: PointerEvent) => { if (e.isTrusted) { realOver = e.target as Element; realAt = { x: e.clientX, y: e.clientY }; consider(); } });
+  rt.listen(rt.container, 'pointermove', (e: PointerEvent) => { if (e.isTrusted && realOver) realAt = { x: e.clientX, y: e.clientY }; }, { passive: true });
+  rt.listen(rt.container, 'pointerout', (e: PointerEvent) => { if (e.isTrusted && !e.relatedTarget) { realOver = null; realAt = null; consider(); } });
+  const marks = typeof MutationObserver === 'function' ? new MutationObserver(() => { if (opened || shown()) consider(); }) : null;
+  marks?.observe(rt.container, { subtree: true, attributes: true, attributeFilter: ['m-hover'] });
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
     if (e.button !== 0 || drag) return;
     const d = dividerAt(e.target);
@@ -350,6 +569,11 @@ export function installSplit(rt: Rt) {
     e.preventDefault();
     e.stopPropagation();
     try { d.setPointerCapture(e.pointerId); } catch {}
+    // (A pane opened: the drag starts from the sizes shown, and those are what it saves.)
+    if (motion) { rt.win.cancelAnimationFrame(motion.frame); rt.cancel(motion.timer); motion = null; }
+    opened = null;
+    cancelDwell();
+    cancelLeave();
     const index = Number(d.getAttribute('m-index'));
     const now = sizes(el, split);
     const total = now.reduce((a, b) => a + b, 0) || 1;
@@ -512,7 +736,13 @@ export function installSplit(rt: Rt) {
       return fits(axis, split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' }))) ? null
         : axis === 'vertical' ? 'Not enough room to stack these panes' : 'Not enough room for these panes side by side';
     },
-    destroy() { if (frame) { rt.win.cancelAnimationFrame(frame); rt.cancel(timer); } },
+    destroy() {
+      if (frame) { rt.win.cancelAnimationFrame(frame); rt.cancel(timer); }
+      if (motion) { rt.win.cancelAnimationFrame(motion.frame); rt.cancel(motion.timer); motion = null; }
+      cancelDwell();
+      cancelLeave();
+      marks?.disconnect();
+    },
   };
 
   // Whether these panes (in order), each at its floor, fit the page area along `axis` with the gaps between them (bands

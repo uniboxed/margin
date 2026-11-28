@@ -177,6 +177,20 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
       checked: s.hideAppsFromDock !== false,
     }));
   }
+  // How a split's pane opens to fit its app (`features.splitPanes`: Margin.app's window, where panes are laid out;
+  // behaviors/split.ts, docs/FLEX-SPLIT.md step 1): when the pointer rests on it, or only when it's clicked.
+  if (f.splitPanes) {
+    const expand = s.splitExpand === 'click' ? 'click' : 'hover';
+    list.push(field({
+      id: 'splitExpand', kind: 'choice', label: 'In a split view, open a pane to fit its app',
+      help: 'A pane too small for its app opens to its app’s size; the other panes fold into cards until it’s done.',
+      value: expand,
+      options: [
+        { id: 'hover', label: 'When the pointer rests on it', selected: expand === 'hover' },
+        { id: 'click', label: 'When it’s clicked', selected: expand === 'click' },
+      ],
+    }));
+  }
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
   // Keyboard shortcuts: recorded by pressing them.
@@ -211,7 +225,7 @@ export const SETTINGS_CATEGORIES = Object.freeze([
   { id: 'tabs', label: 'Tabs', help: 'When tabs are archived or put to sleep.' },
   { id: 'browsing', label: 'Browsing', help: 'Searches, gestures and pages.' },
   // Margin.app on the Mac only (`features.appDock`): view-model.ts leaves it out elsewhere.
-  { id: 'apps', label: 'Apps', help: 'Apps Margin opens in its window.' },
+  { id: 'apps', label: 'Apps', help: 'Apps Margin opens in its window, and its split views.' },
   { id: 'keyboard', label: 'Keyboard', help: 'Shortcuts for Margin’s sidebar, tabs and spaces.' },
 ] as const);
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
@@ -219,7 +233,7 @@ export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this 
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
 const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
 const BROWSING_FIELDS = new Set(['engine', 'searchSuggestions', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
-const APPS_FIELDS = new Set(['hideAppsFromDock']);
+const APPS_FIELDS = new Set(['hideAppsFromDock', 'splitExpand']);
 const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'appShortcuts', ...Object.keys(APP_SHORTCUT_FIELDS), 'resetShortcuts']);
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */

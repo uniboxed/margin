@@ -1,9 +1,8 @@
 // A cut pane (docs/PEEK-SPLIT.md §4b; Margin's HostEngine `cutOf`, `slide`): a split of two Chameleon copies, the one
 // at the page area's end with a minimum wider than its pane. Its window at that minimum from its pane's start, the rest
-// past the display's edge (macOS keeps a full-screen tile there), held (never taken out of its tile); its arrow pressed
-// on Margin's own window (after the window list says the point is Margin's, then the copy's): slid to show its other
-// side, now under the pane beside it (behind that copy's window); a first click into it delivered without a raise
-// (pane-clicks' step); slid back past the display's edge; Margin's idle cost with a cut pane up.
+// past the display's edge (macOS keeps a full-screen tile there), held (never taken out of its tile); the pointer
+// resting on it opens it to fit its app, the other pane folded and blurred (docs/FLEX-SPLIT.md step 1); the sidebar puts
+// the split back; the pointer resting on a folded card opens that one; Margin's idle cost with a cut pane up.
 import AppKit
 
 extension Runner {
@@ -71,45 +70,82 @@ extension Runner {
          "its pane \(rect(pane)), its window #\(w.n) \(rect(w.r)) (past the display's \(Int(screen.maxX)) by \(Int(w.r.maxX - screen.maxX))), on screen \(w.on), Spaces \(w.spaces) (Margin's \(marginSpace)); over Chameleon \(other)'s pane \(overOther); \(reads) reads, changes \(moved.isEmpty ? "none" : moved.joined(separator: "; ")); its arrows \(sides.map { $0.sorted().joined(separator: ",") } ?? "not said"); Margin: \(ejected.map { String($0.suffix(140)) })")
   }
 
-  // Copy `n`'s arrow on `side` pressed on Margin's own window (the pointer into its pane first: the arrows show while
-  // it's over it): slid to show that side (Margin says it, its window at the other alignment), its other side's arrow
-  // now; after a slide to its right (its window into copy `other`'s pane), behind copy `other`'s window; back to its
-  // left, past the display's edge again.
-  func cutPaneSlide(_ n: Int, other: Int, side: String) {
-    let title = "cut pane: Chameleon \(n)'s \(side) arrow pressed (on Margin's own window): slid to show its \(side) side\(side == "right" ? ", now behind Chameleon \(other)'s window" : ", past the display's edge again")"
+  // The pointer resting on copy `n`'s cut pane (its hole: the copy's): after the page's pause it opens to its app's
+  // minimum (`minWidth`), its window at its pane (no longer cut); copy `other`'s pane folded, its window at its own
+  // minimum, blurred behind its card (Margin's `folded panes blurred`); both in Margin's Space (docs/FLEX-SPLIT.md step 1).
+  func paneOpens(_ n: Int, other: Int, minWidth: CGFloat) {
+    let title = "split opens: the pointer resting on Chameleon \(n)'s cut pane opens it to its app's minimum (\(Int(minWidth))), Chameleon \(other)'s folded and blurred"
     guard canPost else { return skip(title, "this suite can't post events (give the terminal Accessibility to run them)") }
-    gate("a cut pane's arrow")
-    guard let pid = copyApp(n)?.processIdentifier, let pane = paneRect(n), let before = placedWindow(pid, minWidth: 300, minHeight: 300) else { return step(title, false, "Chameleon \(n)'s pane or window isn't known") }
-    guard cutSides(n)?.contains(side) == true else { return step(title, false, "Margin didn't offer its \(side) arrow (its arrows \(cutSides(n).map { $0.sorted().joined(separator: ",") } ?? "not said"))") }
-    // (The pointer into its pane, away from the arrow: Margin says the pane hovered, the page shows its arrows.)
+    gate("a pane opening to fit its app")
+    guard let item = paneItems[n], let pid = copyApp(n)?.processIdentifier, let opid = copyApp(other)?.processIdentifier, let pane = paneRect(n) else { return step(title, false, "the panes aren't known (\(layoutLine().map { String($0.suffix(220)) } ?? "no layout"))") }
+    let mark = LogMark()
     let into = CGPoint(x: pane.midX, y: pane.midY + 120)
     post { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: into, mouseButton: .left) }
+    var opened: String?
+    spin(4) { opened = mark.since("split: \(item) opened to fit its app").last; return opened != nil }
+    var now = paneRect(n)
+    spin(3) { now = paneRect(n); return now.map { $0.width >= minWidth - 2 } ?? false }
     spin(0.6)
-    let at = CGPoint(x: side == "right" ? pane.maxX - 24 : pane.minX + 24, y: pane.midY)
-    guard marginThenApp(under(at), m.processIdentifier, pid) else {
-      return skip(title, "the windows under the arrow aren't Margin's then the copy's (\(under(at).map { "pid \($0.pid) layer \($0.layer)" }))")
-    }
-    let mark = LogMark()
-    let clicks = copySaid(n, "click at")
-    click(at)
-    var slid: String?
-    spin(3) { slid = mark.since("app:\(copy(n).id): slid to show its \(side) side").last; return slid != nil }
-    spin(0.5)
-    guard let w = placedWindow(pid, minWidth: 300, minHeight: 300) else { return step(title, false, "its window gone (\(allOf(pid)))") }
-    let screen = mainDisplay()
-    let placed = side == "right" ? abs(w.r.maxX - pane.maxX) <= 1 : abs(w.r.minX - pane.minX) <= 1 && w.r.maxX > screen.maxX + 1
-    let order = side == "right" ? behind(n, other) : true
-    let sides = cutSides(n, since: mark)
-    let want: Set<String> = side == "right" ? ["left"] : ["right"]
-    let ms = slid.flatMap { match($0, #"in ([0-9.]+) ms \((\d+) rects\)"#) }
-    step(title, slid != nil && placed && order == true && sides == want && w.spaces == [marginSpace] && copySaid(n, "click at") == clicks && abs(w.r.width - before.r.width) <= 0.5,
-         "its pane \(rect(pane)), its window \(rect(before.r)) → \(rect(w.r)), Spaces \(w.spaces); \(ms.map { "in \($0[0]) ms, \($0[1]) rects" } ?? "Margin said no slide"); behind Chameleon \(other)'s window \(order.map(String.init) ?? "unread"); its arrows now \(sides.map { $0.sorted().joined(separator: ",") } ?? "not said"); the press reached the copy \(copySaid(n, "click at") > clicks) (never: it's Margin's arrow)")
+    now = paneRect(n)
+    let folded = paneRect(other)
+    let w = placedWindow(pid, minWidth: 300, minHeight: 300), ow = placedWindow(opid, minWidth: 300, minHeight: 300)
+    let blurred = mark.since("folded panes blurred").last
+    // (A picture of the page area as it is, to see the folded card over the blurred window: in the logs.)
+    let shot = "\(buildDir)/logs/split-open-\(n)-\(Int(Date().timeIntervalSince1970)).png"
+    if let f = folded, let p = now { let r = f.union(p); sh("/usr/sbin/screencapture", ["-x", "-R", "\(Int(r.minX)),\(Int(r.minY)),\(Int(r.width)),\(Int(r.height))", shot]) }
+    let fits = now.map { abs($0.width - minWidth) <= 2 } ?? false
+    let atPane = now.flatMap { p in w.map { abs($0.r.minX - p.minX) <= 1 && abs($0.r.width - p.width) <= 1 } } ?? false
+    let foldedOK = folded.map { $0.width < 700 - 1 && $0.width >= 63 } ?? false
+    let otherMin = ow.map { $0.r.width >= 699 } ?? false
+    let spaces = (w?.spaces ?? []) == [marginSpace] && (ow?.spaces ?? []) == [marginSpace]
+    step(title, opened != nil && fits && atPane && foldedOK && otherMin && blurred != nil && spaces,
+         "Margin's page: \(opened.map { String($0.suffix(120)) } ?? "no opening said"); its pane \(rect(pane)) → \(now.map(rect) ?? "?"), its window \(w.map { rect($0.r) } ?? "?") (at its pane \(atPane)); Chameleon \(other)'s pane \(folded.map(rect) ?? "?"), its window \(ow.map { rect($0.r) } ?? "?"); \(blurred.map { String($0.suffix(120)) } ?? "no blur said"); Spaces \(w?.spaces ?? []) / \(ow?.spaces ?? []) (Margin's \(marginSpace)); picture \(shot)")
   }
 
-  // After a click delivered into a cut pane lying under copy `other`'s (pane-clicks' step): still behind it (no raise).
-  func cutPaneStillBehind(_ n: Int, other: Int) {
-    gate("the cut pane's order")
-    let b = behind(n, other)
-    step("cut pane: after a click into it, Chameleon \(n)'s window still behind Chameleon \(other)'s (delivered without a raise)", b == true, "behind \(b.map(String.init) ?? "unread")")
+  // The pointer moved onto Margin's sidebar (left of the page area): after the page's pause the split goes back to its
+  // own sizes, no pane folded.
+  func paneBack(_ n: Int, other: Int) {
+    let title = "split back: the pointer on Margin's sidebar puts the split back at its sizes (Chameleon \(n)'s and \(other)'s panes even), no pane folded"
+    guard canPost else { return skip(title, "this suite can't post events (give the terminal Accessibility to run them)") }
+    gate("the split back at its sizes")
+    guard let a = paneRect(n), let b = paneRect(other) else { return step(title, false, "the panes aren't known") }
+    let mark = LogMark()
+    let on = CGPoint(x: min(a.minX, b.minX) - 110, y: (a.midY + b.midY) / 2)
+    post { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: on, mouseButton: .left) }
+    spin(0.1)
+    post { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: on.x + 4, y: on.y + 4), mouseButton: .left) }
+    var back: String?
+    spin(4) { back = mark.since("split: back at its sizes").last; return back != nil }
+    var pa = paneRect(n), pb = paneRect(other)
+    spin(3) { pa = paneRect(n); pb = paneRect(other); return pa.flatMap { x in pb.map { abs(x.width - $0.width) <= 4 } } ?? false }
+    let even = pa.flatMap { x in pb.map { abs(x.width - $0.width) <= 4 } } ?? false
+    let unfolded = mark.since("no pane folded").last
+    step(title, back != nil && even && unfolded != nil,
+         "Margin's page: \(back.map { String($0.suffix(120)) } ?? "nothing said"); the panes \(pa.map(rect) ?? "?") and \(pb.map(rect) ?? "?"); \(unfolded.map { String($0.suffix(80)) } ?? "no unfold said")")
+  }
+
+  // The pointer resting on copy `n`'s folded card (Margin's own: no hole there): that pane opens to its app's minimum,
+  // copy `other`'s folds and is blurred.
+  func foldedCardOpens(_ n: Int, other: Int, minWidth: CGFloat) {
+    let title = "split opens: the pointer resting on Chameleon \(n)'s folded card opens that pane to its app's minimum (\(Int(minWidth))), Chameleon \(other)'s folded and blurred"
+    guard canPost else { return skip(title, "this suite can't post events (give the terminal Accessibility to run them)") }
+    gate("a folded card")
+    guard let item = paneItems[n], let card = paneRect(n) else { return step(title, false, "the panes aren't known") }
+    guard card.width < minWidth - 1 else { return step(title, false, "Chameleon \(n)'s pane \(rect(card)) isn't folded") }
+    let at = CGPoint(x: card.midX, y: card.midY)
+    let mark = LogMark()
+    post { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: at, mouseButton: .left) }
+    spin(0.1)
+    post { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: at.x + 2, y: at.y + 6), mouseButton: .left) }
+    var opened: String?
+    spin(4) { opened = mark.since("split: \(item) opened to fit its app").last; return opened != nil }
+    var now = paneRect(n)
+    spin(3) { now = paneRect(n); return now.map { $0.width >= minWidth - 2 } ?? false }
+    spin(0.6)
+    now = paneRect(n)
+    let folded = paneRect(other)
+    let blurred = mark.since("folded panes blurred").last
+    step(title, opened != nil && (now.map { abs($0.width - minWidth) <= 2 } ?? false) && (folded.map { $0.width < 800 - 1 } ?? false) && blurred != nil,
+         "Margin's page: \(opened.map { String($0.suffix(120)) } ?? "no opening said"); its pane \(rect(card)) → \(now.map(rect) ?? "?"); Chameleon \(other)'s \(folded.map(rect) ?? "?"); \(blurred.map { String($0.suffix(120)) } ?? "no blur said")")
   }
 }

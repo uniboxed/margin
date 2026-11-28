@@ -75,11 +75,14 @@ pub struct PageLayout {
     pub panes: Vec<PagePane>,
 }
 
-/// One pane of a split as the page laid it out (`PageLayout::panes`): its item and its box in the page, top left.
+/// One pane of a split as the page laid it out (`PageLayout::panes`): its item and its box in the page, top left, and
+/// whether it's folded beside a pane opened to fit its app (docs/FLEX-SPLIT.md step 1: its window blurred behind its
+/// card).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PagePane {
     pub item: String,
     pub rect: Rect,
+    pub folded: bool,
 }
 
 impl PagePane {
@@ -88,7 +91,8 @@ impl PagePane {
         !s.is_empty() && s.len() <= 256 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(&b))
     }
 
-    /// `{ id, rect: [x, y, width, height] }`, a finite box with a size; `None` for anything else.
+    /// `{ id, rect: [x, y, width, height], folded? }`, a finite box with a size (`folded` a flag: true, or 1); `None` for
+    /// anything else.
     fn from_json(v: &Value) -> Option<PagePane> {
         let o = v.as_object()?;
         let item = json::string(o.get("id")).filter(|s| Self::id_ok(s))?;
@@ -97,7 +101,8 @@ impl PagePane {
         if n.len() != 4 || !(n[2] > 0.0 && n[3] > 0.0) {
             return None;
         }
-        Some(PagePane { item: item.to_owned(), rect: Rect::new(n[0], n[1], n[2], n[3]) })
+        let folded = json::flag(o.get("folded")) == Some(true);
+        Some(PagePane { item: item.to_owned(), rect: Rect::new(n[0], n[1], n[2], n[3]), folded })
     }
 }
 
@@ -1668,8 +1673,8 @@ mod tests {
         assert_eq!(
             two.panes,
             vec![
-                PagePane { item: "a".into(), rect: Rect::new(260.0, 8.0, 600.0, 900.0) },
-                PagePane { item: "b:c.d_e-f".into(), rect: Rect::new(870.0, 8.0, 600.0, 900.0) }
+                PagePane { item: "a".into(), rect: Rect::new(260.0, 8.0, 600.0, 900.0), folded: false },
+                PagePane { item: "b:c.d_e-f".into(), rect: Rect::new(870.0, 8.0, 600.0, 900.0), folded: false }
             ]
         );
         let refused = [
