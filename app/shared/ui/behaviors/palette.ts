@@ -14,6 +14,7 @@
 // overlay, not on screen yet then); that host says when (`focusLauncher`).
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
+import { siteFor } from '../../../../extension/shared/site-search.ts';
 
 export function installPalette(rt: Rt) {
   const { view, container } = rt;
@@ -60,6 +61,23 @@ export function installPalette(rt: Rt) {
       }
       return;
     }
+    // Site search (Arc's): Tab on a site's name or domain searches that site (its pill in the field, what was typed
+    // kept to come back to); a Backspace in the empty field, or Escape, leaves it, what was typed back. Tab otherwise
+    // keeps the focus in the field.
+    if (e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      const p = rt.ui.palette;
+      const site = p.site ? null : siteFor(p.query ?? '');
+      if (site) rt.setUi({ palette: { ...p, site: site.id, before: p.query ?? '', query: '', selected: 0, noComplete: true } });
+      return;
+    }
+    const leaveSite = () => {
+      const p = rt.ui.palette;
+      rt.setUi({ palette: { ...p, site: null, query: p.before ?? '', before: undefined, selected: 0, noComplete: true } });
+      rt.host.suggest?.(p.before ?? '');
+    };
+    if (rt.ui.palette.site && e.key === 'Backspace' && (e.target as HTMLInputElement).value === '') { e.preventDefault(); leaveSite(); return; }
+    if (rt.ui.palette.site && e.key === 'Escape') { e.preventDefault(); leaveSite(); return; }
     if (e.key === 'ArrowDown' || (e.key === 'n' && e.ctrlKey)) move(1);
     else if (e.key === 'ArrowUp' || (e.key === 'p' && e.ctrlKey)) move(-1);
     else if (e.key === 'Enter') {
@@ -109,7 +127,8 @@ export function installPalette(rt: Rt) {
       // no completion comes back until the next one typed, as Arc's.)
       const shrank = value.length <= (rt.ui.palette.query ?? '').length;
       rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0, noComplete: shrank } });
-      rt.host.suggest?.(value); // (the engine's suggestions, where the host has them: Margin.app's window)
+      // (The engine's suggestions, where the host has them: Margin.app's window; none while a site is searched, as Arc's.)
+      if (!rt.ui.palette.site) rt.host.suggest?.(value);
     },
     afterRender(vm: ViewModel) {
       // The launcher's field has the focus as the new-tab page shows it
@@ -126,6 +145,10 @@ export function installPalette(rt: Rt) {
         const input = view.input('palette');
         if (input) {
           field = input;
+          // (Searching a site: "Search…", Arc's; else the theme's own words, kept from the first time it's drawn.)
+          if (!input.dataset.mPlaceholder) input.dataset.mPlaceholder = input.placeholder;
+          const placeholder = vm.palette.site ? 'Search…' : input.dataset.mPlaceholder;
+          if (input.placeholder !== placeholder) input.placeholder = placeholder;
           // (What's typed, and the selected row's completion after it, selected: Arc's inline completion.)
           const want = vm.palette.query + vm.palette.completion;
           if (input.value !== want) {

@@ -247,7 +247,10 @@
       <button class="btn scrim" aria-label="Close command bar" m-action="palette.close"></button>
       <div class="palette" role="dialog" aria-label="New tab">
         <label class="palette-label" for="palette-input">SEARCH OR TYPE A URL</label>
+        <!-- Site search (Arc's, shared/site-search.ts): the site searched as a pill in its colour; "Search <site>" with Tab while what's typed names one. -->
+        <m-if test="palette.site"><div class="site-line"><span class="site-pill" m-style:--site="{{palette.site.color}}">{{palette.site.name}}</span></div></m-if>
         <input id="palette-input" class="palette-input" m-input="palette" placeholder="Go anywhere…" autocomplete="off" spellcheck="false">
+        <m-if test="palette.siteHint"><div class="site-line"><span class="site-hint">Search {{palette.siteHint.name}} <kbd>Tab</kbd></span></div></m-if>
         <!-- At most eight rows show; the rest scroll (Margin keeps the selected one in view). -->
         <div class="palette-rows" m-scroll="palette">
           <m-for each="palette.rows" as="r">

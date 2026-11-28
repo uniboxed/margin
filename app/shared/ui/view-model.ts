@@ -22,6 +22,7 @@ import * as V from '../../../extension/shared/view.ts';
 import { NEW_TAB } from '../../../extension/shared/switching.ts';
 import { hostOf } from '../../../extension/shared/dom.ts';
 import { rankPalette } from '../../../extension/shared/search.ts';
+import { siteById, siteFor } from '../../../extension/shared/site-search.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { appIcon, appOfItem, isBundleId } from '../../../extension/shared/apps.ts';
 import { spaceKeyCaps } from '../../../extension/shared/app-keys.ts';
@@ -46,7 +47,9 @@ export type UiState = {
   sidebar?: SidebarState | null,
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean,
     /** No completion in the field until the next character typed (a Backspace took it, as Arc's). */
-    noComplete?: boolean },
+    noComplete?: boolean,
+    /** Searching a site (shared/site-search.ts: its id), and what was typed before Tab took it there (restored on leaving). */
+    site?: string | null, before?: string },
   toast?: { id: string, text: string } | null,
   /** The background mini player's sources (Margin.app's `media` push: overlay.ts), or one. */
   media?: MediaSource[] | MediaSource | null,
@@ -302,6 +305,12 @@ export type ViewModel = {
      * picture for the field's icon (a site's), null for the magnifier.
      */
     completion: string, fieldIcon: string | null,
+    /** The site searched (Arc's pill: its name, its brand colour), null: none. */
+    site: { name: string, color: string } | null,
+    /** "Search <site>" with Tab, while what's typed names a site and none is searched yet; null: none. */
+    siteHint: { name: string } | null,
+    /** "No matches": open, nothing found, and not a site search waiting for what to search (Arc's: an empty bar). */
+    noMatches: boolean,
   },
   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean, /** Arc's "+" (the theme's `--m-add-menu: arc`). */ arc: boolean } | null,
   picker: PickerVm | null,
@@ -512,7 +521,7 @@ function fresh(input: ViewModelInput): ViewModel {
       version: VM_VERSION, ready: false, window: win,
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', iconless: true, keys: [], hasKeys: false, profile: '', hasProfile: false, pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
-      palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null, completion: '', fieldIcon: null },
+      palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null, completion: '', fieldIcon: null, site: null, siteHint: null, noMatches: false },
       menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
       library: libraryView(ui.library, [], Date.now()), newSpace: null,
     };
@@ -971,7 +980,7 @@ function fresh(input: ViewModelInput): ViewModel {
     tab,
     archive,
     hasArchive: !ui.settingsPage && archive.length > 0,
-    palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected, completion, fieldIcon },
+    palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected, completion, fieldIcon, ...siteOf(paletteUi), noMatches: !!paletteUi.open && rows.length === 0 && !siteById(paletteUi.site) },
     menu,
     picker: ui.picker ? pickerView(ui.picker) : null,
     editing,
@@ -1133,11 +1142,19 @@ const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', e
 // page, a search or a suggestion (Arc's).
 const GOES = new Set(['tab', 'pin', 'app']);
 
+// The site searched and the "Search <site>" hint (shared/site-search.ts), for the palette's view.
+function siteOf(p: NonNullable<UiState['palette']>) {
+  const site = siteById(p.site);
+  if (site) return { site: { name: site.name, color: site.color }, siteHint: null };
+  const named = p.open ? siteFor(p.query ?? '') : null;
+  return { site: null, siteHint: named ? { name: named.name } : null };
+}
+
 /**
  * What shared/search.ts ranks the palette for: this window and tab.
  * */
 export function paletteContext(ui: UiState, platform: ViewModelInput['platform']) {
-  return { windowId: ui.windowId ?? null, tabId: ui.tabId ?? null, inNewTab: !!ui.inNewTab, canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, appWindow: !!ui.appWindow };
+  return { windowId: ui.windowId ?? null, tabId: ui.tabId ?? null, inNewTab: !!ui.inNewTab, canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, appWindow: !!ui.appWindow, site: ui.palette?.site ?? null };
 }
 
 /**

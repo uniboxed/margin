@@ -12106,3 +12106,27 @@ From Arc 1.174 on screen (docs/ARC-COMMAND-BAR.md Part 1):
   the palette tests' titles; rendered at Arc's size, "thel" completes to "thelantern.example" with its icon, the search
   row "thel" with the magnifier.
 
+
+## Site search in the command bar, as Arc's (`feat/command-bar-site-search`, 2026-11-27; docs/ARC-COMMAND-BAR.md step 4)
+
+From Arc 1.174 on screen and its `ADK.Engine` table (docs/ARC-COMMAND-BAR.md Part 2 "Site search"):
+- **The sites** (`extension/shared/site-search.ts`, pure): Arc's 19 built-in sites (keyword, search address, brand colour)
+  and Google. Wikipedia's colour is its grey #636466: the value decoded from Arc looked shifted, so the brand's own is used.
+  `siteFor(typed)`: two characters or more, one word, the start of a site's domain ("youtu", "www." left off) or of its
+  name without spaces ("googlem" → Google Maps); the first in the table wins.
+- **The flow** (every theme: `ui/behaviors/palette.ts`; the view model's `palette.site` / `palette.siteHint`): while
+  what's typed names a site, "Search <site>" and a Tab key cap at the field's end. Tab (always kept from moving focus)
+  puts the site's pill before the field, empties it ("Search…"), and what's typed then is one row, searched on that site
+  (`rankPalette` with `ctx.site`; a new tab, or this one from a new tab), with no completion and no suggestions fetched.
+  A Backspace on nothing, or Escape, leaves the site and puts back what was typed before Tab; Escape again closes.
+- **The view**: `palette.noMatches` (open, nothing found, not a site waiting for words) replaces `!palette.hasRows` for
+  "No matches" (Arcadia, Material, Pixel), so a site with nothing typed shows the header alone. Arcadia: the pill 24 pt,
+  corner 12, 54 pt in, 10 pt before the text, a soft glow of its colour; the selected row the site's colour; no rows:
+  the header alone (64 pt), no hairline; the hairline 11 pt in from each side (Arc's, measured on its capture). Other
+  themes: the pill and hint in their own look.
+- Tests: `site-search.test.ts` (sites, siteFor, siteUrl, ranking, the view) and Arcadia's "site search as Arc's" (hint,
+  Tab, the pill's colour and size, one row in the site's colour, Backspace and Escape; WebKit and Chromium); rendered at
+  Arc's size against its captures (13-tab, 14-sitequery): the same pill, place and bar height.
+- Not built yet (Part 3's step 4 lists them): Space as the key (Arc's setting) and the person's own sites; both need
+  a setting, left for when Settings gets the command bar's pane.
+- Next (step 5): commands with aliases ("Focus on <space>" and Arc's other actions).

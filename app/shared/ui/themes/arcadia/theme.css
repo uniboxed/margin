@@ -1055,9 +1055,19 @@ m-menu[m-closing] .tab-menu.arc { animation: arcadia-pop-shrink 70ms var(--ease-
   height: 64px;
   box-sizing: border-box;
   padding: 0 18px 0 26px;
-  border-bottom: 0.5px solid var(--bar-divider);
 }
+/* The hairline under the header, 11 pt in from each side (Arc's, just past its rows' 10). */
+.palette .search::after { content: ""; position: absolute; left: 11px; right: 11px; bottom: 0; height: 0.5px; background: var(--bar-divider); pointer-events: none; }
 .palette .search-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--bar-muted); stroke-width: 2.2; stroke-linecap: round; }
+/* Site search (Arc's): the site's pill before the field, 24 pt, corner 12, in its brand colour; the bar's selected row
+   in that colour too; "Search <site>" and a Tab key cap at the field's end while what's typed names a site. */
+.palette .site-pill { flex: none; display: inline-flex; align-items: center; height: 24px; margin-right: -5px; padding: 0 10px; border-radius: 12px; background: var(--site); box-shadow: 0 0 12px color-mix(in srgb, var(--site) 45%, transparent); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.palette .site-hint { flex: none; display: inline-flex; align-items: center; gap: 8px; color: var(--bar-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.palette .site-hint kbd { padding: 2px 6px; border-radius: 5px; background: var(--bar-box); color: var(--bar-fg); font: inherit; font-size: 11px; font-weight: 600; }
+.palette:has(.site-pill) .result[aria-selected="true"] { background: var(--site); }
+/* No rows (a site chosen, nothing typed yet): the header alone, no hairline (Arc's). */
+.palette:not(:has(.result)) .search::after { display: none; }
+.palette:not(:has(.result)) .results { display: none; }
 /* The selected row's site icon in its place (Arc's): 16 pt, the text where it was (55 pt in). */
 .palette .field-icon { flex: none; width: 16px; height: 16px; margin: 0 -2px 0 -1px; border-radius: 3px; }
 .palette .query {
