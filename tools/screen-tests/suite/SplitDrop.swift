@@ -54,13 +54,14 @@ extension Runner {
     case .side(let o): what = "on the right edge of Chameleon \(o)'s page, shown alone: a new split, side by side"
     case .over(let o): what = "on Chameleon \(o)'s pane's middle: in its place, Chameleon \(o) out of the split"
     case .between(let a, let b): what = "on the gap between Chameleon \(a)'s and \(b)'s panes: between them"
+    case .below(let o): what = "near Chameleon \(o)'s pane's bottom edge: below it, the two stacked in its place (docs/FLEX-SPLIT.md step 3)"
     }
     let title = "split drop: Chameleon \(n)'s row dragged from Margin's sidebar \(what) (the split \(expect.map(String.init).joined(separator: ", ")))"
     guard canPost else { return skip(title, "this suite can't post events (give the terminal Accessibility to run them)") }
     gate("a row dropped on the page")
     // (Every copy's item known first: learning one shows it.)
     let copies: [Int]
-    switch kind { case .side(let o), .over(let o): copies = [n, o]; case .between(let a, let b): copies = [n, a, b] }
+    switch kind { case .side(let o), .over(let o), .below(let o): copies = [n, o]; case .between(let a, let b): copies = [n, a, b] }
     for c in copies where itemOf(c) == nil { return step(title, false, "Chameleon \(c)'s item isn't known (\(paneItems))") }
     // (The target shown again: the page alone, or a pane, which shows its split.)
     show(.copy(copies[1]), maxMs: nil)
@@ -77,6 +78,32 @@ extension Runner {
     case .between(let a, let b):
       guard let pa = paneRect(a), let pb = paneRect(b) else { return step(title, false, "the panes aren't known") }
       to = CGPoint(x: (pa.maxX + pb.minX) / 2, y: pa.midY)
+    case .below(let o):
+      guard let pane = paneRect(o) else { return step(title, false, "Chameleon \(o)'s pane isn't known") }
+      to = CGPoint(x: pane.midX, y: pane.maxY - pane.height * 0.08)
+    }
+    // (Stacked: the dropped one's pane below the target's, as wide, where the target's was.)
+    if case .below(let o) = kind {
+      guard let from = rowPoint(n) else { return step(title, false, "Chameleon \(n)'s row isn't drawn in Margin's sidebar") }
+      let before = paneRect(o)
+      let mark = LogMark()
+      dragRow(from: from, to: to, shot: "\(buildDir)/logs/split-drop-\(n)-below-\(Int(Date().timeIntervalSince1970)).png")
+      var top: CGRect?, low: CGRect?
+      let stacked = spin(15) {
+        top = paneRect(o); low = paneRect(n)
+        guard let t = top, let l = low else { return false }
+        return l.minY >= t.maxY - 1 && abs(l.minX - t.minX) <= 2 && abs(l.width - t.width) <= 2
+      }
+      spin(1)
+      // (Each pane's window: the one of its app in its pane's box, on screen in Margin's Space; an app may have others.)
+      let windows = [(o, top), (n, low)].compactMap { c, r -> (n: Int, r: CGRect, on: Bool, spaces: [UInt64])? in
+        guard let r, let pid = copyApp(c)?.processIdentifier else { return nil }
+        return windowsOf(pid).first { $0.layer == 0 && abs($0.r.minX - r.minX) <= 2 && abs($0.r.minY - r.minY) <= 2 && abs($0.r.width - r.width) <= 2 && abs($0.r.height - r.height) <= 2 }.map { ($0.n, $0.r, $0.on, $0.spaces) }
+      }
+      let inSpace = windows.count == 2 && windows.allSatisfy { $0.on && $0.spaces == [marginSpace] }
+      let inPlace = before.map { b in top.map { abs($0.minX - b.minX) <= 2 && abs($0.width - b.width) <= 2 } ?? false } ?? false
+      return step(title, stacked && inSpace && inPlace,
+                  "row \(Int(from.x)),\(Int(from.y)) → \(Int(to.x)),\(Int(to.y)); Chameleon \(o) \(before.map(rect) ?? "?") → \(top.map(rect) ?? "?"), Chameleon \(n) \(low.map(rect) ?? "?"); \(windows.map { "#\($0.n) \(rect($0.r))" }.joined(separator: ", ")); Margin's page: \(mark.since("split add: ").last.map { String($0.suffix(160)) } ?? "no room check said")")
     }
     guard let from = rowPoint(n) else { return step(title, false, "Chameleon \(n)'s row isn't drawn in Margin's sidebar") }
     let mark = LogMark()
@@ -98,4 +125,5 @@ enum RowDrop: Equatable {
   case side(Int)            // the right edge of that copy's page, shown alone
   case over(Int)            // that copy's pane's middle
   case between(Int, Int)    // the gap between two copies' panes
+  case below(Int)           // near that copy's pane's bottom edge (a pane split across its node)
 }

@@ -401,17 +401,19 @@ let cutPanes = Scenario(name: "cut-panes", title: "a split whose pane at the dis
   .marginQuitTiles([1, 2]),
 ], estimate: 120)
 
-// A sidebar row dropped on the page (SplitDrop.swift; docs/FLEX-SPLIT.md step 2): Chameleon 2's row on the right edge of
-// Chameleon 1 shown alone (a new split), 3's on 2's pane (in its place), 2's on the gap between 1 and 3 (between them).
-let splitDrop = Scenario(name: "split-drop", title: "sidebar rows dropped on the page: beside the page shown (a new split), on a pane (in its place), between two panes",
-                         copies: [1, 2, 3], steps: [
-  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
-  .openMargin, .host(.copy(3)), .host(.copy(2)), .host(.copy(1)),
+// A sidebar row dropped on the page (SplitDrop.swift; docs/FLEX-SPLIT.md steps 2, 3): Chameleon 2's row on the right
+// edge of Chameleon 1 shown alone (a new split), 3's on 2's pane (in its place), 2's on the gap between 1 and 3 (beside
+// the nearer: between them), 4's near 2's bottom edge (2 and 4 stacked in 2's place: the split's tree).
+let splitDrop = Scenario(name: "split-drop", title: "sidebar rows dropped on the page: beside the page shown (a new split), on a pane (in its place), between two panes, below a pane (a tree)",
+                         copies: [1, 2, 3, 4], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]), .setSwitches(4, [:]),
+  .openMargin, .host(.copy(4)), .host(.copy(3)), .host(.copy(2)), .host(.copy(1)),
   .rowDrop(2, .side(1), expect: [1, 2]),
   .rowDrop(3, .over(2), expect: [1, 3]),
   .rowDrop(2, .between(1, 3), expect: [1, 2, 3]),
-  .marginQuitTiles([1, 2, 3]),
-], estimate: 120)
+  .rowDrop(4, .below(2), expect: [1, 3]),
+  .marginQuitTiles([1, 2, 3, 4]),
+], estimate: 150)
 
 // Every pane of a split draws active (PanesActive.swift; Margin's PanesActive.swift): a split of Chameleon 1 and 2, both
 // active, clicks back and forth, a key after a click, another app in front, the split hidden, Margin's quit; then, from a

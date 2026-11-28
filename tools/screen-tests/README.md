@@ -125,7 +125,8 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   the page area, held a moment and let go: Chameleon 2's on the right edge of 1's page (a new split, 1 then 2), 3's on
   2's pane (in its place: 1 then 3), 2's on the gap between 1 and 3 (between them: 1, 2, 3); each time Margin's layout
   in that order and every copy's window in Margin's Space; a picture of each drag held, in the logs. 9 passed on the real
-  screen, 2026-11-28.
+  screen, 2026-11-28. Since step 3 (a split's tree, four copies built): Chameleon 4's row near 2's bottom edge, the two
+  stacked in 2's place, each one's window at its pane's box in Margin's Space; 11 passed, 2026-11-28.
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

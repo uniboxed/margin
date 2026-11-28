@@ -13,7 +13,7 @@ struct Copy {
   // findable by the app's id: a priming run drops what's there instead, Chameleon's Restorer restoring nothing.)
   var savedState: String { home("Library/Saved Application State/\(id).savedState") }
 }
-let copyCount = 3
+let copyCount = 4 // (the 4th for split-drop's tree, docs/FLEX-SPLIT.md step 3)
 let copies = (1...copyCount).map(Copy.init)
 func copy(_ n: Int) -> Copy { copies[n - 1] }
 nonisolated(unsafe) var builtApps = ""  // the build folder with the copies (run.sh's)

@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p "$BUILD/logs"
-apps/Chameleon/build.sh 3 "$BUILD/apps.noindex" || exit 1
+apps/Chameleon/build.sh 4 "$BUILD/apps.noindex" || exit 1
 SUITE_BIN="$BUILD/screen-suite"
 if [ ! -x "$SUITE_BIN" ] || [ -n "$(find suite apps/Chameleon/Switches.swift -name '*.swift' -newer "$SUITE_BIN" 2>/dev/null)" ]; then
   swiftc -O -swift-version 5 suite/*.swift apps/Chameleon/Switches.swift -o "$SUITE_BIN" || exit 1
