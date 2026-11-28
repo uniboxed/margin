@@ -9,7 +9,7 @@ use std::ffi::c_void;
 use margin_core::host::layout::Size;
 use margin_core::host::model::Role;
 use margin_core::json::{self, Object};
-use margin_core::protocol::PageLayout;
+use margin_core::protocol::{MAX_PANES, PageLayout};
 use margin_core::session::card::{self, WebAddress};
 use margin_core::session::layout::{self, PaneRoom};
 use margin_core::session::start::{self, Candidate};
@@ -243,8 +243,8 @@ pub struct MarginText {
 }
 
 /// The page's layout report as the core read it (protocol.rs `PageLayout`): its numbers, its four radii, what it was
-/// measured for, and its texts (the mode, up to four fills, a split and up to four panes' items) in the caller's
-/// buffer.
+/// measured for, and its texts (the mode, up to four fills, a split and up to [`MAX_PANES`] panes' items) in the
+/// caller's buffer.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MarginPageLayout {
@@ -264,11 +264,14 @@ pub struct MarginPageLayout {
     pub fills: [MarginText; 4],
     pub has_split: bool,
     pub split: MarginText,
-    /// 0, or 2 to 4.
+    /// 0, or 2 to [`MAX_PANES`].
     pub pane_count: u8,
-    pub pane_items: [MarginText; 4],
-    pub pane_rects: [MarginRect; 4],
+    pub pane_items: [MarginText; MAX_PANES],
+    pub pane_rects: [MarginRect; MAX_PANES],
 }
+
+// (margin_ffi.h's arrays are 16 long: the core's limit must be that.)
+const _: () = assert!(MAX_PANES == 16);
 
 /// The page's layout report (`geometry`'s JSON, as the page sends it) read (protocol.rs `PageLayout::from_geometry`)
 /// into `out`, its texts into `text` (`cap` bytes): the bytes its texts take (more than `cap`: nothing written, ask
@@ -340,8 +343,8 @@ pub(crate) unsafe fn write_layout(l: &PageLayout, out: *mut MarginPageLayout, te
         o.has_split = true;
         o.split = put(split);
     }
-    o.pane_count = l.panes.len().min(4) as u8;
-    for (i, p) in l.panes.iter().take(4).enumerate() {
+    o.pane_count = l.panes.len().min(MAX_PANES) as u8;
+    for (i, p) in l.panes.iter().take(MAX_PANES).enumerate() {
         o.pane_items[i] = put(&p.item);
         o.pane_rects[i] = p.rect.into();
     }
@@ -471,5 +474,24 @@ mod tests {
             unsafe { margin_page_layout_read(bad.as_ptr(), bad.len(), &mut l, text.as_mut_ptr(), text.len()) },
             -1
         );
+    }
+
+    #[test]
+    fn a_layout_of_the_most_panes_round_trips() {
+        // (A split tree, docs/FLEX-SPLIT.md step 3: MAX_PANES panes through the typed struct, each item and box.)
+        let panes: Vec<Value> =
+            (0..MAX_PANES).map(|i| json!({"id": format!("p{i}"), "rect": [i as f64 * 10.0, 0, 9, 9]})).collect();
+        let g = json!({"insets":{"left":260,"top":8,"right":8,"bottom":8},"container":{"width":1512,"height":949},"split":"s","panes":panes}).to_string();
+        let mut l = MarginPageLayout::default();
+        let mut text = [0u8; 256];
+        // SAFETY: the report's bytes, a writable layout, 256 writable bytes.
+        let used = unsafe { margin_page_layout_read(g.as_ptr(), g.len(), &mut l, text.as_mut_ptr(), text.len()) };
+        assert!(used > 0 && (used as usize) <= text.len(), "{used}");
+        let t = |m: MarginText| std::str::from_utf8(&text[m.at..m.at + m.len]).unwrap_or("?").to_owned();
+        assert_eq!(l.pane_count as usize, MAX_PANES);
+        for i in 0..MAX_PANES {
+            assert_eq!(t(l.pane_items[i]), format!("p{i}"));
+            assert_eq!(l.pane_rects[i], MarginRect { x: i as f64 * 10.0, y: 0.0, width: 9.0, height: 9.0 });
+        }
     }
 }

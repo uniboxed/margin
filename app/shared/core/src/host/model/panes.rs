@@ -42,8 +42,8 @@ fn as_taken(m: Option<Size>) -> Option<Size> {
     m.filter(|m| m.width > 0.0 || m.height > 0.0).map(|m| Size::new(m.width.max(0.0), m.height.max(0.0)))
 }
 
-/// The most visible hosts read without an allocation (a layout has at most four).
-const ROOM: usize = 16;
+/// The most visible hosts read without an allocation (a layout has at most `MAX_PANES` panes and a card).
+const ROOM: usize = super::LIVE_ROOM;
 
 impl HostModel {
     // ---- the page area of a drag being followed ----

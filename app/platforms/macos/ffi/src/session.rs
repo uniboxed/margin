@@ -30,6 +30,7 @@ use margin_core::geometry::Rect;
 use margin_core::host::layout::{Placement, Size};
 use margin_core::json;
 use margin_core::page::Pace;
+use margin_core::protocol::MAX_PANES;
 use margin_core::session::state::rect_read;
 use margin_core::session::{Field, Frame, LibraryEdit, LibraryView, Out, Performed, Ports, Row, Session};
 use serde_json::{Map, Value, json};
@@ -708,8 +709,8 @@ impl Ports for SwiftPorts {
             self.ask(json!({ "port": "follow", "placement": p, "rects": rects }));
             return;
         };
-        // (On the stack: a split's four panes and a card; a longer list (never one) on the heap.)
-        let mut list = [MarginHostRect { host: std::ptr::null(), len: 0, rect: MarginRect::default() }; 5];
+        // (On the stack: a split's panes, MAX_PANES at most, and a card; a longer list (never one) on the heap.)
+        let mut list = [MarginHostRect { host: std::ptr::null(), len: 0, rect: MarginRect::default() }; MAX_PANES + 1];
         if rects.len() <= list.len() {
             for (slot, (h, r)) in list.iter_mut().zip(rects) {
                 *slot = MarginHostRect { host: h.as_ptr(), len: h.len(), rect: (*r).into() };

@@ -12,7 +12,7 @@ use std::fmt;
 use serde::de::{DeserializeSeed, Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 
 use crate::geometry::Rect;
-use crate::protocol::{PageLayout, PagePane};
+use crate::protocol::{MAX_PANES, PageLayout, PagePane};
 
 /// `bytes` read into `out` (its buffers reused): true when they're a layout report (`from_geometry`'s `Some`). False:
 /// not one, and `out` is left in no particular state.
@@ -41,7 +41,7 @@ struct Said {
     /// The fills' array's length (its first four in `out.fills`), None: no array.
     fills: Option<usize>,
     split: bool,
-    /// The panes' array: its length, and whether every one so far is one (the first four in `out.panes`).
+    /// The panes' array: its length, and whether every one so far is one (the first [`MAX_PANES`] in `out.panes`).
     panes: Option<(usize, bool)>,
 }
 
@@ -74,7 +74,7 @@ impl Said {
         if self.fills.is_none_or(|n| n < 4) {
             out.fills.clear();
         }
-        let panes = self.panes.is_some_and(|(n, ok)| (2..=4).contains(&n) && ok && unique(&out.panes[..n]));
+        let panes = self.panes.is_some_and(|(n, ok)| (2..=MAX_PANES).contains(&n) && ok && unique(&out.panes[..n]));
         if !(self.split && panes) {
             out.split = None;
             out.panes.clear();
@@ -532,7 +532,7 @@ impl<'de> Visitor<'de> for Fills<'_> {
     }
 }
 
-/// The panes: the array's length and whether each one (the first four kept in `out.panes`) is a pane; None: not an
+/// The panes: the array's length and whether each one (the first [`MAX_PANES`] kept in `out.panes`) is a pane; None: not an
 /// array.
 struct Panes<'a>(&'a mut Vec<PagePane>);
 
@@ -552,7 +552,7 @@ impl<'de> Visitor<'de> for Panes<'_> {
         let panes = self.0;
         let (mut n, mut ok) = (0, true);
         loop {
-            if n < 4 {
+            if n < MAX_PANES {
                 if panes.len() <= n {
                     panes.push(PagePane { item: String::new(), rect: Rect::ZERO, folded: false });
                 }
@@ -565,7 +565,7 @@ impl<'de> Visitor<'de> for Panes<'_> {
             }
             n += 1;
         }
-        panes.truncate(n.min(4));
+        panes.truncate(n.min(MAX_PANES));
         Ok(Some((n, ok)))
     }
     fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
@@ -864,9 +864,10 @@ mod tests {
             }
             format!("{{{}}}", keys.join(","))
         }
-        /// A clean report with a split (its panes 2 to 4, now and then one of them broken or two alike).
+        /// A clean report with a split (its panes 2 to 4, or now and then up to MAX_PANES + 1, now and then one of them
+        /// broken or two alike).
         fn split_report(&mut self) -> String {
-            let n = 2 + self.next() % 3;
+            let n = if self.chance(0.1) { 2 + self.next() % (MAX_PANES as u64) } else { 2 + self.next() % 3 };
             let panes: Vec<String> = (0..n)
                 .map(|i| {
                     if self.chance(0.05) {
@@ -963,6 +964,37 @@ mod tests {
                 _ => {}
             }
             s
+        }
+    }
+
+    #[test]
+    fn a_split_of_the_most_panes_is_read_and_one_more_is_none() {
+        // (A split tree, docs/FLEX-SPLIT.md step 3: up to MAX_PANES panes, every one kept in order, reading a page's
+        // report again into the same layout as the page does.)
+        let report = |n: usize| {
+            let panes: Vec<String> =
+                (0..n).map(|i| format!("{{\"id\":\"p{i}\",\"rect\":[{},8,60,900]}}", i * 70)).collect();
+            format!(
+                "{{\"insets\":{{\"left\":260,\"top\":8,\"right\":8,\"bottom\":8}},\"radius\":6,\"container\":{{\"width\":1512,\"height\":949}},\"split\":\"sp-1\",\"panes\":[{}]}}",
+                panes.join(",")
+            )
+        };
+        let mut into = PageLayout::default();
+        for n in [2, 4, 5, MAX_PANES, MAX_PANES + 1, 3] {
+            let r = report(n);
+            let want = by_value(r.as_bytes());
+            let got = by_seed(r.as_bytes(), &mut into).expect("a layout");
+            assert_eq!(format!("{want:?}"), format!("{:?}", Some(&got)), "{n} panes: as from_geometry reads them");
+            if n <= MAX_PANES {
+                assert_eq!(got.split.as_deref(), Some("sp-1"), "{n} panes: a split");
+                assert_eq!(
+                    got.panes.iter().map(|p| p.item.clone()).collect::<Vec<_>>(),
+                    (0..n).map(|i| format!("p{i}")).collect::<Vec<_>>()
+                );
+                assert_eq!(got.panes[n - 1].rect, Rect::new((n - 1) as f64 * 70.0, 8.0, 60.0, 900.0));
+            } else {
+                assert!(got.split.is_none() && got.panes.is_empty(), "{n} panes: no split");
+            }
         }
     }
 

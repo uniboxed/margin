@@ -295,7 +295,9 @@ bool margin_pass_wants(uint8_t mode, uint8_t edges, double zone, MarginPoint p, 
 // The live-resize pump's scheduling (host/model/live.rs, ffi live.rs): a drag's start and end, each page frame (its
 // page area the drag's, for `frame`), each tick of the pump (the flights' landings read first: margin_live_reads),
 // each send (asked again after a version is read, as the calls above) and the tick's end; typed, nothing allocated.
-// Lists hold 16 (the most hosts a drag moves). The engine keeps every write, read and sleep, and the drag's numbers.
+// Lists hold MARGIN_LIVE_ROOM (the most hosts a drag moves: host/model/live.rs LIVE_ROOM, twice the most panes). The
+// engine keeps every write, read and sleep, and the drag's numbers.
+#define MARGIN_LIVE_ROOM 32
 typedef struct MarginLiveTiming {
     double frame;     // at most one change a host this often (liveFrame)
     double wait;      // a change not landed after this long given up (liveWait)
@@ -605,9 +607,9 @@ typedef struct MarginPageLayout {
     MarginText fills[4];
     bool has_split;
     MarginText split;
-    uint8_t pane_count; // 0, or 2 to 4
-    MarginText pane_items[4];
-    MarginRect pane_rects[4];
+    uint8_t pane_count; // 0, or 2 to 16 (margin-core's protocol.rs MAX_PANES)
+    MarginText pane_items[16];
+    MarginRect pane_rects[16];
 } MarginPageLayout;
 
 uint8_t *margin_session_rule(const uint8_t *request, size_t len, size_t *out_len);
@@ -705,8 +707,8 @@ typedef struct MarginFrontOps {
 typedef struct MarginPagePanes {
     MarginText split; // texts in the caller's buffer
     uint8_t count;
-    MarginText items[4];
-    MarginRect rects[4];
+    MarginText items[16]; // margin-core's protocol.rs MAX_PANES
+    MarginRect rects[16];
 } MarginPagePanes;
 typedef double (*MarginClock)(void *ctx);
 void margin_page_configure(MarginPage *page, double grace, double switch_grace, const uint8_t *label, size_t len, bool order, int64_t raised, int64_t normal); // graces in seconds, negative: the core's own

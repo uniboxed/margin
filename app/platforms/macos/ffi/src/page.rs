@@ -21,6 +21,7 @@ use margin_core::page::{Ground, GroundHole, HostedSaid, Pace, Page, PageState, S
 use margin_core::passthrough::{
     CatchBuf, CatchRef, Cg, Cut, Edges, PassThrough, Push, SlotInsets, SlotRef, Want, WantMode,
 };
+use margin_core::protocol::MAX_PANES;
 
 use crate::session::MarginBytes;
 use crate::session_rules::{MarginPageLayout, MarginText, write_layout};
@@ -799,8 +800,8 @@ pub struct MarginFrontOps {
 pub struct MarginPagePanes {
     pub split: MarginText,
     pub count: u8,
-    pub items: [MarginText; 4],
-    pub rects: [MarginRect; 4],
+    pub items: [MarginText; MAX_PANES],
+    pub rects: [MarginRect; MAX_PANES],
 }
 
 /// The caller's clock, read where the decision reads it.
@@ -1018,9 +1019,9 @@ pub unsafe extern "C" fn margin_page_panes(
         return -1;
     }
     let mut o = MarginPagePanes::default();
-    let mut list = [("", Rect::ZERO); 4];
+    let mut list = [("", Rect::ZERO); MAX_PANES];
     let mut n = 0;
-    for (item, rect) in panes.take(4) {
+    for (item, rect) in panes.take(MAX_PANES) {
         list[n] = (item, rect);
         n += 1;
     }
