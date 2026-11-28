@@ -12222,6 +12222,13 @@ From his session's log (Margin, MenuBarAgent):
   brings Margin's bar down as for any app; the existing watch (`becameActive` → `watchBar` → `keysBack`) gives the keys
   back once the bar is up. Once per visit to the top band (40 pt). Its app's pid and policy read only in the band.
   Tests: margin-window-tests (the decision), e2e-glue (once per visit, a drag, a no-Dock app, Margin in front).
+  On screen (2026-11-28, his Mac, Music shown): AppKit's `NSApp.activate()` is refused from there (cooperative
+  activation: Margin not active, the person didn't act in it; Music stayed front, nothing came down), so Margin is made
+  the window server's front process as a click would (`_SLPSSetFrontProcessWithOptions` kCPSUserGenerated, the engine's
+  existing `makeFront`: HostEngine `makeMarginFront`; AppKit's activation only as the fallback). MenuBarAgent then
+  tracks the edge (`reveal blocked: requiresMotionBeforeRevealing` until the pointer moves once more, as a hand pushing
+  at the edge does), dwells ~0.3 s and reveals Margin's bar (screenshot: Apple menu, Margin, File, Edit, View, Window);
+  Margin front 29 ms after the edge, the bar ~0.45 s after; the pointer away, Music front again (`keysBack`).
 - **The screen suite wrote "Error: Could not find key …" into Margin's defaults** (MarginFront, MarginPrepareBrowser,
   MarginResumeLast, MarginTiles): macOS 27's `defaults read` error for an unset key was recorded as its value and
   written back. Margin read each as unset (no effect seen); deleted on his Mac, and `defaultsRead` now takes both
