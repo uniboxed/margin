@@ -61,8 +61,14 @@ struct PageLayout: Equatable {
         let allFills = [l.fills.0, l.fills.1, l.fills.2, l.fills.3]
         fills = allFills.prefix(Int(l.fill_count)).map(s)
         split = l.has_split ? s(l.split) : nil
-        let items = [l.pane_items.0, l.pane_items.1, l.pane_items.2, l.pane_items.3], rects = [l.pane_rects.0, l.pane_rects.1, l.pane_rects.2, l.pane_rects.3]
-        panes = (0..<min(Int(l.pane_count), 4)).map { PagePane(item: s(items[$0]), rect: CGRect(rects[$0])) }
+        // (The C arrays, MAX_PANES long, read as buffers: as many as the count says.)
+        var items = l.pane_items, rects = l.pane_rects
+        panes = withUnsafeBytes(of: &items) { ib in
+            withUnsafeBytes(of: &rects) { rb in
+                let i = ib.bindMemory(to: MarginText.self), r = rb.bindMemory(to: MarginRect.self)
+                return (0..<min(Int(l.pane_count), i.count, r.count)).map { PagePane(item: s(i[$0]), rect: CGRect(r[$0])) }
+            }
+        }
     }
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {

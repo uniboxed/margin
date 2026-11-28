@@ -210,8 +210,15 @@ final class PageCore {
         if need > text.count { text = [UInt8](repeating: 0, count: need); need = read(&text) }
         guard need >= 0, need <= text.count else { return nil }
         let s = { (m: MarginText) in String(decoding: text[m.at..<(m.at + m.len)], as: UTF8.self) }
-        let items = [o.items.0, o.items.1, o.items.2, o.items.3], boxes = [o.rects.0, o.rects.1, o.rects.2, o.rects.3]
-        return (s(o.split), (0..<min(Int(o.count), 4)).map { PagePane(item: s(items[$0]), rect: CGRect(boxes[$0])) })
+        // (The C arrays, MAX_PANES long, read as buffers: as many as the count says.)
+        var items = o.items, boxes = o.rects
+        let list = withUnsafeBytes(of: &items) { ib in
+            withUnsafeBytes(of: &boxes) { rb in
+                let i = ib.bindMemory(to: MarginText.self), r = rb.bindMemory(to: MarginRect.self)
+                return (0..<min(Int(o.count), i.count, r.count)).map { PagePane(item: s(i[$0]), rect: CGRect(r[$0])) }
+            }
+        }
+        return (s(o.split), list)
     }
 
     // Where folded panes' windows are blurred behind their cards, on the screen (docs/FLEX-SPLIT.md step 1). The core's.

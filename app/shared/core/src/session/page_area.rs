@@ -16,6 +16,10 @@ use crate::host::layout::Placement;
 use crate::json;
 use crate::page::Pace;
 use crate::page::Page;
+use crate::protocol::MAX_PANES;
+
+/// The hosts of one frame kept on the stack: a split's panes and a card.
+const ROOM: usize = MAX_PANES + 1;
 
 /// Where a frame's page area and its split's panes are read from: the window's page in the core (Margin's own window:
 /// its content and display now, as the window reads them), or the ports (a window with no page in the core).
@@ -62,21 +66,29 @@ pub(crate) fn placement_json(p: &Placement, token: i64) -> Value {
     v
 }
 
-/// The hosts' rects of one frame, their ids copied into a buffer on the stack (a split's four panes and a card), so
+/// The hosts' rects of one frame, their ids copied into a buffer on the stack (a split's panes, [`MAX_PANES`] at most,
+/// and a card), so
 /// nothing of the session's state is borrowed while the engine is told and nothing is allocated (an id that doesn't
 /// fit goes to the heap: never one of Margin's).
 pub(crate) struct HostRects {
-    text: [u8; 1024],
+    text: [u8; 2048],
     used: usize,
-    spans: [(usize, usize); 5],
-    rects: [Rect; 5],
+    spans: [(usize, usize); ROOM],
+    rects: [Rect; ROOM],
     n: usize,
     spill: Vec<(String, Rect)>,
 }
 
 impl Default for HostRects {
     fn default() -> Self {
-        HostRects { text: [0; 1024], used: 0, spans: [(0, 0); 5], rects: [Rect::ZERO; 5], n: 0, spill: Vec::new() }
+        HostRects {
+            text: [0; 2048],
+            used: 0,
+            spans: [(0, 0); ROOM],
+            rects: [Rect::ZERO; ROOM],
+            n: 0,
+            spill: Vec::new(),
+        }
     }
 }
 
@@ -84,7 +96,7 @@ impl HostRects {
     /// A host's id given in parts (`safari:`, its profile, `#card`), copied in without making it.
     fn push_parts(&mut self, parts: &[&str], rect: Rect) {
         let len: usize = parts.iter().map(|p| p.len()).sum();
-        if self.n < 5 && self.used + len <= self.text.len() {
+        if self.n < ROOM && self.used + len <= self.text.len() {
             let at = self.used;
             for p in parts {
                 self.text[self.used..self.used + p.len()].copy_from_slice(p.as_bytes());

@@ -1,13 +1,16 @@
 //! The live-resize pump's scheduling (host/model/live.rs, step 2 part 6) on a hosting core, typed: a page frame of a
 //! drag up to 120 a second, a tick of the pump every 2 ms while anything's owed or in flight, a send per follower per
-//! frame. No JSON, nothing allocated (lists in fixed arrays of 16, the most hosts a drag moves). Every call takes a
-//! null core, an unknown handle or null pointers without harm.
+//! frame. No JSON, nothing allocated (lists in fixed arrays of `LIVE_ROOM`, the most hosts a drag moves:
+//! margin_ffi.h's `MARGIN_LIVE_ROOM`). Every call takes a null core, an unknown handle or null pointers without harm.
 
 use margin_core::geometry::Rect;
 use margin_core::host::api::HostCore;
 use margin_core::host::model::{Handle, HostModel, LIVE_ROOM, LiveEvent, LiveSend, LiveTick, LiveTiming};
 
 use crate::{MarginPlacement, MarginRect};
+
+// (margin_ffi.h's MARGIN_LIVE_ROOM must be the core's.)
+const _: () = assert!(LIVE_ROOM == 32);
 
 /// The pump's timing: at most one change a host each `frame` seconds, a change given up after `wait`, landed within
 /// `tolerance` points.
