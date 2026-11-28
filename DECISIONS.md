@@ -12233,3 +12233,15 @@ From his session's log (Margin, MenuBarAgent):
   MarginResumeLast, MarginTiles): macOS 27's `defaults read` error for an unset key was recorded as its value and
   written back. Margin read each as unset (no effect seen); deleted on his Mac, and `defaultsRead` now takes both
   wordings as unset.
+
+## No line down a split's pane (`fix/pane-mask-seam`, 2026-11-28)
+
+Tirth saw a thin line down the middle of Music's pane in a split with Reminders (Music cut, slid). Read on screen: one
+device pixel column at 2177 px (1088.5 pt, the middle of the pane 674–1503.5) in the theme's gap colour (#557373 over
+Music's dark), no window there, the panes' own boxes only. Cause: each pane's inner-corner mask (render.ts
+`m-pane::before`, a ring shadow in --m-pane-ground clipped to the pane's half facing the other pane) has its clip edge
+at 50%, and on a fraction of a device pixel WebKit paints one column of the ring there, down the whole pane (both panes:
+a sweep of 48 fractional sizes, rows and columns, 58 of 96 panes in WebKit; none in Chromium). Fix: the half's edge on
+a whole CSS pixel (`round(up, 50%, 1px)`); the corner masks pixel for pixel as before, nothing else changed (WebKit:
+only the seams; Chromium: one pixel at a pane's outer edge in the gap, already the gap's colour). Test:
+tests/theme/pane-mask-seam.test.ts (the rules read from render.ts, both engines; failing first), split-view's clip check.
