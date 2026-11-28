@@ -60,7 +60,7 @@ test('M2.7 Split View: a pane lifecycle, swap, resize, toggleAxis, and automatic
   assert.ok(vm.split, 'active split metadata exposed');
   assert.equal(vm.split.isVertical, true);
   assert.equal(vm.split.dividers.length, 3);
-  assert.equal(vm.split.canAddPane, false);
+  assert.equal(vm.split.canAddPane, true, 'four of MAX_SPLIT_PANES (16): room for more');
 
   // Breaking out panes until only 1 remains automatically dissolves the split group.
   s = M.removeFromSplit(s, 'sp-1', 4);
