@@ -29,7 +29,9 @@ test('siteFor: the start of a site\'s domain or name, two characters or more, on
   assert.equal(siteFor('  spot ')?.id, 'spotify', 'trimmed');
   assert.equal(siteFor('go')?.id, 'google', 'the first in the table');
   // The engines and AI answers Arc offers besides its own table.
-  assert.deepEqual(['bin', 'duck', 'yah', 'eco', 'perp', 'chat', 'ChatGPT'].map((t) => siteFor(t)?.id), ['bing', 'duckduckgo', 'yahoo', 'ecosia', 'perplexity', 'chatgpt', 'chatgpt']);
+  assert.deepEqual(['bin', 'duck', 'yah', 'eco', 'perp', 'chat', 'ChatGPT', 'cl', 'claude.ai', 'gr'].map((t) => siteFor(t)?.id), ['bing', 'duckduckgo', 'yahoo', 'ecosia', 'perplexity', 'chatgpt', 'chatgpt', 'claude', 'claude', 'grok']);
+  assert.equal(siteFor('ca')?.id, 'calendar', '"ca" still Calendar');
+  for (const none of ['gemini', 'copilot', 'meta']) assert.equal(siteFor(none), null, `${none}: no question in its address`);
   for (const none of ['', 'y', 'you tube', 'example', 'youtube.com/watch', null as unknown as string]) assert.equal(siteFor(none), null, String(none));
 });
 
@@ -38,6 +40,9 @@ test('siteUrl: the query encoded into the site\'s address; nothing for an empty 
   assert.equal(siteUrl(yt, ' lofi & beats '), 'https://www.youtube.com/results?search_query=lofi%20%26%20beats');
   assert.equal(siteUrl(yt, '   '), null);
   assert.equal(siteUrl(siteById('chatgpt')!, 'what is 2+2?'), 'https://chatgpt.com/?q=what%20is%202%2B2%3F');
+  assert.equal(siteUrl(siteById('claude')!, 'why is the sky blue'), 'https://claude.ai/new?q=why%20is%20the%20sky%20blue');
+  assert.equal(siteUrl(siteById('grok')!, 'hi'), 'https://grok.com/?q=hi');
+  assert.deepEqual(['claude', 'grok'].map((id) => siteVerb(siteById(id)!)), ['Ask', 'Ask']);
   assert.equal(siteUrl(siteById('yahoo')!, 'news'), 'https://search.yahoo.com/search?p=news');
   assert.equal(siteUrl(siteById('duckduckgo')!, 'a b'), 'https://duckduckgo.com/?q=a%20b');
   assert.deepEqual(['youtube', 'chatgpt', 'ecosia'].map((id) => [siteVerb(siteById(id)!), siteInk(siteById(id)!)]), [['Search', '#FFFFFF'], ['Ask', '#FFFFFF'], ['Search', '#39401C']], 'ChatGPT asked; Ecosia\'s dark green on its lime');

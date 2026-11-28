@@ -2,7 +2,7 @@
 // domain offers "Search <site>" with Tab; Tab puts the site's pill in the field, its colour on the bar, and what's
 // typed then is searched on that site. Arc's built-in sites (its `ADK.Engine` table: keyword, search address, brand
 // colour), then the engines Arc offers from Chromium's own list (Google, Bing, DuckDuckGo, Yahoo, Ecosia) and the AI
-// answers it offers (Perplexity; ChatGPT, asked rather than searched: "Ask ChatGPT"). Each address has `%s` for the
+// answers whose address takes a question (Perplexity; ChatGPT, Claude and Grok, asked rather than searched: "Ask ChatGPT"). Each address has `%s` for the
 // encoded query. Pure: the view model and the palette's behaviour use it.
 
 /**
@@ -40,6 +40,10 @@ export const SITES: readonly Site[] = Object.freeze([
   { id: 'ecosia', name: 'Ecosia', keyword: 'ecosia.org', url: 'https://www.ecosia.org/search?q=%s', color: '#D7EB80', ink: '#39401C' },
   { id: 'perplexity', name: 'Perplexity', keyword: 'perplexity.ai', url: 'https://www.perplexity.ai/search?q=%s', color: '#20808D' },
   { id: 'chatgpt', name: 'ChatGPT', keyword: 'chatgpt.com', url: 'https://chatgpt.com/?q=%s', color: '#10A37F', verb: 'Ask' },
+  // Claude's address fills its box (the person presses Return there); Grok's asks. Gemini, Copilot and Meta AI take no
+  // question in their address (2026-11-27: Gemini tested, it ignores ?q= and ?prompt=), so they aren't here.
+  { id: 'claude', name: 'Claude', keyword: 'claude.ai', url: 'https://claude.ai/new?q=%s', color: '#D97757', verb: 'Ask' },
+  { id: 'grok', name: 'Grok', keyword: 'grok.com', url: 'https://grok.com/?q=%s', color: '#000000', verb: 'Ask' },
 ]);
 
 /** What the bar says for a site ("Search", "Ask") and the text colour on its pill. */

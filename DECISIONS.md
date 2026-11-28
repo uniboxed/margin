@@ -12143,4 +12143,7 @@ Tirth asked for the engines Arc offers beyond its own table. Arc takes these fro
   on lime). Every theme's pill and Arcadia's selected row use it (`--site-ink`).
 - `Site.verb`: "Ask" for ChatGPT (Arc's "Ask %@"): the hint "Ask ChatGPT", the field "Ask…"; "Search" for the rest. The
   view model's `palette.site` / `palette.siteHint` carry `verb` (and `site.ink`); the themes write the hint with it.
+- Claude (`claude.ai/new?q=`: its box filled, the person presses Return; #D97757) and Grok (`grok.com/?q=`, tested;
+  black, as X), both "Ask". Left out, their address taking no question (2026-11-27): Gemini (tested in a browser: it
+  ignores `?q=` and `?prompt=`), Copilot (`?q=` reported broken since 2025), Meta AI and Mistral (nothing confirms one).
 - Not built: sites learned from the person's own searches (Arc's Chromium does it) and a Settings list to manage them.
