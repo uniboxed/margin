@@ -645,7 +645,7 @@ for (const [engineName, engine] of ENGINES) {
         const hidden = await look();
         const title = (await rect('.space-title'))!;
         await page.mouse.move(title.x, title.y);
-        await page.waitForTimeout(30);
+        await page.waitForFunction(() => getComputedStyle(document.querySelector('.clear')!).visibility === 'visible', null, { timeout: 2000 });
         const shown = await look();
         assert.equal(hidden.clear, null, 'Clear not shown with the pointer away');
         assert.ok(Math.abs(hidden.rowRight - hidden.line[1] - 10) < 0.5, `hidden: the line to 10 pt in, full width (${hidden.rowRight - hidden.line[1]})`);
